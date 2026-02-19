@@ -1,0 +1,156 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+
+	<PropertyGroup>
+		<TargetFramework>net48</TargetFramework>
+		<UseWPF>true</UseWPF>
+		<UseWindowsForms>true</UseWindowsForms>
+
+		<RootNamespace>KKY_Tool_Revit</RootNamespace>
+		<AssemblyName>KKY_Tool_Revit</AssemblyName>
+
+		<Platforms>AnyCPU;x64</Platforms>
+		<PlatformTarget>x64</PlatformTarget>
+		<Prefer32Bit>false</Prefer32Bit>
+
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<Deterministic>false</Deterministic>
+
+		<!-- ✅ 빌드 기준(컴파일 참조): 기본은 2019 API로 컴파일 -->
+		<AddinYear Condition="'$(AddinYear)'==''">2019</AddinYear>
+
+		<!-- ✅ 산출물: 프로젝트 bin 하위로 고정 -->
+		<OutputPath>bin\Rvt$(AddinYear)\net48\</OutputPath>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+		<!-- ✅ 1회 빌드로 함께 배포할 버전(출력 폴더 + ProgramData addins) -->
+		<DeployYears Condition="'$(DeployYears)'==''">2019;2021;2023</DeployYears>
+
+		<!-- ✅ Revit addin 위치: C:\ProgramData\Autodesk\Revit\Addins\(연도) -->
+		<ProgramDataPath>$([System.Environment]::GetFolderPath(SpecialFolder.CommonApplicationData))</ProgramDataPath>
+		<AddinRoot>$(ProgramDataPath)\Autodesk\Revit\Addins</AddinRoot>
+		<AddinFileName>KKY_Tool_Revit.addin</AddinFileName>
+	</PropertyGroup>
+
+	<!-- Revit API DLL 탐색: (1)환경변수 (2)로컬 Compile (3)설치폴더 -->
+	<PropertyGroup>
+		<ProgramFilesPath>$([System.Environment]::GetEnvironmentVariable('ProgramFiles'))</ProgramFilesPath>
+
+		<!-- 환경변수: REVIT_API_DIR_2019 / REVIT_API_DIR_2021 / REVIT_API_DIR_2023 등을 상황에 맞게 -->
+		<RevitApiDirFromEnv>$([System.Environment]::GetEnvironmentVariable('REVIT_API_DIR_$(AddinYear)'))</RevitApiDirFromEnv>
+
+		<!-- 로컬 폴더: ..\Compile\2019addin (또는 2021addin/2023addin) -->
+		<RevitApiDirCandidate0>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\Compile\$(AddinYear)addin'))</RevitApiDirCandidate0>
+
+		<!-- 기본 설치폴더: C:\Program Files\Autodesk\Revit 2019 -->
+		<RevitApiInstallCandidate0>$(ProgramFilesPath)\Autodesk\Revit $(AddinYear)</RevitApiInstallCandidate0>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<RevitApiDir Condition="'$(RevitApiDirFromEnv)' != '' and Exists('$(RevitApiDirFromEnv)\RevitAPI.dll') and Exists('$(RevitApiDirFromEnv)\RevitAPIUI.dll')">$(RevitApiDirFromEnv)</RevitApiDir>
+		<RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiDirCandidate0)\RevitAPI.dll') and Exists('$(RevitApiDirCandidate0)\RevitAPIUI.dll')">$(RevitApiDirCandidate0)</RevitApiDir>
+		<RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiInstallCandidate0)\RevitAPI.dll') and Exists('$(RevitApiInstallCandidate0)\RevitAPIUI.dll')">$(RevitApiInstallCandidate0)</RevitApiDir>
+	</PropertyGroup>
+
+	<Target Name="CheckRevitApiDir" BeforeTargets="ResolveReferences">
+		<Error Condition="'$(RevitApiDir)' == ''"
+			   Text="Local Revit API folder not found. Set env REVIT_API_DIR_$(AddinYear) or put RevitAPI.dll/RevitAPIUI.dll under ..\Compile\$(AddinYear)addin or ensure Revit $(AddinYear) is installed in Program Files." />
+	</Target>
+
+	<!-- Revit API References -->
+	<ItemGroup>
+		<Reference Include="RevitAPI">
+			<HintPath>$(RevitApiDir)\RevitAPI.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="RevitAPIUI">
+			<HintPath>$(RevitApiDir)\RevitAPIUI.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
+
+		<!-- ✅ JavaScriptSerializer(System.Web.Script.Serialization) 사용을 위한 참조 -->
+		<Reference Include="System.Web.Extensions" />
+	</ItemGroup>
+
+	<!-- NuGet -->
+	<ItemGroup>
+		<PackageReference Include="NPOI" Version="2.6.1" />
+		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2592.51" />
+		<PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
+	</ItemGroup>
+
+	<!-- ✅ Resources 폴더를 빌드 산출물에 포함 (Resources\HubUI 포함) -->
+	<ItemGroup>
+		<Content Include="Resources\**\*">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>Resources\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+		</Content>
+	</ItemGroup>
+
+	<!-- ✅ 1회 빌드로 2019/2021/2023 출력 폴더 + ProgramData addin 파일 생성 -->
+	<Target Name="DeployAllYears" AfterTargets="Build">
+		<ItemGroup>
+			<!-- MSBuild는 Include에 세미콜론을 자동 분리 -->
+			<_DeployYear Include="$(DeployYears)" />
+		</ItemGroup>
+
+		<MSBuild Projects="$(MSBuildProjectFullPath)"
+				 Targets="DeployOneYear"
+				 Properties="DeployYear=%(_DeployYear.Identity);BuildYear=$(AddinYear)"
+				 BuildInParallel="false" />
+	</Target>
+
+	<Target Name="DeployOneYear">
+		<PropertyGroup>
+			<DeployYear Condition="'$(DeployYear)'==''">$(AddinYear)</DeployYear>
+			<BuildYear Condition="'$(BuildYear)'==''">$(AddinYear)</BuildYear>
+
+			<SourceDir>$(MSBuildProjectDirectory)\bin\Rvt$(BuildYear)\net48\</SourceDir>
+			<DeployDir>$(MSBuildProjectDirectory)\bin\Rvt$(DeployYear)\net48\</DeployDir>
+
+			<DeployDll>$(DeployDir)$(AssemblyName).dll</DeployDll>
+
+			<AddinOutDir>$(AddinRoot)\$(DeployYear)\</AddinOutDir>
+			<AddinOutPath>$(AddinOutDir)$(AddinFileName)</AddinOutPath>
+		</PropertyGroup>
+
+		<!-- 산출물 존재 체크 -->
+		<Error Condition="!Exists('$(SourceDir)$(AssemblyName).dll')"
+			   Text="Build output not found: $(SourceDir)$(AssemblyName).dll" />
+
+		<!-- 다른 연도 폴더로 복사 (2019 -> 2021/2023) -->
+		<ItemGroup Condition="'$(DeployYear)' != '$(BuildYear)'">
+			<_DeployFiles Include="$(SourceDir)**\*.*" />
+		</ItemGroup>
+
+		<MakeDir Directories="$(DeployDir)" Condition="'$(DeployYear)' != '$(BuildYear)'" />
+		<MakeDir Directories="@(_DeployFiles->'$(DeployDir)%(RecursiveDir)')" Condition="'$(DeployYear)' != '$(BuildYear)'" />
+
+		<Copy SourceFiles="@(_DeployFiles)"
+			  DestinationFiles="@(_DeployFiles->'$(DeployDir)%(RecursiveDir)%(Filename)%(Extension)')"
+			  SkipUnchangedFiles="true"
+			  Condition="'$(DeployYear)' != '$(BuildYear)'" />
+
+		<!-- addin 파일 생성 (ProgramData) -->
+		<MakeDir Directories="$(AddinOutDir)" />
+
+		<ItemGroup>
+			<_AddinXml Include="&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot; standalone=&quot;no&quot;?&gt;" />
+			<_AddinXml Include="&lt;RevitAddIns&gt;" />
+			<_AddinXml Include="  &lt;AddIn Type=&quot;Application&quot;&gt;" />
+			<_AddinXml Include="    &lt;Name&gt;KKY Tool Revit&lt;/Name&gt;" />
+			<_AddinXml Include="    &lt;Assembly&gt;$([System.IO.Path]::GetFullPath('$(DeployDll)'))&lt;/Assembly&gt;" />
+			<_AddinXml Include="    &lt;AddInId&gt;8D83DB0A-B739-4ACD-A9DB-7B57A229D2A4&lt;/AddInId&gt;" />
+			<_AddinXml Include="    &lt;FullClassName&gt;KKY_Tool_Revit.KKY_Tool_Revit.App&lt;/FullClassName&gt;" />
+			<_AddinXml Include="    &lt;VendorId&gt;KKY&lt;/VendorId&gt;" />
+			<_AddinXml Include="    &lt;VendorDescription&gt;KKY Tool Add-in&lt;/VendorDescription&gt;" />
+			<_AddinXml Include="  &lt;/AddIn&gt;" />
+			<_AddinXml Include="&lt;/RevitAddIns&gt;" />
+		</ItemGroup>
+
+		<WriteLinesToFile File="$(AddinOutPath)"
+						  Lines="@(_AddinXml)"
+						  Overwrite="true"
+						  Encoding="UTF-8" />
+		<Message Importance="high" Text="Created Revit addin file: $(AddinOutPath) -> $(DeployDll)" />
+	</Target>
+</Project>
