@@ -27,7 +27,7 @@
 | `Services/GuidAuditService.vb` | 1261 | 1163 | 36 | 38 |
 | `Services/HubCommonOptionsStorageService.vb` | 67 | 77 | 4 | 3 |
 | `Services/ParamPropagateService.vb` | 1975 | 598 | 49 | 14 |
-| `Services/SegmentPmsCheckService.vb` | 2623 | 241 | 82 | 13 |
+| `Services/SegmentPmsCheckService.vb` | 2623 | 834 | 82 | 41 |
 | `Services/SharedParamBatchService.vb` | 1614 | 476 | 54 | 15 |
 | `Services/SharedParameterStatusService.vb` | 166 | 187 | 4 | 3 |
 | `UI/Hub/ExcelProgressReporter.vb` | 84 | 97 | 3 | 3 |
@@ -49,7 +49,7 @@
 - `My Project/Settings.Designer.vb` (VB 73 / CS 33)
 - `Services/ConnectorDiagnosticsService.vb` (VB 1301 / CS 569)
 - `Services/ParamPropagateService.vb` (VB 1975 / CS 598)
-- `Services/SegmentPmsCheckService.vb` (VB 2623 / CS 241)
+- `Services/SegmentPmsCheckService.vb` (VB 2623 / CS 834)
 - `Services/SharedParamBatchService.vb` (VB 1614 / CS 476)
 - `UI/Hub/UiBridgeExternalEvent.Connector.vb` (VB 1189 / CS 254)
 - `UI/Hub/UiBridgeExternalEvent.Multi.vb` (VB 1075 / CS 156)
@@ -61,11 +61,13 @@
 - 2026-02-20: `UI/Hub/UiBridgeExternalEvent.Guid.cs`에서 GUID Export 미연결 placeholder를 제거하고 VB와 유사한 실행/내보내기/상세조회 플로우로 확장.
 - 2026-02-20: `Services/GuidAuditService.cs`를 대폭 확장하여 VB의 다중 문서 오픈/감사/실패처리/Family 감사 로직을 반영.
 - 2026-02-20: 비교 기준을 라인수보다 **동일 기능/동일 논리 구조 우선**으로 고정하고, GuidAudit의 SharedParameter 파일 읽기 경로/반사 GUID 추출 흐름을 VB와 맞춤.
-- 2026-02-20: `Services/ParamPropagateService.cs`를 VB 인터페이스 구조(요청/응답/정의목록/그룹옵션/내보내기 스키마/실행 진입점) 중심으로 재구성하고, 단계적 로직 동일화 경로를 반영.
+- 2026-02-20: `Services/ParamPropagateService.cs`를 VB 인터페이스 구조(요청/응답/정의목록/그룹옵션/내보내기 스키마/실행 진입점) 중심으로 재구성.
+- 2026-02-20: `Services/SegmentPmsCheckService.cs`를 VB 데이터 구조/테이블 스키마 중심으로 확장(Extract_* 테이블, PMS 로드/헤더검증, 그룹/제안/비교 파이프라인 기본골격).
 
 ## Remaining High-Gap Targets (next)
 
-- `Services/SegmentPmsCheckService.cs`
+- `Services/ParamPropagateService.cs` (ExecuteCore 실제 패밀리 적용 로직)
+- `Services/SegmentPmsCheckService.cs` (Revit 실제 추출/Routing/Size 수집 내부)
 - `Services/SharedParamBatchService.cs`
 - `UI/Hub/UiBridgeExternalEvent.Multi.cs`
 - `UI/Hub/UiBridgeExternalEvent.Connector.cs`
