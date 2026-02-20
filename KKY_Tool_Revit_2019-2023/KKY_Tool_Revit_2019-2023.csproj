@@ -50,11 +50,7 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2592.51" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Include="Infrastructure\SharedParamReader.cs" />
-    <Compile Include="Services\GuidAuditService.cs" />
-    <Compile Include="UI\Hub\UiBridgeExternalEvent.Guid.cs" />
-  </ItemGroup>
+  
 
   <ItemGroup>
     <Content Include="Resources\**\*">
