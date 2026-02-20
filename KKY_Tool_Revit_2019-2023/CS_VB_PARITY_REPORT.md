@@ -56,3 +56,19 @@
 - `UI/Hub/UiBridgeExternalEvent.Guid.vb` (VB 369 / CS 148)
 - `UI/Hub/UiBridgeExternalEvent.Multi.vb` (VB 1075 / CS 156)
 - `UI/Hub/UiBridgeExternalEvent.SegmentPms.vb` (VB 1014 / CS 190)
+
+
+## Update Log
+
+- 2026-02-20: `Infrastructure/ElementIdCompat.cs`를 VB 조건부 분기와 동일하게 수정 (`REVIT2025` 분기 반영).
+- 2026-02-20: `UI/Hub/UiBridgeExternalEvent.Guid.cs`에서 GUID Export 미연결 placeholder를 제거하고 VB와 유사한 실행/내보내기/상세조회 플로우로 확장.
+- 2026-02-20: `Services/GuidAuditService.cs`에 `includeFamily`/`warn` 인자, `Export`/`ExportMulti`/`PrepareExportTable` 추가로 VB 서비스 인터페이스와 동작 범위를 확장.
+
+## Remaining High-Gap Targets (next)
+
+- `Services/ParamPropagateService.cs`
+- `Services/SegmentPmsCheckService.cs`
+- `Services/SharedParamBatchService.cs`
+- `UI/Hub/UiBridgeExternalEvent.Multi.cs`
+- `UI/Hub/UiBridgeExternalEvent.Connector.cs`
+- `UI/Hub/UiBridgeExternalEvent.SegmentPms.cs`

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using Autodesk.Revit.UI;
@@ -13,70 +14,167 @@ namespace KKY_Tool_Revit.UI.Hub
     {
         private DataTable _guidProject;
         private DataTable _guidFamilyDetail;
-        private DataTable _guidFamilyIndex;
+        private int _guidMode = 1;
         private string _guidRunId = string.Empty;
+        private DataTable _guidFamilyIndex;
+        private bool _guidIncludeFamily;
+        private double _guidLastPct = -1.0;
+        private string _guidLastText = string.Empty;
+
+        private sealed class TablePayload
+        {
+            public List<string> columns { get; set; }
+            public List<object[]> rows { get; set; }
+        }
 
         private void HandleGuidAddFiles(UIApplication app, object payload)
         {
             var pick = GetString(payload, "pick", string.Empty);
             if (string.Equals(pick, "folder", StringComparison.OrdinalIgnoreCase))
             {
-                using (var fbd = new FolderBrowserDialog { Description = "RVT 폴더 선택" })
-                {
-                    if (fbd.ShowDialog() != DialogResult.OK)
-                    {
-                        return;
-                    }
-
-                    var paths = System.IO.Directory.GetFiles(fbd.SelectedPath, "*.rvt", System.IO.SearchOption.TopDirectoryOnly);
-                    SendToWeb("guid:files", new { paths });
-                    return;
-                }
+                HandleGuidAddFolder();
+                return;
             }
 
-            using (var ofd = new OpenFileDialog { Filter = "Revit Project (*.rvt)|*.rvt", Multiselect = true })
+            using (var ofd = new OpenFileDialog())
             {
-                if (ofd.ShowDialog() != DialogResult.OK)
-                {
-                    return;
-                }
-
-                SendToWeb("guid:files", new { paths = ofd.FileNames });
+                ofd.Filter = "Revit Project (*.rvt)|*.rvt";
+                ofd.Multiselect = true;
+                ofd.Title = "검토할 RVT 파일 선택";
+                ofd.RestoreDirectory = true;
+                if (ofd.ShowDialog() != DialogResult.OK) return;
+                SendToWeb("guid:files", new { paths = ofd.FileNames.Where(x => !string.IsNullOrWhiteSpace(x)).ToList() });
             }
         }
 
         private void HandleGuidRun(UIApplication app, object payload)
         {
+            var mode = GetInt(payload, "mode", 1);
+            if (mode != 1 && mode != 2) mode = 1;
+
+            var includeFamily = GetBool(payload, "includeFamily", mode == 2);
+            var includeAnnotation = GetBool(payload, "includeAnnotation", false);
+            var paths = GetStringList(payload, "rvtPaths").Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+
             try
             {
-                var mode = GetInt(payload, "mode", 1);
-                var includeFamily = GetBool(payload, "includeFamily", false);
-                var includeAnnotation = GetBool(payload, "includeAnnotation", false);
-                var paths = GetStringList(payload, "rvtPaths").Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+                var sharedStatus = SharedParameterStatusService.GetStatus(app);
+                if (sharedStatus == null || !string.Equals(sharedStatus.Status, "ok", StringComparison.OrdinalIgnoreCase))
+                {
+                    var msg = string.IsNullOrWhiteSpace(sharedStatus?.WarningMessage) ? "Shared Parameter 파일 상태가 올바르지 않습니다." : sharedStatus.WarningMessage;
+                    SendToWeb("sharedparam:status", new
+                    {
+                        path = sharedStatus?.Path,
+                        isSet = sharedStatus?.IsSet,
+                        existsOnDisk = sharedStatus?.ExistsOnDisk,
+                        canOpen = sharedStatus?.CanOpen,
+                        status = sharedStatus?.Status,
+                        statusLabel = sharedStatus?.StatusLabel,
+                        warning = sharedStatus?.WarningMessage,
+                        errorMessage = sharedStatus?.ErrorMessage
+                    });
+                    SendToWeb("guid:error", new { message = msg });
+                    SendToWeb("revit:error", new { message = "GUID 검토 실패: " + msg });
+                    return;
+                }
+
+                _guidProject = null;
+                _guidFamilyDetail = null;
+                _guidFamilyIndex = null;
+                _guidRunId = string.Empty;
+                _guidIncludeFamily = includeFamily;
+                _guidMode = mode;
+                _guidLastPct = -1.0;
+                _guidLastText = string.Empty;
 
                 var result = GuidAuditService.Run(
                     app,
                     mode,
                     paths,
-                    (pct, text) => SendToWeb("guid:progress", new { pct, text }),
+                    ReportGuidProgress,
+                    msg =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(msg))
+                        {
+                            SendToWeb("guid:warn", new { message = msg });
+                        }
+                    },
+                    includeFamily,
                     includeAnnotation);
 
-                _guidProject = result.Project;
-                _guidFamilyDetail = result.FamilyDetail;
+                _guidProject = FilterIssueRowsCopy("guid", result.Project);
+                _guidFamilyDetail = FilterIssueRowsCopy("guid", result.FamilyDetail);
                 _guidFamilyIndex = result.FamilyIndex;
                 _guidRunId = result.RunId;
+                _guidIncludeFamily = result.IncludeFamily;
+
+                var payloadProject = ShapeGuidTable(_guidProject, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "RvtPath" });
+                var payloadFamily = ShapeGuidTable(result.FamilyIndex, null);
 
                 SendToWeb("guid:done", new
                 {
+                    mode,
                     runId = _guidRunId,
-                    project = ShapeTable(_guidProject),
-                    familyIndex = ShapeTable(_guidFamilyIndex),
-                    includeFamily
+                    includeFamily = _guidIncludeFamily,
+                    includeAnnotation,
+                    project = payloadProject,
+                    family = payloadFamily
                 });
             }
             catch (Exception ex)
             {
                 SendToWeb("guid:error", new { message = ex.Message });
+            }
+            finally
+            {
+                ReportGuidProgress(0, string.Empty);
+            }
+        }
+
+        private void HandleGuidExport(UIApplication app, object payload)
+        {
+            var which = GetString(payload, "which", string.Empty).ToLowerInvariant();
+            var excelMode = GetString(payload, "excelMode", "fast");
+
+            try
+            {
+                var projectTable = EnsureNoRvtPath(GuidAuditService.PrepareExportTable(_guidProject, 1));
+                var familyTable = EnsureNoRvtPath(GuidAuditService.PrepareExportTable(_guidFamilyDetail, 2));
+                var sheets = new List<KeyValuePair<string, DataTable>>();
+
+                if (which == "family")
+                {
+                    sheets.Add(new KeyValuePair<string, DataTable>("Family 검토결과", familyTable));
+                }
+                else if (which == "all")
+                {
+                    sheets.Add(new KeyValuePair<string, DataTable>("RVT 검토결과", projectTable));
+                    sheets.Add(new KeyValuePair<string, DataTable>("Family 검토결과", familyTable));
+                }
+                else
+                {
+                    sheets.Add(new KeyValuePair<string, DataTable>("RVT 검토결과", projectTable));
+                }
+
+                var doAutoFit = ParseExcelMode(payload);
+                var exportMode = string.Equals(excelMode, "fast", StringComparison.OrdinalIgnoreCase)
+                    ? "fast"
+                    : (doAutoFit ? "normal" : "fast");
+
+                LogAutoFitDecision(doAutoFit, "GuidAuditExport");
+                var saved = GuidAuditService.ExportMulti(sheets, exportMode, "guid:progress");
+                if (string.IsNullOrWhiteSpace(saved))
+                {
+                    SendToWeb("guid:error", new { message = "엑셀 내보내기가 취소되었습니다." });
+                    return;
+                }
+
+                ExcelExportStyleRegistry.ApplyStylesForKey("guid", saved, autoFit: doAutoFit, excelMode: exportMode);
+                SendToWeb("guid:exported", new { path = saved, which });
+            }
+            catch (Exception ex)
+            {
+                SendToWeb("guid:error", new { message = "엑셀 내보내기 실패: " + ex.Message });
             }
         }
 
@@ -86,63 +184,159 @@ namespace KKY_Tool_Revit.UI.Hub
             var familyName = GetString(payload, "familyName", string.Empty);
             var rvtPath = GetString(payload, "rvtPath", string.Empty);
 
-            if (!string.Equals(runId, _guidRunId, StringComparison.OrdinalIgnoreCase))
+            if (!_guidIncludeFamily)
+            {
+                SendToWeb("guid:error", new { message = "Family 검토 결과가 없습니다.", runId });
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(runId) || !string.Equals(runId, _guidRunId, StringComparison.OrdinalIgnoreCase))
             {
                 SendToWeb("guid:error", new { message = "이전 실행 결과 요청(runId mismatch)", runId });
                 return;
             }
 
-            var filtered = _guidFamilyDetail?.AsEnumerable()
-                .Where(r => string.Equals(Convert.ToString(r["FamilyName"]), familyName, StringComparison.OrdinalIgnoreCase)
-                         && string.Equals(Convert.ToString(r["RvtPath"]), rvtPath, StringComparison.OrdinalIgnoreCase));
-
-            var table = _guidFamilyDetail?.Clone() ?? GuidAuditService.CreateFamilyDetailTable();
-            if (filtered != null)
+            if (_guidFamilyDetail == null || _guidFamilyDetail.Rows.Count == 0)
             {
-                foreach (var row in filtered)
-                {
-                    table.ImportRow(row);
-                }
+                SendToWeb("guid:error", new { message = "가져올 패밀리 상세 결과가 없습니다.", runId });
+                return;
             }
 
-            var shaped = ShapeTable(table, "RvtPath");
+            var filtered = FilterFamilyDetail(_guidFamilyDetail, rvtPath, familyName);
+            var shaped = ShapeGuidTable(filtered, new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "RvtPath" });
             SendToWeb("guid:family-detail", new { runId = _guidRunId, rvtPath, familyName, columns = shaped.columns, rows = shaped.rows });
         }
 
-        private void HandleGuidExport(UIApplication app, object payload)
+        private void ReportGuidProgress(double pct, string text)
         {
-            SendToWeb("guid:warn", new { message = "C# 변환본에서는 GUID Export가 아직 연결되지 않았습니다." });
+            var changed = (pct != _guidLastPct) || !string.Equals(text, _guidLastText, StringComparison.Ordinal);
+            if (!changed) return;
+            SendToWeb("guid:progress", new { pct, text });
+            _guidLastPct = pct;
+            _guidLastText = text;
         }
 
-        private void HandleSharedParamStatus(UIApplication app, object payload)
+        private TablePayload ShapeGuidTable(DataTable dt, HashSet<string> skipCols)
         {
-            var status = SharedParamReader.ReadStatus(app.Application);
-            SendToWeb("sharedparam:status", new
+            if (dt == null)
             {
-                path = status.Path,
-                existsOnDisk = status.ExistsOnDisk,
-                canOpen = status.CanOpen,
-                isSet = status.IsSet,
-                status = status.Status,
-                warning = status.Warning,
-                errorMessage = status.ErrorMessage
-            });
-        }
-
-        private (List<string> columns, List<object[]> rows) ShapeTable(DataTable table, params string[] skip)
-        {
-            var skipSet = new HashSet<string>(skip ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
-            var cols = table?.Columns.Cast<DataColumn>().Select(c => c.ColumnName).Where(c => !skipSet.Contains(c)).ToList() ?? new List<string>();
-            var rows = new List<object[]>();
-            if (table != null)
-            {
-                foreach (DataRow row in table.Rows)
-                {
-                    rows.Add(cols.Select(c => row[c]).ToArray());
-                }
+                return new TablePayload { columns = new List<string>(), rows = new List<object[]>() };
             }
 
-            return (cols, rows);
+            var cols = new List<string>();
+            foreach (DataColumn c in dt.Columns)
+            {
+                if (skipCols != null && skipCols.Contains(c.ColumnName)) continue;
+                cols.Add(c.ColumnName);
+            }
+
+            var rows = new List<object[]>();
+            foreach (DataRow r in dt.Rows)
+            {
+                var arr = new object[cols.Count];
+                for (var i = 0; i < cols.Count; i++) arr[i] = SafeStrGuid(r[cols[i]]);
+                rows.Add(arr);
+            }
+
+            return new TablePayload { columns = cols, rows = rows };
+        }
+
+        private DataTable CloneWithoutColumn(DataTable dt, string columnName)
+        {
+            if (dt == null) return null;
+            var clone = dt.Clone();
+            if (clone.Columns.Contains(columnName)) clone.Columns.Remove(columnName);
+            foreach (DataRow r in dt.Rows)
+            {
+                var nr = clone.NewRow();
+                foreach (DataColumn c in clone.Columns)
+                {
+                    nr[c.ColumnName] = r[c.ColumnName];
+                }
+                clone.Rows.Add(nr);
+            }
+            return clone;
+        }
+
+        private DataTable EnsureNoRvtPath(DataTable dt)
+        {
+            if (dt == null) return null;
+            return dt.Columns.Contains("RvtPath") ? CloneWithoutColumn(dt, "RvtPath") : dt;
+        }
+
+        private static string SafeStrGuid(object o)
+        {
+            if (o == null || o == DBNull.Value) return string.Empty;
+            return Convert.ToString(o);
+        }
+
+        private DataTable FilterFamilyDetail(DataTable source, string rvtPath, string familyName)
+        {
+            if (source == null) return new DataTable();
+            var clone = source.Clone();
+            var path = rvtPath ?? string.Empty;
+            var fam = familyName ?? string.Empty;
+            foreach (DataRow r in source.Rows)
+            {
+                var rp = SafeStrGuid(r["RvtPath"]);
+                var fn = SafeStrGuid(r["FamilyName"]);
+                if (string.Equals(rp, path, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(fn, fam, StringComparison.OrdinalIgnoreCase))
+                {
+                    clone.ImportRow(r);
+                }
+            }
+            return clone;
+        }
+
+        private void HandleGuidAddFolder()
+        {
+            using (var dlg = new FolderBrowserDialog())
+            {
+                dlg.Description = "RVT 폴더 선택";
+                dlg.ShowNewFolderButton = false;
+                if (dlg.ShowDialog() != DialogResult.OK) return;
+
+                var root = dlg.SelectedPath;
+                const int maxFiles = 2000;
+                var files = new List<string>();
+
+                try
+                {
+                    if (Directory.Exists(root))
+                    {
+                        var found = Directory.EnumerateFiles(root, "*.rvt", SearchOption.TopDirectoryOnly)
+                            .Select(p => new { Path = p, Name = Path.GetFileName(p) })
+                            .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+
+                        foreach (var item in found)
+                        {
+                            if (string.IsNullOrWhiteSpace(item.Path)) continue;
+                            if (files.Count >= maxFiles) break;
+                            files.Add(item.Path);
+                        }
+
+                        if (found.Count > maxFiles)
+                        {
+                            SendToWeb("guid:warn", new { message = $"RVT 파일이 {found.Count:#,0}개 있습니다. 상위 {maxFiles:#,0}개만 추가합니다." });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SendToWeb("guid:warn", new { message = $"폴더를 읽는 중 오류가 발생했습니다: {ex.Message}" });
+                }
+
+                if (files.Count == 0)
+                {
+                    SendToWeb("guid:warn", new { message = "선택한 폴더에 RVT 파일이 없습니다." });
+                    return;
+                }
+
+                var deduped = files.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                SendToWeb("guid:files", new { paths = deduped });
+            }
         }
     }
 }

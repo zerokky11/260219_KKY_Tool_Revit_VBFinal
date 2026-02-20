@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using System.Windows.Forms;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using KKY_Tool_Revit.Infrastructure;
@@ -17,6 +18,7 @@ namespace KKY_Tool_Revit.Services
             public DataTable FamilyDetail { get; set; }
             public DataTable FamilyIndex { get; set; }
             public string RunId { get; set; }
+            public bool IncludeFamily { get; set; }
         }
 
         public static RunResult Run(
@@ -24,7 +26,9 @@ namespace KKY_Tool_Revit.Services
             int mode,
             IEnumerable<string> rvtPaths,
             Action<double, string> progress,
-            bool includeAnnotation)
+            Action<string> warn = null,
+            bool includeFamily = false,
+            bool includeAnnotation = false)
         {
             var map = SharedParamReader.ReadSharedParamNameGuidMap(uiApp.Application);
             if (map.Count == 0)
@@ -41,10 +45,16 @@ namespace KKY_Tool_Revit.Services
             progress?.Invoke(5, "프로젝트 파라미터 검사 시작");
             AuditProject(doc, map, project);
 
-            if (mode == 2)
+            if (includeFamily || mode == 2)
             {
                 progress?.Invoke(35, "패밀리 검사 시작");
                 AuditFamily(doc, map, familyDetail, familyIndex, includeAnnotation);
+            }
+
+            ResultTableFilter.KeepOnlyIssues("guid", project);
+            if (includeFamily || mode == 2)
+            {
+                ResultTableFilter.KeepOnlyIssues("guid", familyDetail);
             }
 
             progress?.Invoke(100, "GUID 검사 완료");
@@ -52,10 +62,79 @@ namespace KKY_Tool_Revit.Services
             {
                 Mode = mode,
                 Project = project,
-                FamilyDetail = familyDetail,
-                FamilyIndex = familyIndex,
-                RunId = Guid.NewGuid().ToString("N")
+                FamilyDetail = includeFamily || mode == 2 ? familyDetail : null,
+                FamilyIndex = includeFamily || mode == 2 ? familyIndex : null,
+                RunId = Guid.NewGuid().ToString("N"),
+                IncludeFamily = includeFamily || mode == 2
             };
+        }
+
+        public static string Export(DataTable table, string sheetName, string excelMode = "fast", string progressChannel = null)
+        {
+            if (table == null) return string.Empty;
+
+            var doAutoFit = string.Equals(excelMode, "normal", StringComparison.OrdinalIgnoreCase) && table.Rows.Count <= 30000;
+            ResultTableFilter.KeepOnlyIssues("guid", table);
+            ExcelCore.EnsureMessageRow(table, "오류가 없습니다.");
+
+            using (var sfd = new SaveFileDialog())
+            {
+                sfd.Filter = "Excel Workbook (*.xlsx)|*.xlsx";
+                sfd.FileName = $"{sheetName}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
+                if (sfd.ShowDialog() != DialogResult.OK) return string.Empty;
+                ExcelCore.SaveXlsx(sfd.FileName, sheetName, table, doAutoFit, sheetKey: sheetName, progressKey: progressChannel);
+                return sfd.FileName;
+            }
+        }
+
+        public static string ExportMulti(IList<KeyValuePair<string, DataTable>> sheets, string excelMode = "fast", string progressChannel = null)
+        {
+            if (sheets == null || sheets.Count == 0) return string.Empty;
+
+            var doAutoFit = string.Equals(excelMode, "normal", StringComparison.OrdinalIgnoreCase);
+            foreach (var kv in sheets)
+            {
+                ResultTableFilter.KeepOnlyIssues("guid", kv.Value);
+                ExcelCore.EnsureMessageRow(kv.Value, "오류가 없습니다.");
+            }
+
+            using (var sfd = new SaveFileDialog())
+            {
+                sfd.Filter = "Excel Workbook (*.xlsx)|*.xlsx";
+                sfd.FileName = $"GuidAudit_{DateTime.Now:yyyyMMdd_HHmm}.xlsx";
+                if (sfd.ShowDialog() != DialogResult.OK) return string.Empty;
+                ExcelCore.SaveXlsxMulti(sfd.FileName, sheets, doAutoFit, progressChannel);
+                return sfd.FileName;
+            }
+        }
+
+        public static DataTable PrepareExportTable(DataTable source, int mode)
+        {
+            var baseTable = source ?? (mode == 2 ? CreateFamilyDetailTable() : CreateProjectTable());
+            var exportTable = baseTable.Clone();
+
+            if (source != null)
+            {
+                foreach (DataRow r in source.Rows)
+                {
+                    exportTable.ImportRow(r);
+                }
+            }
+
+            ResultTableFilter.KeepOnlyIssues("guid", exportTable);
+
+            if (exportTable.Columns.Contains("RvtPath"))
+            {
+                exportTable.Columns.Remove("RvtPath");
+            }
+
+            if (exportTable.Columns.Contains("BoundCategories"))
+            {
+                exportTable.Columns["BoundCategories"].SetOrdinal(exportTable.Columns.Count - 1);
+            }
+
+            ExcelCore.EnsureMessageRow(exportTable, "오류가 없습니다.");
+            return exportTable;
         }
 
         private static void AuditProject(Document doc, Dictionary<string, List<Guid>> map, DataTable table)
@@ -73,25 +152,12 @@ namespace KKY_Tool_Revit.Services
                 var fileGuid = map.TryGetValue(name, out var guids) ? guids.FirstOrDefault().ToString() : string.Empty;
 
                 string result;
-                if (isShared && string.IsNullOrWhiteSpace(fileGuid))
-                    result = "MissingInSharedParamFile";
-                else if (isShared && !string.Equals(projectGuid, fileGuid, StringComparison.OrdinalIgnoreCase))
-                    result = "GuidMismatch";
-                else if (!isShared && map.ContainsKey(name))
-                    result = "ProjectParamNameExistsInShared";
-                else
-                    continue;
+                if (isShared && string.IsNullOrWhiteSpace(fileGuid)) result = "MissingInSharedParamFile";
+                else if (isShared && !string.Equals(projectGuid, fileGuid, StringComparison.OrdinalIgnoreCase)) result = "GuidMismatch";
+                else if (!isShared && map.ContainsKey(name)) result = "ProjectParamNameExistsInShared";
+                else continue;
 
-                table.Rows.Add(
-                    doc.PathName,
-                    doc.Title,
-                    "Project",
-                    name,
-                    isShared ? "Shared" : "Project",
-                    projectGuid,
-                    fileGuid,
-                    result,
-                    string.Empty);
+                table.Rows.Add(doc.PathName, doc.Title, "Project", name, isShared ? "Shared" : "Project", projectGuid, fileGuid, result, string.Empty);
             }
         }
 
@@ -133,13 +199,18 @@ namespace KKY_Tool_Revit.Services
                 }
                 catch (Exception ex)
                 {
-                    detail.Rows.Add(doc.PathName, doc.Title, fam.Name, fam.FamilyCategory?.Name ?? string.Empty, "", "", false, "", "", "Error", ex.Message);
+                    warnRow(detail, doc, fam, ex.Message);
                 }
                 finally
                 {
                     famDoc?.Close(false);
                 }
             }
+        }
+
+        private static void warnRow(DataTable detail, Document doc, Family fam, string message)
+        {
+            detail.Rows.Add(doc.PathName, doc.Title, fam.Name, fam.FamilyCategory?.Name ?? string.Empty, "", "", false, "", "", "Error", message);
         }
 
         public static DataTable CreateProjectTable()
