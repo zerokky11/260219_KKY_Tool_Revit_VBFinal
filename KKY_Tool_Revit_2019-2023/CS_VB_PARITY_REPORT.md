@@ -24,7 +24,7 @@
 | `Services/DuplicateAnalysisService.vb` | 234 | 230 | 7 | 7 |
 | `Services/ExportPointsService.vb` | 335 | 366 | 17 | 17 |
 | `Services/FamilyLinkAuditService.vb` | 565 | 634 | 16 | 15 |
-| `Services/GuidAuditService.vb` | 1261 | 186 | 36 | 6 |
+| `Services/GuidAuditService.vb` | 1261 | 1068 | 36 | 35 |
 | `Services/HubCommonOptionsStorageService.vb` | 67 | 77 | 4 | 3 |
 | `Services/ParamPropagateService.vb` | 1975 | 137 | 49 | 4 |
 | `Services/SegmentPmsCheckService.vb` | 2623 | 241 | 82 | 13 |
@@ -37,7 +37,7 @@
 | `UI/Hub/UiBridgeExternalEvent.Duplicate.vb` | 978 | 754 | 23 | 20 |
 | `UI/Hub/UiBridgeExternalEvent.Export.vb` | 583 | 683 | 31 | 31 |
 | `UI/Hub/UiBridgeExternalEvent.FamilyLinkAudit.vb` | 337 | 408 | 12 | 13 |
-| `UI/Hub/UiBridgeExternalEvent.Guid.vb` | 369 | 148 | 12 | 5 |
+| `UI/Hub/UiBridgeExternalEvent.Guid.vb` | 369 | 342 | 12 | 11 |
 | `UI/Hub/UiBridgeExternalEvent.Multi.vb` | 1075 | 156 | 50 | 5 |
 | `UI/Hub/UiBridgeExternalEvent.ParamProp.vb` | 210 | 237 | 6 | 6 |
 | `UI/Hub/UiBridgeExternalEvent.SegmentPms.vb` | 1014 | 190 | 34 | 18 |
@@ -48,21 +48,18 @@
 - `My Project/AssemblyInfo.vb` (VB 32 / CS 15)
 - `My Project/Settings.Designer.vb` (VB 73 / CS 33)
 - `Services/ConnectorDiagnosticsService.vb` (VB 1301 / CS 569)
-- `Services/GuidAuditService.vb` (VB 1261 / CS 186)
 - `Services/ParamPropagateService.vb` (VB 1975 / CS 137)
 - `Services/SegmentPmsCheckService.vb` (VB 2623 / CS 241)
 - `Services/SharedParamBatchService.vb` (VB 1614 / CS 476)
 - `UI/Hub/UiBridgeExternalEvent.Connector.vb` (VB 1189 / CS 254)
-- `UI/Hub/UiBridgeExternalEvent.Guid.vb` (VB 369 / CS 148)
 - `UI/Hub/UiBridgeExternalEvent.Multi.vb` (VB 1075 / CS 156)
 - `UI/Hub/UiBridgeExternalEvent.SegmentPms.vb` (VB 1014 / CS 190)
-
 
 ## Update Log
 
 - 2026-02-20: `Infrastructure/ElementIdCompat.cs`를 VB 조건부 분기와 동일하게 수정 (`REVIT2025` 분기 반영).
 - 2026-02-20: `UI/Hub/UiBridgeExternalEvent.Guid.cs`에서 GUID Export 미연결 placeholder를 제거하고 VB와 유사한 실행/내보내기/상세조회 플로우로 확장.
-- 2026-02-20: `Services/GuidAuditService.cs`에 `includeFamily`/`warn` 인자, `Export`/`ExportMulti`/`PrepareExportTable` 추가로 VB 서비스 인터페이스와 동작 범위를 확장.
+- 2026-02-20: `Services/GuidAuditService.cs`를 대폭 확장하여 VB의 다중 문서 오픈/감사/실패처리/Family 감사 로직을 반영.
 
 ## Remaining High-Gap Targets (next)
 
