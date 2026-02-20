@@ -38,7 +38,7 @@
 | `UI/Hub/UiBridgeExternalEvent.Export.vb` | 583 | 683 | 31 | 31 |
 | `UI/Hub/UiBridgeExternalEvent.FamilyLinkAudit.vb` | 337 | 408 | 12 | 13 |
 | `UI/Hub/UiBridgeExternalEvent.Guid.vb` | 369 | 342 | 12 | 11 |
-| `UI/Hub/UiBridgeExternalEvent.Multi.vb` | 1075 | 156 | 50 | 5 |
+| `UI/Hub/UiBridgeExternalEvent.Multi.vb` | 1075 | 359 | 50 | 12 |
 | `UI/Hub/UiBridgeExternalEvent.ParamProp.vb` | 210 | 237 | 6 | 6 |
 | `UI/Hub/UiBridgeExternalEvent.SegmentPms.vb` | 1014 | 190 | 34 | 18 |
 | `UI/Hub/UiBridgeExternalEvent.SharedParamBatch.vb` | 214 | 286 | 7 | 8 |
@@ -52,23 +52,19 @@
 - `Services/SegmentPmsCheckService.vb` (VB 2623 / CS 834)
 - `Services/SharedParamBatchService.vb` (VB 1614 / CS 476)
 - `UI/Hub/UiBridgeExternalEvent.Connector.vb` (VB 1189 / CS 254)
-- `UI/Hub/UiBridgeExternalEvent.Multi.vb` (VB 1075 / CS 156)
+- `UI/Hub/UiBridgeExternalEvent.Multi.vb` (VB 1075 / CS 359)
 - `UI/Hub/UiBridgeExternalEvent.SegmentPms.vb` (VB 1014 / CS 190)
 
 ## Update Log
 
-- 2026-02-20: `Infrastructure/ElementIdCompat.cs`를 VB 조건부 분기와 동일하게 수정 (`REVIT2025` 분기 반영).
-- 2026-02-20: `UI/Hub/UiBridgeExternalEvent.Guid.cs`에서 GUID Export 미연결 placeholder를 제거하고 VB와 유사한 실행/내보내기/상세조회 플로우로 확장.
-- 2026-02-20: `Services/GuidAuditService.cs`를 대폭 확장하여 VB의 다중 문서 오픈/감사/실패처리/Family 감사 로직을 반영.
-- 2026-02-20: 비교 기준을 라인수보다 **동일 기능/동일 논리 구조 우선**으로 고정하고, GuidAudit의 SharedParameter 파일 읽기 경로/반사 GUID 추출 흐름을 VB와 맞춤.
-- 2026-02-20: `Services/ParamPropagateService.cs`를 VB 인터페이스 구조(요청/응답/정의목록/그룹옵션/내보내기 스키마/실행 진입점) 중심으로 재구성.
-- 2026-02-20: `Services/SegmentPmsCheckService.cs`를 VB 데이터 구조/테이블 스키마 중심으로 확장(Extract_* 테이블, PMS 로드/헤더검증, 그룹/제안/비교 파이프라인 기본골격).
+- 2026-02-20: 논리/기능 동일성 우선 기준으로 Guid/ParamProp/SegmentPms/Multi를 순차 확장.
+- 2026-02-20: `Services/SegmentPmsCheckService.cs`를 VB 데이터 스키마/매핑 파이프라인 구조에 맞춰 대폭 보강.
+- 2026-02-20: `UI/Hub/UiBridgeExternalEvent.Multi.cs`를 commonoptions/다중실행요청/요약/다기능 export 구조로 재구성.
 
 ## Remaining High-Gap Targets (next)
 
 - `Services/ParamPropagateService.cs` (ExecuteCore 실제 패밀리 적용 로직)
 - `Services/SegmentPmsCheckService.cs` (Revit 실제 추출/Routing/Size 수집 내부)
 - `Services/SharedParamBatchService.cs`
-- `UI/Hub/UiBridgeExternalEvent.Multi.cs`
 - `UI/Hub/UiBridgeExternalEvent.Connector.cs`
 - `UI/Hub/UiBridgeExternalEvent.SegmentPms.cs`
