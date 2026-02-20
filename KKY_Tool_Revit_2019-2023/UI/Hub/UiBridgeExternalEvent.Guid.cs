@@ -9,7 +9,7 @@ using KKY_Tool_Revit.Services;
 
 namespace KKY_Tool_Revit.UI.Hub
 {
-    public sealed class UiBridgeExternalEvent : IExternalEventHandler
+    public sealed partial class UiBridgeExternalEvent : IExternalEventHandler
     {
         private static UiBridgeExternalEvent _current;
         private readonly Queue<(string EventName, IDictionary<string, object> Payload)> _queue = new Queue<(string, IDictionary<string, object>)>();
