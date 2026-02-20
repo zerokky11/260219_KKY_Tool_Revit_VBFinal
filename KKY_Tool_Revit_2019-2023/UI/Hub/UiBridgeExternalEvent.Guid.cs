@@ -11,6 +11,7 @@ namespace KKY_Tool_Revit.UI.Hub
 {
     public sealed class UiBridgeExternalEvent : IExternalEventHandler
     {
+        private static UiBridgeExternalEvent _current;
         private readonly Queue<(string EventName, IDictionary<string, object> Payload)> _queue = new Queue<(string, IDictionary<string, object>)>();
         private readonly Dictionary<string, Action<UIApplication, IDictionary<string, object>>> _handlers;
 
@@ -23,6 +24,7 @@ namespace KKY_Tool_Revit.UI.Hub
 
         public UiBridgeExternalEvent()
         {
+            _current = this;
             _handlers = new Dictionary<string, Action<UIApplication, IDictionary<string, object>>>(StringComparer.OrdinalIgnoreCase)
             {
                 ["guid:add-files"] = HandleGuidAddFiles,
@@ -171,6 +173,6 @@ namespace KKY_Tool_Revit.UI.Hub
             return (cols, rows);
         }
 
-        private void SendToWeb(string evt, object payload) => HostSender?.Invoke(evt, payload);
+        internal static void SendToWeb(string evt, object payload) => _current?.HostSender?.Invoke(evt, payload);
     }
 }
