@@ -491,6 +491,59 @@ namespace KKY_Tool_Revit.Services
             return !string.IsNullOrWhiteSpace(title) && string.Equals(title, requested, StringComparison.OrdinalIgnoreCase);
         }
 
+        private static class SharedParamReader
+        {
+            public static Dictionary<string, List<Guid>> ReadSharedParamNameGuidMap(Autodesk.Revit.ApplicationServices.Application app)
+            {
+                DefinitionFile defFile = null;
+                try
+                {
+                    defFile = app.OpenSharedParameterFile();
+                }
+                catch
+                {
+                    defFile = null;
+                }
+
+                if (defFile == null) return null;
+
+                var map = new Dictionary<string, List<Guid>>(StringComparer.OrdinalIgnoreCase);
+                foreach (DefinitionGroup grp in defFile.Groups)
+                {
+                    foreach (Definition d in grp.Definitions)
+                    {
+                        if (!TryGetDefinitionGuid(d, out var g)) continue;
+                        var name = NormalizeName(d.Name);
+                        if (!map.ContainsKey(name)) map[name] = new List<Guid>();
+                        map[name].Add(g);
+                    }
+                }
+
+                return map;
+            }
+
+            private static bool TryGetDefinitionGuid(Definition d, out Guid g)
+            {
+                g = Guid.Empty;
+                if (d == null) return false;
+
+                var t = d.GetType();
+                var p = t.GetProperty("GUID", BindingFlags.Public | BindingFlags.Instance);
+                if (p == null) return false;
+
+                var v = p.GetValue(d, null);
+                if (v == null) return false;
+
+                if (v is Guid gv)
+                {
+                    g = gv;
+                    return g != Guid.Empty;
+                }
+
+                return false;
+            }
+        }
+
         private static class Auditors
         {
             public static DataTable MakeFailureSummaryTable(int mode)
@@ -1052,6 +1105,48 @@ namespace KKY_Tool_Revit.Services
                 return false;
             }
         }
+
+
+            private static string GetParamTypeName(Definition def)
+            {
+                if (def == null) return string.Empty;
+
+                try
+                {
+                    var p = def.GetType().GetProperty("ParameterType", BindingFlags.Public | BindingFlags.Instance);
+                    if (p != null)
+                    {
+                        var v = p.GetValue(def, null);
+                        if (v != null) return v.ToString();
+                    }
+                }
+                catch { }
+
+                try
+                {
+                    var m = def.GetType().GetMethod("GetDataType", BindingFlags.Public | BindingFlags.Instance);
+                    if (m != null)
+                    {
+                        var v = m.Invoke(def, null);
+                        if (v != null) return v.ToString();
+                    }
+                }
+                catch { }
+
+                try
+                {
+                    var p2 = def.GetType().GetProperty("DataType", BindingFlags.Public | BindingFlags.Instance);
+                    if (p2 != null)
+                    {
+                        var v = p2.GetValue(def, null);
+                        if (v != null) return v.ToString();
+                    }
+                }
+                catch { }
+
+                return string.Empty;
+            }
+
 
         public static DataTable CreateProjectTable() => Auditors.MakeFailureSummaryTable(1);
         public static DataTable CreateFamilyDetailTable() => Auditors.MakeFailureSummaryTable(2);

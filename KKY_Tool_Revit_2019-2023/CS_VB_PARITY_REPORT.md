@@ -24,7 +24,7 @@
 | `Services/DuplicateAnalysisService.vb` | 234 | 230 | 7 | 7 |
 | `Services/ExportPointsService.vb` | 335 | 366 | 17 | 17 |
 | `Services/FamilyLinkAuditService.vb` | 565 | 634 | 16 | 15 |
-| `Services/GuidAuditService.vb` | 1261 | 1068 | 36 | 35 |
+| `Services/GuidAuditService.vb` | 1261 | 1163 | 36 | 38 |
 | `Services/HubCommonOptionsStorageService.vb` | 67 | 77 | 4 | 3 |
 | `Services/ParamPropagateService.vb` | 1975 | 137 | 49 | 4 |
 | `Services/SegmentPmsCheckService.vb` | 2623 | 241 | 82 | 13 |
@@ -60,6 +60,7 @@
 - 2026-02-20: `Infrastructure/ElementIdCompat.cs`를 VB 조건부 분기와 동일하게 수정 (`REVIT2025` 분기 반영).
 - 2026-02-20: `UI/Hub/UiBridgeExternalEvent.Guid.cs`에서 GUID Export 미연결 placeholder를 제거하고 VB와 유사한 실행/내보내기/상세조회 플로우로 확장.
 - 2026-02-20: `Services/GuidAuditService.cs`를 대폭 확장하여 VB의 다중 문서 오픈/감사/실패처리/Family 감사 로직을 반영.
+- 2026-02-20: 비교 기준을 라인수보다 **동일 기능/동일 논리 구조 우선**으로 고정하고, GuidAudit의 SharedParameter 파일 읽기 경로/반사 GUID 추출 흐름을 VB와 맞춤.
 
 ## Remaining High-Gap Targets (next)
 
