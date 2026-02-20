@@ -9,78 +9,50 @@ using KKY_Tool_Revit.Services;
 
 namespace KKY_Tool_Revit.UI.Hub
 {
-    public sealed partial class UiBridgeExternalEvent : IExternalEventHandler
+    public sealed partial class UiBridgeExternalEvent
     {
-        private static UiBridgeExternalEvent _current;
-        private readonly Queue<(string EventName, IDictionary<string, object> Payload)> _queue = new Queue<(string, IDictionary<string, object>)>();
-        private readonly Dictionary<string, Action<UIApplication, IDictionary<string, object>>> _handlers;
-
         private DataTable _guidProject;
         private DataTable _guidFamilyDetail;
         private DataTable _guidFamilyIndex;
         private string _guidRunId = string.Empty;
 
-        public Action<string, object> HostSender { get; set; }
-
-        public UiBridgeExternalEvent()
+        private void HandleGuidAddFiles(UIApplication app, object payload)
         {
-            _current = this;
-            _handlers = new Dictionary<string, Action<UIApplication, IDictionary<string, object>>>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["guid:add-files"] = HandleGuidAddFiles,
-                ["guid:run"] = HandleGuidRun,
-                ["guid:request-family-detail"] = HandleGuidRequestFamilyDetail,
-                ["guid:export"] = HandleGuidExport,
-                ["sharedparam:status"] = HandleSharedParamStatus
-            };
-        }
-
-        public void Enqueue(string eventName, IDictionary<string, object> payload)
-        {
-            _queue.Enqueue((eventName, payload ?? new Dictionary<string, object>()));
-        }
-
-        public void Execute(UIApplication app)
-        {
-            while (_queue.Count > 0)
-            {
-                var item = _queue.Dequeue();
-                if (_handlers.TryGetValue(item.EventName, out var handler))
-                {
-                    handler(app, item.Payload);
-                }
-            }
-        }
-
-        public string GetName() => nameof(UiBridgeExternalEvent);
-
-        private void HandleGuidAddFiles(UIApplication app, IDictionary<string, object> payload)
-        {
-            var pick = payload.TryGetValue("pick", out var p) ? Convert.ToString(p) : string.Empty;
+            var pick = GetString(payload, "pick", string.Empty);
             if (string.Equals(pick, "folder", StringComparison.OrdinalIgnoreCase))
             {
-                using var fbd = new FolderBrowserDialog { Description = "RVT 폴더 선택" };
-                if (fbd.ShowDialog() != DialogResult.OK) return;
-                var paths = System.IO.Directory.GetFiles(fbd.SelectedPath, "*.rvt", System.IO.SearchOption.TopDirectoryOnly);
-                SendToWeb("guid:files", new { paths });
-                return;
+                using (var fbd = new FolderBrowserDialog { Description = "RVT 폴더 선택" })
+                {
+                    if (fbd.ShowDialog() != DialogResult.OK)
+                    {
+                        return;
+                    }
+
+                    var paths = System.IO.Directory.GetFiles(fbd.SelectedPath, "*.rvt", System.IO.SearchOption.TopDirectoryOnly);
+                    SendToWeb("guid:files", new { paths });
+                    return;
+                }
             }
 
-            using var ofd = new OpenFileDialog { Filter = "Revit Project (*.rvt)|*.rvt", Multiselect = true };
-            if (ofd.ShowDialog() != DialogResult.OK) return;
-            SendToWeb("guid:files", new { paths = ofd.FileNames });
+            using (var ofd = new OpenFileDialog { Filter = "Revit Project (*.rvt)|*.rvt", Multiselect = true })
+            {
+                if (ofd.ShowDialog() != DialogResult.OK)
+                {
+                    return;
+                }
+
+                SendToWeb("guid:files", new { paths = ofd.FileNames });
+            }
         }
 
-        private void HandleGuidRun(UIApplication app, IDictionary<string, object> payload)
+        private void HandleGuidRun(UIApplication app, object payload)
         {
             try
             {
-                var mode = payload.TryGetValue("mode", out var modeObj) ? Convert.ToInt32(modeObj) : 1;
-                var includeFamily = payload.TryGetValue("includeFamily", out var includeObj) && Convert.ToBoolean(includeObj);
-                var includeAnnotation = payload.TryGetValue("includeAnnotation", out var annotationObj) && Convert.ToBoolean(annotationObj);
-                var paths = payload.TryGetValue("rvtPaths", out var pathObj) && pathObj is IEnumerable<object> raw
-                    ? raw.Select(x => Convert.ToString(x)).Where(x => !string.IsNullOrWhiteSpace(x)).ToArray()
-                    : Array.Empty<string>();
+                var mode = GetInt(payload, "mode", 1);
+                var includeFamily = GetBool(payload, "includeFamily", false);
+                var includeAnnotation = GetBool(payload, "includeAnnotation", false);
+                var paths = GetStringList(payload, "rvtPaths").Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
 
                 var result = GuidAuditService.Run(
                     app,
@@ -108,11 +80,11 @@ namespace KKY_Tool_Revit.UI.Hub
             }
         }
 
-        private void HandleGuidRequestFamilyDetail(UIApplication app, IDictionary<string, object> payload)
+        private void HandleGuidRequestFamilyDetail(UIApplication app, object payload)
         {
-            var runId = payload.TryGetValue("runId", out var runObj) ? Convert.ToString(runObj) : string.Empty;
-            var familyName = payload.TryGetValue("familyName", out var famObj) ? Convert.ToString(famObj) : string.Empty;
-            var rvtPath = payload.TryGetValue("rvtPath", out var pathObj) ? Convert.ToString(pathObj) : string.Empty;
+            var runId = GetString(payload, "runId", string.Empty);
+            var familyName = GetString(payload, "familyName", string.Empty);
+            var rvtPath = GetString(payload, "rvtPath", string.Empty);
 
             if (!string.Equals(runId, _guidRunId, StringComparison.OrdinalIgnoreCase))
             {
@@ -137,12 +109,12 @@ namespace KKY_Tool_Revit.UI.Hub
             SendToWeb("guid:family-detail", new { runId = _guidRunId, rvtPath, familyName, columns = shaped.columns, rows = shaped.rows });
         }
 
-        private void HandleGuidExport(UIApplication app, IDictionary<string, object> payload)
+        private void HandleGuidExport(UIApplication app, object payload)
         {
             SendToWeb("guid:warn", new { message = "C# 변환본에서는 GUID Export가 아직 연결되지 않았습니다." });
         }
 
-        private void HandleSharedParamStatus(UIApplication app, IDictionary<string, object> payload)
+        private void HandleSharedParamStatus(UIApplication app, object payload)
         {
             var status = SharedParamReader.ReadStatus(app.Application);
             SendToWeb("sharedparam:status", new
@@ -172,7 +144,5 @@ namespace KKY_Tool_Revit.UI.Hub
 
             return (cols, rows);
         }
-
-        internal static void SendToWeb(string evt, object payload) => _current?.HostSender?.Invoke(evt, payload);
     }
 }
