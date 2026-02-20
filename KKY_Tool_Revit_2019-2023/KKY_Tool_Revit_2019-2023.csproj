@@ -13,6 +13,10 @@
     <AddinYear Condition="'$(AddinYear)'==''">2019</AddinYear>
     <OutputPath>bin\Rvt$(AddinYear)\net48\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <DeployYears Condition="'$(DeployYears)'==''">2019;2021;2023</DeployYears>
+    <ProgramDataPath>$([System.Environment]::GetFolderPath(SpecialFolder.CommonApplicationData))</ProgramDataPath>
+    <AddinRoot>$(ProgramDataPath)\Autodesk\Revit\Addins</AddinRoot>
+    <AddinFileName>KKY_Tool_Revit.addin</AddinFileName>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
@@ -48,9 +52,8 @@
   <ItemGroup>
     <PackageReference Include="NPOI" Version="2.6.1" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2592.51" />
+    <PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
   </ItemGroup>
-
-  
 
   <ItemGroup>
     <Content Include="Resources\**\*">
@@ -58,4 +61,67 @@
       <TargetPath>Resources\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
     </Content>
   </ItemGroup>
+
+  <Target Name="DeployAllYears" AfterTargets="Build">
+    <ItemGroup>
+      <_DeployYear Include="$(DeployYears)" />
+    </ItemGroup>
+
+    <MSBuild Projects="$(MSBuildProjectFullPath)"
+             Targets="DeployOneYear"
+             Properties="DeployYear=%(_DeployYear.Identity);BuildYear=$(AddinYear)"
+             BuildInParallel="false" />
+  </Target>
+
+  <Target Name="DeployOneYear">
+    <PropertyGroup>
+      <DeployYear Condition="'$(DeployYear)'==''">$(AddinYear)</DeployYear>
+      <BuildYear Condition="'$(BuildYear)'==''">$(AddinYear)</BuildYear>
+
+      <SourceDir>$(MSBuildProjectDirectory)\bin\Rvt$(BuildYear)\net48\</SourceDir>
+      <DeployDir>$(MSBuildProjectDirectory)\bin\Rvt$(DeployYear)\net48\</DeployDir>
+
+      <DeployDll>$(DeployDir)$(AssemblyName).dll</DeployDll>
+
+      <AddinOutDir>$(AddinRoot)\$(DeployYear)\</AddinOutDir>
+      <AddinOutPath>$(AddinOutDir)$(AddinFileName)</AddinOutPath>
+    </PropertyGroup>
+
+    <Error Condition="!Exists('$(SourceDir)$(AssemblyName).dll')"
+           Text="Build output not found: $(SourceDir)$(AssemblyName).dll" />
+
+    <ItemGroup Condition="'$(DeployYear)' != '$(BuildYear)'">
+      <_DeployFiles Include="$(SourceDir)**\*.*" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(DeployDir)" Condition="'$(DeployYear)' != '$(BuildYear)'" />
+    <MakeDir Directories="@(_DeployFiles->'$(DeployDir)%(RecursiveDir)')" Condition="'$(DeployYear)' != '$(BuildYear)'" />
+
+    <Copy SourceFiles="@(_DeployFiles)"
+          DestinationFiles="@(_DeployFiles->'$(DeployDir)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="'$(DeployYear)' != '$(BuildYear)'" />
+
+    <MakeDir Directories="$(AddinOutDir)" />
+
+    <ItemGroup>
+      <_AddinXml Include="&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot; standalone=&quot;no&quot;?&gt;" />
+      <_AddinXml Include="&lt;RevitAddIns&gt;" />
+      <_AddinXml Include="  &lt;AddIn Type=&quot;Application&quot;&gt;" />
+      <_AddinXml Include="    &lt;Name&gt;KKY Tool Revit&lt;/Name&gt;" />
+      <_AddinXml Include="    &lt;Assembly&gt;$([System.IO.Path]::GetFullPath('$(DeployDll)'))&lt;/Assembly&gt;" />
+      <_AddinXml Include="    &lt;AddInId&gt;8D83DB0A-B739-4ACD-A9DB-7B57A229D2A4&lt;/AddInId&gt;" />
+      <_AddinXml Include="    &lt;FullClassName&gt;KKY_Tool_Revit.KKY_Tool_Revit.App&lt;/FullClassName&gt;" />
+      <_AddinXml Include="    &lt;VendorId&gt;KKY&lt;/VendorId&gt;" />
+      <_AddinXml Include="    &lt;VendorDescription&gt;KKY Tool Add-in&lt;/VendorDescription&gt;" />
+      <_AddinXml Include="  &lt;/AddIn&gt;" />
+      <_AddinXml Include="&lt;/RevitAddIns&gt;" />
+    </ItemGroup>
+
+    <WriteLinesToFile File="$(AddinOutPath)"
+                      Lines="@(_AddinXml)"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
+    <Message Importance="high" Text="Created Revit addin file: $(AddinOutPath) -> $(DeployDll)" />
+  </Target>
 </Project>
