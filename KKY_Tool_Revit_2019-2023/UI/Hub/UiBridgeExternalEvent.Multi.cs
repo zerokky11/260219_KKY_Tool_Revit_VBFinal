@@ -326,6 +326,28 @@ namespace KKY_Tool_Revit.UI.Hub
             }
         }
 
+
+        private static double GetDouble(object payload, string key, double def)
+        {
+            try
+            {
+                var raw = GetProp(payload, key);
+                if (raw == null) return def;
+                if (raw is double d) return d;
+                if (raw is float f) return f;
+                if (raw is decimal m) return (double)m;
+                if (raw is int i) return i;
+                var text = Convert.ToString(raw);
+                if (double.TryParse(text, out var v)) return v;
+                if (double.TryParse(text, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out v)) return v;
+            }
+            catch
+            {
+            }
+
+            return def;
+        }
+
         private static DataTable BuildTableFromRows(List<Dictionary<string, object>> rows)
         {
             var dt = new DataTable("Multi");
