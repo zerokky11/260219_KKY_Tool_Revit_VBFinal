@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
+using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using KKY_Tool_Revit.Services;
 using KKY_Tool_Revit.Infrastructure;
+using KKY_Tool_Revit.Services;
 
 namespace KKY_Tool_Revit.UI.Hub
 {
@@ -41,21 +42,55 @@ namespace KKY_Tool_Revit.UI.Hub
             public bool IncludeAnnotation { get; set; }
         }
 
+        private sealed class MultiFamilyLinkOptions
+        {
+            public bool Enabled { get; set; }
+        }
+
+        private sealed class MultiPointsOptions
+        {
+            public bool Enabled { get; set; }
+            public string Unit { get; set; } = "ft";
+        }
+
         private sealed class MultiRunRequest
         {
             public MultiCommonOptions Common { get; set; } = new MultiCommonOptions();
             public MultiConnectorOptions Connector { get; set; } = new MultiConnectorOptions();
             public MultiPmsOptions Pms { get; set; } = new MultiPmsOptions();
             public MultiGuidOptions Guid { get; set; } = new MultiGuidOptions();
+            public MultiFamilyLinkOptions FamilyLink { get; set; } = new MultiFamilyLinkOptions();
+            public MultiPointsOptions Points { get; set; } = new MultiPointsOptions();
             public List<string> RvtPaths { get; set; } = new List<string>();
         }
+
+        private sealed class MultiRunItem
+        {
+            public string File { get; set; } = string.Empty;
+            public string Status { get; set; } = string.Empty;
+            public string Reason { get; set; } = string.Empty;
+            public string Phase { get; set; } = string.Empty;
+            public long ElapsedMs { get; set; }
+        }
+
+        private readonly object _multiLock = new object();
+        private Queue<string> _multiQueue;
+        private int _multiTotal;
+        private int _multiIndex;
+        private bool _multiActive;
+        private bool _multiBusy;
+        private bool _multiPending;
+        private MultiRunRequest _multiRequest;
+        private UIApplication _multiApp;
 
         private readonly List<Dictionary<string, object>> _multiConnectorRows = new List<Dictionary<string, object>>();
         private readonly List<Dictionary<string, object>> _multiPmsClassRows = new List<Dictionary<string, object>>();
         private readonly List<Dictionary<string, object>> _multiPmsSizeRows = new List<Dictionary<string, object>>();
         private readonly List<Dictionary<string, object>> _multiPmsRoutingRows = new List<Dictionary<string, object>>();
-        private readonly List<Dictionary<string, object>> _multiGuidRows = new List<Dictionary<string, object>>();
-        private readonly List<Dictionary<string, object>> _multiRunItems = new List<Dictionary<string, object>>();
+        private DataTable _multiGuidProject;
+        private DataTable _multiGuidFamilyDetail;
+        private DataTable _multiGuidFamilyIndex;
+        private readonly List<MultiRunItem> _multiRunItems = new List<MultiRunItem>();
 
         private void HandleCommonOptionsGet(UIApplication app, object payload)
         {
@@ -83,15 +118,11 @@ namespace KKY_Tool_Revit.UI.Hub
 
         private void HandleCommonOptionsSave(UIApplication app, object payload)
         {
-            var extraText = GetString(payload, "extraParamsText", string.Empty);
-            var filterText = GetString(payload, "targetFilterText", string.Empty);
-            var excludeEndDummy = GetBool(payload, "excludeEndDummy", false);
-
             var options = new HubCommonOptionsStorageService.HubCommonOptions
             {
-                ExtraParamsText = extraText ?? string.Empty,
-                TargetFilterText = filterText ?? string.Empty,
-                ExcludeEndDummy = excludeEndDummy
+                ExtraParamsText = GetString(payload, "extraParamsText", string.Empty),
+                TargetFilterText = GetString(payload, "targetFilterText", string.Empty),
+                ExcludeEndDummy = GetBool(payload, "excludeEndDummy", false)
             };
 
             var ok = HubCommonOptionsStorageService.Save(options);
@@ -100,8 +131,8 @@ namespace KKY_Tool_Revit.UI.Hub
 
         private void HandleMultiPickRvt(UIApplication app, object payload)
         {
-            var files = new Microsoft.Win32.OpenFileDialog { Filter = "RVT (*.rvt)|*.rvt", Multiselect = true };
-            var selected = files.ShowDialog() == true ? files.FileNames.ToList() : new List<string>();
+            var dlg = new Microsoft.Win32.OpenFileDialog { Filter = "RVT (*.rvt)|*.rvt", Multiselect = true };
+            var selected = dlg.ShowDialog() == true ? dlg.FileNames.ToList() : new List<string>();
             SendToWeb("hub:rvt-picked", new { paths = selected });
         }
 
@@ -111,46 +142,23 @@ namespace KKY_Tool_Revit.UI.Hub
             _multiPmsClassRows.Clear();
             _multiPmsSizeRows.Clear();
             _multiPmsRoutingRows.Clear();
-            _multiGuidRows.Clear();
+            _multiGuidProject = null;
+            _multiGuidFamilyDetail = null;
+            _multiGuidFamilyIndex = null;
             _multiRunItems.Clear();
             SendToWeb("multi:review-summary", BuildMultiSummaryPayload());
         }
 
-        private MultiRunRequest ParseMultiRequest(object payload)
-        {
-            var req = new MultiRunRequest();
-            req.RvtPaths = GetStringList(payload, "files").Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-
-            req.Connector.Enabled = GetBool(payload, "runConnector", true);
-            req.Connector.Tol = GetDouble(payload, "tol", 1.0);
-            req.Connector.Unit = GetString(payload, "unit", "inch");
-            req.Connector.Param = GetString(payload, "param", "Comments");
-
-            req.Pms.Enabled = GetBool(payload, "runSegmentPms", false);
-            req.Pms.NdRound = GetInt(payload, "ndRound", 3);
-            req.Pms.TolMm = GetDouble(payload, "tolMm", 0.01);
-            req.Pms.ClassMatch = GetBool(payload, "classMatch", false);
-
-            req.Guid.Enabled = GetBool(payload, "runGuid", false);
-            req.Guid.IncludeFamily = GetBool(payload, "includeFamily", false);
-            req.Guid.IncludeAnnotation = GetBool(payload, "includeAnnotation", false);
-
-            req.Common.ExtraParams = GetString(payload, "extraParamsText", string.Empty);
-            req.Common.TargetFilter = GetString(payload, "targetFilterText", string.Empty);
-            req.Common.ExcludeEndDummy = GetBool(payload, "excludeEndDummy", false);
-            return req;
-        }
-
         private void HandleMultiRun(UIApplication app, object payload)
         {
-            var req = ParseMultiRequest(payload);
-            if (req.RvtPaths.Count == 0)
+            _multiRequest = ParseMultiRequest(payload);
+            if (_multiRequest.RvtPaths.Count == 0)
             {
                 SendToWeb("hub:multi-error", new { message = "검토할 RVT 파일이 없습니다." });
                 return;
             }
 
-            if (!req.Connector.Enabled && !req.Pms.Enabled && !req.Guid.Enabled)
+            if (CountEnabledFeatures(_multiRequest) == 0)
             {
                 SendToWeb("hub:multi-error", new { message = "선택된 기능이 없습니다." });
                 return;
@@ -160,165 +168,198 @@ namespace KKY_Tool_Revit.UI.Hub
             _multiPmsClassRows.Clear();
             _multiPmsSizeRows.Clear();
             _multiPmsRoutingRows.Clear();
-            _multiGuidRows.Clear();
+            _multiGuidProject = null;
+            _multiGuidFamilyDetail = null;
+            _multiGuidFamilyIndex = null;
             _multiRunItems.Clear();
 
-            for (var i = 0; i < req.RvtPaths.Count; i++)
+            lock (_multiLock)
             {
-                var filePath = req.RvtPaths[i];
-                var safe = Path.GetFileName(filePath);
-                SendToWeb("hub:multi-progress", new { current = i + 1, total = req.RvtPaths.Count, message = $"처리 중: {safe}" });
+                _multiQueue = new Queue<string>(_multiRequest.RvtPaths);
+                _multiTotal = _multiQueue.Count;
+                _multiIndex = 0;
+                _multiActive = true;
+                _multiBusy = false;
+                _multiPending = false;
+                _multiApp = app;
+            }
 
-                var started = DateTime.Now;
+            // non-interactive 환경에서는 idling 훅 대신 동기 루프
+            while (true)
+            {
+                bool keep;
+                lock (_multiLock) keep = _multiActive;
+                if (!keep) break;
+                ProcessMultiNext();
+            }
+        }
 
-                try
+        private void HandleMultiIdling(object sender, object e)
+        {
+            ProcessMultiNext();
+        }
+
+        private void ProcessMultiNext()
+        {
+            string filePath = null;
+            lock (_multiLock)
+            {
+                if (!_multiActive || _multiBusy) return;
+                if (_multiQueue == null || _multiQueue.Count == 0)
                 {
-                    if (!File.Exists(filePath))
-                    {
-                        AppendRunItem(safe, "skipped", "파일을 찾을 수 없습니다.", "OPEN", started);
-                        AppendErrorRow(_multiConnectorRows, safe, "파일을 찾을 수 없습니다.");
-                        continue;
-                    }
-
-                    if (req.Connector.Enabled)
-                    {
-                        _multiConnectorRows.Add(new Dictionary<string, object>
-                        {
-                            ["File"] = safe,
-                            ["Status"] = "CHECK",
-                            ["Detail"] = "Connector check queued",
-                            ["Tol"] = req.Connector.Tol,
-                            ["Unit"] = req.Connector.Unit,
-                            ["Param"] = req.Connector.Param
-                        });
-                    }
-
-                    if (req.Pms.Enabled)
-                    {
-                        _multiPmsClassRows.Add(new Dictionary<string, object>
-                        {
-                            ["File"] = safe,
-                            ["Status"] = "CHECK",
-                            ["Detail"] = "PMS class compare queued"
-                        });
-                        _multiPmsSizeRows.Add(new Dictionary<string, object>
-                        {
-                            ["File"] = safe,
-                            ["Status"] = "CHECK",
-                            ["Detail"] = "PMS size compare queued"
-                        });
-                        _multiPmsRoutingRows.Add(new Dictionary<string, object>
-                        {
-                            ["File"] = safe,
-                            ["Status"] = "CHECK",
-                            ["Detail"] = "PMS routing compare queued"
-                        });
-                    }
-
-                    if (req.Guid.Enabled)
-                    {
-                        _multiGuidRows.Add(new Dictionary<string, object>
-                        {
-                            ["File"] = safe,
-                            ["Status"] = "CHECK",
-                            ["Detail"] = "GUID audit queued",
-                            ["IncludeFamily"] = req.Guid.IncludeFamily,
-                            ["IncludeAnnotation"] = req.Guid.IncludeAnnotation
-                        });
-                    }
-
-                    AppendRunItem(safe, "success", string.Empty, "DONE", started);
+                    _multiActive = false;
+                    return;
                 }
-                catch (Exception ex)
+
+                _multiBusy = true;
+                filePath = _multiQueue.Dequeue();
+                _multiIndex += 1;
+            }
+
+            var started = DateTime.Now;
+            var safeName = Path.GetFileName(filePath ?? string.Empty);
+
+            try
+            {
+                var basePct = _multiTotal > 0 ? (double)(_multiIndex - 1) / _multiTotal : 0;
+                ReportMultiProgress(basePct * 100.0, "파일 여는 중", safeName);
+
+                if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
                 {
-                    AppendRunItem(safe, "failed", ex.Message, "RUN", started);
-                    AppendErrorRow(_multiConnectorRows, safe, "파일 처리 실패: " + ex.Message);
-                    SendToWeb("host:warn", new { message = $"파일 처리 실패: {safe} - {ex.Message}" });
+                    AppendMultiConnectorError(safeName, "파일을 찾을 수 없습니다.");
+                    AppendMultiRunItem(safeName, "skipped", "파일을 찾을 수 없습니다.", "OPEN", started);
+                }
+                else
+                {
+                    RunMultiForDocument(_multiApp, null, filePath, safeName, basePct);
+                    AppendMultiRunItem(safeName, "success", string.Empty, "DONE", started);
+                }
+            }
+            catch (Exception ex)
+            {
+                AppendMultiConnectorError(safeName, $"파일 처리 실패: {ex.Message}");
+                AppendMultiRunItem(safeName, "failed", ex.Message, "RUN", started);
+                SendToWeb("host:warn", new { message = $"파일 처리 실패: {safeName} - {ex.Message}" });
+            }
+            finally
+            {
+                lock (_multiLock)
+                {
+                    _multiBusy = false;
+                    if (_multiQueue == null || _multiQueue.Count == 0) _multiActive = false;
                 }
             }
 
-            var summary = BuildMultiSummaryPayload();
-            SendToWeb("hub:multi-done", new { summary });
-            SendToWeb("multi:review-summary", summary);
+            bool done;
+            lock (_multiLock) done = !_multiActive;
+            if (done) FinishMultiRun();
         }
 
-        private void AppendRunItem(string file, string status, string reason, string phase, DateTime started)
+        private void RunMultiForDocument(UIApplication app, Document doc, string path, string safeName, double basePct)
         {
-            _multiRunItems.Add(new Dictionary<string, object>
+            var steps = CountEnabledFeatures(_multiRequest);
+            var stepIndex = 0;
+
+            if (_multiRequest.Connector.Enabled)
             {
-                ["File"] = file ?? string.Empty,
-                ["Status"] = status ?? string.Empty,
-                ["Reason"] = reason ?? string.Empty,
-                ["Phase"] = phase ?? string.Empty,
-                ["ElapsedMs"] = (long)Math.Max(0, (DateTime.Now - started).TotalMilliseconds)
-            });
+                stepIndex++;
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "커넥터 진단 실행 중", safeName);
+                _multiConnectorRows.Add(new Dictionary<string, object>
+                {
+                    ["File"] = safeName,
+                    ["Status"] = "CHECK",
+                    ["Detail"] = "Connector check queued",
+                    ["Tol"] = _multiRequest.Connector.Tol,
+                    ["Unit"] = _multiRequest.Connector.Unit,
+                    ["Param"] = _multiRequest.Connector.Param
+                });
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "커넥터 진단 완료", safeName);
+            }
+
+            if (_multiRequest.Pms.Enabled)
+            {
+                stepIndex++;
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "PMS 비교 실행 중", safeName);
+                AppendSegmentPmsRows(safeName);
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "PMS 비교 완료", safeName);
+            }
+
+            if (_multiRequest.Guid.Enabled)
+            {
+                stepIndex++;
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "GUID 검토 실행 중", safeName);
+
+                var proj = GuidAuditService.CreateProjectTable();
+                var row = proj.NewRow();
+                row["RvtName"] = safeName;
+                row["RvtPath"] = path;
+                row["ParamName"] = string.Empty;
+                row["ParamKind"] = "Project";
+                row["Result"] = "CHECK";
+                row["Notes"] = "GUID audit queued";
+                proj.Rows.Add(row);
+
+                MergeGuidResult(proj, null, null);
+                _multiGuidRows.Add(new Dictionary<string, object>
+                {
+                    ["File"] = safeName,
+                    ["Status"] = "CHECK",
+                    ["Detail"] = "GUID audit queued",
+                    ["IncludeFamily"] = _multiRequest.Guid.IncludeFamily,
+                    ["IncludeAnnotation"] = _multiRequest.Guid.IncludeAnnotation
+                });
+
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "GUID 검토 완료", safeName);
+            }
         }
 
-        private static void AppendErrorRow(List<Dictionary<string, object>> rows, string file, string message)
+        private void FinishMultiRun()
         {
-            rows.Add(new Dictionary<string, object>
+            var summary = new Dictionary<string, object>
             {
-                ["File"] = file ?? string.Empty,
-                ["Status"] = "ERROR",
-                ["Detail"] = message ?? string.Empty
-            });
-        }
-
-        private object BuildMultiSummaryPayload()
-        {
-            return new
-            {
-                connector = new { total = _multiConnectorRows.Count },
-                pmsClass = new { total = _multiPmsClassRows.Count },
-                pmsSize = new { total = _multiPmsSizeRows.Count },
-                pmsRouting = new { total = _multiPmsRoutingRows.Count },
-                guid = new { total = _multiGuidRows.Count },
-                run = new { total = _multiRunItems.Count }
+                ["connector"] = new { rows = _multiConnectorRows.Count },
+                ["pms"] = new { rows = _multiPmsSizeRows.Count },
+                ["guid"] = new { rows = _multiGuidRows.Count },
+                ["run"] = new { rows = _multiRunItems.Count }
             };
+
+            SendToWeb("hub:multi-done", new { summary });
+            SendToWeb("multi:review-summary", BuildMultiSummaryPayload());
         }
 
         private void HandleMultiExport(UIApplication app, object payload)
         {
+            var key = (GetString(payload, "key", string.Empty) ?? string.Empty).ToLowerInvariant();
+            var excelMode = GetString(payload, "excelMode", "normal");
+            var doAutoFit = ParseExcelMode(payload);
+
             try
             {
-                var key = GetString(payload, "key", "connector").ToLowerInvariant();
-                var rows = key switch
+                switch (key)
                 {
-                    "connector" => _multiConnectorRows,
-                    "pms" => _multiPmsSizeRows,
-                    "pms-class" => _multiPmsClassRows,
-                    "pms-routing" => _multiPmsRoutingRows,
-                    "segmentpms" => _multiPmsSizeRows,
-                    "guid" => _multiGuidRows,
-                    "run" => _multiRunItems,
-                    _ => null
-                };
-
-                if (rows == null)
-                {
-                    SendToWeb("hub:multi-exported", new { ok = false, message = "알 수 없는 기능 키입니다." });
-                    return;
+                    case "connector":
+                        ExportConnector(doAutoFit, excelMode);
+                        break;
+                    case "pms":
+                    case "segmentpms":
+                        ExportSegmentPms(doAutoFit, excelMode);
+                        break;
+                    case "guid":
+                        ExportGuid(excelMode);
+                        break;
+                    case "familylink":
+                        ExportFamilyLink(doAutoFit, excelMode);
+                        break;
+                    case "points":
+                        ExportPoints(doAutoFit, excelMode);
+                        break;
+                    case "run":
+                        ExportRunItems(doAutoFit, excelMode);
+                        break;
+                    default:
+                        SendToWeb("hub:multi-exported", new { ok = false, message = "알 수 없는 기능 키입니다." });
+                        break;
                 }
-                if (rows.Count == 0)
-                {
-                    SendToWeb("hub:multi-exported", new { ok = false, message = "내보낼 결과가 없습니다." });
-                    return;
-                }
-
-                var dt = BuildTableFromRows(rows);
-                ExcelCore.EnsureNoDataRow(dt, "오류가 없습니다.");
-
-                var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Excel (*.xlsx)|*.xlsx", FileName = $"multi_{key}_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx" };
-                if (dlg.ShowDialog() != true)
-                {
-                    SendToWeb("hub:multi-exported", new { ok = false, message = "엑셀 저장이 취소되었습니다." });
-                    return;
-                }
-
-                var doAutoFit = ParseExcelMode(payload);
-                ExcelCore.SaveXlsx(dlg.FileName, dt.TableName, dt, doAutoFit, sheetKey: key, progressKey: "hub:multi-progress", exportKind: key);
-                TryApplyExportStyles(key, dlg.FileName, doAutoFit, doAutoFit ? "normal" : "fast");
-                SendToWeb("hub:multi-exported", new { ok = true, path = dlg.FileName });
             }
             catch (Exception ex)
             {
@@ -326,6 +367,323 @@ namespace KKY_Tool_Revit.UI.Hub
             }
         }
 
+        private void TryApplyExportStyles(string exportKey, string savedPath, bool doAutoFit = true, string excelMode = "normal")
+        {
+            if (string.IsNullOrWhiteSpace(exportKey) || string.IsNullOrWhiteSpace(savedPath)) return;
+            try { ExcelExportStyleRegistry.ApplyStylesForKey(exportKey, savedPath, autoFit: doAutoFit, excelMode: excelMode); } catch { }
+        }
+
+        private void ExportConnector(bool doAutoFit, string excelMode)
+        {
+            if (_multiConnectorRows.Count == 0)
+            {
+                SendToWeb("hub:multi-exported", new { ok = false, message = "커넥터 결과가 없습니다." });
+                return;
+            }
+
+            var dt = BuildTableFromRows(_multiConnectorRows, "Connector");
+            ExcelCore.EnsureNoDataRow(dt, "오류가 없습니다.");
+            var saved = SaveTableByDialog(dt, "multi_connector.xlsx", doAutoFit, "connector");
+            if (string.IsNullOrWhiteSpace(saved)) return;
+            TryApplyExportStyles("connector", saved, doAutoFit, excelMode);
+            SendToWeb("hub:multi-exported", new { ok = true, path = saved });
+        }
+
+        private void ExportSegmentPms(bool doAutoFit, string excelMode)
+        {
+            if (_multiPmsClassRows.Count == 0 && _multiPmsSizeRows.Count == 0 && _multiPmsRoutingRows.Count == 0)
+            {
+                SendToWeb("hub:multi-exported", new { ok = false, message = "PMS 결과가 없습니다." });
+                return;
+            }
+
+            var sheets = new List<KeyValuePair<string, DataTable>>();
+            sheets.Add(new KeyValuePair<string, DataTable>("PMS_Class", BuildTableFromRows(_multiPmsClassRows, "PMS_Class")));
+            sheets.Add(new KeyValuePair<string, DataTable>("PMS_Size", BuildTableFromRows(_multiPmsSizeRows, "PMS_Size")));
+            sheets.Add(new KeyValuePair<string, DataTable>("PMS_Routing", BuildTableFromRows(_multiPmsRoutingRows, "PMS_Routing")));
+            foreach (var s in sheets) ExcelCore.EnsureNoDataRow(s.Value, "오류가 없습니다.");
+
+            var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Excel (*.xlsx)|*.xlsx", FileName = "multi_pms.xlsx" };
+            if (dlg.ShowDialog() != true)
+            {
+                SendToWeb("hub:multi-exported", new { ok = false, message = "엑셀 저장이 취소되었습니다." });
+                return;
+            }
+
+            ExcelCore.SaveXlsxMulti(dlg.FileName, sheets, doAutoFit, "hub:multi-progress");
+            TryApplyExportStyles("pms", dlg.FileName, doAutoFit, excelMode);
+            SendToWeb("hub:multi-exported", new { ok = true, path = dlg.FileName });
+        }
+
+        private void ExportGuid(string excelMode)
+        {
+            var project = _multiGuidProject ?? GuidAuditService.CreateProjectTable();
+            var family = _multiGuidFamilyDetail ?? GuidAuditService.CreateFamilyDetailTable();
+
+            var sheets = new List<KeyValuePair<string, DataTable>>
+            {
+                new KeyValuePair<string, DataTable>("RVT 검토결과", GuidAuditService.PrepareExportTable(project, 1)),
+                new KeyValuePair<string, DataTable>("Family 검토결과", GuidAuditService.PrepareExportTable(family, 2))
+            };
+
+            var saved = GuidAuditService.ExportMulti(sheets, excelMode, "guid:progress");
+            if (string.IsNullOrWhiteSpace(saved))
+            {
+                SendToWeb("hub:multi-exported", new { ok = false, message = "엑셀 저장이 취소되었습니다." });
+                return;
+            }
+
+            TryApplyExportStyles("guid", saved, !string.Equals(excelMode, "fast", StringComparison.OrdinalIgnoreCase), excelMode);
+            SendToWeb("hub:multi-exported", new { ok = true, path = saved });
+        }
+
+        private void ExportFamilyLink(bool doAutoFit, string excelMode)
+        {
+            var dt = new DataTable("FamilyLink");
+            dt.Columns.Add("Message");
+            var r = dt.NewRow();
+            r[0] = "FamilyLink 결과는 아직 C# 완전 포팅 전입니다.";
+            dt.Rows.Add(r);
+            var saved = SaveTableByDialog(dt, "multi_familylink.xlsx", doAutoFit, "familylink");
+            if (string.IsNullOrWhiteSpace(saved)) return;
+            TryApplyExportStyles("familylink", saved, doAutoFit, excelMode);
+            SendToWeb("hub:multi-exported", new { ok = true, path = saved });
+        }
+
+        private void ExportPoints(bool doAutoFit, string excelMode)
+        {
+            var dt = new DataTable("Points");
+            dt.Columns.Add("Message");
+            var r = dt.NewRow();
+            r[0] = "Points 결과는 아직 C# 완전 포팅 전입니다.";
+            dt.Rows.Add(r);
+            var saved = SaveTableByDialog(dt, "multi_points.xlsx", doAutoFit, "points");
+            if (string.IsNullOrWhiteSpace(saved)) return;
+            TryApplyExportStyles("points", saved, doAutoFit, excelMode);
+            SendToWeb("hub:multi-exported", new { ok = true, path = saved });
+        }
+
+        private void ExportRunItems(bool doAutoFit, string excelMode)
+        {
+            var dt = new DataTable("RunItems");
+            dt.Columns.Add("File");
+            dt.Columns.Add("Status");
+            dt.Columns.Add("Reason");
+            dt.Columns.Add("Phase");
+            dt.Columns.Add("ElapsedMs");
+
+            foreach (var i in _multiRunItems)
+            {
+                var r = dt.NewRow();
+                r["File"] = i.File;
+                r["Status"] = i.Status;
+                r["Reason"] = i.Reason;
+                r["Phase"] = i.Phase;
+                r["ElapsedMs"] = i.ElapsedMs;
+                dt.Rows.Add(r);
+            }
+
+            ExcelCore.EnsureNoDataRow(dt, "데이터가 없습니다.");
+            var saved = SaveTableByDialog(dt, "multi_run.xlsx", doAutoFit, "multi");
+            if (string.IsNullOrWhiteSpace(saved)) return;
+            TryApplyExportStyles("multi", saved, doAutoFit, excelMode);
+            SendToWeb("hub:multi-exported", new { ok = true, path = saved });
+        }
+
+        private string SaveTableByDialog(DataTable dt, string fileName, bool doAutoFit, string key)
+        {
+            var dlg = new Microsoft.Win32.SaveFileDialog { Filter = "Excel (*.xlsx)|*.xlsx", FileName = fileName };
+            if (dlg.ShowDialog() != true)
+            {
+                SendToWeb("hub:multi-exported", new { ok = false, message = "엑셀 저장이 취소되었습니다." });
+                return string.Empty;
+            }
+
+            ExcelCore.SaveXlsx(dlg.FileName, dt.TableName, dt, doAutoFit, sheetKey: key, progressKey: "hub:multi-progress", exportKind: key);
+            return dlg.FileName;
+        }
+
+        private MultiRunRequest ParseMultiRequest(object payload)
+        {
+            var req = new MultiRunRequest();
+            req.RvtPaths = GetStringList(payload, "files").Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            req.Common = ParseCommon(payload);
+            req.Connector = ParseConnector(payload);
+            req.Pms = ParsePms(payload);
+            req.Guid = ParseGuid(payload);
+            req.FamilyLink = ParseFamilyLink(payload);
+            req.Points = ParsePoints(payload);
+            return req;
+        }
+
+        private MultiCommonOptions ParseCommon(object payload)
+        {
+            return new MultiCommonOptions
+            {
+                ExtraParams = GetString(payload, "extraParamsText", string.Empty),
+                TargetFilter = GetString(payload, "targetFilterText", string.Empty),
+                ExcludeEndDummy = GetBool(payload, "excludeEndDummy", false)
+            };
+        }
+
+        private MultiConnectorOptions ParseConnector(object payload)
+        {
+            return new MultiConnectorOptions
+            {
+                Enabled = GetBool(payload, "runConnector", true),
+                Tol = GetDouble(payload, "tol", 1.0),
+                Unit = GetString(payload, "unit", "inch"),
+                Param = GetString(payload, "param", "Comments")
+            };
+        }
+
+        private MultiPmsOptions ParsePms(object payload)
+        {
+            return new MultiPmsOptions
+            {
+                Enabled = GetBool(payload, "runSegmentPms", false),
+                NdRound = GetInt(payload, "ndRound", 3),
+                TolMm = GetDouble(payload, "tolMm", 0.01),
+                ClassMatch = GetBool(payload, "classMatch", false)
+            };
+        }
+
+        private MultiGuidOptions ParseGuid(object payload)
+        {
+            return new MultiGuidOptions
+            {
+                Enabled = GetBool(payload, "runGuid", false),
+                IncludeFamily = GetBool(payload, "includeFamily", false),
+                IncludeAnnotation = GetBool(payload, "includeAnnotation", false)
+            };
+        }
+
+        private MultiFamilyLinkOptions ParseFamilyLink(object payload)
+        {
+            return new MultiFamilyLinkOptions
+            {
+                Enabled = GetBool(payload, "runFamilyLink", false)
+            };
+        }
+
+        private MultiPointsOptions ParsePoints(object payload)
+        {
+            return new MultiPointsOptions
+            {
+                Enabled = GetBool(payload, "runPoints", false),
+                Unit = GetString(payload, "pointUnit", "ft")
+            };
+        }
+
+        private void AppendMultiRunItem(string file, string status, string reason, string phase, DateTime started)
+        {
+            _multiRunItems.Add(new MultiRunItem
+            {
+                File = file ?? string.Empty,
+                Status = status ?? string.Empty,
+                Reason = reason ?? string.Empty,
+                Phase = phase ?? string.Empty,
+                ElapsedMs = (long)Math.Max(0, (DateTime.Now - started).TotalMilliseconds)
+            });
+        }
+
+        private object BuildMultiSummaryPayload()
+        {
+            return new
+            {
+                connector = new { rows = _multiConnectorRows.Count },
+                pmsClass = new { rows = _multiPmsClassRows.Count },
+                pmsSize = new { rows = _multiPmsSizeRows.Count },
+                pmsRouting = new { rows = _multiPmsRoutingRows.Count },
+                guidProject = new { rows = _multiGuidProject?.Rows.Count ?? 0 },
+                guidFamily = new { rows = _multiGuidFamilyDetail?.Rows.Count ?? 0 },
+                run = new { rows = _multiRunItems.Count }
+            };
+        }
+
+        private void ReportMultiProgress(double pct, string message, string target)
+        {
+            SendToWeb("hub:multi-progress", new
+            {
+                pct,
+                message,
+                target,
+                current = _multiIndex,
+                total = _multiTotal
+            });
+        }
+
+        private static double CalcStepPercent(double basePct, int stepIndex, int steps)
+        {
+            if (steps <= 0) return basePct * 100.0;
+            var oneFileSpan = 1.0 / Math.Max(1, steps);
+            return (basePct + oneFileSpan * Math.Max(0, Math.Min(stepIndex, steps))) * 100.0;
+        }
+
+        private static int CountEnabledFeatures(MultiRunRequest req)
+        {
+            if (req == null) return 0;
+            var n = 0;
+            if (req.Connector?.Enabled == true) n++;
+            if (req.Pms?.Enabled == true) n++;
+            if (req.Guid?.Enabled == true) n++;
+            if (req.FamilyLink?.Enabled == true) n++;
+            if (req.Points?.Enabled == true) n++;
+            return n;
+        }
+
+        private void AppendMultiConnectorError(string fileName, string message)
+        {
+            _multiConnectorRows.Add(new Dictionary<string, object>
+            {
+                ["File"] = fileName ?? string.Empty,
+                ["Status"] = "ERROR",
+                ["Detail"] = message ?? string.Empty
+            });
+        }
+
+        private void AppendSegmentPmsRows(string safeName)
+        {
+            _multiPmsClassRows.Add(new Dictionary<string, object>
+            {
+                ["File"] = safeName,
+                ["Status"] = "CHECK",
+                ["Detail"] = "PMS class compare queued"
+            });
+            _multiPmsSizeRows.Add(new Dictionary<string, object>
+            {
+                ["File"] = safeName,
+                ["Status"] = "CHECK",
+                ["Detail"] = "PMS size compare queued"
+            });
+            _multiPmsRoutingRows.Add(new Dictionary<string, object>
+            {
+                ["File"] = safeName,
+                ["Status"] = "CHECK",
+                ["Detail"] = "PMS routing compare queued"
+            });
+        }
+
+        private void MergeGuidResult(DataTable project, DataTable familyDetail, DataTable familyIndex)
+        {
+            if (project != null)
+            {
+                if (_multiGuidProject == null) _multiGuidProject = project.Clone();
+                foreach (DataRow r in project.Rows) _multiGuidProject.ImportRow(r);
+            }
+
+            if (familyDetail != null)
+            {
+                if (_multiGuidFamilyDetail == null) _multiGuidFamilyDetail = familyDetail.Clone();
+                foreach (DataRow r in familyDetail.Rows) _multiGuidFamilyDetail.ImportRow(r);
+            }
+
+            if (familyIndex != null)
+            {
+                if (_multiGuidFamilyIndex == null) _multiGuidFamilyIndex = familyIndex.Clone();
+                foreach (DataRow r in familyIndex.Rows) _multiGuidFamilyIndex.ImportRow(r);
+            }
+        }
 
         private static double GetDouble(object payload, string key, double def)
         {
@@ -348,9 +706,9 @@ namespace KKY_Tool_Revit.UI.Hub
             return def;
         }
 
-        private static DataTable BuildTableFromRows(List<Dictionary<string, object>> rows)
+        private static DataTable BuildTableFromRows(List<Dictionary<string, object>> rows, string tableName)
         {
-            var dt = new DataTable("Multi");
+            var dt = new DataTable(tableName);
             var cols = rows.SelectMany(r => r.Keys).Distinct(StringComparer.Ordinal).ToList();
             foreach (var c in cols) dt.Columns.Add(c);
             foreach (var r in rows)
@@ -362,20 +720,8 @@ namespace KKY_Tool_Revit.UI.Hub
                 }
                 dt.Rows.Add(dr);
             }
-            return dt;
-        }
 
-        private void TryApplyExportStyles(string exportKey, string savedPath, bool doAutoFit = true, string excelMode = "normal")
-        {
-            if (string.IsNullOrWhiteSpace(exportKey) || string.IsNullOrWhiteSpace(savedPath)) return;
-            try
-            {
-                ExcelExportStyleRegistry.ApplyStylesForKey(exportKey, savedPath, autoFit: doAutoFit, excelMode: excelMode);
-            }
-            catch
-            {
-                // style 실패 시 무시
-            }
+            return dt;
         }
     }
 }

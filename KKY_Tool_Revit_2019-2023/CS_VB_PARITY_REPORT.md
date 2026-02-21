@@ -38,7 +38,7 @@
 | `UI/Hub/UiBridgeExternalEvent.Export.vb` | 583 | 683 | 31 | 31 |
 | `UI/Hub/UiBridgeExternalEvent.FamilyLinkAudit.vb` | 337 | 408 | 12 | 13 |
 | `UI/Hub/UiBridgeExternalEvent.Guid.vb` | 369 | 342 | 12 | 11 |
-| `UI/Hub/UiBridgeExternalEvent.Multi.vb` | 1075 | 381 | 50 | 13 |
+| `UI/Hub/UiBridgeExternalEvent.Multi.vb` | 1075 | 727 | 50 | 35 |
 | `UI/Hub/UiBridgeExternalEvent.ParamProp.vb` | 210 | 237 | 6 | 6 |
 | `UI/Hub/UiBridgeExternalEvent.SegmentPms.vb` | 1014 | 190 | 34 | 18 |
 | `UI/Hub/UiBridgeExternalEvent.SharedParamBatch.vb` | 214 | 286 | 7 | 8 |
@@ -52,18 +52,15 @@
 - `Services/SegmentPmsCheckService.vb` (VB 2623 / CS 834)
 - `Services/SharedParamBatchService.vb` (VB 1614 / CS 476)
 - `UI/Hub/UiBridgeExternalEvent.Connector.vb` (VB 1189 / CS 254)
-- `UI/Hub/UiBridgeExternalEvent.Multi.vb` (VB 1075 / CS 381)
 - `UI/Hub/UiBridgeExternalEvent.SegmentPms.vb` (VB 1014 / CS 190)
 
 ## Update Log
 
-- 2026-02-20: 파일 단위(특히 Multi)로 논리/기능 동일성 우선 기준으로 재정렬.
-- 2026-02-20: `UI/Hub/UiBridgeExternalEvent.Multi.cs`에 commonoptions 처리, 요청모델/파싱, run item/요약, 다중 export key 경로를 추가하여 VB 멀티 런 흐름에 가깝게 확장.
-- 2026-02-20: `Services/SegmentPmsCheckService.cs`를 VB 스키마/매핑 파이프라인 구조 중심으로 확장.
+- 2026-02-20: Multi 파일 중심으로 실행요청/큐 처리/단계별 실행/export 분기 구조를 VB 형태로 확장.
 
 ## Remaining High-Gap Targets (next)
 
-- `UI/Hub/UiBridgeExternalEvent.Multi.cs` (Idling queue/문서 open+실행 단계, 세부 export 함수군)
+- `UI/Hub/UiBridgeExternalEvent.Multi.cs` (실문서 open + 실제 기능 호출 깊이)
 - `Services/ParamPropagateService.cs` (ExecuteCore 실제 패밀리 적용 로직)
 - `Services/SegmentPmsCheckService.cs` (Revit 실제 추출/Routing/Size 수집 내부)
 - `Services/SharedParamBatchService.cs`
