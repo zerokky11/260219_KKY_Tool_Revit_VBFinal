@@ -769,8 +769,20 @@ Namespace UI.Hub
         End Function
 
         Private Shared Function BuildBaseHeaders() As List(Of String)
+            ' ✅ 엑셀 추출 스키마(요구사항 반영)
+            ' - Category2 ↔ Family1 사이에 "검토내용", "비고(답변)" 2열 추가(항상 빈값)
+            ' - Status, ErrorMessage 컬럼은 엑셀에 출력하지 않음
             Return New List(Of String) From {
-                "Id1", "Id2", "Category1", "Category2", "Family1", "Family2", "Distance (inch)", "ConnectionType", "ParamName", "Value1", "Value2", "ParamCompare", "Status", "ErrorMessage"
+                "File",
+                "Id1", "Id2",
+                "Category1", "Category2",
+                "검토내용", "비고(답변)",
+                "Family1", "Family2",
+                "Distance (inch)",
+                "ConnectionType",
+                "ParamName",
+                "Value1", "Value2",
+                "ParamCompare"
             }
         End Function
 

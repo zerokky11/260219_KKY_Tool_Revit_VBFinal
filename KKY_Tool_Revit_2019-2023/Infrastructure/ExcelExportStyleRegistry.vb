@@ -191,9 +191,33 @@ Namespace Infrastructure
         End Function
 
         Private Function ResolveConnector(row As DataRow, table As DataTable) As ExcelStyleHelper.RowStatus
+            ' 기존 스키마(Status 존재) 우선
             Dim statusText = GetFirstExistingText(row, table, "Status", "Result", "검토결과")
-            If IsOkLike(statusText) Then Return ExcelStyleHelper.RowStatus.None
-            If LooksError(statusText) Then Return ExcelStyleHelper.RowStatus.[Error]
+            If Not String.IsNullOrWhiteSpace(statusText) Then
+                If IsOkLike(statusText) Then Return ExcelStyleHelper.RowStatus.None
+                If LooksError(statusText) Then Return ExcelStyleHelper.RowStatus.[Error]
+                Return ExcelStyleHelper.RowStatus.Warning
+            End If
+
+            ' Status 컬럼이 없을 때(요구사항으로 Status/ErrorMessage 헤더 미출력):
+            ' Connector 스키마의 다른 필드로 이슈/에러 여부를 추정한다.
+            Dim connType = GetFirstExistingText(row, table, "ConnectionType", "Connection Type")
+            Dim compare = GetFirstExistingText(row, table, "ParamCompare", "Compare", "Param Compare")
+            Dim v1 = GetFirstExistingText(row, table, "Value1", "Value 1")
+            Dim v2 = GetFirstExistingText(row, table, "Value2", "Value 2")
+
+            Dim ct As String = If(connType, "").Trim()
+            Dim ctLow As String = ct.ToLowerInvariant()
+            Dim pc As String = If(compare, "").Trim()
+            Dim pcLow As String = pc.ToLowerInvariant()
+
+            If ctLow.Contains("error") Then Return ExcelStyleHelper.RowStatus.[Error]
+            If pcLow.Contains("mismatch") OrElse pc.Contains("불일치") Then Return ExcelStyleHelper.RowStatus.Warning
+
+            ' Shared Parameter 등록 필요(값 텍스트 기반)
+            If (If(v1, "")).Contains("미등록") OrElse (If(v2, "")).Contains("미등록") Then Return ExcelStyleHelper.RowStatus.Warning
+
+            ' 그 외: connector 시트는 이슈 중심이므로 경고 처리
             Return ExcelStyleHelper.RowStatus.Warning
         End Function
 
