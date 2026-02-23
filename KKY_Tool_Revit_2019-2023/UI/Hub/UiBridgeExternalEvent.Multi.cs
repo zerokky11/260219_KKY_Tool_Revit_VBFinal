@@ -87,6 +87,9 @@ namespace KKY_Tool_Revit.UI.Hub
         private readonly List<Dictionary<string, object>> _multiPmsClassRows = new List<Dictionary<string, object>>();
         private readonly List<Dictionary<string, object>> _multiPmsSizeRows = new List<Dictionary<string, object>>();
         private readonly List<Dictionary<string, object>> _multiPmsRoutingRows = new List<Dictionary<string, object>>();
+        private readonly List<Dictionary<string, object>> _multiGuidRows = new List<Dictionary<string, object>>();
+        private readonly List<Dictionary<string, object>> _multiFamilyLinkRows = new List<Dictionary<string, object>>();
+        private readonly List<Dictionary<string, object>> _multiPointsRows = new List<Dictionary<string, object>>();
         private DataTable _multiGuidProject;
         private DataTable _multiGuidFamilyDetail;
         private DataTable _multiGuidFamilyIndex;
@@ -142,6 +145,9 @@ namespace KKY_Tool_Revit.UI.Hub
             _multiPmsClassRows.Clear();
             _multiPmsSizeRows.Clear();
             _multiPmsRoutingRows.Clear();
+            _multiGuidRows.Clear();
+            _multiFamilyLinkRows.Clear();
+            _multiPointsRows.Clear();
             _multiGuidProject = null;
             _multiGuidFamilyDetail = null;
             _multiGuidFamilyIndex = null;
@@ -168,6 +174,9 @@ namespace KKY_Tool_Revit.UI.Hub
             _multiPmsClassRows.Clear();
             _multiPmsSizeRows.Clear();
             _multiPmsRoutingRows.Clear();
+            _multiGuidRows.Clear();
+            _multiFamilyLinkRows.Clear();
+            _multiPointsRows.Clear();
             _multiGuidProject = null;
             _multiGuidFamilyDetail = null;
             _multiGuidFamilyIndex = null;
@@ -311,6 +320,33 @@ namespace KKY_Tool_Revit.UI.Hub
 
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "GUID 검토 완료", safeName);
             }
+
+            if (_multiRequest.FamilyLink.Enabled)
+            {
+                stepIndex++;
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "Family Link 검토 실행 중", safeName);
+                _multiFamilyLinkRows.Add(new Dictionary<string, object>
+                {
+                    ["File"] = safeName,
+                    ["Status"] = "CHECK",
+                    ["Detail"] = "Family link audit queued"
+                });
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "Family Link 검토 완료", safeName);
+            }
+
+            if (_multiRequest.Points.Enabled)
+            {
+                stepIndex++;
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "포인트 추출 실행 중", safeName);
+                _multiPointsRows.Add(new Dictionary<string, object>
+                {
+                    ["File"] = safeName,
+                    ["Status"] = "CHECK",
+                    ["Detail"] = "Points extract queued",
+                    ["Unit"] = _multiRequest.Points.Unit
+                });
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "포인트 추출 완료", safeName);
+            }
         }
 
         private void FinishMultiRun()
@@ -439,11 +475,8 @@ namespace KKY_Tool_Revit.UI.Hub
 
         private void ExportFamilyLink(bool doAutoFit, string excelMode)
         {
-            var dt = new DataTable("FamilyLink");
-            dt.Columns.Add("Message");
-            var r = dt.NewRow();
-            r[0] = "FamilyLink 결과는 아직 C# 완전 포팅 전입니다.";
-            dt.Rows.Add(r);
+            var dt = BuildTableFromRows(_multiFamilyLinkRows, "FamilyLink");
+            ExcelCore.EnsureNoDataRow(dt, "FamilyLink 결과가 없습니다.");
             var saved = SaveTableByDialog(dt, "multi_familylink.xlsx", doAutoFit, "familylink");
             if (string.IsNullOrWhiteSpace(saved)) return;
             TryApplyExportStyles("familylink", saved, doAutoFit, excelMode);
@@ -452,11 +485,8 @@ namespace KKY_Tool_Revit.UI.Hub
 
         private void ExportPoints(bool doAutoFit, string excelMode)
         {
-            var dt = new DataTable("Points");
-            dt.Columns.Add("Message");
-            var r = dt.NewRow();
-            r[0] = "Points 결과는 아직 C# 완전 포팅 전입니다.";
-            dt.Rows.Add(r);
+            var dt = BuildTableFromRows(_multiPointsRows, "Points");
+            ExcelCore.EnsureNoDataRow(dt, "Points 결과가 없습니다.");
             var saved = SaveTableByDialog(dt, "multi_points.xlsx", doAutoFit, "points");
             if (string.IsNullOrWhiteSpace(saved)) return;
             TryApplyExportStyles("points", saved, doAutoFit, excelMode);
@@ -589,14 +619,33 @@ namespace KKY_Tool_Revit.UI.Hub
 
         private object BuildMultiSummaryPayload()
         {
+            var total = _multiTotal > 0 ? _multiTotal : _multiRunItems.Count;
+            var success = _multiRunItems.Count(x => string.Equals(x.Status, "success", StringComparison.OrdinalIgnoreCase));
+            var skipped = _multiRunItems.Count(x => string.Equals(x.Status, "skipped", StringComparison.OrdinalIgnoreCase));
+            var failed = _multiRunItems.Count(x => string.Equals(x.Status, "failed", StringComparison.OrdinalIgnoreCase));
+
             return new
             {
+                ok = true,
+                mode = "multiRvt",
+                featureId = "multi_rvt_batch",
+                title = "다중 RVT 검토",
+                finishedAt = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss"),
+                total,
+                success,
+                skipped,
+                failed,
+                canceled = false,
+                items = _multiRunItems,
                 connector = new { rows = _multiConnectorRows.Count },
                 pmsClass = new { rows = _multiPmsClassRows.Count },
                 pmsSize = new { rows = _multiPmsSizeRows.Count },
                 pmsRouting = new { rows = _multiPmsRoutingRows.Count },
+                guid = new { rows = _multiGuidRows.Count },
                 guidProject = new { rows = _multiGuidProject?.Rows.Count ?? 0 },
                 guidFamily = new { rows = _multiGuidFamilyDetail?.Rows.Count ?? 0 },
+                familylink = new { rows = _multiFamilyLinkRows.Count },
+                points = new { rows = _multiPointsRows.Count },
                 run = new { rows = _multiRunItems.Count }
             };
         }
