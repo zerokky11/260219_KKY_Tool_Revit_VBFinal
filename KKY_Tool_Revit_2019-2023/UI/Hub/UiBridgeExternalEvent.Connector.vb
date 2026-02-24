@@ -620,7 +620,15 @@ Namespace UI.Hub
                                          Optional progressChannel As String = Nothing,
                                          Optional uiUnit As String = "inch") As String
             Dim todayToken As String = Date.Now.ToString("yyMMdd")
-            Dim count As Integer = If(mismatchCount < 0, CountMismatches(totalRows), mismatchCount)
+            ' 파일명 (n건) 기준은 "최종 엑셀에 저장되는 행 수"로 맞춘다.
+            ' - 기존: mismatchCount/Status 기반(필터/빈행 처리에 따라 엑셀 표시와 어긋날 수 있음)
+            Dim count As Integer = If(totalRows Is Nothing, 0, totalRows.Count)
+            If count = 1 AndAlso totalRows IsNot Nothing AndAlso totalRows.Count = 1 Then
+                Dim id1Msg As String = SafeCellString(totalRows(0), "Id1")
+                If Not String.IsNullOrWhiteSpace(id1Msg) AndAlso (id1Msg.Contains("오류가 없습니다") OrElse id1Msg.Contains("검토 결과가 없습니다")) Then
+                    count = 0
+                End If
+            End If
             Dim defaultName As String = $"{todayToken}_커넥터기반 속성값 검토 결과_{count}개.xlsx"
             Dim totalCount As Integer = If(totalRows, New List(Of Dictionary(Of String, Object))()).Count
             Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Reset(progressChannel)

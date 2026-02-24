@@ -403,6 +403,78 @@ Namespace UI.Hub
                 .target = name
             })
         End Sub
+        ' -----------------------------
+        ' 공종검토(커넥터) Excel 기본 파일명 유틸
+        ' - Multi/Connector 등 여러 partial에서 공통으로 사용 (중복 정의 방지)
+        ' -----------------------------
+        Friend Shared Function BuildTradeReviewDefaultExcelName(rvtBaseName As String, issueCount As Integer) As String
+            Dim baseName As String = If(rvtBaseName, "").Trim()
+            If String.IsNullOrWhiteSpace(baseName) Then baseName = "Export"
+
+            ' 확장자 제거
+            Try
+                baseName = System.IO.Path.GetFileNameWithoutExtension(baseName)
+            Catch
+                ' ignore
+            End Try
+
+            Dim prefix As String = ExtractTradePrefix(baseName)
+            Dim name As String
+            If String.IsNullOrWhiteSpace(prefix) Then
+                name = $"{SanitizeFileName(baseName)}_공종검토_({issueCount}건).xlsx"
+            Else
+                name = $"{SanitizeFileName(prefix)}-06_공종검토_0차_({issueCount}건).xlsx"
+            End If
+            Return name
+        End Function
+
+        ' 규칙:
+        '  - 파일명에서 앞에서부터 3번째 "_" 까지 + 그 다음 토큰(4번째)에서 " -숫자 "까지 추출
+        '    예) P4-2_FBELO_FFP_4F-0-김경연_2026-02-24  ->  P4-2_FBELO_FFP_4F-0
+        Friend Shared Function ExtractTradePrefix(rvtBaseName As String) As String
+            Dim s As String = If(rvtBaseName, "").Trim()
+            If String.IsNullOrWhiteSpace(s) Then Return ""
+
+            Dim parts As String() = s.Split(New Char() {"_"c}, StringSplitOptions.None)
+            If parts Is Nothing OrElse parts.Length < 4 Then Return ""
+
+            Dim token4 As String = If(parts(3), "").Trim()
+            If String.IsNullOrWhiteSpace(token4) Then Return ""
+
+            ' token4에서 최초 "-숫자"까지 (예: 4F-0-김경연 -> 4F-0)
+            Dim tokenPrefix As String = token4
+            Try
+                Dim m = System.Text.RegularExpressions.Regex.Match(token4, "^(.+?-\d+)")
+                If m.Success Then tokenPrefix = m.Groups(1).Value
+            Catch
+                tokenPrefix = token4
+            End Try
+
+            Dim prefix As String = $"{parts(0)}_{parts(1)}_{parts(2)}_{tokenPrefix}"
+            Return prefix.Trim()
+        End Function
+
+        Friend Shared Function SanitizeFileName(fileName As String) As String
+            Dim s As String = If(fileName, "")
+            If String.IsNullOrWhiteSpace(s) Then Return "Export"
+
+            Try
+                For Each ch As Char In System.IO.Path.GetInvalidFileNameChars()
+                    s = s.Replace(ch, "_"c)
+                Next
+            Catch
+                ' ignore
+            End Try
+
+            s = s.Replace(":", "_").Replace("/", "_").Replace("\", "_").Trim()
+
+            ' Windows에서 끝의 점/공백은 금지
+            s = s.TrimEnd("."c).TrimEnd()
+
+            If String.IsNullOrWhiteSpace(s) Then Return "Export"
+            Return s
+        End Function
+
 
     End Class
 

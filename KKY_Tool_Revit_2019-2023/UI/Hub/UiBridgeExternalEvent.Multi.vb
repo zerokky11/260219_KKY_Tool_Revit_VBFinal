@@ -1,6 +1,4 @@
-﻿Option Explicit On
-Option Strict On
-
+﻿
 Imports System
 Imports System.Collections.Generic
 Imports System.Data
@@ -50,7 +48,7 @@ Namespace UI.Hub
             Dim options As New HubCommonOptionsStorageService.HubCommonOptions() With {
                 .ExtraParamsText = If(extraText, String.Empty),
                 .TargetFilterText = If(filterText, String.Empty),
-                .ExcludeEndDummy = excludeEndDummy
+                .excludeEndDummy = excludeEndDummy
             }
 
             Dim ok = HubCommonOptionsStorageService.Save(options)
@@ -480,7 +478,20 @@ NextItem:
             Dim table = BuildConnectorTableFromRows(headers, exportRows)
             ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
             If Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: 커넥터")
-            Dim saved = ExcelCore.PickAndSaveXlsx("Connector Diagnostics", table, $"Connector_{Date.Now:yyyyMMdd_HHmm}.xlsx", doAutoFit, "hub:multi-progress", "connector")
+            Dim issueCountForName As Integer = If(rows Is Nothing, 0, rows.Count)
+            Dim rvtBaseName As String = ""
+            Try
+                For Each r In rows
+                    Dim f As String = SafeCellString(r, "File")
+                    If Not String.IsNullOrWhiteSpace(f) Then
+                        rvtBaseName = System.IO.Path.GetFileNameWithoutExtension(System.IO.Path.GetFileName(f.Trim()))
+                        Exit For
+                    End If
+                Next
+            Catch
+            End Try
+            Dim defaultName As String = BuildTradeReviewDefaultExcelName(rvtBaseName, issueCountForName)
+            Dim saved = ExcelCore.PickAndSaveXlsx("Connector Diagnostics", table, defaultName, doAutoFit, "hub:multi-progress", "connector")
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
             Else
@@ -686,7 +697,7 @@ NextItem:
                     Dim guidStr = SafeStr(GetDictValue(td, "guid"))
                     Dim g As Guid
                     If Guid.TryParse(guidStr, g) Then
-                        targets.Add(New FamilyLinkTargetParam With {.Name = name, .Guid = g})
+                        targets.Add(New FamilyLinkTargetParam With {.name = name, .Guid = g})
                     End If
                 Next
             End If
