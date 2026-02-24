@@ -475,6 +475,8 @@ NextItem:
                 exportRows = exportRows.Where(Function(r) Not ShouldExcludeEndDummyRow(r)).ToList()
             End If
             Dim headers As List(Of String) = BuildConnectorHeaders(extras, uiUnit)
+            HostLog("debug", "[multi][connector] export headers => " & String.Join(" | ", headers))
+            SendToWeb("host:info", New With {.message = "[multi][connector] export headers => " & String.Join(" | ", headers)})
             Dim table = BuildConnectorTableFromRows(headers, exportRows)
             ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
             If Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: 커넥터")
@@ -790,9 +792,21 @@ NextItem:
                 distanceHeader = "Distance (mm)"
             End If
 
+            ' ✅ 요청 스키마 반영
+            ' - Category2 ↔ Family1 사이에 "검토내용", "비고(답변)" 2열 추가(값은 빈칸)
+            ' - Status, ErrorMessage 컬럼은 엑셀 헤더에서 제외
             Dim headers As New List(Of String) From {
-                "File", "Id1", "Id2", "Category1", "Category2", "Family1", "Family2", distanceHeader, "ConnectionType", "ParamName", "Value1", "Value2", "ParamCompare", "Status", "ErrorMessage"
+                "File", "Id1", "Id2",
+                "Category1", "Category2",
+                "검토내용", "비고(답변)",
+                "Family1", "Family2",
+                distanceHeader,
+                "ConnectionType",
+                "ParamName",
+                "Value1", "Value2",
+                "ParamCompare"
             }
+
             If extras IsNot Nothing Then
                 For Each name In extras
                     headers.Add($"{name}(ID1)")

@@ -533,6 +533,12 @@ Namespace Services
             Dim fam1 As String = GetFamilyName(e1)
             Dim fam2 As String = GetFamilyName(e2)
 
+            ' ✅ ParamCompare 출력값 보정 (로직 판단은 기존 paramCompare/Status를 그대로 사용)
+            Dim paramCompareDisplay As String = paramCompare
+            If String.Equals(paramCompare, "Mismatch", StringComparison.OrdinalIgnoreCase) Then
+                paramCompareDisplay = $"{param} 값이 서로 불일치. 확인이 필요 합니다."
+            End If
+
             Dim row As New Dictionary(Of String, Object)(StringComparer.Ordinal) From {
                 {"File", fileLabel},
                 {"Id1", If(e1 IsNot Nothing, e1.Id.IntegerValue.ToString(), "0")},
@@ -546,7 +552,7 @@ Namespace Services
                 {"ParamName", param},
                 {"Value1", v1},
                 {"Value2", v2},
-                {"ParamCompare", paramCompare},
+                {"ParamCompare", paramCompareDisplay},
                 {"Status", status},
                 {"ErrorMessage", ""}
             }

@@ -18,6 +18,10 @@ Namespace Infrastructure
             Public InfoStyle As ICellStyle
             Public WarningStyle As ICellStyle
             Public ErrorStyle As ICellStyle
+
+            ' Connector 전용: 이슈 셀 글자색(빨강) + 배경색 유지
+            Public WarningRedTextStyle As ICellStyle
+            Public ErrorRedTextStyle As ICellStyle
         End Class
 
         Private ReadOnly _wbStyles As New ConditionalWeakTable(Of IWorkbook, StyleSet)()
@@ -61,6 +65,20 @@ Namespace Infrastructure
 
             ' Error
             setx.ErrorStyle = CreateFillStyle(wb, IndexedColors.Rose.Index)
+
+            ' Warning/Error + Red text (ParamCompare Mismatch 등)
+            Dim redFont = wb.CreateFont()
+            redFont.Color = IndexedColors.Red.Index
+
+            Dim warnRed = wb.CreateCellStyle()
+            warnRed.CloneStyleFrom(setx.WarningStyle)
+            warnRed.SetFont(redFont)
+            setx.WarningRedTextStyle = warnRed
+
+            Dim errRed = wb.CreateCellStyle()
+            errRed.CloneStyleFrom(setx.ErrorStyle)
+            errRed.SetFont(redFont)
+            setx.ErrorRedTextStyle = errRed
 
             Return setx
         End Function
@@ -113,6 +131,24 @@ Namespace Infrastructure
                     Return Nothing
             End Select
         End Function
+
+        ' Connector 전용: 이슈 셀 글자색(빨강) 스타일
+        Public Function GetWarningRedTextStyle(wb As IWorkbook) As ICellStyle
+            Return GetStyleSet(wb).WarningRedTextStyle
+        End Function
+
+        Public Function GetErrorRedTextStyle(wb As IWorkbook) As ICellStyle
+            Return GetStyleSet(wb).ErrorRedTextStyle
+        End Function
+
+        Public Function GetWarningRedTextStyleNoWrap(wb As IWorkbook) As ICellStyle
+            Return GetNoWrapStyleSet(wb).WarningRedTextStyle
+        End Function
+
+        Public Function GetErrorRedTextStyleNoWrap(wb As IWorkbook) As ICellStyle
+            Return GetNoWrapStyleSet(wb).ErrorRedTextStyle
+        End Function
+
 
         Public Sub ApplyStyleToRow(row As IRow, colCount As Integer, style As ICellStyle)
             If row Is Nothing OrElse style Is Nothing Then Return

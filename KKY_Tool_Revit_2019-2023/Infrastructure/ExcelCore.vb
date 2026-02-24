@@ -340,11 +340,16 @@ Namespace Infrastructure
                     WriteCell(row, c, dr(c))
                 Next
 
-                ' ---- 핵심: 저장하면서 행 상태를 판정해서 배경색 적용 ----
+                ' ---- 핵심: 저장하면서 행 상태를 판정해서 스타일 적용 ----
                 Dim status = ExcelExportStyleRegistry.Resolve(If(sheetKey, sheetName), dr, table)
                 If status <> ExcelStyleHelper.RowStatus.None Then
-                    Dim style = If(isConnector, ExcelStyleHelper.GetRowStyleNoWrap(wb, status), ExcelStyleHelper.GetRowStyle(wb, status))
-                    ExcelStyleHelper.ApplyStyleToRow(row, colCount, style)
+                    If isConnector Then
+                        ' Connector: 행 전체가 아니라 "이슈 내용" 셀만 배경색/글자색 적용
+                        ApplyConnectorIssueCellStyles(wb, row, table, dr, status)
+                    Else
+                        Dim style = ExcelStyleHelper.GetRowStyle(wb, status)
+                        ExcelStyleHelper.ApplyStyleToRow(row, colCount, style)
+                    End If
                 End If
 
                 If (r Mod 200) = 0 Then
@@ -405,6 +410,97 @@ Namespace Infrastructure
 
             cell.SetCellValue(value.ToString())
         End Sub
+
+        ' Connector: 행 전체가 아니라 "이슈 내용" 셀만 스타일 적용
+        Private Sub ApplyConnectorIssueCellStyles(wb As IWorkbook, row As IRow, table As DataTable, dr As DataRow, status As ExcelStyleHelper.RowStatus)
+            If wb Is Nothing OrElse row Is Nothing OrElse table Is Nothing OrElse dr Is Nothing Then Return
+
+            Dim bg As ICellStyle = Nothing
+            If status = ExcelStyleHelper.RowStatus.[Error] Then
+                bg = ExcelStyleHelper.GetRowStyleNoWrap(wb, ExcelStyleHelper.RowStatus.[Error])
+            Else
+                bg = ExcelStyleHelper.GetRowStyleNoWrap(wb, ExcelStyleHelper.RowStatus.Warning)
+            End If
+            If bg Is Nothing Then Return
+
+            Dim warnRed As ICellStyle = ExcelStyleHelper.GetWarningRedTextStyleNoWrap(wb)
+            Dim errRed As ICellStyle = ExcelStyleHelper.GetErrorRedTextStyleNoWrap(wb)
+
+            Dim idxParamCompare As Integer = FindColumnIndex(table, "ParamCompare")
+            Dim idxConnType As Integer = FindColumnIndex(table, "ConnectionType")
+            Dim idxDist As Integer = FindColumnIndex(table, "Distance (inch)")
+            Dim idxStatus As Integer = FindColumnIndex(table, "Status")
+            Dim idxErrMsg As Integer = FindColumnIndex(table, "ErrorMessage")
+
+            Dim pcText As String = GetColText(dr, table, idxParamCompare)
+            Dim ctText As String = GetColText(dr, table, idxConnType)
+            Dim stText As String = GetColText(dr, table, idxStatus)
+            Dim emText As String = GetColText(dr, table, idxErrMsg)
+
+            Dim isMismatch As Boolean = (Not String.IsNullOrWhiteSpace(pcText)) AndAlso
+                                       (pcText.IndexOf("불일치", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
+                                        pcText.IndexOf("mismatch", StringComparison.OrdinalIgnoreCase) >= 0)
+
+            Dim isProximity As Boolean = (Not String.IsNullOrWhiteSpace(ctText)) AndAlso
+                                         (ctText.IndexOf("proximity", StringComparison.OrdinalIgnoreCase) >= 0)
+
+            Dim isConnError As Boolean = (Not String.IsNullOrWhiteSpace(ctText)) AndAlso
+                                         (ctText.IndexOf("error", StringComparison.OrdinalIgnoreCase) >= 0)
+
+            Dim isError As Boolean = (status = ExcelStyleHelper.RowStatus.[Error]) OrElse isConnError
+
+            ' 1) ParamCompare: Mismatch 문구는 글자색 빨강 + (Warning/Error) 배경
+            If idxParamCompare >= 0 AndAlso isMismatch Then
+                ApplyStyleToCell(row, idxParamCompare, If(isError AndAlso errRed IsNot Nothing, errRed, warnRed))
+            ElseIf idxParamCompare >= 0 AndAlso (Not String.IsNullOrWhiteSpace(pcText)) AndAlso status <> ExcelStyleHelper.RowStatus.None Then
+                ' 기타 비교 관련 경고 문구가 있을 때만 배경색 적용
+                ApplyStyleToCell(row, idxParamCompare, bg)
+            End If
+
+            ' 2) 연결 이슈(Proximity 등): ConnectionType / Distance 셀만 배경색 적용
+            If isProximity Then
+                If idxConnType >= 0 Then ApplyStyleToCell(row, idxConnType, bg)
+                If idxDist >= 0 Then ApplyStyleToCell(row, idxDist, bg)
+            End If
+
+            ' 3) 명시적 에러: ConnectionType / ErrorMessage 셀만 배경색 적용
+            If isError Then
+                If idxConnType >= 0 AndAlso Not String.IsNullOrWhiteSpace(ctText) Then ApplyStyleToCell(row, idxConnType, bg)
+                If idxErrMsg >= 0 AndAlso Not String.IsNullOrWhiteSpace(emText) Then ApplyStyleToCell(row, idxErrMsg, bg)
+            End If
+
+            ' 4) Status 셀이 존재하고 내용이 있으면(엑셀 스키마에 포함된 경우) 해당 셀만 배경색 적용
+            If idxStatus >= 0 AndAlso Not String.IsNullOrWhiteSpace(stText) Then
+                ApplyStyleToCell(row, idxStatus, bg)
+            End If
+        End Sub
+
+        Private Function FindColumnIndex(table As DataTable, name As String) As Integer
+            If table Is Nothing OrElse String.IsNullOrWhiteSpace(name) Then Return -1
+            For i As Integer = 0 To table.Columns.Count - 1
+                If String.Equals(table.Columns(i).ColumnName, name, StringComparison.OrdinalIgnoreCase) Then Return i
+            Next
+            Return -1
+        End Function
+
+        Private Function GetColText(dr As DataRow, table As DataTable, idx As Integer) As String
+            If dr Is Nothing OrElse table Is Nothing OrElse idx < 0 OrElse idx >= table.Columns.Count Then Return ""
+            Try
+                Dim v = dr(idx)
+                If v Is Nothing OrElse v Is DBNull.Value Then Return ""
+                Return v.ToString()
+            Catch
+                Return ""
+            End Try
+        End Function
+
+        Private Sub ApplyStyleToCell(row As IRow, colIndex As Integer, style As ICellStyle)
+            If row Is Nothing OrElse style Is Nothing OrElse colIndex < 0 Then Return
+            Dim cell = row.GetCell(colIndex)
+            If cell Is Nothing Then cell = row.CreateCell(colIndex)
+            cell.CellStyle = style
+        End Sub
+
 
         Private Function PickSavePath(filter As String, defaultFileName As String, title As String) As String
             Using dlg As New SaveFileDialog()

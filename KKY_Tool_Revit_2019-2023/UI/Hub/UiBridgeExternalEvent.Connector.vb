@@ -642,6 +642,10 @@ Namespace UI.Hub
                     Dim totalBase = totalRows.Select(Function(r) StripExtras(r, extrasHeaders)).ToList()
 
                     Dim dt As DataTable = BuildConnectorExportDataTable(headersTotal, totalBase, uiUnit)
+
+                    ' ✅ 최종 스키마 강제(헤더 꼬임 방지)
+                    NormalizeConnectorExportDataTableSchema(dt, extrasHeaders)
+                    LogConnectorExportHeaders(dt)
                     If dt.Rows.Count = 0 Then
                         Global.KKY_Tool_Revit.Infrastructure.ExcelCore.EnsureNoDataRow(dt, "검토 결과가 없습니다.")
                     End If
@@ -769,14 +773,14 @@ Namespace UI.Hub
         End Function
 
         Private Shared Function BuildBaseHeaders() As List(Of String)
-            ' ✅ 엑셀 추출 스키마(요구사항 반영)
+            ' ✅ Connector 엑셀 내보내기 스키마(납품 요구사항)
             ' - Category2 ↔ Family1 사이에 "검토내용", "비고(답변)" 2열 추가(항상 빈값)
             ' - Status, ErrorMessage 컬럼은 엑셀에 출력하지 않음
             Return New List(Of String) From {
                 "File",
                 "Id1", "Id2",
                 "Category1", "Category2",
-                "검토내용", "비고(답변)",
+                            "검토내용", "비고(답변)",
                 "Family1", "Family2",
                 "Distance (inch)",
                 "ConnectionType",
@@ -807,6 +811,81 @@ Namespace UI.Hub
             End If
             Return headers
         End Function
+
+        ' 엑셀 저장 직전: 컬럼 스키마를 강제로 맞춘다(헤더 꼬임 방지)
+        Private Shared Sub NormalizeConnectorExportDataTableSchema(dt As DataTable, extrasHeaders As IList(Of String))
+            If dt Is Nothing Then Return
+
+            Dim desired As New List(Of String) From {
+                "File",
+                "Id1", "Id2",
+                "Category1", "Category2",
+                            "검토내용", "비고(답변)",
+                "Family1", "Family2",
+                "Distance (inch)",
+                "ConnectionType",
+                "ParamName",
+                "Value1", "Value2",
+                "ParamCompare"
+            }
+
+            If extrasHeaders IsNot Nothing Then
+                For Each h In extrasHeaders
+                    Dim name As String = If(h, "").Trim()
+                    If String.IsNullOrWhiteSpace(name) Then Continue For
+                    desired.Add(name)
+                Next
+            End If
+
+            ' 1) 필요한 컬럼 추가 + 순서 고정
+            For i As Integer = 0 To desired.Count - 1
+                Dim name As String = desired(i)
+                If Not dt.Columns.Contains(name) Then
+                    dt.Columns.Add(name, GetType(String))
+                End If
+                Try
+                    dt.Columns(name).SetOrdinal(i)
+                Catch
+                    ' SetOrdinal 실패는 무시(동일 컬럼명 충돌 등)
+                End Try
+            Next
+
+            ' 2) 불필요 컬럼 제거(Status/ErrorMessage 등)
+            For i As Integer = dt.Columns.Count - 1 To 0 Step -1
+                Dim name As String = dt.Columns(i).ColumnName
+                If Not desired.Contains(name) Then
+                    dt.Columns.RemoveAt(i)
+                End If
+            Next
+
+            ' 3) 신규 메모열은 항상 빈칸(Null → "")
+            If dt.Columns.Contains("검토내용") Then
+                For Each r As DataRow In dt.Rows
+                    If r Is Nothing Then Continue For
+                    If r.IsNull("검토내용") Then r("검토내용") = ""
+                Next
+            End If
+            If dt.Columns.Contains("비고(답변)") Then
+                For Each r As DataRow In dt.Rows
+                    If r Is Nothing Then Continue For
+                    If r.IsNull("비고(답변)") Then r("비고(답변)") = ""
+                Next
+            End If
+        End Sub
+
+        ' 엑셀 내보내기 헤더를 로그로 남김(실제 저장 스키마 확인용)
+        Private Sub LogConnectorExportHeaders(dt As DataTable)
+            Try
+                If dt Is Nothing Then Return
+                Dim cols As New List(Of String)()
+                For Each c As DataColumn In dt.Columns
+                    cols.Add(c.ColumnName)
+                Next
+                LogDebug("[connector][excel] export headers => " & String.Join(" | ", cols))
+            Catch
+            End Try
+        End Sub
+
 
         Private Shared Function InferExtrasFromRow(row As Dictionary(Of String, Object)) As List(Of String)
             Dim extras As New List(Of String)()
@@ -927,7 +1006,15 @@ Namespace UI.Hub
 
         Private Shared Function SwapRow(row As Dictionary(Of String, Object)) As Dictionary(Of String, Object)
             If row Is Nothing Then Return Nothing
+
             Dim swapped As New Dictionary(Of String, Object)(StringComparer.Ordinal)
+
+            ' ✅ 값 보존: File / 메모열은 교환 대상이 아니므로 그대로 유지
+            swapped("File") = SafeCellString(row, "File")
+            swapped("검토내용") = SafeCellString(row, "검토내용")
+            swapped("비고(답변)") = SafeCellString(row, "비고(답변)")
+
+            ' ✅ ID1/ID2 쌍 스왑
             swapped("Id1") = SafeCellString(row, "Id2")
             swapped("Id2") = SafeCellString(row, "Id1")
             swapped("Category1") = SafeCellString(row, "Category2")
@@ -940,11 +1027,15 @@ Namespace UI.Hub
             swapped("Value1") = SafeCellString(row, "Value2")
             swapped("Value2") = SafeCellString(row, "Value1")
             swapped("ParamCompare") = SafeCellString(row, "ParamCompare")
+
+            ' 내부(UI 렌더/필터)에서 사용할 수 있으므로 유지 (엑셀 헤더에서는 제외됨)
             swapped("Status") = SafeCellString(row, "Status")
             swapped("ErrorMessage") = SafeCellString(row, "ErrorMessage")
 
+            ' Extra Params(ID1/ID2) 스왑
             For Each kv In row
                 If kv.Key Is Nothing Then Continue For
+
                 If kv.Key.EndsWith("(ID1)", StringComparison.OrdinalIgnoreCase) Then
                     Dim name = kv.Key.Substring(0, kv.Key.Length - "(ID1)".Length)
                     swapped($"{name}(ID1)") = SafeCellString(row, $"{name}(ID2)")
