@@ -1,7 +1,4 @@
-﻿Option Explicit On
-Option Strict On
-
-Imports System
+﻿Imports System
 Imports System.Collections.Generic
 Imports System.Data
 Imports System.Diagnostics
@@ -403,78 +400,6 @@ Namespace UI.Hub
                 .target = name
             })
         End Sub
-        ' -----------------------------
-        ' 공종검토(커넥터) Excel 기본 파일명 유틸
-        ' - Multi/Connector 등 여러 partial에서 공통으로 사용 (중복 정의 방지)
-        ' -----------------------------
-        Friend Shared Function BuildTradeReviewDefaultExcelName(rvtBaseName As String, issueCount As Integer) As String
-            Dim baseName As String = If(rvtBaseName, "").Trim()
-            If String.IsNullOrWhiteSpace(baseName) Then baseName = "Export"
-
-            ' 확장자 제거
-            Try
-                baseName = System.IO.Path.GetFileNameWithoutExtension(baseName)
-            Catch
-                ' ignore
-            End Try
-
-            Dim prefix As String = ExtractTradePrefix(baseName)
-            Dim name As String
-            If String.IsNullOrWhiteSpace(prefix) Then
-                name = $"{SanitizeFileName(baseName)}_공종검토_({issueCount}건).xlsx"
-            Else
-                name = $"{SanitizeFileName(prefix)}-06_공종검토_0차_({issueCount}건).xlsx"
-            End If
-            Return name
-        End Function
-
-        ' 규칙:
-        '  - 파일명에서 앞에서부터 3번째 "_" 까지 + 그 다음 토큰(4번째)에서 " -숫자 "까지 추출
-        '    예) P4-2_FBELO_FFP_4F-0-김경연_2026-02-24  ->  P4-2_FBELO_FFP_4F-0
-        Friend Shared Function ExtractTradePrefix(rvtBaseName As String) As String
-            Dim s As String = If(rvtBaseName, "").Trim()
-            If String.IsNullOrWhiteSpace(s) Then Return ""
-
-            Dim parts As String() = s.Split(New Char() {"_"c}, StringSplitOptions.None)
-            If parts Is Nothing OrElse parts.Length < 4 Then Return ""
-
-            Dim token4 As String = If(parts(3), "").Trim()
-            If String.IsNullOrWhiteSpace(token4) Then Return ""
-
-            ' token4에서 최초 "-숫자"까지 (예: 4F-0-김경연 -> 4F-0)
-            Dim tokenPrefix As String = token4
-            Try
-                Dim m = System.Text.RegularExpressions.Regex.Match(token4, "^(.+?-\d+)")
-                If m.Success Then tokenPrefix = m.Groups(1).Value
-            Catch
-                tokenPrefix = token4
-            End Try
-
-            Dim prefix As String = $"{parts(0)}_{parts(1)}_{parts(2)}_{tokenPrefix}"
-            Return prefix.Trim()
-        End Function
-
-        Friend Shared Function SanitizeFileName(fileName As String) As String
-            Dim s As String = If(fileName, "")
-            If String.IsNullOrWhiteSpace(s) Then Return "Export"
-
-            Try
-                For Each ch As Char In System.IO.Path.GetInvalidFileNameChars()
-                    s = s.Replace(ch, "_"c)
-                Next
-            Catch
-                ' ignore
-            End Try
-
-            s = s.Replace(":", "_").Replace("/", "_").Replace("\", "_").Trim()
-
-            ' Windows에서 끝의 점/공백은 금지
-            s = s.TrimEnd("."c).TrimEnd()
-
-            If String.IsNullOrWhiteSpace(s) Then Return "Export"
-            Return s
-        End Function
-
 
     End Class
 
@@ -494,6 +419,59 @@ Namespace UI.Hub
         End Sub
 
         ' Revit API는 Function GetName() As String 을 요구합니다.
+
+        ' -----------------------------
+        ' [공통] 공종검토 엑셀 기본 파일명 생성
+        ' -----------------------------
+        Friend Shared Function BuildTradeReviewDefaultExcelName(rvtBaseName As String, issueCount As Integer) As String
+            Try
+                Dim baseName As String = If(rvtBaseName, "").Trim()
+                If String.IsNullOrWhiteSpace(baseName) Then Return ""
+
+                ' 확장자 제거(들어온 값이 Path 일 수도 있음)
+                baseName = System.IO.Path.GetFileNameWithoutExtension(baseName)
+
+                Dim prefix As String = ExtractTradePrefix(baseName)
+                Dim nameCore As String
+
+                If String.IsNullOrWhiteSpace(prefix) Then
+                    ' 규칙 불일치: 파일명 전체_공종검토
+                    nameCore = $"{baseName}_공종검토_({issueCount}건).xlsx"
+                Else
+                    nameCore = $"{prefix}-06_공종검토_0차_({issueCount}건).xlsx"
+                End If
+
+                Return SanitizeFileName(nameCore)
+            Catch
+                Return ""
+            End Try
+        End Function
+
+        Friend Shared Function ExtractTradePrefix(rvtBaseName As String) As String
+            Dim s As String = If(rvtBaseName, "").Trim()
+            If String.IsNullOrWhiteSpace(s) Then Return ""
+
+            Dim parts = s.Split("_"c)
+            If parts Is Nothing OrElse parts.Length < 4 Then Return ""
+
+            Dim token As String = parts(3)
+            If String.IsNullOrWhiteSpace(token) Then Return ""
+
+            Dim m = System.Text.RegularExpressions.Regex.Match(token, "^(.*?-\d+)")
+            Dim cut As String = If(m.Success, m.Groups(1).Value, token)
+
+            Return $"{parts(0)}_{parts(1)}_{parts(2)}_{cut}"
+        End Function
+
+        Friend Shared Function SanitizeFileName(fileName As String) As String
+            Dim s As String = If(fileName, "")
+            If String.IsNullOrWhiteSpace(s) Then Return ""
+            For Each ch In System.IO.Path.GetInvalidFileNameChars()
+                s = s.Replace(ch, "_"c)
+            Next
+            Return s
+        End Function
+
         Public Function GetName() As String Implements IExternalEventHandler.GetName
             Return "KKY Hub Bridge"
         End Function

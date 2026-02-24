@@ -1,7 +1,4 @@
-﻿Option Explicit On
-Option Strict On
-
-Imports System
+﻿Imports System
 Imports System.Collections.Generic
 Imports System.Data
 Imports System.IO
@@ -330,7 +327,22 @@ Namespace UI.Hub
 
                 Dim doAutoFit As Boolean = ParseExcelMode(payload)
                 Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Reset("connector:progress")
-                Dim saved As String = SaveRowsToExcel(exportRows, mismatchCount, _connectorExtraParams, doAutoFit, "connector:progress", uiUnit)
+                Dim rvtBaseName As String = ""
+                Try
+                    Dim doc = app.ActiveUIDocument?.Document
+                    If doc IsNot Nothing Then
+                        Dim p As String = doc.PathName
+                        If Not String.IsNullOrWhiteSpace(p) Then
+                            rvtBaseName = System.IO.Path.GetFileNameWithoutExtension(p)
+                        Else
+                            rvtBaseName = doc.Title
+                        End If
+                    End If
+                Catch
+                    rvtBaseName = ""
+                End Try
+
+                Dim saved As String = SaveRowsToExcel(exportRows, mismatchCount, _connectorExtraParams, doAutoFit, "connector:progress", uiUnit, rvtBaseName)
 
                 SendToWeb("connector:saved", New With {.path = saved})
 
@@ -618,18 +630,28 @@ Namespace UI.Hub
                                          Optional extraParams As List(Of String) = Nothing,
                                          Optional doAutoFit As Boolean = False,
                                          Optional progressChannel As String = Nothing,
-                                         Optional uiUnit As String = "inch") As String
+                                         Optional uiUnit As String = "inch",
+                                         Optional rvtBaseName As String = "") As String
             Dim todayToken As String = Date.Now.ToString("yyMMdd")
-            ' 파일명 (n건) 기준은 "최종 엑셀에 저장되는 행 수"로 맞춘다.
-            ' - 기존: mismatchCount/Status 기반(필터/빈행 처리에 따라 엑셀 표시와 어긋날 수 있음)
-            Dim count As Integer = If(totalRows Is Nothing, 0, totalRows.Count)
-            If count = 1 AndAlso totalRows IsNot Nothing AndAlso totalRows.Count = 1 Then
-                Dim id1Msg As String = SafeCellString(totalRows(0), "Id1")
-                If Not String.IsNullOrWhiteSpace(id1Msg) AndAlso (id1Msg.Contains("오류가 없습니다") OrElse id1Msg.Contains("검토 결과가 없습니다")) Then
-                    count = 0
+
+            ' ✅ 파일명 건수는 "최종 엑셀에 실제로 저장되는 오류 행 수" 기준으로 계산
+            Dim count As Integer = 0
+            If totalRows IsNot Nothing Then
+                count = totalRows.Count
+                ' "오류가 없습니다." 안내 1행만 있는 경우는 0건 처리
+                If count = 1 Then
+                    Dim id1Text As String = SafeCellString(totalRows(0), "Id1")
+                    If Not String.IsNullOrWhiteSpace(id1Text) AndAlso id1Text.Contains("오류가 없습니다") Then
+                        count = 0
+                    End If
                 End If
             End If
-            Dim defaultName As String = $"{todayToken}_커넥터기반 속성값 검토 결과_{count}개.xlsx"
+
+            ' ✅ 기본 파일명: RVT 파일명 규칙 기반 + 고정 suffix + (n건)
+            Dim defaultName As String = BuildTradeReviewDefaultExcelName(rvtBaseName, count)
+            If String.IsNullOrWhiteSpace(defaultName) Then
+                defaultName = $"{todayToken}_커넥터기반 속성값 검토 결과_{count}개.xlsx"
+            End If
             Dim totalCount As Integer = If(totalRows, New List(Of Dictionary(Of String, Object))()).Count
             Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Reset(progressChannel)
             Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_INIT", "엑셀 워크북 준비", 0, totalCount, Nothing, True)
@@ -1295,6 +1317,87 @@ Namespace UI.Hub
         End Function
 
 #End Region
+
+#Region "공종검토 엑셀 기본 파일명 유틸(공통)"
+
+        ' 요구사항:
+        ' - RVT 파일명에서 prefix 추출:
+        '   앞에서부터 3번째 "_"까지 + (그 다음 토큰에서 첫 "-숫자"까지)
+        '   예) P4-2_FBELO_FFP_4F-0-김경연_2026-02-24  →  P4-2_FBELO_FFP_4F-0
+        ' - suffix 고정: -06_공종검토_0차_
+        ' - (n건) 은 "최종 엑셀에 실제로 저장되는 오류 행 수"
+        ' - 규칙 불일치 시: "{원본파일명}_공종검토_(n건).xlsx"
+        Private Shared Function BuildTradeReviewDefaultExcelName(rvtBaseName As String, issueCount As Integer) As String
+            Dim n As Integer = If(issueCount < 0, 0, issueCount)
+
+            Dim prefix As String = ExtractTradePrefix(rvtBaseName)
+            Dim baseName As String
+
+            If Not String.IsNullOrWhiteSpace(prefix) Then
+                baseName = $"{prefix}-06_공종검토_0차_({n}건)"
+            ElseIf Not String.IsNullOrWhiteSpace(rvtBaseName) Then
+                baseName = $"{rvtBaseName}_공종검토_({n}건)"
+            Else
+                Return String.Empty
+            End If
+
+            baseName = SanitizeFileName(baseName)
+            If String.IsNullOrWhiteSpace(baseName) Then baseName = "Export"
+
+            If baseName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) Then
+                Return baseName
+            End If
+            Return baseName & ".xlsx"
+        End Function
+
+        Private Shared Function ExtractTradePrefix(rvtBaseName As String) As String
+            If String.IsNullOrWhiteSpace(rvtBaseName) Then Return String.Empty
+
+            Dim parts As String() = rvtBaseName.Split("_"c)
+            If parts Is Nothing OrElse parts.Length < 4 Then Return String.Empty
+
+            Dim token3 As String = If(parts(3), "").Trim()
+            If String.IsNullOrWhiteSpace(token3) Then Return String.Empty
+
+            ' token3에서 "첫 -숫자"까지 추출 (예: "4F-0-김경연" → "4F-0", "7F-0-06" → "7F-0")
+            Dim cut As Integer = -1
+            For i As Integer = 0 To token3.Length - 2
+                If token3(i) = "-"c AndAlso Char.IsDigit(token3(i + 1)) Then
+                    Dim j As Integer = i + 1
+                    While j < token3.Length AndAlso Char.IsDigit(token3(j))
+                        j += 1
+                    End While
+                    cut = j ' end(exclusive)
+                    Exit For
+                End If
+            Next
+
+            Dim token3Prefix As String = If(cut > 0, token3.Substring(0, cut), token3)
+
+            Return $"{parts(0)}_{parts(1)}_{parts(2)}_{token3Prefix}"
+        End Function
+
+        Private Shared Function SanitizeFileName(fileName As String) As String
+            If String.IsNullOrWhiteSpace(fileName) Then Return String.Empty
+            Dim s As String = fileName
+
+            Try
+                For Each ch In System.IO.Path.GetInvalidFileNameChars()
+                    s = s.Replace(ch, "_"c)
+                Next
+            Catch
+                ' ignore
+            End Try
+
+            s = s.Trim()
+            ' Windows에서 끝의 점/공백은 문제를 만들 수 있음
+            s = s.TrimEnd("."c)
+
+            Return s
+        End Function
+
+#End Region
+
 
     End Class
 End Namespace

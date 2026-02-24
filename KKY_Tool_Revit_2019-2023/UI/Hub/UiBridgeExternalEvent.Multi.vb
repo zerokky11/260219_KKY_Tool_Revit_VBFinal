@@ -1,5 +1,4 @@
-﻿
-Imports System
+﻿Imports System
 Imports System.Collections.Generic
 Imports System.Data
 Imports System.IO
@@ -478,20 +477,39 @@ NextItem:
             Dim table = BuildConnectorTableFromRows(headers, exportRows)
             ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
             If Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: 커넥터")
-            Dim issueCountForName As Integer = If(rows Is Nothing, 0, rows.Count)
-            Dim rvtBaseName As String = ""
+            Dim exportCount As Integer = 0
+            If exportRows IsNot Nothing Then exportCount = exportRows.Count
+
+            Dim baseRvtName As String = ""
             Try
-                For Each r In rows
-                    Dim f As String = SafeCellString(r, "File")
-                    If Not String.IsNullOrWhiteSpace(f) Then
-                        rvtBaseName = System.IO.Path.GetFileNameWithoutExtension(System.IO.Path.GetFileName(f.Trim()))
-                        Exit For
+                If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing AndAlso _multiRequest.RvtPaths.Count > 0 Then
+                    Dim firstPath As String = TryCast(_multiRequest.RvtPaths(0), String)
+                    If Not String.IsNullOrWhiteSpace(firstPath) Then
+                        baseRvtName = System.IO.Path.GetFileNameWithoutExtension(firstPath)
                     End If
-                Next
+                End If
+                If String.IsNullOrWhiteSpace(baseRvtName) Then
+                    Dim firstFile As String = Nothing
+                    If allFiles IsNot Nothing AndAlso allFiles.Count > 0 Then
+                        For Each fn As String In allFiles
+                            firstFile = fn
+                            Exit For
+                        Next
+                    End If
+                    If Not String.IsNullOrWhiteSpace(firstFile) Then
+                        baseRvtName = System.IO.Path.GetFileNameWithoutExtension(firstFile)
+                    End If
+                End If
             Catch
+                baseRvtName = ""
             End Try
-            Dim defaultName As String = BuildTradeReviewDefaultExcelName(rvtBaseName, issueCountForName)
-            Dim saved = ExcelCore.PickAndSaveXlsx("Connector Diagnostics", table, defaultName, doAutoFit, "hub:multi-progress", "connector")
+
+            Dim defaultFileName As String = BuildTradeReviewDefaultExcelName(baseRvtName, exportCount)
+            If String.IsNullOrWhiteSpace(defaultFileName) Then
+                defaultFileName = $"Connector_{Date.Now:yyyyMMdd_HHmm}.xlsx"
+            End If
+
+            Dim saved = ExcelCore.PickAndSaveXlsx("Connector Diagnostics", table, defaultFileName, doAutoFit, "hub:multi-progress", "connector")
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
             Else
