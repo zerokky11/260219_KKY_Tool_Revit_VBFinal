@@ -398,6 +398,7 @@ Namespace UI.Hub
                     exportRows = BuildEmptyConnectorRows()
                     mismatchCount = 0
                 End If
+                AppendNoIssueMessageRows(exportRows, _lastConnectorReviewParams)
 
                 Dim doAutoFit As Boolean = ParseExcelMode(payload)
                 Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Reset("connector:progress")
@@ -515,7 +516,54 @@ Namespace UI.Hub
             Next
             Return String.Empty
         End Function
+        ' 선택한 파라미터 중 "이슈 행이 0건"인 파라미터에 대해 안내행 1건을 추가한다.
+        ' - ParamCompare: "[Param] 파라미터에 대한 연속성 오류가 없습니다."
+        Private Sub AppendNoIssueMessageRows(exportRows As List(Of Dictionary(Of String, Object)),
+                                     reviewParams As List(Of String))
+            If reviewParams Is Nothing OrElse reviewParams.Count = 0 Then Return
 
+            If exportRows Is Nothing Then
+                exportRows = New List(Of Dictionary(Of String, Object))()
+            End If
+
+            ' 현재 exportRows에 이미 존재하는 ParamName 집합
+            Dim present As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            For Each r In exportRows
+                Dim p As String = ReadFieldInsensitive(r, "ParamName")
+                If Not String.IsNullOrWhiteSpace(p) Then
+                    present.Add(p.Trim())
+                End If
+            Next
+
+            ' exportRows가 "빈 결과용 placeholder"만 들어있는 경우(ParamName 전혀 없음)라면 제거
+            If present.Count = 0 AndAlso exportRows.Count > 0 Then
+                Dim onlyPlaceholder As Boolean =
+            exportRows.All(Function(r)
+                               Dim id1 = ReadFieldInsensitive(r, "Id1")
+                               Dim id2 = ReadFieldInsensitive(r, "Id2")
+                               Dim pn = ReadFieldInsensitive(r, "ParamName")
+                               Return String.IsNullOrWhiteSpace(id1) AndAlso
+                                      String.IsNullOrWhiteSpace(id2) AndAlso
+                                      String.IsNullOrWhiteSpace(pn)
+                           End Function)
+                If onlyPlaceholder Then exportRows.Clear()
+            End If
+
+            ' reviewParams 중 exportRows에 없는 항목마다 안내행 1개 추가
+            For Each raw In reviewParams
+                Dim name As String = If(raw, "").Trim()
+                If name = "" Then Continue For
+                If present.Contains(name) Then Continue For
+
+                Dim row As New Dictionary(Of String, Object)(StringComparer.OrdinalIgnoreCase)
+                row("ParamName") = name
+                row("Status") = "OK"
+                row("ParamCompare") = $"[{name}] 파라미터에 대한 연속성 오류가 없습니다."
+                exportRows.Add(row)
+
+                present.Add(name)
+            Next
+        End Sub
         Private Shared Function ParseExtraParams(raw As String) As List(Of String)
             Dim result As New List(Of String)()
             If String.IsNullOrWhiteSpace(raw) Then Return result
