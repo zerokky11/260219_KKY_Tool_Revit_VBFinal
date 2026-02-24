@@ -222,7 +222,7 @@ Namespace UI.Hub
                 Catch
                 End Try
 
-                Dim totalRows = BuildTotalRows(rows)
+                Dim totalRows = If(rows, New List(Of Dictionary(Of String, Object))()).Select(Function(r) CloneRow(r)).ToList()
                 Dim filteredRows = totalRows.Where(Function(r) ShouldIncludeRow(r)).ToList()
 
                 Dim mismatchAll = filteredRows.Where(Function(r) IsMismatchRow(r)).ToList()
