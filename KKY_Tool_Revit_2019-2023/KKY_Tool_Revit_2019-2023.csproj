@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>KKY_Tool_Revit</RootNamespace>
+    <AssemblyName>KKY_Tool_Revit</AssemblyName>
+    <Platforms>AnyCPU;x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>false</Deterministic>
+    <AddinYear Condition="'$(AddinYear)'==''">2019</AddinYear>
+    <OutputPath>bin\Rvt$(AddinYear)\net48\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <ProgramFilesPath>$([System.Environment]::GetEnvironmentVariable('ProgramFiles'))</ProgramFilesPath>
+    <RevitApiDirFromEnv>$([System.Environment]::GetEnvironmentVariable('REVIT_API_DIR_$(AddinYear)'))</RevitApiDirFromEnv>
+    <RevitApiDirCandidate0>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\Compile\$(AddinYear)addin'))</RevitApiDirCandidate0>
+    <RevitApiInstallCandidate0>$(ProgramFilesPath)\Autodesk\Revit $(AddinYear)</RevitApiInstallCandidate0>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RevitApiDir Condition="'$(RevitApiDirFromEnv)' != '' and Exists('$(RevitApiDirFromEnv)\RevitAPI.dll') and Exists('$(RevitApiDirFromEnv)\RevitAPIUI.dll')">$(RevitApiDirFromEnv)</RevitApiDir>
+    <RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiDirCandidate0)\RevitAPI.dll') and Exists('$(RevitApiDirCandidate0)\RevitAPIUI.dll')">$(RevitApiDirCandidate0)</RevitApiDir>
+    <RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiInstallCandidate0)\RevitAPI.dll') and Exists('$(RevitApiInstallCandidate0)\RevitAPIUI.dll')">$(RevitApiInstallCandidate0)</RevitApiDir>
+  </PropertyGroup>
+
+  <Target Name="CheckRevitApiDir" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(RevitApiDir)' == ''" Text="Revit API path not found. Configure REVIT_API_DIR_$(AddinYear) or install local API binaries." />
+  </Target>
+
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitApiDir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitApiDir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NPOI" Version="2.6.1" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2592.51" />
+  </ItemGroup>
+
+  
+
+  <ItemGroup>
+    <Content Include="Resources\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <TargetPath>Resources\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+    </Content>
+  </ItemGroup>
+</Project>
