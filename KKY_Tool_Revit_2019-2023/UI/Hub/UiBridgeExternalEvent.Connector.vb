@@ -36,6 +36,7 @@ Namespace UI.Hub
         Private _lastConnectorTol As Double = 1.0R
         Private _lastConnectorUnit As String = "inch"
         Private _lastConnectorParam As String = "Comments"
+        Private _lastConnectorReviewParams As List(Of String) = New List(Of String) From {"Comments"}
         Private _lastConnectorTargetFilter As String = String.Empty
         Private _lastConnectorExcludeEndDummy As Boolean = False
 
@@ -110,6 +111,8 @@ Namespace UI.Hub
                 Dim tol As Double = 1.0 ' 기본 1 inch
                 Dim unit As String = "inch"
                 Dim param As String = "Comments"
+                Dim paramsCsv As String = String.Empty
+                Dim paramsArray As List(Of String) = Nothing
                 Try
                     Dim vTol = GetProp(payload, "tol")
                     If vTol IsNot Nothing Then tol = Convert.ToDouble(vTol)
@@ -122,6 +125,34 @@ Namespace UI.Hub
                     Dim vParam = TryCast(GetProp(payload, "param"), String)
                     If Not String.IsNullOrEmpty(vParam) Then param = vParam
                 Catch : End Try
+                Try
+                    paramsCsv = TryCast(GetProp(payload, "paramsCsv"), String)
+                Catch
+                    paramsCsv = String.Empty
+                End Try
+                Try
+                    paramsArray = ParseParamsArray(GetProp(payload, "params"))
+                Catch
+                    paramsArray = Nothing
+                End Try
+
+                Dim paramCsvNormalized As String = NormalizeParamsCsv(paramsCsv)
+                If String.IsNullOrWhiteSpace(paramCsvNormalized) AndAlso paramsArray IsNot Nothing AndAlso paramsArray.Count > 0 Then
+                    paramCsvNormalized = NormalizeParamsCsv(String.Join(",", paramsArray))
+                End If
+                If String.IsNullOrWhiteSpace(paramCsvNormalized) Then
+                    paramCsvNormalized = NormalizeParamsCsv(param)
+                End If
+                If String.IsNullOrWhiteSpace(paramCsvNormalized) Then
+                    paramCsvNormalized = "Comments"
+                End If
+
+                Dim reviewParams As List(Of String) = ParseReviewParamsCsv(paramCsvNormalized)
+                If reviewParams Is Nothing OrElse reviewParams.Count = 0 Then
+                    reviewParams = New List(Of String) From {"Comments"}
+                End If
+                paramCsvNormalized = String.Join(",", reviewParams)
+
                 _connectorExtraParams = ParseExtraParams(TryCast(GetProp(payload, "extraParams"), String))
                 Try
                     Dim vFilter = TryCast(GetProp(payload, "targetFilter"), String)
@@ -139,13 +170,14 @@ Namespace UI.Hub
                 Catch
                     _connectorExcludeEndDummy = False
                 End Try
-                LogDebug($"[connector] 파라미터 파싱 완료 (tol={tol}, unit={unit}, param={param}, extra={String.Join(",", _connectorExtraParams)} )")
+                LogDebug($"[connector] 파라미터 파싱 완료 (tol={tol}, unit={unit}, param={param}, paramsCsv={paramCsvNormalized}, extra={String.Join(",", _connectorExtraParams)} )")
 
                 ' 직전 실행 단위 저장(엑셀 내보내기에서 기본값으로 사용)
                 _connectorUiUnit = NormalizeUiUnit(unit)
                 _lastConnectorTol = tol
                 _lastConnectorUnit = unit
                 _lastConnectorParam = param
+                _lastConnectorReviewParams = reviewParams
                 _lastConnectorTargetFilter = _connectorTargetFilter
                 _lastConnectorExcludeEndDummy = _connectorExcludeEndDummy
 
@@ -154,7 +186,7 @@ Namespace UI.Hub
                 Const PREVIEW_LIMIT As Integer = 150
                 Dim rows As List(Of Dictionary(Of String, Object)) = Nothing
                 Try
-                    rows = Services.ConnectorDiagnosticsService.Run(app, tol, unit, param, _connectorExtraParams, _connectorTargetFilter, _connectorExcludeEndDummy, AddressOf ReportConnectorProgress)
+                    rows = Services.ConnectorDiagnosticsService.Run(app, tol, unit, paramCsvNormalized, _connectorExtraParams, _connectorTargetFilter, _connectorExcludeEndDummy, AddressOf ReportConnectorProgress)
                 Catch ex As Exception
                     ' 네임스페이스 변동 대비 리플렉션 재시도
                     Try
@@ -166,11 +198,11 @@ Namespace UI.Hub
                                 Dim args As Object()
                                 Dim ps = m.GetParameters()
                                 If ps.Length >= 8 Then
-                                    args = New Object() {app, tol, unit, param, _connectorExtraParams, _connectorTargetFilter, _connectorExcludeEndDummy, CType(AddressOf ReportConnectorProgress, Action(Of Double, String))}
+                                    args = New Object() {app, tol, unit, paramCsvNormalized, _connectorExtraParams, _connectorTargetFilter, _connectorExcludeEndDummy, CType(AddressOf ReportConnectorProgress, Action(Of Double, String))}
                                 ElseIf ps.Length >= 6 Then
-                                    args = New Object() {app, tol, unit, param, _connectorExtraParams, CType(AddressOf ReportConnectorProgress, Action(Of Double, String))}
+                                    args = New Object() {app, tol, unit, paramCsvNormalized, _connectorExtraParams, CType(AddressOf ReportConnectorProgress, Action(Of Double, String))}
                                 Else
-                                    args = New Object() {app, tol, unit, param}
+                                    args = New Object() {app, tol, unit, paramCsvNormalized}
                                 End If
                                 rows = CType(m.Invoke(Nothing, args), List(Of Dictionary(Of String, Object)))
                             End If
@@ -228,7 +260,9 @@ Namespace UI.Hub
                         .previewCount = nearPreview.Count,
                         .hasMore = nearAll.Count > PREVIEW_LIMIT
                     },
-                    .extraParams = _connectorExtraParams
+                    .extraParams = _connectorExtraParams,
+                    .reviewParams = reviewParams,
+                    .paramsCsv = paramCsvNormalized
                 })
                 SendToWeb("connector:done", New With {
                     .rows = previewRows,
@@ -247,7 +281,9 @@ Namespace UI.Hub
                         .previewCount = nearPreview.Count,
                         .hasMore = nearAll.Count > PREVIEW_LIMIT
                     },
-                    .extraParams = _connectorExtraParams
+                    .extraParams = _connectorExtraParams,
+                    .reviewParams = reviewParams,
+                    .paramsCsv = paramCsvNormalized
                 })
                 LogDebug("[connector] 결과 전송 완료, connector:done emit")
                 LogDebug("[connector] HandleConnectorRun 정상 종료")
@@ -258,6 +294,44 @@ Namespace UI.Hub
                 SendToWeb("revit:error", New With {.message = "실행 실패: " & ex.Message})
             Finally
                 ReportConnectorProgress(0R, String.Empty)
+            End Try
+        End Sub
+
+        ' === connector:param-list ===
+        Private Sub HandleConnectorParamList(app As UIApplication, payload As Object)
+            Try
+                Dim uidoc = app.ActiveUIDocument
+                Dim doc = If(uidoc Is Nothing, Nothing, uidoc.Document)
+                If doc Is Nothing Then
+                    SendToWeb("connector:param-list:done", New With {.ok = False, .message = "활성 문서가 없습니다.", .params = New List(Of String)()})
+                    Return
+                End If
+
+                Dim names As New List(Of String)()
+                Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+                Try
+                    Dim bindings = doc.ParameterBindings
+                    If bindings IsNot Nothing Then
+                        Dim it = bindings.ForwardIterator()
+                        If it IsNot Nothing Then
+                            it.Reset()
+                            While it.MoveNext()
+                                Dim def = TryCast(it.Key, Definition)
+                                If def Is Nothing Then Continue While
+                                Dim name As String = If(def.Name, String.Empty).Trim()
+                                If name = "" Then Continue While
+                                If seen.Add(name) Then names.Add(name)
+                            End While
+                        End If
+                    End If
+                Catch
+                End Try
+
+                names.Sort(StringComparer.OrdinalIgnoreCase)
+                SendToWeb("connector:param-list:done", New With {.ok = True, .params = names})
+            Catch ex As Exception
+                SendToWeb("connector:param-list:done", New With {.ok = False, .message = ex.Message, .params = New List(Of String)()})
             End Try
         End Sub
 
@@ -342,7 +416,7 @@ Namespace UI.Hub
                     rvtBaseName = ""
                 End Try
 
-                Dim saved As String = SaveRowsToExcel(exportRows, mismatchCount, _connectorExtraParams, doAutoFit, "connector:progress", uiUnit, rvtBaseName)
+                Dim saved As String = SaveRowsToExcel(exportRows, mismatchCount, _connectorExtraParams, doAutoFit, "connector:progress", uiUnit, rvtBaseName, _lastConnectorReviewParams)
 
                 SendToWeb("connector:saved", New With {.path = saved})
 
@@ -454,6 +528,55 @@ Namespace UI.Hub
                 If seen.Add(name) Then result.Add(name)
             Next
             Return result
+        End Function
+
+        Private Shared Function ParseParamsArray(raw As Object) As List(Of String)
+            Dim result As New List(Of String)()
+            If raw Is Nothing Then Return result
+
+            Dim list = TryCast(raw, IEnumerable(Of Object))
+            If list IsNot Nothing Then
+                For Each item In list
+                    If item Is Nothing Then Continue For
+                    Dim name As String = item.ToString()
+                    If String.IsNullOrWhiteSpace(name) Then Continue For
+                    result.Add(name)
+                Next
+                Return result
+            End If
+
+            Dim listStr = TryCast(raw, IEnumerable(Of String))
+            If listStr IsNot Nothing Then
+                For Each name In listStr
+                    If String.IsNullOrWhiteSpace(name) Then Continue For
+                    result.Add(name)
+                Next
+            End If
+
+            Return result
+        End Function
+
+        Private Shared Function ParseReviewParamsCsv(paramCsv As String) As List(Of String)
+            Dim normalized As String = NormalizeParamsCsv(paramCsv)
+            Dim result As New List(Of String)()
+            If String.IsNullOrWhiteSpace(normalized) Then Return result
+            For Each token In normalized.Split(","c)
+                Dim name As String = If(token, String.Empty).Trim()
+                If name = "" Then Continue For
+                result.Add(name)
+            Next
+            Return result
+        End Function
+
+        Private Shared Function NormalizeParamsCsv(paramCsv As String) As String
+            Dim tokens As New List(Of String)()
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            For Each raw In If(paramCsv, String.Empty).Split(","c)
+                Dim name As String = If(raw, String.Empty).Trim()
+                If name = "" Then Continue For
+                If seen.Add(name) Then tokens.Add(name)
+            Next
+            Return String.Join(",", tokens)
         End Function
 
         Private Shared Function NormalizeUiUnit(raw As String) As String
@@ -631,7 +754,8 @@ Namespace UI.Hub
                                          Optional doAutoFit As Boolean = False,
                                          Optional progressChannel As String = Nothing,
                                          Optional uiUnit As String = "inch",
-                                         Optional rvtBaseName As String = "") As String
+                                         Optional rvtBaseName As String = "",
+                                         Optional reviewParams As List(Of String) = Nothing) As String
             Dim todayToken As String = Date.Now.ToString("yyMMdd")
 
             ' ✅ 파일명 건수는 "최종 엑셀에 실제로 저장되는 오류 행 수" 기준으로 계산
@@ -671,24 +795,11 @@ Namespace UI.Hub
                     Dim headersTotal = BuildHeaders(extrasHeaders)
                     Dim totalBase = totalRows.Select(Function(r) StripExtras(r, extrasHeaders)).ToList()
 
-                    Dim dt As DataTable = BuildConnectorExportDataTable(headersTotal, totalBase, uiUnit)
-
-                    ' ✅ 최종 스키마 강제(헤더 꼬임 방지)
-                    NormalizeConnectorExportDataTableSchema(dt, extrasHeaders)
-                    LogConnectorExportHeaders(dt)
-                    If dt.Rows.Count = 0 Then
-                        Global.KKY_Tool_Revit.Infrastructure.ExcelCore.EnsureNoDataRow(dt, "검토 결과가 없습니다.")
-                    End If
+                    Dim sheetTables = BuildConnectorSheetTables(totalBase, headersTotal, extrasHeaders, uiUnit, reviewParams)
 
                     Dim savePath = sfd.FileName
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_WRITE", "엑셀 데이터 작성", totalCount, totalCount, Nothing, True)
-                    Global.KKY_Tool_Revit.Infrastructure.ExcelCore.SaveXlsx(savePath,
-                                                                            "Connector Diagnostics",
-                                                                            dt,
-                                                                            doAutoFit,
-                                                                            sheetKey:="connector",
-                                                                            progressKey:=progressChannel,
-                                                                            exportKind:="connector")
+                    SaveConnectorRowsMultiSheet(savePath, sheetTables, doAutoFit, progressChannel)
                     Global.KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey("connector", savePath, autoFit:=doAutoFit, excelMode:=If(doAutoFit, "normal", "fast"))
 
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_SAVE", "파일 저장 중", totalCount, totalCount, Nothing, True)
@@ -704,6 +815,70 @@ Namespace UI.Hub
                 Throw
             End Try
         End Function
+
+        Private Function BuildConnectorSheetTables(rows As List(Of Dictionary(Of String, Object)),
+                                                  headersTotal As List(Of String),
+                                                  extrasHeaders As List(Of String),
+                                                  uiUnit As String,
+                                                  reviewParams As List(Of String)) As List(Of KeyValuePair(Of String, DataTable))
+            Dim sheets As New List(Of KeyValuePair(Of String, DataTable))()
+            Dim baseRows = If(rows, New List(Of Dictionary(Of String, Object))())
+
+            Dim grouped As New Dictionary(Of String, List(Of Dictionary(Of String, Object)))(StringComparer.OrdinalIgnoreCase)
+            For Each row In baseRows
+                Dim paramName As String = ReadField(row, "ParamName")
+                If String.IsNullOrWhiteSpace(paramName) Then paramName = "Connector Diagnostics"
+                If Not grouped.ContainsKey(paramName) Then grouped(paramName) = New List(Of Dictionary(Of String, Object))()
+                grouped(paramName).Add(row)
+            Next
+
+            If grouped.Count = 0 Then
+                Dim defaultSheetName As String = "Connector Diagnostics"
+                If reviewParams IsNot Nothing AndAlso reviewParams.Count > 0 Then
+                    defaultSheetName = reviewParams(0)
+                End If
+                grouped(defaultSheetName) = New List(Of Dictionary(Of String, Object))()
+            End If
+
+            For Each kv In grouped
+                Dim dt As DataTable = BuildConnectorExportDataTable(headersTotal, kv.Value, uiUnit)
+                NormalizeConnectorExportDataTableSchema(dt, extrasHeaders)
+                LogConnectorExportHeaders(dt)
+                If dt.Rows.Count = 0 Then
+                    Global.KKY_Tool_Revit.Infrastructure.ExcelCore.EnsureNoDataRow(dt, "검토 결과가 없습니다.")
+                End If
+                sheets.Add(New KeyValuePair(Of String, DataTable)(SafeExcelSheetName(kv.Key), dt))
+            Next
+
+            Return sheets
+        End Function
+
+        Private Shared Function SafeExcelSheetName(raw As String) As String
+            Dim name As String = If(raw, String.Empty).Trim()
+            If name = "" Then name = "Connector Diagnostics"
+            Dim invalidChars As Char() = New Char() {"["c, "]"c, ":"c, "*"c, "?"c, "/"c, "\"c}
+            For Each ch In invalidChars
+                name = name.Replace(ch, "_"c)
+            Next
+            If name.Length > 31 Then name = name.Substring(0, 31)
+            If String.IsNullOrWhiteSpace(name) Then name = "Connector Diagnostics"
+            Return name
+        End Function
+
+        Private Shared Sub SaveConnectorRowsMultiSheet(savePath As String,
+                                                       sheetTables As List(Of KeyValuePair(Of String, DataTable)),
+                                                       doAutoFit As Boolean,
+                                                       progressChannel As String)
+            Dim tables = If(sheetTables, New List(Of KeyValuePair(Of String, DataTable))())
+            If tables.Count = 0 Then
+                Dim dt As New DataTable("Connector Diagnostics")
+                dt.Columns.Add("Id1", GetType(String))
+                Global.KKY_Tool_Revit.Infrastructure.ExcelCore.EnsureNoDataRow(dt, "검토 결과가 없습니다.")
+                tables.Add(New KeyValuePair(Of String, DataTable)("Connector Diagnostics", dt))
+            End If
+
+            Global.KKY_Tool_Revit.Infrastructure.ExcelCore.SaveXlsxMulti(savePath, tables, doAutoFit, progressChannel)
+        End Sub
 
         Private Shared Function BuildConnectorExportDataTable(headers As List(Of String),
                                                               rows As List(Of Dictionary(Of String, Object)),
