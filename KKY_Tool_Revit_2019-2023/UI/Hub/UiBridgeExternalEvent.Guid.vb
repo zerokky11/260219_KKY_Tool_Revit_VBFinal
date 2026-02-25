@@ -106,8 +106,8 @@ Namespace UI.Hub
                                                End Sub,
                                                includeFamily:=includeFamily,
                                                includeAnnotation:=includeAnnotation)
-                _guidProject = FilterIssueRowsCopy("guid", res.Project)
-                _guidFamilyDetail = FilterIssueRowsCopy("guid", res.FamilyDetail)
+                _guidProject = If(res.Project Is Nothing, Nothing, res.Project.Copy())
+                _guidFamilyDetail = If(res.FamilyDetail Is Nothing, Nothing, res.FamilyDetail.Copy())
                 _guidFamilyIndex = res.FamilyIndex
                 _guidRunId = res.RunId
                 _guidIncludeFamily = res.IncludeFamily

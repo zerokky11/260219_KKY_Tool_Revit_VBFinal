@@ -145,9 +145,9 @@ Namespace Services
                 End Try
             Next
 
-            ResultTableFilter.KeepOnlyIssues("guid", projectTable)
+            ' ResultTableFilter.KeepOnlyIssues("guid", projectTable)
             If includeFamily Then
-                ResultTableFilter.KeepOnlyIssues("guid", familyDetail)
+                ' ResultTableFilter.KeepOnlyIssues("guid", familyDetail)
 
                 Dim famSet As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
                 If familyDetail IsNot Nothing AndAlso familyDetail.Columns.Contains("FamilyName") Then
@@ -184,7 +184,7 @@ Namespace Services
             Catch
                 doAutoFit = False
             End Try
-            ResultTableFilter.KeepOnlyIssues("guid", table)
+            ' ResultTableFilter.KeepOnlyIssues("guid", table)
             ExcelCore.EnsureMessageRow(table, "오류가 없습니다.")
 
             Using sfd As New SaveFileDialog()
@@ -210,7 +210,7 @@ Namespace Services
                 doAutoFit = False
             End Try
             For Each kv In sheets
-                ResultTableFilter.KeepOnlyIssues("guid", kv.Value)
+                ' ResultTableFilter.KeepOnlyIssues("guid", kv.Value)
                 ExcelCore.EnsureMessageRow(kv.Value, "오류가 없습니다.")
             Next
 
@@ -233,7 +233,7 @@ Namespace Services
                 Next
             End If
 
-            ResultTableFilter.KeepOnlyIssues("guid", exportTable)
+            ' ResultTableFilter.KeepOnlyIssues("guid", exportTable)
 
             If exportTable.Columns.Contains("RvtPath") Then
                 exportTable.Columns.Remove("RvtPath")

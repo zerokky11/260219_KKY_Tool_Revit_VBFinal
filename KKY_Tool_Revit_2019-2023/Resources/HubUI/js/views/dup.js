@@ -31,10 +31,6 @@ export function renderDup(root) {
         background: color-mix(in oklab, var(--accent, #4c6fff) 85%, #ffffff 15%);
         color:#fff;
       }
-
-      /* Result list scroll: enable overflow on dup-body */
-      .dup-page { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-      .dup-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     `;
     document.head.appendChild(st);
   }
@@ -294,8 +290,9 @@ export function renderDup(root) {
     exportBtn.disabled = rows.length === 0;
     setLoading(false);
 
-    // 처음엔 앞쪽 10개 그룹만 펼쳐두기
-    expanded = new Set(groups.slice(0, 10).map(g => g.key));
+  
+    // 처음부터 전 그룹 펼치기
+expanded = new Set(groups.map(g => g.key));
     paintGroups();
 
     if (!rows.length) {

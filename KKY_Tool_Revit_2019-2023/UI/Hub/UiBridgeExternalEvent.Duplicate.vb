@@ -407,6 +407,7 @@ Namespace UI.Hub
             Catch
                 Return True
             End Try
+            If cat.Parent IsNot Nothing Then Return True
 
             ' 3) 참조/기준/선류 제외(요구사항)
             If TypeOf e Is CurveElement Then Return True          ' ModelLine/ReferenceLine/SketchLine 등
