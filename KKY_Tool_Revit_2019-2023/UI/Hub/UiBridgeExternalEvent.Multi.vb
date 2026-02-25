@@ -471,6 +471,19 @@ NextItem:
             If excludeEndDummy Then
                 exportRows = exportRows.Where(Function(r) Not ShouldExcludeEndDummyRow(r)).ToList()
             End If
+
+            ' ✅ 멀티 파라미터(콤마 입력) 지원:
+            ' - exportRows는 "이슈 행"만 포함되므로, 선택한 파라미터 중 이슈 0건인 항목은 엑셀에서 검토 여부를 알 수 없다.
+            ' - 따라서 멀티 파라미터(2개 이상)인 경우, 이슈 0건 파라미터마다 안내행 1건을 추가한다.
+            Dim reviewParams As List(Of String) = ParseMultiReviewParams(If(_multiRequest IsNot Nothing AndAlso _multiRequest.Connector IsNot Nothing, _multiRequest.Connector.Param, ""))
+            If reviewParams IsNot Nothing AndAlso reviewParams.Count >= 2 Then
+                Dim msgRows As List(Of Dictionary(Of String, Object)) = BuildMultiNoIssueMessageRows(exportRows, reviewParams)
+                If msgRows IsNot Nothing AndAlso msgRows.Count > 0 Then
+                    exportRows = msgRows.Concat(exportRows).ToList()
+                End If
+            End If
+
+
             Dim headers As List(Of String) = BuildConnectorHeaders(extras, uiUnit)
             HostLog("debug", "[multi][connector] export headers => " & String.Join(" | ", headers))
             SendToWeb("host:info", New With {.message = "[multi][connector] export headers => " & String.Join(" | ", headers)})
@@ -504,9 +517,36 @@ NextItem:
                 baseRvtName = ""
             End Try
 
-            Dim defaultFileName As String = BuildTradeReviewDefaultExcelName(baseRvtName, exportCount)
-            If String.IsNullOrWhiteSpace(defaultFileName) Then
-                defaultFileName = $"Connector_{Date.Now:yyyyMMdd_HHmm}.xlsx"
+            Dim defaultFileName As String = ""
+
+            Dim selectedCount As Integer = 0
+            Try
+                If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing Then
+                    selectedCount = _multiRequest.RvtPaths.Count
+                End If
+            Catch
+                selectedCount = 0
+            End Try
+
+            If selectedCount >= 2 Then
+                ' ✅ Multi RVT: [첫번째 파일이름]+nFile_공종검토
+                ' - 파일명이 규칙(ExtractTradePrefix)에 포함되지 않으면: Parameter 연속성검토_Selected n Files
+                Dim firstBase As String = If(baseRvtName, "").Trim()
+                Dim prefix As String = ExtractTradePrefix(firstBase)
+                If Not String.IsNullOrWhiteSpace(prefix) Then
+                    defaultFileName = SanitizeFileName($"{prefix}+{Math.Max(0, selectedCount - 1)}File_공종검토")
+                Else
+                    defaultFileName = SanitizeFileName($"Parameter 연속성검토_Selected {selectedCount} Files")
+                End If
+                If Not defaultFileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) Then
+                    defaultFileName &= ".xlsx"
+                End If
+            Else
+                ' ✅ Single RVT: 기존 규칙 유지
+                defaultFileName = BuildTradeReviewDefaultExcelName(baseRvtName, exportCount)
+                If String.IsNullOrWhiteSpace(defaultFileName) Then
+                    defaultFileName = $"Connector_{Date.Now:yyyyMMdd_HHmm}.xlsx"
+                End If
             End If
 
             Dim saved = ExcelCore.PickAndSaveXlsx("Connector Diagnostics", table, defaultFileName, doAutoFit, "hub:multi-progress", "connector")
@@ -886,6 +926,63 @@ NextItem:
                 dt.Rows.Add(dr)
             Next
             Return dt
+        End Function
+
+        ' Multi(다중 RVT)에서 Connector 옵션의 param이 "A,B"처럼 들어올 수 있어, CSV를 안전하게 파싱한다.
+        ' - trim / empty 제거 / (case-insensitive) 중복 제거 / 입력 순서 유지
+        Private Shared Function ParseMultiReviewParams(paramCsv As String) As List(Of String)
+            Dim result As New List(Of String)()
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            Dim raw As String = If(paramCsv, String.Empty)
+            Dim parts = raw.Split(New Char() {","c}, StringSplitOptions.None)
+            For Each p In parts
+                Dim name As String = If(p, "").Trim()
+                If name = "" Then Continue For
+                If seen.Add(name) Then
+                    result.Add(name)
+                End If
+            Next
+            Return result
+        End Function
+
+        ' Multi(다중 RVT) 엑셀 내보내기에서, 선택한 파라미터 중 "이슈 행이 0건"인 파라미터에 대해 안내행을 만든다.
+        ' - ParamCompare: "[Param] 파라미터에 대한 연속성 오류가 없습니다."
+        Private Shared Function BuildMultiNoIssueMessageRows(existingRows As List(Of Dictionary(Of String, Object)),
+                                                             reviewParams As List(Of String)) As List(Of Dictionary(Of String, Object))
+            Dim result As New List(Of Dictionary(Of String, Object))()
+            If reviewParams Is Nothing OrElse reviewParams.Count = 0 Then Return result
+
+            Dim present As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            If existingRows IsNot Nothing AndAlso existingRows.Count > 0 Then
+                For Each r In existingRows
+                    If r Is Nothing Then Continue For
+                    If r.ContainsKey("ParamName") AndAlso r("ParamName") IsNot Nothing Then
+                        Dim pn As String = r("ParamName").ToString().Trim()
+                        If pn <> "" Then present.Add(pn)
+                    End If
+                Next
+            End If
+
+            For Each raw In reviewParams
+                Dim name As String = If(raw, "").Trim()
+                If name = "" Then Continue For
+                If present.Contains(name) Then Continue For
+
+                Dim row As New Dictionary(Of String, Object)(StringComparer.OrdinalIgnoreCase)
+                row("File") = "(전체)"
+                row("ConnectionType") = "OK"
+                row("ParamName") = name
+                row("Status") = "OK"
+                row("Value1") = ""
+                row("Value2") = ""
+                row("ParamCompare") = $"[{name}] 파라미터에 대한 연속성 오류가 없습니다."
+                result.Add(row)
+
+                present.Add(name)
+            Next
+
+            Return result
         End Function
 
         Private Sub AppendMultiConnectorError(fileName As String, message As String)

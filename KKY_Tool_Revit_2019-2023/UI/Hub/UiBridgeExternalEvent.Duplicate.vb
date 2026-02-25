@@ -378,71 +378,74 @@ Namespace UI.Hub
 #Region "필터/유틸(물량 필터 강화)"
 
         ' ⭐ 실제 시공 물량으로 보는 객체만 남기기 위한 필터
+        ' ⭐ 모델링된 모든 요소 대상(주석/태그/참조/자동종속 제외)
         Private Shared Function ShouldSkipForQuantity(e As Element) As Boolean
+
             ' 0) 기본 예외: 널 / 임포트
             If e Is Nothing Then Return True
             If TypeOf e Is ImportInstance Then Return True
 
-            ' 1) 카테고리 기반 필터
+            ' 1) 뷰 전용(주석/태그/치수 등 대부분)
             Try
-                If e.Category Is Nothing Then Return True
-                If e.Category.CategoryType <> CategoryType.Model Then Return True
-
-                Dim n As String = If(e.Category.Name, "").ToLowerInvariant()
-
-                ' 뷰/표현/기준 관련
-                If n.Contains("view") OrElse n.Contains("viewport") Then Return True
-                If n.Contains("level") OrElse n.Contains("grid") Then Return True
-                If n.Contains("reference plane") OrElse n.Contains("work plane") Then Return True
-                If n.Contains("scope box") OrElse n.Contains("matchline") Then Return True
-                If n.Contains("section line") OrElse n.Contains("callout") Then Return True
-
-                ' 시트 / 선 / 스케치 / 영역 / 디테일 계열
-                If n.Contains("sheet") OrElse n.Contains("시트") Then Return True
-                If n.Contains("line") OrElse n.Contains("선") Then Return True
-                If n.Contains("sketch") OrElse n.Contains("area boundary") Then Return True
-                If n.Contains("filled region") OrElse n.Contains("detail item") Then Return True
-                If n.Contains("detail line") OrElse n.Contains("symbol") Then Return True
-
-                ' 텍스트/치수/태그
-                If n.Contains("text note") OrElse n.Contains("dimension") Then Return True
-                If n.Contains("room tag") OrElse n.Contains("space tag") OrElse n.Contains("area tag") Then Return True
-
-                ' 중심선 / 해석 모델
-                If n.Contains("center line") OrElse n.Contains("centerline") OrElse n.Contains("중심선") Then Return True
-                If n.StartsWith("analytical") Then Return True
+                If e.ViewSpecific Then Return True
             Catch
-                ' 카테고리 이름 읽다가 터지면 보수적으로 제외
+                ' 일부 요소는 ViewSpecific 접근 예외 가능 → 보수적으로 제외
                 Return True
             End Try
 
-            ' 2) 중첩 패밀리(패밀리 안 패밀리) → 상위만 남기고 서브는 제외
+            ' 2) 카테고리: Model만, 카테고리 없으면 제외
+            Dim cat As Category = Nothing
+            Try
+                cat = e.Category
+            Catch
+                Return True
+            End Try
+            If cat Is Nothing Then Return True
+
+            Try
+                If cat.CategoryType <> CategoryType.Model Then Return True
+            Catch
+                Return True
+            End Try
+
+            ' 3) 참조/기준/선류 제외(요구사항)
+            If TypeOf e Is CurveElement Then Return True          ' ModelLine/ReferenceLine/SketchLine 등
+            If TypeOf e Is ReferencePlane Then Return True
+            If TypeOf e Is Level Then Return True
+            If TypeOf e Is Grid Then Return True
+            If TypeOf e Is DatumPlane Then Return True
+
+            ' 4) 합의 4가지:
+            ' - Opening / ShaftOpening: 포함(여기서 제외하지 않음)
+            ' - Rebar: 제외
+            ' - Parts: 제외
+            ' - Rooms/Spaces/Areas: 제외
+            If TypeOf e Is Part Then Return True
+
+            If TypeOf e Is Autodesk.Revit.DB.Architecture.Room Then Return True
+            If TypeOf e Is Autodesk.Revit.DB.Mechanical.Space Then Return True
+            If TypeOf e Is Autodesk.Revit.DB.Area Then Return True
+
+            If TypeOf e Is Autodesk.Revit.DB.Structure.Rebar Then Return True
+            If TypeOf e Is Autodesk.Revit.DB.Structure.AreaReinforcement Then Return True
+            If TypeOf e Is Autodesk.Revit.DB.Structure.PathReinforcement Then Return True
+
+            ' 5) 자동 종속(호스트 의존)만 제외: Insulation/Lining
+            If TypeOf e Is Autodesk.Revit.DB.Plumbing.PipeInsulation Then Return True
+            If TypeOf e Is Autodesk.Revit.DB.Mechanical.DuctInsulation Then Return True
+            If TypeOf e Is Autodesk.Revit.DB.Mechanical.DuctLining Then Return True
+
+            ' 6) 중첩 패밀리(패밀리 안 패밀리) → 상위만 남기고 서브는 제외
             Dim fi = TryCast(e, FamilyInstance)
             If fi IsNot Nothing Then
                 Try
-                    ' 상위 패밀리(호스트)에 붙은 서브컴포넌트는 스킵
                     If fi.SuperComponent IsNot Nothing Then Return True
                     If _nestedSharedIds IsNot Nothing AndAlso _nestedSharedIds.Contains(fi.Id.IntegerValue) Then Return True
                 Catch
                 End Try
             End If
 
-            ' 3) 실제 3D 형상 여부 (솔리드)
-            Try
-                Dim opts As New Options() With {
-                    .ComputeReferences = False,
-                    .IncludeNonVisibleObjects = False
-                }
-
-                If Not HasPositiveSolid(e, opts) Then
-                    Return True
-                End If
-            Catch
-                ' 지오메트리 조회 중 예외 → 보수적으로 제외
-                Return True
-            End Try
-
-            ' 여기까지 살아남으면 물량 대상
+            ' ✅ Solid(Volume) 검사 제거: 커넥터/솔리드 유무 무관, 모델 요소면 대상
             Return False
         End Function
 

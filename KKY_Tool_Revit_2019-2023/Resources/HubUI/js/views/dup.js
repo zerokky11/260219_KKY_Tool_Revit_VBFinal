@@ -31,6 +31,10 @@ export function renderDup(root) {
         background: color-mix(in oklab, var(--accent, #4c6fff) 85%, #ffffff 15%);
         color:#fff;
       }
+
+      /* Result list scroll: enable overflow on dup-body */
+      .dup-page { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+      .dup-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
     `;
     document.head.appendChild(st);
   }

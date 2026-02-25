@@ -228,6 +228,13 @@ Namespace UI.Hub
                 Dim mismatchAll = filteredRows.Where(Function(r) IsMismatchRow(r)).ToList()
                 Dim nearAll = filteredRows.Where(Function(r) IsNearConnection(r)).ToList()
 
+
+                ' ✅ 멀티 파라미터 중 "이슈 0건" 파라미터도 검토 여부를 알 수 있도록 안내행 추가
+                Dim uiMsgRows = BuildNoIssueMessageRows(filteredRows, reviewParams)
+                If uiMsgRows IsNot Nothing AndAlso uiMsgRows.Count > 0 Then
+                    filteredRows = uiMsgRows.Concat(filteredRows).ToList()
+                End If
+
                 Dim mismatchPreview As List(Of Dictionary(Of String, Object)) = mismatchAll.Take(PREVIEW_LIMIT).ToList()
                 Dim nearPreview As List(Of Dictionary(Of String, Object)) = nearAll.Take(PREVIEW_LIMIT).ToList()
                 Dim previewRows As List(Of Dictionary(Of String, Object)) = filteredRows.Take(PREVIEW_LIMIT).ToList()
@@ -398,7 +405,23 @@ Namespace UI.Hub
                     exportRows = BuildEmptyConnectorRows()
                     mismatchCount = 0
                 End If
-                AppendNoIssueMessageRows(exportRows, _lastConnectorReviewParams)
+
+
+                ' ✅ 선택한 reviewParams 중 이슈가 0건인 파라미터는 "오류가 없습니다" 안내행을 1건 추가(엑셀에서 검토 여부 확인 목적)
+                Dim msgRows = BuildNoIssueMessageRows(exportRows, _lastConnectorReviewParams)
+                If msgRows IsNot Nothing AndAlso msgRows.Count > 0 Then
+                    ' placeholder(오류가 없습니다.)만 있을 경우 메시지 행으로 대체
+                    If exportRows IsNot Nothing AndAlso exportRows.Count = 1 Then
+                        Dim id1Text As String = ReadFieldInsensitive(exportRows(0), "Id1")
+                        If Not String.IsNullOrWhiteSpace(id1Text) AndAlso id1Text.Contains("오류가 없습니다") Then
+                            exportRows = msgRows
+                        Else
+                            exportRows = msgRows.Concat(exportRows).ToList()
+                        End If
+                    Else
+                        exportRows = msgRows.Concat(exportRows).ToList()
+                    End If
+                End If
 
                 Dim doAutoFit As Boolean = ParseExcelMode(payload)
                 Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Reset("connector:progress")
@@ -516,40 +539,37 @@ Namespace UI.Hub
             Next
             Return String.Empty
         End Function
-        ' 선택한 파라미터 중 "이슈 행이 0건"인 파라미터에 대해 안내행 1건을 추가한다.
+
+
+        ' 선택한 reviewParams 중 existingRows에 한 건도 없는 파라미터에 대해 안내행을 생성한다.
         ' - ParamCompare: "[Param] 파라미터에 대한 연속성 오류가 없습니다."
-        Private Sub AppendNoIssueMessageRows(exportRows As List(Of Dictionary(Of String, Object)),
-                                     reviewParams As List(Of String))
-            If reviewParams Is Nothing OrElse reviewParams.Count = 0 Then Return
+        Private Shared Function BuildNoIssueMessageRows(existingRows As List(Of Dictionary(Of String, Object)),
+                                                        reviewParams As List(Of String)) As List(Of Dictionary(Of String, Object))
+            Dim result As New List(Of Dictionary(Of String, Object))()
+            If reviewParams Is Nothing OrElse reviewParams.Count = 0 Then Return result
 
-            If exportRows Is Nothing Then
-                exportRows = New List(Of Dictionary(Of String, Object))()
-            End If
-
-            ' 현재 exportRows에 이미 존재하는 ParamName 집합
             Dim present As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
-            For Each r In exportRows
-                Dim p As String = ReadFieldInsensitive(r, "ParamName")
-                If Not String.IsNullOrWhiteSpace(p) Then
-                    present.Add(p.Trim())
-                End If
-            Next
 
-            ' exportRows가 "빈 결과용 placeholder"만 들어있는 경우(ParamName 전혀 없음)라면 제거
-            If present.Count = 0 AndAlso exportRows.Count > 0 Then
-                Dim onlyPlaceholder As Boolean =
-            exportRows.All(Function(r)
-                               Dim id1 = ReadFieldInsensitive(r, "Id1")
-                               Dim id2 = ReadFieldInsensitive(r, "Id2")
-                               Dim pn = ReadFieldInsensitive(r, "ParamName")
-                               Return String.IsNullOrWhiteSpace(id1) AndAlso
-                                      String.IsNullOrWhiteSpace(id2) AndAlso
-                                      String.IsNullOrWhiteSpace(pn)
-                           End Function)
-                If onlyPlaceholder Then exportRows.Clear()
+            If existingRows IsNot Nothing AndAlso existingRows.Count > 0 Then
+                ' "오류가 없습니다." placeholder 1행만 있는 경우는 존재 파라미터 없음으로 처리
+                If existingRows.Count = 1 Then
+                    Dim id1Text As String = ReadFieldInsensitive(existingRows(0), "Id1")
+                    If Not String.IsNullOrWhiteSpace(id1Text) AndAlso id1Text.Contains("오류가 없습니다") Then
+                        ' ignore
+                    Else
+                        For Each r In existingRows
+                            Dim p As String = ReadFieldInsensitive(r, "ParamName")
+                            If Not String.IsNullOrWhiteSpace(p) Then present.Add(p.Trim())
+                        Next
+                    End If
+                Else
+                    For Each r In existingRows
+                        Dim p As String = ReadFieldInsensitive(r, "ParamName")
+                        If Not String.IsNullOrWhiteSpace(p) Then present.Add(p.Trim())
+                    Next
+                End If
             End If
 
-            ' reviewParams 중 exportRows에 없는 항목마다 안내행 1개 추가
             For Each raw In reviewParams
                 Dim name As String = If(raw, "").Trim()
                 If name = "" Then Continue For
@@ -559,11 +579,14 @@ Namespace UI.Hub
                 row("ParamName") = name
                 row("Status") = "OK"
                 row("ParamCompare") = $"[{name}] 파라미터에 대한 연속성 오류가 없습니다."
-                exportRows.Add(row)
+                result.Add(row)
 
                 present.Add(name)
             Next
-        End Sub
+
+            Return result
+        End Function
+
         Private Shared Function ParseExtraParams(raw As String) As List(Of String)
             Dim result As New List(Of String)()
             If String.IsNullOrWhiteSpace(raw) Then Return result
@@ -821,6 +844,30 @@ Namespace UI.Hub
 
             ' ✅ 기본 파일명: RVT 파일명 규칙 기반 + 고정 suffix + (n건)
             Dim defaultName As String = BuildTradeReviewDefaultExcelName(rvtBaseName, count)
+
+            ' ✅ 멀티 RVT 실행 시(2개 이상) 기본 저장 파일명 규칙:
+            '   - 규칙(ExtractTradePrefix) 일치: [첫번째 파일 규칙 prefix]+nFile_공종검토 (n = 파일수-1)
+            '   - 규칙 불일치: Parameter 연속성검토_Selected n Files
+            Try
+                Dim filesInOrder As List(Of String) = CollectDistinctRvtFilesInOrder(totalRows)
+                If filesInOrder IsNot Nothing AndAlso filesInOrder.Count >= 2 Then
+                    Dim firstBase As String = System.IO.Path.GetFileNameWithoutExtension(filesInOrder(0))
+                    Dim prefix As String = ExtractTradePrefix(firstBase)
+                    If Not String.IsNullOrWhiteSpace(prefix) Then
+                        Dim addN As Integer = Math.Max(0, filesInOrder.Count - 1)
+                        defaultName = $"{prefix}+{addN}File_공종검토"
+                    Else
+                        defaultName = $"Parameter 연속성검토_Selected {filesInOrder.Count} Files"
+                    End If
+                    defaultName = SanitizeFileName(defaultName)
+                    If Not defaultName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) Then
+                        defaultName &= ".xlsx"
+                    End If
+                End If
+            Catch
+                ' ignore - fallback to existing naming
+            End Try
+
             If String.IsNullOrWhiteSpace(defaultName) Then
                 defaultName = $"{todayToken}_커넥터기반 속성값 검토 결과_{count}개.xlsx"
             End If
@@ -1550,6 +1597,24 @@ Namespace UI.Hub
         ' - suffix 고정: -06_공종검토_0차_
         ' - (n건) 은 "최종 엑셀에 실제로 저장되는 오류 행 수"
         ' - 규칙 불일치 시: "{원본파일명}_공종검토_(n건).xlsx"
+
+        ' totalRows의 "File" 컬럼에서 RVT 파일명을 입력 순서대로 중복 제거하여 수집한다.
+        Private Shared Function CollectDistinctRvtFilesInOrder(rows As List(Of Dictionary(Of String, Object))) As List(Of String)
+            Dim result As New List(Of String)()
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            If rows Is Nothing Then Return result
+
+            For Each r In rows
+                Dim f As String = ReadFieldInsensitive(r, "File")
+                If String.IsNullOrWhiteSpace(f) Then Continue For
+                f = f.Trim()
+                If seen.Add(f) Then result.Add(f)
+            Next
+
+            Return result
+        End Function
+
         Private Shared Function BuildTradeReviewDefaultExcelName(rvtBaseName As String, issueCount As Integer) As String
             Dim n As Integer = If(issueCount < 0, 0, issueCount)
 
