@@ -1,4 +1,4 @@
-Imports System
+﻿Imports System
 Imports System.Collections
 Imports System.Collections.Generic
 Imports System.Data
@@ -1123,35 +1123,54 @@ Namespace Services
 
             ' 복합 패밀리(상위) 목록 (리포트용)
             Dim compositeFamilyNames As New List(Of String)(parentToChildren.Keys)
+            '----- 2. 그래프를 레벨(최하위 → 상위)로 분해 -----
+            ' 순서 고정:
+            '   1) 최하위(leaf)만 처리/로드
+            '   2) 다음 레벨(자식이 모두 처리된 부모) 처리/로드
+            '   3) 반복
+            Dim levels As New List(Of List(Of String))()
+            Dim remaining As New HashSet(Of String)(allTargetNames, StringComparer.OrdinalIgnoreCase)
 
-            '----- 2. 그래프를 하위 → 상위 순으로 정렬 (DFS, 이름 기준) -----
-            Dim order As New List(Of String)()
-            Dim mark As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase) ' 0:미방문,1:방문중,2:완료
+            While remaining.Count > 0
+                Dim level As New List(Of String)()
 
-            Dim dfs As Action(Of String) =
-                Sub(name As String)
-                    Dim st As Integer = 0
-                    If mark.TryGetValue(name, st) Then
-                        If st = 2 Then Return
-                        If st = 1 Then
-                            ' 순환 구조가 있다면 더 들어가지 않고 끊음
-                            Return
+                For Each nm In remaining.ToList()
+                    Dim childs As HashSet(Of String) = Nothing
+                    If (Not parentToChildren.TryGetValue(nm, childs)) OrElse childs Is Nothing OrElse childs.Count = 0 Then
+                        level.Add(nm)
+                    Else
+                        Dim hasChildInRemaining As Boolean = False
+                        For Each cn In childs
+                            If remaining.Contains(cn) Then
+                                hasChildInRemaining = True
+                                Exit For
+                            End If
+                        Next
+                        If Not hasChildInRemaining Then
+                            level.Add(nm)
                         End If
                     End If
+                Next
 
-                    mark(name) = 1
-                    Dim childs As HashSet(Of String) = Nothing
-                    If parentToChildren.TryGetValue(name, childs) Then
-                        For Each cn In childs
-                            dfs(cn)
-                        Next
-                    End If
-                    mark(name) = 2
-                    order.Add(name)   ' 자식 먼저 처리 후 자기 자신 ⇒ 하위 → 상위
-                End Sub
+                If level.Count = 0 Then
+                    ' 순환 구조 등으로 leaf가 안 잡히는 경우: 남은 것을 한 레벨로 처리하고 종료
+                    level.AddRange(remaining)
+                End If
 
-            For Each name In allTargetNames
-                dfs(name)
+                level = level.Distinct(StringComparer.OrdinalIgnoreCase).
+                              OrderBy(Function(s) s, StringComparer.OrdinalIgnoreCase).
+                              ToList()
+
+                levels.Add(level)
+
+                For Each nm In level
+                    remaining.Remove(nm)
+                Next
+            End While
+
+            Dim order As New List(Of String)()
+            For Each lv In levels
+                order.AddRange(lv)
             Next
 
             Dim totalToProcess As Integer = order.Count
@@ -1174,129 +1193,76 @@ Namespace Services
             Dim lastErrorMessage As String = String.Empty
             reporter.Report("APPLY", 0.0R, 0, totalToProcess, "파라미터 적용 준비", String.Empty, True)
 
-            Using tgAll As New TransactionGroup(doc, "KKY Shared Param Propagate")
-                tgAll.Start()
+            ' (중요) 전체 TransactionGroup 으로 묶어 RollBack 하면,
+            ' 중간에 하나라도 오류가 나면 "추가/로드가 전부 안 된 것처럼" 보이게 된다.
+            ' 따라서 패밀리 단위로만 트랜잭션/로드를 커밋하고, 오류는 수집만 한다.
+            Dim hadAnyError As Boolean = False
+
+            ' 하위 → 상위 1패스 (레벨 순서 보장: DFS order는 자식 먼저 처리)
+            applyIndex = 0
+            For Each famName In order
+                Dim famId As ElementId = Nothing
+                If Not nameToFamilyId.TryGetValue(famName, famId) Then
+                    famId = FindFamilyIdByName(doc, famName)
+                    If famId IsNot Nothing Then nameToFamilyId(famName) = famId
+                End If
+
+                Dim isParent As Boolean = parentToChildren.ContainsKey(famName)
+                Dim isChild As Boolean = childNames.Contains(famName)
+
                 Try
-
-                    ' Pass 1) 파라미터 추가 + 프로젝트 로드 (하위 → 상위)
-                    applyIndex = 0
-                    For Each famName In order
-                        Dim famId As ElementId = Nothing
-                        If Not nameToFamilyId.TryGetValue(famName, famId) Then
-                            famId = FindFamilyIdByName(doc, famName)
-                            If famId IsNot Nothing Then nameToFamilyId(famName) = famId
-                        End If
-
-                        Dim isParent As Boolean = parentToChildren.ContainsKey(famName)
-                        Dim isChild As Boolean = childNames.Contains(famName)
-
-                        Try
-                            ProcessFamilyBottomUp(doc,
-                                                  famId,
-                                                  famName,
-                                                  extDefs,
-                                                  paramNames,
-                                                  parentToChildren,
-                                                  excludeDummy,
-                                                  chosenIsInstance,
-                                                  chosenPG,
-                                                  isParent,
-                                                  isChild,
-                                                  addedHost,
-                                                  addedChild,
-                                                  linkCnt,
-                                                  verifyOk,
-                                                  verifyFail,
-                                                  skipTotal,
-                                                  parentFails,
-                                                  childFails,
-                                                  skips,
-                                                  compositeSuccessCount,
-                                                  nameToFamilyId,
-                                                  False,
-                                                  publishedRfaPathByName)
-                        Catch ex As Exception
-                            lastErrorMessage = MakePhaseError("APPLY", famName, famId, ex.Message)
-                            Throw
-                        End Try
-
-                        applyIndex += 1
-                        reporter.Report("APPLY",
-                                        If(totalToProcess = 0, 1.0R, CDbl(applyIndex) / CDbl(Math.Max(1, totalToProcess))),
-                                        applyIndex,
-                                        totalToProcess,
-                                        "파라미터 추가/로드 중",
-                                        famName)
-                    Next
-
-                    ' Pass 2) 상위 패밀리만 연동 + 프로젝트 로드 (하위 → 상위)
-                    Dim totalParentsToProcess As Integer = compositeFamilyNames.Count
-                    Dim parentIndex As Integer = 0
-
-                    For Each famName In order
-                        If Not parentToChildren.ContainsKey(famName) Then
-                            Continue For
-                        End If
-
-                        Dim famId As ElementId = Nothing
-                        If Not nameToFamilyId.TryGetValue(famName, famId) Then
-                            famId = FindFamilyIdByName(doc, famName)
-                            If famId IsNot Nothing Then nameToFamilyId(famName) = famId
-                        End If
-
-                        Dim isParent As Boolean = True
-                        Dim isChild As Boolean = childNames.Contains(famName)
-
-                        Try
-                            ProcessFamilyBottomUp(doc,
-                                                  famId,
-                                                  famName,
-                                                  extDefs,
-                                                  paramNames,
-                                                  parentToChildren,
-                                                  excludeDummy,
-                                                  chosenIsInstance,
-                                                  chosenPG,
-                                                  isParent,
-                                                  isChild,
-                                                  addedHost,
-                                                  addedChild,
-                                                  linkCnt,
-                                                  verifyOk,
-                                                  verifyFail,
-                                                  skipTotal,
-                                                  parentFails,
-                                                  childFails,
-                                                  skips,
-                                                  compositeSuccessCount,
-                                                  nameToFamilyId,
-                                                  True,
-                                                  publishedRfaPathByName)
-                        Catch ex As Exception
-                            lastErrorMessage = MakePhaseError("APPLY", famName, famId, ex.Message)
-                            Throw
-                        End Try
-
-                        parentIndex += 1
-                        reporter.Report("APPLY",
-                                        If(totalParentsToProcess = 0, 1.0R, CDbl(parentIndex) / CDbl(Math.Max(1, totalParentsToProcess))),
-                                        parentIndex,
-                                        totalParentsToProcess,
-                                        "파라미터 연동 중",
-                                        famName)
-                    Next
-
-                    tgAll.Assimilate()
+                    ' doAssociate:=True 로 실행하면,
+                    ' - 자식이 있는 패밀리는 (1) 자식 최신본 재로드 → (2) 연동 → (3) 프로젝트 로드
+                    ' - 자식이 없는 패밀리는 파라미터 추가 후 바로 프로젝트 로드
+                    ProcessFamilyBottomUp(doc,
+                                          famId,
+                                          famName,
+                                          extDefs,
+                                          paramNames,
+                                          parentToChildren,
+                                          excludeDummy,
+                                          chosenIsInstance,
+                                          chosenPG,
+                                          isParent,
+                                          isChild,
+                                          addedHost,
+                                          addedChild,
+                                          linkCnt,
+                                          verifyOk,
+                                          verifyFail,
+                                          skipTotal,
+                                          parentFails,
+                                          childFails,
+                                          skips,
+                                          compositeSuccessCount,
+                                          nameToFamilyId,
+                                          True,
+                                          publishedRfaPathByName)
                 Catch ex As Exception
-                    fatalEx = ex
-                    Try : tgAll.RollBack() : Catch : End Try
+                    hadAnyError = True
+                    lastErrorMessage = MakePhaseError("APPLY", famName, famId, ex.Message)
+                    If isParent Then
+                        parentFails.Add(lastErrorMessage)
+                    ElseIf isChild Then
+                        childFails.Add(lastErrorMessage)
+                    Else
+                        parentFails.Add(lastErrorMessage)
+                    End If
                 End Try
-            End Using
+
+                applyIndex += 1
+                reporter.Report("APPLY",
+                                If(totalToProcess = 0, 1.0R, CDbl(applyIndex) / CDbl(Math.Max(1, totalToProcess))),
+                                applyIndex,
+                                totalToProcess,
+                                "파라미터 추가/연동/로드 중",
+                                famName)
+            Next
 
             reporter.Report("SAVE", 1.0R, applyIndex, totalToProcess, "결과 저장/정리 중", String.Empty, True)
 
-            If fatalEx IsNot Nothing Then
-                result.Message = fatalEx.Message
+            If hadAnyError Then
+                result.Message = If(String.IsNullOrWhiteSpace(lastErrorMessage), "오류가 발생했습니다.", lastErrorMessage)
                 Return RunStatus.Failed
             End If
 
@@ -1679,23 +1645,27 @@ Namespace Services
 #End If
 
             Dim findByName As Func(Of FamilyParameter) =
-        Function()
-            Return fm.Parameters.Cast(Of FamilyParameter)().
-                FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Definition IsNot Nothing AndAlso
-                                           String.Equals((If(p.Definition.Name, String.Empty)).Trim(), (If(extDef.Name, String.Empty)).Trim(), StringComparison.OrdinalIgnoreCase))
-        End Function
+                Function()
+                    Return fm.Parameters.Cast(Of FamilyParameter)().
+                        FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Definition IsNot Nothing AndAlso
+                                                   String.Equals((If(p.Definition.Name, String.Empty)).Trim(),
+                                                                 (If(extDef.Name, String.Empty)).Trim(),
+                                                                 StringComparison.OrdinalIgnoreCase))
+                End Function
 
             Dim findByGuid As Func(Of FamilyParameter) =
-        Function()
-            Try
-                Dim g As Guid = extDef.GUID
-                If g = Guid.Empty Then Return Nothing
-                Return fm.Parameters.Cast(Of FamilyParameter)().
-                    FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.IsShared AndAlso p.GUID = g)
-            Catch
-                Return Nothing
-            End Try
-        End Function
+                Function()
+                    Try
+                        Dim g As Guid = extDef.GUID
+                        If g = Guid.Empty Then Return Nothing
+                        Return fm.Parameters.Cast(Of FamilyParameter)().
+                            FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.IsShared AndAlso p.GUID = g)
+                    Catch
+                        Return Nothing
+                    End Try
+                End Function
+
+
 
             Dim isOk As Func(Of FamilyParameter, Boolean) =
         Function(p As FamilyParameter)

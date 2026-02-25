@@ -627,18 +627,15 @@ Namespace UI.Hub
             Return result
         End Function
 
-        Friend Shared Function ParseReviewParamsCsv(paramCsv As String) As List(Of String)
+        Private Shared Function ParseReviewParamsCsv(paramCsv As String) As List(Of String)
             Dim normalized As String = NormalizeParamsCsv(paramCsv)
             Dim result As New List(Of String)()
             If String.IsNullOrWhiteSpace(normalized) Then Return result
-
-            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
             For Each token In normalized.Split(","c)
                 Dim name As String = If(token, String.Empty).Trim()
                 If name = "" Then Continue For
-                If seen.Add(name) Then result.Add(name)
+                result.Add(name)
             Next
-
             Return result
         End Function
 
