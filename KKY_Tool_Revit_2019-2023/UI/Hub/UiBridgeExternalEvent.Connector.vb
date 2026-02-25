@@ -1037,7 +1037,7 @@ Namespace UI.Hub
                 tables.Add(New KeyValuePair(Of String, DataTable)("Connector Diagnostics", dt))
             End If
 
-            Global.KKY_Tool_Revit.Infrastructure.ExcelCore.SaveXlsxMulti(savePath, tables, doAutoFit, progressChannel)
+            Global.KKY_Tool_Revit.Infrastructure.ExcelCore.SaveXlsxMulti(savePath, tables, doAutoFit, progressChannel, sheetKeyOverride:="connector", exportKind:="connector")
         End Sub
 
         Private Shared Function BuildConnectorExportDataTable(headers As List(Of String),

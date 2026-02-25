@@ -74,7 +74,9 @@ Namespace Infrastructure
         Public Sub SaveXlsxMulti(filePath As String,
                                  sheets As IList(Of KeyValuePair(Of String, DataTable)),
                                  Optional autoFit As Boolean = False,
-                                 Optional progressKey As String = Nothing)
+                                 Optional progressKey As String = Nothing,
+                                 Optional sheetKeyOverride As String = Nothing,
+                                 Optional exportKind As String = Nothing)
 
             If String.IsNullOrWhiteSpace(filePath) Then Throw New ArgumentNullException(NameOf(filePath))
             If sheets Is Nothing OrElse sheets.Count = 0 Then Throw New ArgumentException("Sheets is empty.", NameOf(sheets))
@@ -96,7 +98,8 @@ Namespace Infrastructure
                         EnsureNoDataRow(table)
                     End If
                     Dim sheet = wb.CreateSheet(safe)
-                    WriteTableToSheet(wb, sheet, safe, table, sheetKey:=name, autoFit:=autoFit, progressKey:=progressKey, exportKind:=Nothing)
+                    Dim keyForStyle As String = If(String.IsNullOrWhiteSpace(sheetKeyOverride), name, sheetKeyOverride)
+                    WriteTableToSheet(wb, sheet, safe, table, sheetKey:=keyForStyle, autoFit:=autoFit, progressKey:=progressKey, exportKind:=exportKind)
                 Next
 
                 Using fs As New FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None)
