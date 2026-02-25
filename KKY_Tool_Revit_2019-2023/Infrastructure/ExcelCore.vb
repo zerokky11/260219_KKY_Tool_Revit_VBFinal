@@ -32,14 +32,16 @@ Namespace Infrastructure
         Public Function PickAndSaveXlsxMulti(sheets As IList(Of KeyValuePair(Of String, DataTable)),
                                              defaultFileName As String,
                                              Optional autoFit As Boolean = False,
-                                             Optional progressKey As String = Nothing) As String
+                                             Optional progressKey As String = Nothing,
+                                             Optional sheetKeyOverride As String = Nothing,
+                                             Optional exportKind As String = Nothing) As String
 
             If sheets Is Nothing OrElse sheets.Count = 0 Then Throw New ArgumentException("Sheets is empty.", NameOf(sheets))
 
             Dim path = PickSavePath("Excel Workbook (*.xlsx)|*.xlsx", defaultFileName, "엑셀 저장")
             If String.IsNullOrWhiteSpace(path) Then Return ""
 
-            SaveXlsxMulti(path, sheets, autoFit, progressKey)
+            SaveXlsxMulti(path, sheets, autoFit, progressKey, sheetKeyOverride:=sheetKeyOverride, exportKind:=exportKind)
             Return path
         End Function
 

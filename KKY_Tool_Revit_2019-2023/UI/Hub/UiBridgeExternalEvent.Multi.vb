@@ -574,7 +574,7 @@ NextItem:
                     sheetList.Add(New KeyValuePair(Of String, DataTable)(baseName, table))
                 Next
 
-                saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, defaultFileName, doAutoFit, "hub:multi-progress")
+                saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, defaultFileName, doAutoFit, "hub:multi-progress", sheetKeyOverride:="connector", exportKind:="connector")
             Else
                 ' 단일 파일(기존 동작)
                 Dim table = BuildConnectorTableFromRows(headers, issueRows)

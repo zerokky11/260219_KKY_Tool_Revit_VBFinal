@@ -98,28 +98,78 @@ Namespace Services
             End Using
         End Sub
 
-        ' LoadFamily는 트랜잭션 밖에서 호출
-        Public Sub SafeLoadFamily(sourceFamDoc As Document, targetDoc As Document, Optional label As String = "LoadFamily")
-            If targetDoc Is Nothing Then Throw New ArgumentNullException(NameOf(targetDoc))
-            If targetDoc.IsModifiable Then
-                Throw New InvalidOperationException("Target document has an open transaction. Close it before LoadFamily.")
-            End If
 
-            Try
-                If sourceFamDoc IsNot Nothing AndAlso sourceFamDoc.IsModified Then
-                    If Not String.IsNullOrEmpty(sourceFamDoc.PathName) Then
-                        sourceFamDoc.Save()
-                    End If
-                End If
-            Catch
-                ' 저장 실패는 무시 (로드 자체는 시도)
-            End Try
+        ' LoadFamily는 반드시 트랜잭션 내에서 호출되어야 함.
+        Public Sub SafeLoadFamily(sourceFamDoc As Document, targetDoc As Document, Optional label As String = "LoadFamily")
+            If sourceFamDoc Is Nothing Then Throw New ArgumentNullException(NameOf(sourceFamDoc))
+            If targetDoc Is Nothing Then Throw New ArgumentNullException(NameOf(targetDoc))
 
             Dim opts As New FamilyLoadOptionsAllOverwrite()
-            sourceFamDoc.LoadFamily(targetDoc, opts)
+
+            If targetDoc.IsModifiable Then
+                sourceFamDoc.LoadFamily(targetDoc, opts)
+            Else
+                WithTxn(targetDoc, label,
+                    Sub()
+                        sourceFamDoc.LoadFamily(targetDoc, opts)
+                    End Sub)
+            End If
 
             Try : targetDoc.Regenerate() : Catch : End Try
         End Sub
+
+        Public Function SaveAsTempRfa(famDoc As Document, famName As String) As String
+            If famDoc Is Nothing Then Throw New ArgumentNullException(NameOf(famDoc))
+
+            Dim baseDir As String = Path.Combine(Path.GetTempPath(), "KKY_Tool_Revit_ParamProp")
+            If Not Directory.Exists(baseDir) Then
+                Directory.CreateDirectory(baseDir)
+            End If
+
+            Dim safeName As String = If(famName, String.Empty)
+            safeName = safeName.Trim()
+            If safeName.Length = 0 Then safeName = "Family"
+
+            For Each ch As Char In Path.GetInvalidFileNameChars()
+                safeName = safeName.Replace(ch, "_"c)
+            Next
+
+            Dim fn As String = $"{safeName}_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.rfa"
+            Dim fp As String = Path.Combine(baseDir, fn)
+
+            Dim sao As New SaveAsOptions()
+            sao.OverwriteExistingFile = True
+
+            famDoc.SaveAs(fp, sao)
+            Return fp
+        End Function
+
+        Public Function LoadFamilyFromFile(targetDoc As Document, filePath As String, Optional label As String = "LoadFamily(File)") As Family
+            If targetDoc Is Nothing Then Throw New ArgumentNullException(NameOf(targetDoc))
+            If String.IsNullOrWhiteSpace(filePath) Then Throw New ArgumentNullException(NameOf(filePath))
+            If Not File.Exists(filePath) Then Throw New FileNotFoundException("Family file not found.", filePath)
+
+            Dim opts As New FamilyLoadOptionsAllOverwrite()
+
+            Dim loaded As Family = Nothing
+            Dim ok As Boolean = False
+
+            If targetDoc.IsModifiable Then
+                ok = targetDoc.LoadFamily(filePath, opts, loaded)
+            Else
+                WithTxn(targetDoc, label,
+                    Sub()
+                        ok = targetDoc.LoadFamily(filePath, opts, loaded)
+                    End Sub)
+            End If
+
+            If (Not ok) OrElse loaded Is Nothing Then
+                Throw New InvalidOperationException($"LoadFamily failed: {filePath}")
+            End If
+
+            Try : targetDoc.Regenerate() : Catch : End Try
+            Return loaded
+        End Function
 
     End Module
 
@@ -1120,13 +1170,16 @@ Namespace Services
             Dim skips As New List(Of String)()
             Dim compositeSuccessCount As Integer = 0
             Dim applyIndex As Integer = 0
+            Dim publishedRfaPathByName As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
             Dim lastErrorMessage As String = String.Empty
             reporter.Report("APPLY", 0.0R, 0, totalToProcess, "파라미터 적용 준비", String.Empty, True)
 
             Using tgAll As New TransactionGroup(doc, "KKY Shared Param Propagate")
                 tgAll.Start()
                 Try
-                    ' order: 하위 → 상위. leaf(A-6) 먼저 처리.
+
+                    ' Pass 1) 파라미터 추가 + 프로젝트 로드 (하위 → 상위)
+                    applyIndex = 0
                     For Each famName In order
                         Dim famId As ElementId = Nothing
                         If Not nameToFamilyId.TryGetValue(famName, famId) Then
@@ -1159,7 +1212,9 @@ Namespace Services
                                                   childFails,
                                                   skips,
                                                   compositeSuccessCount,
-                                                  nameToFamilyId)
+                                                  nameToFamilyId,
+                                                  False,
+                                                  publishedRfaPathByName)
                         Catch ex As Exception
                             lastErrorMessage = MakePhaseError("APPLY", famName, famId, ex.Message)
                             Throw
@@ -1170,7 +1225,64 @@ Namespace Services
                                         If(totalToProcess = 0, 1.0R, CDbl(applyIndex) / CDbl(Math.Max(1, totalToProcess))),
                                         applyIndex,
                                         totalToProcess,
-                                        "파라미터 적용 중",
+                                        "파라미터 추가/로드 중",
+                                        famName)
+                    Next
+
+                    ' Pass 2) 상위 패밀리만 연동 + 프로젝트 로드 (하위 → 상위)
+                    Dim totalParentsToProcess As Integer = compositeFamilyNames.Count
+                    Dim parentIndex As Integer = 0
+
+                    For Each famName In order
+                        If Not parentToChildren.ContainsKey(famName) Then
+                            Continue For
+                        End If
+
+                        Dim famId As ElementId = Nothing
+                        If Not nameToFamilyId.TryGetValue(famName, famId) Then
+                            famId = FindFamilyIdByName(doc, famName)
+                            If famId IsNot Nothing Then nameToFamilyId(famName) = famId
+                        End If
+
+                        Dim isParent As Boolean = True
+                        Dim isChild As Boolean = childNames.Contains(famName)
+
+                        Try
+                            ProcessFamilyBottomUp(doc,
+                                                  famId,
+                                                  famName,
+                                                  extDefs,
+                                                  paramNames,
+                                                  parentToChildren,
+                                                  excludeDummy,
+                                                  chosenIsInstance,
+                                                  chosenPG,
+                                                  isParent,
+                                                  isChild,
+                                                  addedHost,
+                                                  addedChild,
+                                                  linkCnt,
+                                                  verifyOk,
+                                                  verifyFail,
+                                                  skipTotal,
+                                                  parentFails,
+                                                  childFails,
+                                                  skips,
+                                                  compositeSuccessCount,
+                                                  nameToFamilyId,
+                                                  True,
+                                                  publishedRfaPathByName)
+                        Catch ex As Exception
+                            lastErrorMessage = MakePhaseError("APPLY", famName, famId, ex.Message)
+                            Throw
+                        End Try
+
+                        parentIndex += 1
+                        reporter.Report("APPLY",
+                                        If(totalParentsToProcess = 0, 1.0R, CDbl(parentIndex) / CDbl(Math.Max(1, totalParentsToProcess))),
+                                        parentIndex,
+                                        totalParentsToProcess,
+                                        "파라미터 연동 중",
                                         famName)
                     Next
 
@@ -1257,7 +1369,9 @@ Namespace Services
                                                  childFails As List(Of String),
                                                  skips As List(Of String),
                                                  ByRef compositeSuccessCount As Integer,
-                                                 nameToFamilyId As Dictionary(Of String, ElementId))
+                                                 nameToFamilyId As Dictionary(Of String, ElementId),
+                                                 doAssociate As Boolean,
+                                                 publishedRfaPathByName As Dictionary(Of String, String))
 
             If projDoc Is Nothing OrElse String.IsNullOrWhiteSpace(famName) Then Return
 
@@ -1323,7 +1437,7 @@ Namespace Services
                 End If
 
                 ' 2) 자식이 있는 패밀리라면 하위 인스턴스와 연동
-                If hasChildren Then
+                If hasChildren AndAlso doAssociate Then
                     Dim hostParams As New Dictionary(Of String, FamilyParameter)(StringComparer.OrdinalIgnoreCase)
                     For Each p As FamilyParameter In fm.Parameters
                         If p.Definition IsNot Nothing Then
@@ -1336,6 +1450,28 @@ Namespace Services
 
                     Dim childrenOfHost As HashSet(Of String) = Nothing
                     parentToChildren.TryGetValue(famName, childrenOfHost)
+
+                    ' (중요) 상위 패밀리 문서에 최신 하위 패밀리를 다시 로드
+                    ' - 하위가 먼저 프로젝트에 로드되더라도, 상위 famDoc 내부 중첩 정의는 구버전일 수 있음
+                    ' - 상위 로드 시 구버전 하위가 다시 덮어써져 "추가가 안 된 것처럼" 보이는 문제를 방지
+                    If childrenOfHost IsNot Nothing AndAlso childrenOfHost.Count > 0 AndAlso publishedRfaPathByName IsNot Nothing Then
+                        Try
+                            TxnUtil.WithTxn(famDoc, "KKY: Reload nested families",
+                                Sub()
+                                    For Each cn In childrenOfHost
+                                        Dim fp As String = Nothing
+                                        If publishedRfaPathByName.TryGetValue(cn, fp) AndAlso
+                                           Not String.IsNullOrWhiteSpace(fp) AndAlso File.Exists(fp) Then
+                                            TxnUtil.LoadFamilyFromFile(famDoc, fp, $"KKY Load nested '{cn}'")
+                                        End If
+                                    Next
+                                End Sub)
+                            Try : famDoc.Regenerate() : Catch : End Try
+                        Catch ex As Exception
+                            ok = False
+                            parentFails.Add(MakePhaseError("APPLY", famName, safeFamId, $"[ReloadChild] {ex.Message}"))
+                        End Try
+                    End If
 
                     Using t As New Transaction(famDoc, "KKY: Associate nested shared params")
                         t.Start()
@@ -1459,9 +1595,25 @@ Namespace Services
                     End If
                 End If
 
-                ' 4) 프로젝트에 로드
-                TxnUtil.SafeLoadFamily(famDoc, projDoc, $"KKY Load '{famName}'")
-                If ok AndAlso hasChildren Then
+
+                ' 4) 프로젝트에 로드 (파일 기반 Publish - 트랜잭션 보장)
+                Try
+                    Dim tempPath As String = TxnUtil.SaveAsTempRfa(famDoc, famName)
+                    TxnUtil.LoadFamilyFromFile(projDoc, tempPath, $"KKY Load '{famName}'")
+                    If publishedRfaPathByName IsNot Nothing Then
+                        publishedRfaPathByName(famName) = tempPath
+                    End If
+                Catch ex As Exception
+                    ok = False
+                    Dim msg = MakePhaseError("APPLY", famName, safeFamId, $"[LoadFamily] {ex.Message}")
+                    If isParent Then
+                        parentFails.Add(msg)
+                    ElseIf isChild Then
+                        childFails.Add(msg)
+                    End If
+                End Try
+
+                If ok AndAlso doAssociate AndAlso hasChildren Then
                     compositeSuccessCount += 1
                 End If
 
@@ -1531,6 +1683,19 @@ Namespace Services
             Return fm.Parameters.Cast(Of FamilyParameter)().
                 FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Definition IsNot Nothing AndAlso
                                            String.Equals((If(p.Definition.Name, String.Empty)).Trim(), (If(extDef.Name, String.Empty)).Trim(), StringComparison.OrdinalIgnoreCase))
+
+            Dim findByGuid As Func(Of FamilyParameter) =
+        Function()
+            Try
+                Dim g As Guid = extDef.GUID
+                If g = Guid.Empty Then Return Nothing
+                Return fm.Parameters.Cast(Of FamilyParameter)().
+                    FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.IsShared AndAlso p.GUID = g)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
         End Function
 
             Dim isOk As Func(Of FamilyParameter, Boolean) =
@@ -1586,7 +1751,8 @@ Namespace Services
                 End Try
 
                 If added Is Nothing Then
-                    cur = findByName()
+                    cur = findByGuid()
+                    If cur Is Nothing Then cur = findByName()
                 Else
                     cur = added
                 End If
