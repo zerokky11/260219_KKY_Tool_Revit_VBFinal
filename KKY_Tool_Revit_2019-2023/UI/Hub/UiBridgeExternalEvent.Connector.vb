@@ -911,42 +911,107 @@ Namespace UI.Hub
             End Try
         End Function
 
-        Private Function BuildConnectorSheetTables(rows As List(Of Dictionary(Of String, Object)),
-                                                  headersTotal As List(Of String),
-                                                  extrasHeaders As List(Of String),
-                                                  uiUnit As String,
-                                                  reviewParams As List(Of String)) As List(Of KeyValuePair(Of String, DataTable))
-            Dim sheets As New List(Of KeyValuePair(Of String, DataTable))()
-            Dim baseRows = If(rows, New List(Of Dictionary(Of String, Object))())
+                Private Function BuildConnectorSheetTables(rows As List(Of Dictionary(Of String, Object)),
+                                                          headersTotal As List(Of String),
+                                                          extrasHeaders As List(Of String),
+                                                          uiUnit As String,
+                                                          reviewParams As List(Of String)) As List(Of KeyValuePair(Of String, DataTable))
+                    Dim sheets As New List(Of KeyValuePair(Of String, DataTable))()
+                    Dim baseRows = If(rows, New List(Of Dictionary(Of String, Object))())
 
-            Dim grouped As New Dictionary(Of String, List(Of Dictionary(Of String, Object)))(StringComparer.OrdinalIgnoreCase)
-            For Each row In baseRows
-                Dim paramName As String = ReadField(row, "ParamName")
-                If String.IsNullOrWhiteSpace(paramName) Then paramName = "Connector Diagnostics"
-                If Not grouped.ContainsKey(paramName) Then grouped(paramName) = New List(Of Dictionary(Of String, Object))()
-                grouped(paramName).Add(row)
-            Next
+                    ' ✅ RVT를 2개 이상 검토한 경우: File 기준으로 시트를 분리한다.
+                    '    (단일 파일일 때는 기존 동작(ParamName 기준) 유지)
+                    Dim filesInOrder As List(Of String) = Nothing
+                    Try
+                        filesInOrder = CollectDistinctRvtFilesInOrder(baseRows)
+                    Catch
+                        filesInOrder = New List(Of String)()
+                    End Try
 
-            If grouped.Count = 0 Then
-                Dim defaultSheetName As String = "Connector Diagnostics"
-                If reviewParams IsNot Nothing AndAlso reviewParams.Count > 0 Then
-                    defaultSheetName = reviewParams(0)
-                End If
-                grouped(defaultSheetName) = New List(Of Dictionary(Of String, Object))()
-            End If
+                    If filesInOrder IsNot Nothing AndAlso filesInOrder.Count >= 2 Then
+                        ' File 값이 없는 행(예: "오류가 없습니다" 안내행)은 모든 파일 시트에 포함시킨다.
+                        Dim globalRows As List(Of Dictionary(Of String, Object)) =
+                            baseRows.Where(Function(r) String.IsNullOrWhiteSpace(ReadFieldInsensitive(r, "File"))).ToList()
 
-            For Each kv In grouped
-                Dim dt As DataTable = BuildConnectorExportDataTable(headersTotal, kv.Value, uiUnit)
-                NormalizeConnectorExportDataTableSchema(dt, extrasHeaders)
-                LogConnectorExportHeaders(dt)
-                If dt.Rows.Count = 0 Then
-                    Global.KKY_Tool_Revit.Infrastructure.ExcelCore.EnsureNoDataRow(dt, "검토 결과가 없습니다.")
-                End If
-                sheets.Add(New KeyValuePair(Of String, DataTable)(SafeExcelSheetName(kv.Key), dt))
-            Next
+                        Dim used As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
 
-            Return sheets
-        End Function
+                        For Each f In filesInOrder
+                            Dim fileKey As String = If(f, "").Trim()
+
+                            Dim rowsForFile As List(Of Dictionary(Of String, Object)) =
+                                baseRows.Where(Function(r)
+                                                   Dim rf As String = ReadFieldInsensitive(r, "File")
+                                                   If String.IsNullOrWhiteSpace(rf) Then Return False
+                                                   Return String.Equals(rf.Trim(), fileKey, StringComparison.OrdinalIgnoreCase)
+                                               End Function).ToList()
+
+                            Dim merged As New List(Of Dictionary(Of String, Object))()
+                            If globalRows IsNot Nothing AndAlso globalRows.Count > 0 Then merged.AddRange(globalRows)
+                            If rowsForFile IsNot Nothing AndAlso rowsForFile.Count > 0 Then merged.AddRange(rowsForFile)
+
+                            Dim sheetRaw As String = ""
+                            Try
+                                sheetRaw = System.IO.Path.GetFileNameWithoutExtension(fileKey)
+                            Catch
+                                sheetRaw = fileKey
+                            End Try
+                            If String.IsNullOrWhiteSpace(sheetRaw) Then sheetRaw = fileKey
+                            Dim sheetName As String = SafeExcelSheetName(sheetRaw)
+
+                            ' 시트명 중복 방지 (_2, _3...)
+                            Dim baseName As String = sheetName
+                            Dim idx As Integer = 2
+                            While used.Contains(sheetName)
+                                Dim suffix As String = "_" & idx.ToString()
+                                Dim maxLen As Integer = 31 - suffix.Length
+                                Dim head As String = baseName
+                                If head.Length > maxLen Then head = head.Substring(0, maxLen)
+                                sheetName = head & suffix
+                                idx += 1
+                            End While
+                            used.Add(sheetName)
+
+                            Dim dt As DataTable = BuildConnectorExportDataTable(headersTotal, merged, uiUnit)
+                            NormalizeConnectorExportDataTableSchema(dt, extrasHeaders)
+                            LogConnectorExportHeaders(dt)
+                            If dt.Rows.Count = 0 Then
+                                Global.KKY_Tool_Revit.Infrastructure.ExcelCore.EnsureNoDataRow(dt, "검토 결과가 없습니다.")
+                            End If
+                            sheets.Add(New KeyValuePair(Of String, DataTable)(sheetName, dt))
+                        Next
+
+                        Return sheets
+                    End If
+
+                    ' ✅ 기본(단일 파일/파일 정보 없음): ParamName 기준 시트 분리
+                    Dim grouped As New Dictionary(Of String, List(Of Dictionary(Of String, Object)))(StringComparer.OrdinalIgnoreCase)
+                    For Each row In baseRows
+                        Dim paramName As String = ReadField(row, "ParamName")
+                        If String.IsNullOrWhiteSpace(paramName) Then paramName = "Connector Diagnostics"
+                        If Not grouped.ContainsKey(paramName) Then grouped(paramName) = New List(Of Dictionary(Of String, Object))()
+                        grouped(paramName).Add(row)
+                    Next
+
+                    If grouped.Count = 0 Then
+                        Dim defaultSheetName As String = "Connector Diagnostics"
+                        If reviewParams IsNot Nothing AndAlso reviewParams.Count > 0 Then
+                            defaultSheetName = reviewParams(0)
+                        End If
+                        grouped(defaultSheetName) = New List(Of Dictionary(Of String, Object))()
+                    End If
+
+                    For Each kv In grouped
+                        Dim dt As DataTable = BuildConnectorExportDataTable(headersTotal, kv.Value, uiUnit)
+                        NormalizeConnectorExportDataTableSchema(dt, extrasHeaders)
+                        LogConnectorExportHeaders(dt)
+                        If dt.Rows.Count = 0 Then
+                            Global.KKY_Tool_Revit.Infrastructure.ExcelCore.EnsureNoDataRow(dt, "검토 결과가 없습니다.")
+                        End If
+                        sheets.Add(New KeyValuePair(Of String, DataTable)(SafeExcelSheetName(kv.Key), dt))
+                    Next
+
+                    Return sheets
+                End Function
 
         Private Shared Function SafeExcelSheetName(raw As String) As String
             Dim name As String = If(raw, String.Empty).Trim()

@@ -70,67 +70,67 @@ Namespace Services
 
         ' LoadFamily는 트랜잭션 밖에서 호출
         ' LoadFamily는 트랜잭션 밖에서 호출 (가능하면)
-' - 외부에서 Transaction을 열어둔 채 호출되는 경우가 있어도, 실제 반영이 되도록 fallback(임시 SaveAs 후 파일 로드)까지 수행한다.
-Public Sub SafeLoadFamily(sourceFamDoc As Document,
+        ' - 외부에서 Transaction을 열어둔 채 호출되는 경우가 있어도, 실제 반영이 되도록 fallback(임시 SaveAs 후 파일 로드)까지 수행한다.
+        Public Sub SafeLoadFamily(sourceFamDoc As Document,
                           targetDoc As Document,
                           Optional label As String = "LoadFamily")
 
-    If targetDoc Is Nothing Then Throw New ArgumentNullException(NameOf(targetDoc))
-    If sourceFamDoc Is Nothing Then Throw New ArgumentNullException(NameOf(sourceFamDoc))
+            If targetDoc Is Nothing Then Throw New ArgumentNullException(NameOf(targetDoc))
+            If sourceFamDoc Is Nothing Then Throw New ArgumentNullException(NameOf(sourceFamDoc))
 
-    ' 1) 가능하면 가족 문서 자체 LoadFamily 시도
-    Dim opts As New FamilyLoadOptionsAllOverwrite()
+            ' 1) 가능하면 가족 문서 자체 LoadFamily 시도
+            Dim opts As New FamilyLoadOptionsAllOverwrite()
 
-    Try
-        Dim loaded As Family = Nothing
-        Try
-            loaded = sourceFamDoc.LoadFamily(targetDoc, opts)
-        Catch
-            loaded = Nothing
-            Throw
-        End Try
+            Try
+                Dim loaded As Family = Nothing
+                Try
+                    loaded = sourceFamDoc.LoadFamily(targetDoc, opts)
+                Catch
+                    loaded = Nothing
+                    Throw
+                End Try
 
-        If loaded Is Nothing Then
-            Throw New InvalidOperationException("LoadFamily returned Nothing.")
-        End If
+                If loaded Is Nothing Then
+                    Throw New InvalidOperationException("LoadFamily returned Nothing.")
+                End If
 
-    Catch ex As Exception
-        ' 2) 실패 시: 임시 파일로 저장 후, 프로젝트에서 파일 로드 (가장 확실한 반영 경로)
-        Dim tempPath As String = Path.Combine(Path.GetTempPath(),
+            Catch ex As Exception
+                ' 2) 실패 시: 임시 파일로 저장 후, 프로젝트에서 파일 로드 (가장 확실한 반영 경로)
+                Dim tempPath As String = Path.Combine(Path.GetTempPath(),
                                               $"KKY_ParamProp_{Guid.NewGuid().ToString("N")}.rfa")
-        Try
-            Try
-                Dim sao As New SaveAsOptions()
-                sao.OverwriteExistingFile = True
-                sourceFamDoc.SaveAs(tempPath, sao)
-            Catch saveEx As Exception
-                Throw New InvalidOperationException($"LoadFamily 실패 + 임시 SaveAs 실패: {saveEx.Message}", ex)
+                Try
+                    Try
+                        Dim sao As New SaveAsOptions()
+                        sao.OverwriteExistingFile = True
+                        sourceFamDoc.SaveAs(tempPath, sao)
+                    Catch saveEx As Exception
+                        Throw New InvalidOperationException($"LoadFamily 실패 + 임시 SaveAs 실패: {saveEx.Message}", ex)
+                    End Try
+
+                    Dim loaded2 As Family = Nothing
+                    Dim ok As Boolean = False
+                    Try
+                        ' Document.LoadFamily(String, IFamilyLoadOptions, ByRef Family) As Boolean
+                        ok = targetDoc.LoadFamily(tempPath, opts, loaded2)
+                    Catch loadEx As Exception
+                        Throw New InvalidOperationException($"임시 파일 LoadFamily 실패: {loadEx.Message}", loadEx)
+                    End Try
+
+                    If (Not ok) OrElse loaded2 Is Nothing Then
+                        Throw New InvalidOperationException("LoadFamily(temp) returned False/Nothing.")
+                    End If
+
+                Finally
+                    Try
+                        If File.Exists(tempPath) Then File.Delete(tempPath)
+                    Catch
+                        ' 삭제 실패는 무시
+                    End Try
+                End Try
             End Try
 
-            Dim loaded2 As Family = Nothing
-            Dim ok As Boolean = False
-            Try
-                ' Document.LoadFamily(String, IFamilyLoadOptions, ByRef Family) As Boolean
-                ok = targetDoc.LoadFamily(tempPath, opts, loaded2)
-            Catch loadEx As Exception
-                Throw New InvalidOperationException($"임시 파일 LoadFamily 실패: {loadEx.Message}", loadEx)
-            End Try
-
-            If (Not ok) OrElse loaded2 Is Nothing Then
-                Throw New InvalidOperationException("LoadFamily(temp) returned False/Nothing.")
-            End If
-
-        Finally
-            Try
-                If File.Exists(tempPath) Then File.Delete(tempPath)
-            Catch
-                ' 삭제 실패는 무시
-            End Try
-        End Try
-    End Try
-
-    Try : targetDoc.Regenerate() : Catch : End Try
-End Sub
+            Try : targetDoc.Regenerate() : Catch : End Try
+        End Sub
 
     End Module
 
@@ -1667,11 +1667,12 @@ End Sub
             Public ErrorMessage As String
         End Structure
 
-                Private Shared Function EnsureSharedParamInFamily(famDoc As Document,
+
+        Private Shared Function EnsureSharedParamInFamily(famDoc As Document,
                                                          extDef As ExternalDefinition,
                                                          isInstance As Boolean,
                                                          groupPG As BuiltInParameterGroup) As EnsureResult
-            Dim fm As FamilyManager = famDoc.FamilyManager
+
             Dim result As New EnsureResult With {
                 .Added = False,
                 .FinalOk = False,
@@ -1679,155 +1680,222 @@ End Sub
                 .ErrorMessage = Nothing
             }
 
-            If famDoc Is Nothing OrElse fm Is Nothing OrElse extDef Is Nothing OrElse String.IsNullOrWhiteSpace(extDef.Name) Then
-                result.ErrorMessage = "Invalid input (famDoc/fm/extDef)."
+            If famDoc Is Nothing OrElse extDef Is Nothing OrElse String.IsNullOrWhiteSpace(extDef.Name) Then
+                result.ErrorMessage = "Invalid input (famDoc/extDef)."
                 Return result
             End If
+
+            Dim fm As FamilyManager = famDoc.FamilyManager
+            If fm Is Nothing Then
+                result.ErrorMessage = "FamilyManager is null."
+                Return result
+            End If
+
+#If REVIT2023 Or REVIT2025 Then
+            Dim groupTypeId As ForgeTypeId = extDef.GetGroupTypeId()
+#End If
 
             Dim findAnyByName As Func(Of FamilyParameter) =
                 Function()
                     Return fm.Parameters.
                         Cast(Of FamilyParameter)().
-                        FirstOrDefault(Function(p) p.Definition IsNot Nothing AndAlso
-                                                   String.Equals(p.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
-                End Function
-
-            Dim findSharedByName As Func(Of FamilyParameter) =
-                Function()
-                    Return fm.Parameters.
-                        Cast(Of FamilyParameter)().
-                        FirstOrDefault(Function(p) p.Definition IsNot Nothing AndAlso
-                                                   p.IsShared AndAlso
+                        FirstOrDefault(Function(p) p IsNot Nothing AndAlso
+                                                   p.Definition IsNot Nothing AndAlso
                                                    String.Equals(p.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
                 End Function
 
             Dim groupOk As Func(Of Definition, Boolean) =
                 Function(d As Definition)
-#If REVIT2025 Then
-                    Return (d IsNot Nothing AndAlso BuiltInParameterGroupCompat.IsInGroup(d, groupPG))
+#If REVIT2023 Or REVIT2025 Then
+                    Return (d IsNot Nothing AndAlso d.GetGroupTypeId() IsNot Nothing AndAlso d.GetGroupTypeId().Equals(groupTypeId))
 #Else
                     Return (d IsNot Nothing AndAlso d.ParameterGroup = groupPG)
 #End If
                 End Function
 
-            ' 0) 이미 올바른 Shared+그룹(+인스턴스/타입)이면 그대로 OK
-            Dim shared0 As FamilyParameter = findSharedByName()
-            If shared0 IsNot Nothing AndAlso shared0.IsInstance = isInstance AndAlso groupOk(shared0.Definition) Then
+            Dim isOk As Func(Of FamilyParameter, Boolean) =
+                Function(p As FamilyParameter)
+                    If p Is Nothing OrElse p.Definition Is Nothing Then Return False
+                    If Not p.IsShared Then Return False
+                    If p.IsInstance <> isInstance Then Return False
+                    If Not groupOk(p.Definition) Then Return False
+                    Return True
+                End Function
+
+            ' 0) 이미 올바르면 그대로 OK
+            Dim cur0 As FamilyParameter = findAnyByName()
+            If isOk(cur0) Then
                 result.FinalOk = True
                 Return result
             End If
 
-            Dim anyByName As FamilyParameter = findAnyByName()
+            Dim existedBefore As Boolean = (cur0 IsNot Nothing)
 
-            ' 1) 동일 이름 자체가 없으면 먼저 "반드시 생성" (Revit2019/2021은 non-shared로 만들고 Replace)
-            If anyByName Is Nothing Then
+            ' 1) 동일 이름 자체가 없으면: shared로 추가 시도
+            If cur0 Is Nothing Then
                 Try
-                    TxnUtil.WithTxn(famDoc, $"ADD (temp): {extDef.Name}",
+                    TxnUtil.WithTxn(famDoc, $"Add shared: {extDef.Name}",
                         Sub()
 #If REVIT2019 Or REVIT2021 Then
-                            ' Mix 방식: 최소 생성 보장 (non-shared)
-                            fm.AddParameter(extDef.Name, groupPG, extDef.ParameterType, isInstance)
-#ElseIf REVIT2023 Or REVIT2025 Then
-                            ' 2023/2025는 extDef 기반 추가
                             fm.AddParameter(extDef, groupPG, isInstance)
+#ElseIf REVIT2023 Or REVIT2025 Then
+                            fm.AddParameter(extDef, groupTypeId, isInstance)
 #End If
                         End Sub)
-
-                    result.Added = True
                     Try : famDoc.Regenerate() : Catch : End Try
-                    anyByName = findAnyByName()
-
                 Catch ex As Exception
-                    result.ErrorMessage = $"파라미터 추가 실패(AddParameter): {ex.Message}"
+                    ' Shared 추가가 막히면(환경/정의 문제 등) 마지막 수단으로 non-shared라도 생성
+                    Dim fallbackEx As Exception = Nothing
+                    Try
+                        TxnUtil.WithTxn(famDoc, $"Fallback add(non-shared): {extDef.Name}",
+                            Sub()
+#If REVIT2019 Or REVIT2021 Then
+                                fm.AddParameter(extDef.Name, groupPG, extDef.ParameterType, isInstance)
+#ElseIf REVIT2023 Or REVIT2025 Then
+                                Dim specTypeId As ForgeTypeId = extDef.GetDataType()
+                                fm.AddParameter(extDef.Name, groupTypeId, specTypeId, isInstance)
+#End If
+                            End Sub)
+                        Try : famDoc.Regenerate() : Catch : End Try
+
+                        result.Added = True
+                        result.FinalOk = False
+                        result.HadMismatch = True
+                        result.ErrorMessage = $"Shared로 추가 실패하여 non-shared로만 생성됨: {ex.Message}"
+                        Return result
+                    Catch ex2 As Exception
+                        fallbackEx = ex2
+                    End Try
+
+                    result.ErrorMessage =
+                        $"AddParameter(shared) 실패: {ex.Message}" &
+                        If(fallbackEx Is Nothing, "", $" / Fallback(non-shared) 실패: {fallbackEx.Message}")
                     Return result
                 End Try
+
+                Dim cur1 As FamilyParameter = findAnyByName()
+                If isOk(cur1) Then
+                    result.Added = True
+                    result.FinalOk = True
+                    Return result
+                End If
+
+                ' Shared로 추가는 되었으나 속성(그룹/Instance)이 맞지 않으면 아래 교정 단계 진행
+                result.HadMismatch = True
+                cur0 = cur1
+            Else
+                result.HadMismatch = True
             End If
 
-            If anyByName Is Nothing Then
+            If cur0 Is Nothing Then
                 result.ErrorMessage = "AddParameter 후에도 동일 이름 파라미터를 찾을 수 없습니다."
                 Return result
             End If
 
-            ' 2) Shared로 교정(Replace)
-            Dim replaceFailed As Exception = Nothing
+            ' 2) Replace로 교정 시도 (Replace 예외여도 결과가 OK면 HardFix로 가지 않음)
+            Dim replaceEx As Exception = Nothing
             Try
-                TxnUtil.WithTxn(famDoc, $"Replace to shared: {extDef.Name}",
+                TxnUtil.WithTxn(famDoc, $"ReplaceParameter: {extDef.Name}",
                     Sub()
-                        fm.ReplaceParameter(anyByName, extDef, groupPG, isInstance)
-                    End Sub)
-                Try : famDoc.Regenerate() : Catch : End Try
-            Catch ex As Exception
-                replaceFailed = ex
-            End Try
-
-            Dim shared1 As FamilyParameter = findSharedByName()
-            If shared1 IsNot Nothing AndAlso shared1.IsInstance = isInstance AndAlso groupOk(shared1.Definition) Then
-                result.FinalOk = True
-                ' Replace가 예외를 던졌어도 결과가 Shared로 맞게 들어온 경우가 있어 오류로 취급하지 않음
-                Return result
-            End If
-
-            ' 3) HardFix: Remove/Add 후 Replace 재시도 (최종적으로 Shared+그룹+인스턴스/타입까지 맞춤)
-            result.HadMismatch = True
-
-            Try
-                TxnUtil.WithTxn(famDoc, $"HardFix Remove/Add: {extDef.Name}",
-                    Sub()
-                        Try
-                            fm.RemoveParameter(anyByName)
-                        Catch remEx As Exception
-                            Throw New InvalidOperationException($"Remove 실패(레이블/치수/공식 참조 중일 수 있음): {remEx.Message}")
-                        End Try
-
 #If REVIT2019 Or REVIT2021 Then
-                        fm.AddParameter(extDef.Name, groupPG, extDef.ParameterType, isInstance)
+                        fm.ReplaceParameter(cur0, extDef, groupPG, isInstance)
 #ElseIf REVIT2023 Or REVIT2025 Then
-                        fm.AddParameter(extDef, groupPG, isInstance)
+                        fm.ReplaceParameter(cur0, extDef, groupTypeId, isInstance)
 #End If
                     End Sub)
-
-                result.Added = True
                 Try : famDoc.Regenerate() : Catch : End Try
-
             Catch ex As Exception
-                result.ErrorMessage = $"HardFix 실패(Remove/Add): {ex.Message}"
-                Return result
+                replaceEx = ex
             End Try
 
-            Dim any2 As FamilyParameter = findAnyByName()
-            If any2 Is Nothing Then
-                result.ErrorMessage = "HardFix 후에도 동일 이름 파라미터를 찾을 수 없습니다."
+            Dim cur2 As FamilyParameter = findAnyByName()
+            If isOk(cur2) Then
+                result.FinalOk = True
+                result.Added = (Not existedBefore)
                 Return result
             End If
 
-            ' HardFix 이후에도 Shared로 교정(특히 2019/2021에서 non-shared로 추가된 경우 필수)
+            ' 3) HardFix: Remove/Add (SubTransaction 롤백으로 "삭제만 되고 끝" 방지) + Replace 재시도
+            Dim hardFixed As Boolean = False
             Try
-                TxnUtil.WithTxn(famDoc, $"Replace to shared(2): {extDef.Name}",
+                TxnUtil.WithTxn(famDoc, $"HardFix Remove/Add(shared): {extDef.Name}",
                     Sub()
-                        fm.ReplaceParameter(any2, extDef, groupPG, isInstance)
+                        Dim st As New SubTransaction(famDoc)
+                        st.Start()
+                        Try
+                            Dim cur As FamilyParameter = findAnyByName()
+                            If cur IsNot Nothing Then
+                                fm.RemoveParameter(cur)
+                            End If
+
+#If REVIT2019 Or REVIT2021 Then
+                            fm.AddParameter(extDef, groupPG, isInstance)
+#ElseIf REVIT2023 Or REVIT2025 Then
+                            fm.AddParameter(extDef, groupTypeId, isInstance)
+#End If
+                            st.Commit()
+                            hardFixed = True
+                        Catch
+                            Try : st.RollBack() : Catch : End Try
+                            Throw
+                        End Try
                     End Sub)
                 Try : famDoc.Regenerate() : Catch : End Try
             Catch ex As Exception
-                ' 최종 검증에서 실패하면 메시지로 노출
-                replaceFailed = ex
+                result.ErrorMessage = $"HardFix 실패(Remove/Add): {ex.Message}"
+                If replaceEx IsNot Nothing Then result.ErrorMessage &= $" / Replace 실패: {replaceEx.Message}"
+                Return result
             End Try
 
-            Dim shared2 As FamilyParameter = findSharedByName()
-            If shared2 IsNot Nothing AndAlso shared2.IsInstance = isInstance AndAlso groupOk(shared2.Definition) Then
-                result.FinalOk = True
+            Dim cur3 As FamilyParameter = findAnyByName()
+            If cur3 Is Nothing Then
+                result.ErrorMessage = "HardFix 후에도 동일 이름 파라미터를 찾을 수 없습니다."
+                If replaceEx IsNot Nothing Then result.ErrorMessage &= $" / Replace 실패: {replaceEx.Message}"
                 Return result
             End If
 
-            ' 최종 실패: 실제로는 "추가 자체가 안 된 것"처럼 보이므로 명확히 에러로 올림
-            If replaceFailed IsNot Nothing Then
-                result.ErrorMessage = $"Shared 교정 실패(ReplaceParameter): {replaceFailed.Message}"
+            ' HardFix 이후 Replace 한번 더 시도 (특히 2019/2021에서 그룹/Instance 교정 필요할 수 있음)
+            Dim replaceEx2 As Exception = Nothing
+            Try
+                TxnUtil.WithTxn(famDoc, $"ReplaceParameter(2): {extDef.Name}",
+                    Sub()
+#If REVIT2019 Or REVIT2021 Then
+                        fm.ReplaceParameter(cur3, extDef, groupPG, isInstance)
+#ElseIf REVIT2023 Or REVIT2025 Then
+                        fm.ReplaceParameter(cur3, extDef, groupTypeId, isInstance)
+#End If
+                    End Sub)
+                Try : famDoc.Regenerate() : Catch : End Try
+            Catch ex As Exception
+                replaceEx2 = ex
+            End Try
+
+            Dim cur4 As FamilyParameter = findAnyByName()
+            If isOk(cur4) Then
+                result.FinalOk = True
+                result.Added = (Not existedBefore) OrElse hardFixed
+                Return result
+            End If
+
+            ' 최종 실패: 존재는 하나 조건 불일치 or shared 교정 실패
+            Dim curAny As FamilyParameter = findAnyByName()
+            If curAny Is Nothing Then
+                result.ErrorMessage = "파라미터 추가 실패(패밀리 내에 파라미터가 존재하지 않음)."
             Else
-                result.ErrorMessage = "Shared/그룹/Instance 조건을 만족하지 못했습니다."
+                Dim state As String = $"IsShared={curAny.IsShared}, IsInstance={curAny.IsInstance}"
+                result.ErrorMessage = $"파라미터는 존재하나 조건 불일치: {state}"
+            End If
+
+            If replaceEx2 IsNot Nothing Then
+                result.ErrorMessage &= $" / Replace(2) 실패: {replaceEx2.Message}"
+            ElseIf replaceEx IsNot Nothing Then
+                result.ErrorMessage &= $" / Replace 실패: {replaceEx.Message}"
             End If
 
             result.FinalOk = False
             Return result
         End Function
+
 
         Private Structure VerifyResult
             Public Ok As Integer

@@ -94,7 +94,7 @@ Source: "C:\Users\manager\Desktop\KKY_Tool_Revit\Compile\2025addin\KKY_Tool_Revi
     Flags: ignoreversion; \
     Tasks: revit2025
 
-Source: "C:\Users\manager\Desktop\KKY_Tool_Revit\KKY_Tool_Revit_2025\bin\Rvt2025\*"; \
+Source: "C:\Users\manager\Desktop\KKY_Tool_Revit\KKY_Tool_Revit_2019-2023\bin\Rvt2025\net8.0-windows\*"; \
     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2025\KKY_Tool_Revit"; \
     Flags: ignoreversion recursesubdirs createallsubdirs; \
     Tasks: revit2025
