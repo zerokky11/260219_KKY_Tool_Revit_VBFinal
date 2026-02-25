@@ -1683,6 +1683,7 @@ Namespace Services
             Return fm.Parameters.Cast(Of FamilyParameter)().
                 FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Definition IsNot Nothing AndAlso
                                            String.Equals((If(p.Definition.Name, String.Empty)).Trim(), (If(extDef.Name, String.Empty)).Trim(), StringComparison.OrdinalIgnoreCase))
+        End Function
 
             Dim findByGuid As Func(Of FamilyParameter) =
         Function()
@@ -1694,8 +1695,6 @@ Namespace Services
             Catch
                 Return Nothing
             End Try
-        End Function
-
         End Function
 
             Dim isOk As Func(Of FamilyParameter, Boolean) =

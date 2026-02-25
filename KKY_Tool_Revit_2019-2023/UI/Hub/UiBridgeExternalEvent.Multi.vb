@@ -486,6 +486,12 @@ NextItem:
             If excludeEndDummy Then
                 issueRows = issueRows.Where(Function(r) Not ShouldExcludeEndDummyRow(r)).ToList()
             End If
+            ' ✅ 멀티 파라미터 CSV 지원: MultiRunRequest.Connector.Param에 "A,B" 형태로 들어올 수 있음
+            Dim reviewParams As List(Of String) = ParseReviewParamsCsv(If(_multiRequest IsNot Nothing AndAlso _multiRequest.Connector IsNot Nothing, _multiRequest.Connector.Param, Nothing))
+            If reviewParams Is Nothing OrElse reviewParams.Count = 0 Then
+                reviewParams = New List(Of String)()
+            End If
+
 
             Dim headers As List(Of String) = BuildConnectorHeaders(extras, uiUnit)
             HostLog("debug", "[multi][connector] export headers => " & String.Join(" | ", headers))
@@ -568,6 +574,14 @@ NextItem:
                                                 OrElse String.Equals(rfBase, baseName, StringComparison.OrdinalIgnoreCase)
                                         End Function).ToList()
 
+                    ' ✅ 선택한 파라미터 중 이슈 0건인 파라미터는 파일 시트에 안내행을 1건 추가
+                    '    - ParamCompare: "[Param] 파라미터에 대한 연속성 오류가 없습니다."
+                    Dim fileMsgRows = BuildNoIssueMessageRowsForFile(rowsForFile, reviewParams, fileName)
+                    If fileMsgRows IsNot Nothing AndAlso fileMsgRows.Count > 0 Then
+                        rowsForFile = fileMsgRows.Concat(rowsForFile).ToList()
+                    End If
+
+
                     Dim table = BuildConnectorTableFromRows(headers, rowsForFile)
                     ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
                     If table.Rows.Count > 0 AndAlso Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: 커넥터")
@@ -577,7 +591,19 @@ NextItem:
                 saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, defaultFileName, doAutoFit, "hub:multi-progress", sheetKeyOverride:="connector", exportKind:="connector")
             Else
                 ' 단일 파일(기존 동작)
-                Dim table = BuildConnectorTableFromRows(headers, issueRows)
+                                ' ✅ 선택한 파라미터 중 이슈 0건인 파라미터는 안내행을 1건 추가(단일 파일도 포함)
+                Dim singleFileName As String = ""
+                Try
+                    If fileList IsNot Nothing AndAlso fileList.Count > 0 Then singleFileName = fileList(0)
+                Catch
+                    singleFileName = ""
+                End Try
+                Dim singleMsgRows = BuildNoIssueMessageRowsForFile(issueRows, reviewParams, singleFileName)
+                If singleMsgRows IsNot Nothing AndAlso singleMsgRows.Count > 0 Then
+                    issueRows = singleMsgRows.Concat(issueRows).ToList()
+                End If
+
+Dim table = BuildConnectorTableFromRows(headers, issueRows)
                 ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
                 If Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: 커넥터")
                 saved = ExcelCore.PickAndSaveXlsx("Connector Diagnostics", table, defaultFileName, doAutoFit, "hub:multi-progress", "connector")
@@ -1186,6 +1212,76 @@ NextItem:
             Return Nothing
         End Function
 
-    End Class
+
+        ' 멀티(배치) 커넥터 검토에서 입력 파라미터는 CSV("A,B")일 수 있다.
+        ' - Trim/빈값 제거/중복 제거(case-insensitive) 후 입력 순서 유지
+        Private Shared Function ParseReviewParamsCsv(paramCsv As String) As List(Of String)
+            Dim result As New List(Of String)()
+            If String.IsNullOrWhiteSpace(paramCsv) Then Return result
+
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            For Each raw As String In paramCsv.Split(","c)
+                Dim s As String = If(raw, "").Trim()
+                If s.Length = 0 Then Continue For
+                If seen.Add(s) Then result.Add(s)
+            Next
+
+            Return result
+        End Function
+
+        ' 특정 파일 시트에서, 선택 파라미터 중 이슈 0건인 파라미터마다 안내행을 생성한다.
+        ' - ParamCompare: "[Param] 파라미터에 대한 연속성 오류가 없습니다."
+        Private Shared Function BuildNoIssueMessageRowsForFile(existingRows As List(Of Dictionary(Of String, Object)),
+                                                             reviewParams As List(Of String),
+                                                             fileName As String) As List(Of Dictionary(Of String, Object))
+            Dim result As New List(Of Dictionary(Of String, Object))()
+            If reviewParams Is Nothing OrElse reviewParams.Count = 0 Then Return result
+
+            Dim present As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            If existingRows IsNot Nothing Then
+                For Each r In existingRows
+                    Dim pn As String = GetDictString(r, "ParamName")
+                    If Not String.IsNullOrWhiteSpace(pn) Then present.Add(pn.Trim())
+                Next
+            End If
+
+            For Each raw In reviewParams
+                Dim p As String = If(raw, "").Trim()
+                If p = "" Then Continue For
+                If present.Contains(p) Then Continue For
+
+                Dim row As New Dictionary(Of String, Object)(StringComparer.OrdinalIgnoreCase)
+                If Not String.IsNullOrWhiteSpace(fileName) Then row("File") = fileName
+                row("Status") = "OK"
+                row("ParamName") = p
+                row("ParamCompare") = $"[{p}] 파라미터에 대한 연속성 오류가 없습니다."
+                result.Add(row)
+
+                present.Add(p)
+            Next
+
+            Return result
+        End Function
+
+        ' Dictionary에서 key를 대소문자 무시로 찾아 String으로 반환한다.
+        Private Shared Function GetDictString(row As Dictionary(Of String, Object), key As String) As String
+            If row Is Nothing OrElse String.IsNullOrWhiteSpace(key) Then Return ""
+            Try
+                If row.ContainsKey(key) AndAlso row(key) IsNot Nothing Then Return row(key).ToString()
+                For Each k In row.Keys
+                    If String.Equals(k, key, StringComparison.OrdinalIgnoreCase) Then
+                        Dim v = row(k)
+                        If v IsNot Nothing Then Return v.ToString()
+                        Exit For
+                    End If
+                Next
+            Catch
+            End Try
+            Return ""
+        End Function
+
+End Class
 
 End Namespace
