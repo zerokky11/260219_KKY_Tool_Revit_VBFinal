@@ -790,7 +790,7 @@ Namespace Services
             End If
 
             Dim status As RunStatus =
-                ExecuteCore(doc, extDefs, request.ParamNames, request.ExcludeDummy, chosenPG, request.IsInstance, result)
+                ExecuteCore(doc, extDefs, request.ParamNames, request.ExcludeDummy, chosenPG, request.IsInstance, result, progress)
 
             result.Status = status
             If String.IsNullOrEmpty(result.Message) Then
@@ -843,7 +843,37 @@ Namespace Services
                                             excludeDummy As Boolean,
                                             chosenPG As BuiltInParameterGroup,
                                             chosenIsInstance As Boolean,
-                                            result As SharedParamRunResult) As RunStatus
+                                            result As SharedParamRunResult,
+                                            Optional progress As Action(Of String, Double, Integer, Integer, String, String) = Nothing) As RunStatus
+
+            ' ---- progress helper (Hub: paramprop:progress) ----
+            Dim lastTick As Long = 0
+            Dim sw As System.Diagnostics.Stopwatch = Nothing
+            Try
+                If progress IsNot Nothing Then
+                    sw = System.Diagnostics.Stopwatch.StartNew()
+                End If
+            Catch
+                sw = Nothing
+            End Try
+
+            Dim report As Action(Of String, Double, Integer, Integer, String, String) =
+                Sub(phase As String, phaseProgress As Double, current As Integer, total As Integer, message As String, target As String)
+                    If progress Is Nothing Then Return
+                    Try
+                        Dim doSend As Boolean = True
+                        If sw IsNot Nothing Then
+                            Dim nowMs As Long = sw.ElapsedMilliseconds
+                            If (nowMs - lastTick) < 80 AndAlso current <> total Then
+                                doSend = False
+                            Else
+                                lastTick = nowMs
+                            End If
+                        End If
+                        If doSend Then progress(phase, phaseProgress, current, total, message, target)
+                    Catch
+                    End Try
+                End Sub
 
             ' 1. 편집 가능한 모든 패밀리 수집 (프로젝트 문서 기준)
             Dim allEditable As List(Of Family) =
@@ -854,6 +884,8 @@ Namespace Services
                 ToList()
 
             Dim totalEditableCount As Integer = allEditable.Count
+
+            report("scan", 0.0R, 0, totalEditableCount, "패밀리 스캔", "")
 
             ' 이름 → Family 매핑 (Id 는 Doc별이라 안씀)
             Dim nameToFamily As New Dictionary(Of String, Family)(StringComparer.OrdinalIgnoreCase)
@@ -875,7 +907,10 @@ Namespace Services
             Dim scanFails As New List(Of String)()
 
             '----- 1차 스캔: 그래프 구성 -----
+            Dim scanIdx As Integer = 0
             For Each f In allEditable
+                scanIdx += 1
+                report("scan", If(totalEditableCount <= 0, 0.0R, CDbl(scanIdx) / CDbl(totalEditableCount)), scanIdx, totalEditableCount, "스캔 중...", If(f Is Nothing, "", f.Name))
                 If f.FamilyCategory Is Nothing Then Continue For
                 If IsAnnotationFamily(f) Then Continue For
 
@@ -990,11 +1025,17 @@ Namespace Services
             Dim skips As New List(Of String)()
             Dim compositeSuccessCount As Integer = 0
 
+            Dim applyIdx As Integer = 0
+            Dim applyTotal As Integer = order.Count
+            report("apply", 0.0R, 0, applyTotal, "파라미터 적용 준비", "")
+
             Using tgAll As New TransactionGroup(doc, "KKY Shared Param Propagate")
                 tgAll.Start()
                 Try
                     ' order: 하위 → 상위. leaf(A-6) 먼저 처리.
                     For Each famName In order
+                        applyIdx += 1
+                        report("apply", If(applyTotal <= 0, 0.0R, CDbl(applyIdx) / CDbl(applyTotal)), applyIdx, applyTotal, "적용 중...", famName)
                         Dim fam As Family = Nothing
                         If Not nameToFamily.TryGetValue(famName, fam) Then Continue For
 
@@ -1306,9 +1347,11 @@ Namespace Services
                     TxnUtil.WithTxn(famDoc, $"TEMP non-shared add: {extDef.Name}",
                         Sub()
 #If REVIT2019 Or REVIT2021 Then
-                            fm.AddParameter(extDef.Name, groupPG, extDef.ParameterType, isInstance)
-#ElseIf REVIT2023 Or REVIT2025 Then
+                            ' shared parameter directly
                             fm.AddParameter(extDef, groupPG, isInstance)
+#ElseIf REVIT2023 Or REVIT2025 Then
+                            Dim gtid As ForgeTypeId = extDef.GetGroupTypeId()
+                            fm.AddParameter(extDef, gtid, isInstance)
 #End If
                         End Sub)
                     result.Added = True
@@ -1334,7 +1377,12 @@ Namespace Services
             Try
                 TxnUtil.WithTxn(famDoc, $"Replace to shared: {extDef.Name}",
                     Sub()
+#If REVIT2019 Or REVIT2021 Then
                         fm.ReplaceParameter(anyByName, extDef, groupPG, isInstance)
+#ElseIf REVIT2023 Or REVIT2025 Then
+                        Dim gtid As ForgeTypeId = extDef.GetGroupTypeId()
+                        fm.ReplaceParameter(anyByName, extDef, gtid, isInstance)
+#End If
                     End Sub)
             Catch
                 replaceFailed = True
@@ -1344,14 +1392,21 @@ Namespace Services
                 fm.Parameters.Cast(Of FamilyParameter)().
                 FirstOrDefault(Function(x) x.Definition IsNot Nothing AndAlso
                                            String.Equals(x.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
-#If REVIT2025 Then
+#If REVIT2019 Or REVIT2021 Then
             Dim okNow As Boolean =
-                (corrected IsNot Nothing AndAlso corrected.IsShared AndAlso
-                 BuiltInParameterGroupCompat.IsInGroup(corrected.Definition, groupPG))
-#Else
-            Dim okNow As Boolean =
-                (corrected IsNot Nothing AndAlso corrected.IsShared AndAlso
+                (corrected IsNot Nothing AndAlso corrected.IsShared AndAlso corrected.IsInstance = isInstance AndAlso
                  corrected.Definition.ParameterGroup = groupPG)
+#ElseIf REVIT2023 Or REVIT2025 Then
+            Dim groupOk As Boolean = True
+            Try
+                groupOk = (corrected IsNot Nothing AndAlso corrected.Definition IsNot Nothing AndAlso
+                           corrected.Definition.GetGroupTypeId().Equals(extDef.GetGroupTypeId()))
+            Catch
+                groupOk = True
+            End Try
+
+            Dim okNow As Boolean =
+                (corrected IsNot Nothing AndAlso corrected.IsShared AndAlso corrected.IsInstance = isInstance AndAlso groupOk)
 #End If
 
             If okNow AndAlso Not replaceFailed Then
@@ -1370,9 +1425,10 @@ Namespace Services
                                 $"Remove 실패(레이블/치수/공식 참조 중일 수 있음): {remEx.Message}")
                         End Try
 #If REVIT2019 Or REVIT2021 Then
-                        fm.AddParameter(extDef.Name, groupPG, extDef.ParameterType, isInstance)
-#ElseIf REVIT2023 Or REVIT2025 Then
                         fm.AddParameter(extDef, groupPG, isInstance)
+#ElseIf REVIT2023 Or REVIT2025 Then
+                        Dim gtid As ForgeTypeId = extDef.GetGroupTypeId()
+                        fm.AddParameter(extDef, gtid, isInstance)
 #End If
                     End Sub)
                 Try : famDoc.Regenerate() : Catch : End Try
@@ -1386,12 +1442,17 @@ Namespace Services
                 FirstOrDefault(Function(x) x.Definition IsNot Nothing AndAlso
                                            x.IsShared AndAlso
                                            String.Equals(x.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
-#If REVIT2025 Then
-            result.FinalOk = (corrected IsNot Nothing AndAlso
-                              BuiltInParameterGroupCompat.IsInGroup(corrected.Definition, groupPG))
-#Else
-            result.FinalOk = (corrected IsNot Nothing AndAlso
-                              corrected.Definition.ParameterGroup = groupPG)
+#If REVIT2019 Or REVIT2021 Then
+            result.FinalOk = (corrected IsNot Nothing AndAlso corrected.Definition.ParameterGroup = groupPG)
+#ElseIf REVIT2023 Or REVIT2025 Then
+            Dim groupOk2 As Boolean = True
+            Try
+                groupOk2 = (corrected IsNot Nothing AndAlso corrected.Definition IsNot Nothing AndAlso
+                            corrected.Definition.GetGroupTypeId().Equals(extDef.GetGroupTypeId()))
+            Catch
+                groupOk2 = True
+            End Try
+            result.FinalOk = (corrected IsNot Nothing AndAlso groupOk2)
 #End If
             Return result
         End Function

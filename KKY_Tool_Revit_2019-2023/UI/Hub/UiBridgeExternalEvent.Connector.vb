@@ -763,7 +763,7 @@ Namespace UI.Hub
             If String.IsNullOrEmpty(status) Then Return False
             If String.Equals(status, "ERROR", StringComparison.OrdinalIgnoreCase) Then Return True
             If String.Equals(status, "Mismatch", StringComparison.OrdinalIgnoreCase) Then Return True
-            If String.Equals(status, "Shared Parameter 등록 필요", StringComparison.OrdinalIgnoreCase) Then Return True
+            If String.Equals(status, "Parameter 없음", StringComparison.OrdinalIgnoreCase) Then Return True
             If String.Equals(status, "연결 대상 객체 없음", StringComparison.OrdinalIgnoreCase) Then Return True
             If String.Equals(status, "연결 필요(Proximity)", StringComparison.OrdinalIgnoreCase) Then Return True
             Return False

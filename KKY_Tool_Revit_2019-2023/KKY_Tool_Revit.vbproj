@@ -18,7 +18,11 @@
 		<!-- ✅ 빌드 기준(컴파일 참조): 기본은 2019 API로 컴파일 -->
 		<AddinYear Condition="'$(AddinYear)'==''">2019</AddinYear>
 
-		<!-- ✅ 산출물: 프로젝트 bin 하위로 고정 -->
+				<!-- Conditional compile symbols for version-specific code paths -->
+		<DefineConstants Condition="\'$(DefineConstants)\'==\'\'">REVIT$(AddinYear)=1</DefineConstants>
+		<DefineConstants Condition="\'$(DefineConstants)\'!=\'\'">$(DefineConstants),REVIT$(AddinYear)=1</DefineConstants>
+
+<!-- ✅ 산출물: 프로젝트 bin 하위로 고정 -->
 		<OutputPath>bin\Rvt$(AddinYear)\net48\</OutputPath>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 
@@ -94,13 +98,13 @@
 	</ItemGroup>
 
 	<!-- ✅ 1회 빌드로 2019/2021/2023 출력 폴더 + ProgramData addin 파일 생성 -->
-	<Target Name="DeployAllYears" AfterTargets="Build">
+	<Target Name="DeployAllYears" AfterTargets="Build" Condition="\'$(SkipDeployAllYears)\'!=\'true\'">
 		<ItemGroup>
 			<!-- MSBuild는 Include에 세미콜론을 자동 분리 -->
 			<_DeployYear Include="$(DeployYears)" />
 		</ItemGroup>
 
-		<MSBuild Projects="$(MSBuildProjectFullPath)" Targets="DeployOneYear" Properties="DeployYear=%(_DeployYear.Identity);BuildYear=$(AddinYear)" BuildInParallel="false" />
+		<MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Build;DeployOneYear" Properties="SkipDeployAllYears=true;AddinYear=%(_DeployYear.Identity);DeployYear=%(_DeployYear.Identity);BuildYear=%(_DeployYear.Identity)" BuildInParallel="false" />
 	</Target>
 
 	<Target Name="DeployOneYear">
