@@ -159,6 +159,7 @@ Namespace Services
                 Return String.Empty
             End Try
 #End If
+            Return String.Empty
         End Function
 
     End Module
@@ -735,11 +736,16 @@ Namespace Services
         End Function
 
         '==================== 실행 엔트리 ====================
-        Public Shared Function Run(app As UIApplication, request As SharedParamRunRequest) As SharedParamRunResult
+        Public Shared Function Run(app As UIApplication, request As SharedParamRunRequest, Optional progress As Action(Of String, Double, Integer, Integer, String, String) = Nothing) As SharedParamRunResult
             Dim result As New SharedParamRunResult With {
                 .Status = RunStatus.Failed,
                 .Details = New List(Of SharedParamDetailRow)()
             }
+
+            Try
+                If progress IsNot Nothing Then progress("start", 0.0R, 0, 0, "시작", "")
+            Catch
+            End Try
 
             If app Is Nothing Then
                 result.Message = "UIApplication 이 없습니다."
@@ -793,11 +799,16 @@ Namespace Services
                                     "공유 파라미터 연동에 실패했습니다.")
             End If
 
+            Try
+                If progress IsNot Nothing Then progress("done", 1.0R, 1, 1, result.Message, "")
+            Catch
+            End Try
+
             Return result
         End Function
 
         '==================== 결과를 엑셀로 ====================
-        Public Shared Function ExportResultToExcel(result As SharedParamRunResult) As String
+        Public Shared Function ExportResultToExcel(result As SharedParamRunResult, Optional autoFit As Boolean = False) As String
             If result Is Nothing OrElse result.Details Is Nothing OrElse result.Details.Count = 0 Then Return String.Empty
 
             Dim defaultName As String = $"ParamProp_{Date.Now:yyMMdd_HHmmss}.xlsx"
@@ -820,7 +831,7 @@ Namespace Services
                     dt.Rows.Add(row)
                 Next
 
-                Infrastructure.ExcelCore.SaveXlsx(sfd.FileName, "Results", dt)
+                Infrastructure.ExcelCore.SaveXlsx(sfd.FileName, "Results", dt, autoFit, sheetKey:="paramprop", exportKind:="paramprop")
                 Return sfd.FileName
             End Using
         End Function
