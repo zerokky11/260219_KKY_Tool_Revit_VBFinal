@@ -91,6 +91,7 @@ Namespace UI.Hub
             Public Property Guid As MultiGuidOptions = New MultiGuidOptions()
             Public Property FamilyLink As MultiFamilyLinkOptions = New MultiFamilyLinkOptions()
             Public Property Points As MultiPointsOptions = New MultiPointsOptions()
+            Public Property UseActiveDocument As Boolean = False
             Public Property RvtPaths As List(Of String) = New List(Of String)()
         End Class
 
@@ -176,12 +177,76 @@ Namespace UI.Hub
         '  hub:multi-done { summary:{key:{rows}} }
         Private Sub HandleMultiRun(app As UIApplication, payload As Object)
             Dim req As MultiRunRequest = ParseMultiRequest(payload)
-            If req Is Nothing OrElse req.RvtPaths.Count = 0 Then
-                SendToWeb("hub:multi-error", New With {.message = "검토할 RVT 파일이 없습니다."})
+            If req Is Nothing Then
+                SendToWeb("hub:multi-error", New With {.message = "요청 정보가 올바르지 않습니다."})
                 Return
             End If
             If Not AnyFeatureEnabled(req) Then
                 SendToWeb("hub:multi-error", New With {.message = "선택된 기능이 없습니다."})
+                Return
+            End If
+
+            ' 현재 활성 문서(열려있는 파일)로 즉시 검토
+            If req.UseActiveDocument Then
+                Dim uidoc = app.ActiveUIDocument
+                Dim doc As Document = Nothing
+                Try
+                    If uidoc IsNot Nothing Then doc = uidoc.Document
+                Catch
+                    doc = Nothing
+                End Try
+                If doc Is Nothing Then
+                    SendToWeb("hub:multi-error", New With {.message = "현재 활성 문서를 찾을 수 없습니다."})
+                    Return
+                End If
+
+                Dim safeName As String = ""
+                Dim docPath As String = ""
+                Try
+                    safeName = doc.Title
+                Catch
+                    safeName = ""
+                End Try
+                Try
+                    docPath = doc.PathName
+                Catch
+                    docPath = ""
+                End Try
+                If String.IsNullOrWhiteSpace(docPath) Then docPath = safeName
+
+                req.RvtPaths = New List(Of String) From {docPath}
+
+                SyncLock _multiLock
+                    _multiRequest = req
+                    _multiQueue = Nothing
+                    _multiTotal = 1
+                    _multiIndex = 1
+                    _multiActive = False
+                    _multiPending = False
+                    _multiBusy = False
+                    _multiApp = app
+                    _multiRunItems = New List(Of MultiRunItem)()
+                    ResetMultiCaches()
+                End SyncLock
+
+                Dim started = Date.Now
+                ReportMultiProgress(0.0R, "현재 파일 검토 시작", safeName)
+                Try
+                    RunMultiForDocument(app, doc, docPath, safeName, 0.0R)
+                    AppendMultiRunItem(safeName, "success", "", "DONE", started)
+                Catch ex As Exception
+                    AppendMultiConnectorError(safeName, $"파일 처리 실패: {ex.Message}")
+                    AppendMultiRunItem(safeName, "failed", ex.Message, "RUN", started)
+                    SendToWeb("hub:multi-error", New With {.message = ex.Message})
+                    Return
+                End Try
+
+                FinishMultiRun()
+                Return
+            End If
+
+            If req.RvtPaths.Count = 0 Then
+                SendToWeb("hub:multi-error", New With {.message = "검토할 RVT 파일이 없습니다."})
                 Return
             End If
 
@@ -743,6 +808,10 @@ NextItem:
             Dim req As New MultiRunRequest()
             Dim pd = ToDict(payload)
             req.RvtPaths = ExtractStringList(pd, "rvtPaths")
+            req.UseActiveDocument = ToBool(GetDictValue(pd, "useActiveDocument"))
+            If Not req.UseActiveDocument Then
+                req.UseActiveDocument = ToBool(GetDictValue(pd, "useActiveDoc"))
+            End If
 
             Dim commonObj As Object = Nothing
             If pd.TryGetValue("commonOptions", commonObj) Then

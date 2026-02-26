@@ -939,7 +939,17 @@ export function renderMulti(root) {
     title.textContent = '선택된 기능 목록';
     const count = document.createElement('span');
     count.className = 'chip chip--info';
-    head.append(title, count);
+    const actions = div('selected-panel__actions');
+    const currentBtn = document.createElement('button');
+    currentBtn.type = 'button';
+    currentBtn.className = 'btn btn--secondary selected-current-btn';
+    currentBtn.textContent = '현재 파일 검토';
+    currentBtn.addEventListener('click', handleRunCurrentFile);
+    actions.append(count, currentBtn);
+    head.append(title, actions);
+
+    state.ui.currentDocBtn = currentBtn;
+
 
     const table = document.createElement('table');
     table.className = 'selected-table';
@@ -1169,6 +1179,50 @@ export function renderMulti(root) {
     onRun();
   }
 
+  function handleRunCurrentFile() {
+    if (state.ui.runCompleted) {
+      resetRunResults();
+      return;
+    }
+    onRunCurrentFile();
+  }
+
+  function onRunCurrentFile() {
+    state.ui.runCompleted = false;
+    updateRunActionLabel();
+    const selected = FEATURE_KEYS.filter((k) => state.features[k].enabled);
+    if (!selected.length) {
+      toast('선택된 기능이 없습니다.', 'warn');
+      return;
+    }
+    if (!canRunWithSharedParams()) {
+      return;
+    }
+    if (state.features.familylink.enabled) {
+      const targets = state.features.familylink.configCommitted.selectedTargets || [];
+      if (!targets.length) {
+        toast('패밀리 공유파라미터 연동 검토 대상이 없습니다.', 'warn');
+        return;
+      }
+    }
+    setBusyState(true);
+    ProgressDialog.show('현재 파일 검토', '준비 중...');
+    ProgressDialog.update(0, '준비 중...', '');
+    const payload = buildPayload();
+    payload.useActiveDocument = true;
+    payload.rvtPaths = [];
+    post('hub:multi-run', payload);
+  }
+
+  function updateCurrentDocBtnState() {
+    const btn = state.ui.currentDocBtn;
+    if (!btn) return;
+    const enabledCount = FEATURE_KEYS.filter((k) => state.features[k].enabled).length;
+    btn.disabled = state.busy || enabledCount === 0;
+    btn.title = btn.disabled ? (enabledCount === 0 ? '선택된 기능이 없습니다.' : '') : '';
+  }
+
+
   function onRun() {
     state.ui.runCompleted = false;
     updateRunActionLabel();
@@ -1233,6 +1287,7 @@ export function renderMulti(root) {
     });
     if (!on) renderRvtList();
     if (!on) updateSharedParamRunState();
+    updateCurrentDocBtnState();
   }
 
   function renderRvtList() {
@@ -1558,6 +1613,8 @@ export function renderMulti(root) {
     if (state.ui.selectedCount) {
       state.ui.selectedCount.textContent = `${enabledKeys.length}개`;
     }
+
+    updateCurrentDocBtnState();
   }
 
   function updateSelectedFeatureRow(key) {

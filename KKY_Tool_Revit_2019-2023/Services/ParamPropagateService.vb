@@ -35,35 +35,17 @@ Namespace Services
     End Class
 
     '==================== 공용: 실패 전처리/트랜잭션 유틸 ====================
-    Friend Class SwallowWarningsCollectErrors
+    Friend Class SwallowWarningsOnly
         Implements IFailuresPreprocessor
 
-        Private ReadOnly _errors As List(Of String)
-
-        Public Sub New(errors As List(Of String))
-            _errors = errors
-        End Sub
-
         Public Function PreprocessFailures(failAcc As FailuresAccessor) As FailureProcessingResult _
-        Implements IFailuresPreprocessor.PreprocessFailures
+            Implements IFailuresPreprocessor.PreprocessFailures
 
             For Each f In failAcc.GetFailureMessages()
                 If f.GetSeverity() = FailureSeverity.Warning Then
                     failAcc.DeleteWarning(f)
-                Else
-                    Try
-                        If _errors IsNot Nothing Then
-                            _errors.Add(f.GetDescriptionText())
-                        End If
-                    Catch
-                    End Try
                 End If
             Next
-
-            If _errors IsNot Nothing AndAlso _errors.Count > 0 Then
-                ' 오류가 있으면 롤백 (대화상자 방지)
-                Return FailureProcessingResult.ProceedWithRollBack
-            End If
 
             Return FailureProcessingResult.Continue
         End Function
@@ -72,104 +54,46 @@ Namespace Services
     Friend Module TxnUtil
 
         Public Sub WithTxn(doc As Document, name As String, action As Action)
-            If doc Is Nothing Then Throw New ArgumentNullException(NameOf(doc))
-            If action Is Nothing Then Throw New ArgumentNullException(NameOf(action))
-
-            Dim errors As New List(Of String)()
-
             Using t As New Transaction(doc, name)
                 t.Start()
 
                 Dim opt = t.GetFailureHandlingOptions()
-                opt.SetFailuresPreprocessor(New SwallowWarningsCollectErrors(errors))
+                opt.SetFailuresPreprocessor(New SwallowWarningsOnly())
                 opt.SetClearAfterRollback(True)
                 t.SetFailureHandlingOptions(opt)
 
                 action.Invoke()
 
-                Dim st As TransactionStatus = t.Commit()
-                If st <> TransactionStatus.Committed Then
-                    Dim msg As String = $"Transaction '{name}' commit failed ({st})."
-                    If errors.Count > 0 Then
-                        msg &= " " & String.Join(" / ", errors.Distinct().ToArray())
-                    End If
-                    Throw New InvalidOperationException(msg)
-                End If
+                t.Commit()
             End Using
         End Sub
 
+        ' LoadFamily는 트랜잭션 밖에서 호출
+        Public Sub SafeLoadFamily(sourceFamDoc As Document,
+                                  targetDoc As Document,
+                                  Optional label As String = "LoadFamily")
 
-        ' LoadFamily는 반드시 트랜잭션 내에서 호출되어야 함.
-        Public Sub SafeLoadFamily(sourceFamDoc As Document, targetDoc As Document, Optional label As String = "LoadFamily")
-            If sourceFamDoc Is Nothing Then Throw New ArgumentNullException(NameOf(sourceFamDoc))
             If targetDoc Is Nothing Then Throw New ArgumentNullException(NameOf(targetDoc))
 
-            Dim opts As New FamilyLoadOptionsAllOverwrite()
-
             If targetDoc.IsModifiable Then
-                sourceFamDoc.LoadFamily(targetDoc, opts)
-            Else
-                WithTxn(targetDoc, label,
-                    Sub()
-                        sourceFamDoc.LoadFamily(targetDoc, opts)
-                    End Sub)
+                Throw New InvalidOperationException("Target document has an open transaction. Close it before LoadFamily.")
             End If
+
+            Try
+                If sourceFamDoc IsNot Nothing AndAlso sourceFamDoc.IsModified Then
+                    If Not String.IsNullOrEmpty(sourceFamDoc.PathName) Then
+                        sourceFamDoc.Save()
+                    End If
+                End If
+            Catch
+                ' 저장 실패는 무시 (로드 자체는 시도)
+            End Try
+
+            Dim opts As New FamilyLoadOptionsAllOverwrite()
+            sourceFamDoc.LoadFamily(targetDoc, opts)
 
             Try : targetDoc.Regenerate() : Catch : End Try
         End Sub
-
-        Public Function SaveAsTempRfa(famDoc As Document, famName As String) As String
-            If famDoc Is Nothing Then Throw New ArgumentNullException(NameOf(famDoc))
-
-            Dim baseDir As String = Path.Combine(Path.GetTempPath(), "KKY_Tool_Revit_ParamProp")
-            If Not Directory.Exists(baseDir) Then
-                Directory.CreateDirectory(baseDir)
-            End If
-
-            Dim safeName As String = If(famName, String.Empty)
-            safeName = safeName.Trim()
-            If safeName.Length = 0 Then safeName = "Family"
-
-            For Each ch As Char In Path.GetInvalidFileNameChars()
-                safeName = safeName.Replace(ch, "_"c)
-            Next
-
-            Dim fn As String = $"{safeName}_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{Guid.NewGuid():N}.rfa"
-            Dim fp As String = Path.Combine(baseDir, fn)
-
-            Dim sao As New SaveAsOptions()
-            sao.OverwriteExistingFile = True
-
-            famDoc.SaveAs(fp, sao)
-            Return fp
-        End Function
-
-        Public Function LoadFamilyFromFile(targetDoc As Document, filePath As String, Optional label As String = "LoadFamily(File)") As Family
-            If targetDoc Is Nothing Then Throw New ArgumentNullException(NameOf(targetDoc))
-            If String.IsNullOrWhiteSpace(filePath) Then Throw New ArgumentNullException(NameOf(filePath))
-            If Not File.Exists(filePath) Then Throw New FileNotFoundException("Family file not found.", filePath)
-
-            Dim opts As New FamilyLoadOptionsAllOverwrite()
-
-            Dim loaded As Family = Nothing
-            Dim ok As Boolean = False
-
-            If targetDoc.IsModifiable Then
-                ok = targetDoc.LoadFamily(filePath, opts, loaded)
-            Else
-                WithTxn(targetDoc, label,
-                    Sub()
-                        ok = targetDoc.LoadFamily(filePath, opts, loaded)
-                    End Sub)
-            End If
-
-            If (Not ok) OrElse loaded Is Nothing Then
-                Throw New InvalidOperationException($"LoadFamily failed: {filePath}")
-            End If
-
-            Try : targetDoc.Regenerate() : Catch : End Try
-            Return loaded
-        End Function
 
     End Module
 
@@ -234,79 +158,9 @@ Namespace Services
             Catch
                 Return String.Empty
             End Try
-#Else
-            Return String.Empty
 #End If
         End Function
 
-    End Module
-
-    Friend Module ProgressMessageHelper
-        Friend Function MakePhaseError(phase As String, famName As String, famId As ElementId, message As String) As String
-            Dim idVal As Integer = 0
-            Try
-                If famId IsNot Nothing Then idVal = famId.IntegerValue
-            Catch
-                idVal = 0
-            End Try
-            Return $"[{phase}] Family='{famName}' (Id:{idVal}) - {message}"
-        End Function
-
-        Friend Function MakeInvalidObjectMessage(phase As String,
-                                                 famName As String,
-                                                 famId As ElementId,
-                                                 operation As String,
-                                                 ex As Autodesk.Revit.Exceptions.InvalidObjectException) As String
-            Dim action As String = If(String.IsNullOrWhiteSpace(operation), "Unknown", operation)
-            Dim baseMsg As String = If(ex Is Nothing, String.Empty, ex.Message)
-            Return MakePhaseError(phase, famName, famId, $"{action} -> {baseMsg}")
-        End Function
-
-        Friend Function TryGetFreshFamily(doc As Document,
-                                           famName As String,
-                                           ByRef famId As ElementId,
-                                           nameToFamilyId As Dictionary(Of String, ElementId)) As Family
-            Dim fam As Family = Nothing
-
-            If doc Is Nothing OrElse String.IsNullOrWhiteSpace(famName) Then Return Nothing
-
-            If famId IsNot Nothing Then
-                Try
-                    fam = TryCast(doc.GetElement(famId), Family)
-                Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
-                    fam = Nothing
-                Catch
-                    fam = Nothing
-                End Try
-            End If
-
-            If fam Is Nothing Then
-                Dim foundId As ElementId = FindFamilyIdByName(doc, famName)
-                famId = foundId
-                If foundId IsNot Nothing Then
-                    Try
-                        fam = TryCast(doc.GetElement(foundId), Family)
-                    Catch
-                        fam = Nothing
-                    End Try
-
-                    If fam IsNot Nothing AndAlso nameToFamilyId IsNot Nothing Then
-                        nameToFamilyId(famName) = foundId
-                    End If
-                End If
-            End If
-
-            Return fam
-        End Function
-
-        Friend Function FindFamilyIdByName(doc As Document, famName As String) As ElementId
-            If doc Is Nothing OrElse String.IsNullOrWhiteSpace(famName) Then Return Nothing
-            Return New FilteredElementCollector(doc).
-                   OfClass(GetType(Family)).
-                   Cast(Of Family)().
-                   FirstOrDefault(Function(f) String.Equals(f.Name, famName, StringComparison.OrdinalIgnoreCase))?.
-                   Id
-        End Function
     End Module
 
     '==================== 파라미터 선택 폼 ====================
@@ -881,39 +735,7 @@ Namespace Services
         End Function
 
         '==================== 실행 엔트리 ====================
-        Private Class ProgressDispatcher
-            Private ReadOnly _cb As Action(Of String, Double, Integer, Integer, String, String)
-            Private ReadOnly _minMs As Integer
-            Private _lastPhase As String = String.Empty
-            Private _lastSent As DateTime = DateTime.MinValue
-
-            Public Sub New(cb As Action(Of String, Double, Integer, Integer, String, String), Optional minIntervalMs As Integer = 180)
-                _cb = cb
-                _minMs = Math.Max(50, minIntervalMs)
-            End Sub
-
-            Public Sub Report(phase As String,
-                              phaseProgress As Double,
-                              current As Integer,
-                              total As Integer,
-                              message As String,
-                              target As String,
-                              Optional force As Boolean = False)
-                If _cb Is Nothing Then Return
-                Dim now As DateTime = DateTime.UtcNow
-                Dim elapsed As Double = (now - _lastSent).TotalMilliseconds
-                Dim phaseChanged As Boolean = Not String.Equals(_lastPhase, phase, StringComparison.OrdinalIgnoreCase)
-                If Not force AndAlso Not phaseChanged AndAlso elapsed < _minMs Then Return
-                _lastPhase = phase
-                _lastSent = now
-                Dim safeProg As Double = Math.Max(0.0R, Math.Min(1.0R, phaseProgress))
-                _cb.Invoke(phase, safeProg, current, total, message, target)
-            End Sub
-        End Class
-
-        Public Shared Function Run(app As UIApplication,
-                                   request As SharedParamRunRequest,
-                                   Optional progress As Action(Of String, Double, Integer, Integer, String, String) = Nothing) As SharedParamRunResult
+        Public Shared Function Run(app As UIApplication, request As SharedParamRunRequest) As SharedParamRunResult
             Dim result As New SharedParamRunResult With {
                 .Status = RunStatus.Failed,
                 .Details = New List(Of SharedParamDetailRow)()
@@ -935,8 +757,6 @@ Namespace Services
                 result.Message = "프로젝트 문서에서 실행하세요."
                 Return result
             End If
-
-            Dim reporter As New ProgressDispatcher(progress)
 
             Dim sharedPath As String = app.Application.SharedParametersFilename
             If String.IsNullOrEmpty(sharedPath) OrElse Not File.Exists(sharedPath) Then
@@ -964,7 +784,7 @@ Namespace Services
             End If
 
             Dim status As RunStatus =
-                ExecuteCore(doc, extDefs, request.ParamNames, request.ExcludeDummy, chosenPG, request.IsInstance, result, reporter)
+                ExecuteCore(doc, extDefs, request.ParamNames, request.ExcludeDummy, chosenPG, request.IsInstance, result)
 
             result.Status = status
             If String.IsNullOrEmpty(result.Message) Then
@@ -977,7 +797,7 @@ Namespace Services
         End Function
 
         '==================== 결과를 엑셀로 ====================
-        Public Shared Function ExportResultToExcel(result As SharedParamRunResult, Optional doAutoFit As Boolean = False) As String
+        Public Shared Function ExportResultToExcel(result As SharedParamRunResult) As String
             If result Is Nothing OrElse result.Details Is Nothing OrElse result.Details.Count = 0 Then Return String.Empty
 
             Dim defaultName As String = $"ParamProp_{Date.Now:yyMMdd_HHmmss}.xlsx"
@@ -1000,7 +820,7 @@ Namespace Services
                     dt.Rows.Add(row)
                 Next
 
-                Infrastructure.ExcelCore.SaveXlsx(sfd.FileName, "Results", dt, doAutoFit, "paramprop:progress")
+                Infrastructure.ExcelCore.SaveXlsx(sfd.FileName, "Results", dt)
                 Return sfd.FileName
             End Using
         End Function
@@ -1012,24 +832,28 @@ Namespace Services
                                             excludeDummy As Boolean,
                                             chosenPG As BuiltInParameterGroup,
                                             chosenIsInstance As Boolean,
-                                            result As SharedParamRunResult,
-                                            reporter As ProgressDispatcher) As RunStatus
+                                            result As SharedParamRunResult) As RunStatus
 
             ' 1. 편집 가능한 모든 패밀리 수집 (프로젝트 문서 기준)
-            Dim allEditableIds As List(Of ElementId) =
-    New FilteredElementCollector(doc).
-        OfClass(GetType(Family)).
-        Cast(Of Family)().
-        Where(Function(x) x IsNot Nothing AndAlso x.IsEditable).
-        Select(Function(x) x.Id).
-        ToList()
+            Dim allEditable As List(Of Family) =
+                New FilteredElementCollector(doc).
+                OfClass(GetType(Family)).
+                Cast(Of Family)().
+                Where(Function(f) f.IsEditable).
+                ToList()
 
-            Dim totalEditableCount As Integer = allEditableIds.Count
-            Dim scanIndex As Integer = 0
-            reporter.Report("COLLECT", 0.0R, 0, totalEditableCount, "패밀리 스캔 준비", String.Empty, True)
+            Dim totalEditableCount As Integer = allEditable.Count
 
-            ' 이름 → ElementId 매핑 (패밀리 객체 캐싱 금지)
-            Dim nameToFamilyId As New Dictionary(Of String, ElementId)(StringComparer.OrdinalIgnoreCase)
+            ' 이름 → Family 매핑 (Id 는 Doc별이라 안씀)
+            Dim nameToFamily As New Dictionary(Of String, Family)(StringComparer.OrdinalIgnoreCase)
+            For Each f In allEditable
+                If f Is Nothing OrElse f.FamilyCategory Is Nothing Then Continue For
+                If IsAnnotationFamily(f) Then Continue For
+
+                If Not nameToFamily.ContainsKey(f.Name) Then
+                    nameToFamily.Add(f.Name, f)
+                End If
+            Next
 
             ' 부모이름 → 자식이름 그래프 (공유 체크된 하위만)
             Dim parentToChildren As New Dictionary(Of String, HashSet(Of String))(StringComparer.OrdinalIgnoreCase)
@@ -1040,19 +864,9 @@ Namespace Services
             Dim scanFails As New List(Of String)()
 
             '----- 1차 스캔: 그래프 구성 -----
-            For Each famId As ElementId In allEditableIds
-                Dim f As Family = Nothing
-                Try
-                    f = TryCast(doc.GetElement(famId), Family)
-                Catch
-                End Try
-                If f Is Nothing OrElse f.FamilyCategory Is Nothing Then Continue For
+            For Each f In allEditable
+                If f.FamilyCategory Is Nothing Then Continue For
                 If IsAnnotationFamily(f) Then Continue For
-
-                Dim famName As String = f.Name
-                If Not nameToFamilyId.ContainsKey(famName) Then
-                    nameToFamilyId.Add(famName, f.Id)
-                End If
 
                 Dim hostDoc As Document = Nothing
                 Try
@@ -1104,77 +918,53 @@ Namespace Services
 
                 Catch ex As Exception
                     If Not IsNoTxnNoise(ex.Message) Then
-                        scanFails.Add(famName)
+                        scanFails.Add(f.Name)
                     End If
                 Finally
                     If hostDoc IsNot Nothing Then
                         Try : hostDoc.Close(False) : Catch : End Try
                     End If
                 End Try
-
-                scanIndex += 1
-                reporter.Report("COLLECT",
-                                If(totalEditableCount = 0, 1.0R, CDbl(scanIndex) / CDbl(Math.Max(1, totalEditableCount))),
-                                scanIndex,
-                                totalEditableCount,
-                                "패밀리 스캔 중",
-                                famName)
             Next
 
             ' 복합 패밀리(상위) 목록 (리포트용)
-            Dim compositeFamilyNames As New List(Of String)(parentToChildren.Keys)
-            '----- 2. 그래프를 레벨(최하위 → 상위)로 분해 -----
-            ' 순서 고정:
-            '   1) 최하위(leaf)만 처리/로드
-            '   2) 다음 레벨(자식이 모두 처리된 부모) 처리/로드
-            '   3) 반복
-            Dim levels As New List(Of List(Of String))()
-            Dim remaining As New HashSet(Of String)(allTargetNames, StringComparer.OrdinalIgnoreCase)
-
-            While remaining.Count > 0
-                Dim level As New List(Of String)()
-
-                For Each nm In remaining.ToList()
-                    Dim childs As HashSet(Of String) = Nothing
-                    If (Not parentToChildren.TryGetValue(nm, childs)) OrElse childs Is Nothing OrElse childs.Count = 0 Then
-                        level.Add(nm)
-                    Else
-                        Dim hasChildInRemaining As Boolean = False
-                        For Each cn In childs
-                            If remaining.Contains(cn) Then
-                                hasChildInRemaining = True
-                                Exit For
-                            End If
-                        Next
-                        If Not hasChildInRemaining Then
-                            level.Add(nm)
-                        End If
-                    End If
-                Next
-
-                If level.Count = 0 Then
-                    ' 순환 구조 등으로 leaf가 안 잡히는 경우: 남은 것을 한 레벨로 처리하고 종료
-                    level.AddRange(remaining)
+            Dim compositeFamilies As New List(Of Family)()
+            For Each pname In parentToChildren.Keys
+                Dim fam As Family = Nothing
+                If nameToFamily.TryGetValue(pname, fam) Then
+                    compositeFamilies.Add(fam)
                 End If
-
-                level = level.Distinct(StringComparer.OrdinalIgnoreCase).
-                              OrderBy(Function(s) s, StringComparer.OrdinalIgnoreCase).
-                              ToList()
-
-                levels.Add(level)
-
-                For Each nm In level
-                    remaining.Remove(nm)
-                Next
-            End While
-
-            Dim order As New List(Of String)()
-            For Each lv In levels
-                order.AddRange(lv)
             Next
 
-            Dim totalToProcess As Integer = order.Count
-            reporter.Report("ANALYZE", 1.0R, totalToProcess, totalToProcess, "그래프 분석 완료", String.Empty, True)
+            '----- 2. 그래프를 하위 → 상위 순으로 정렬 (DFS, 이름 기준) -----
+            Dim order As New List(Of String)()
+            Dim mark As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase) ' 0:미방문,1:방문중,2:완료
+
+            Dim dfs As Action(Of String) =
+                Sub(name As String)
+                    Dim st As Integer = 0
+                    If mark.TryGetValue(name, st) Then
+                        If st = 2 Then Return
+                        If st = 1 Then
+                            ' 순환 구조가 있다면 더 들어가지 않고 끊음
+                            Return
+                        End If
+                    End If
+
+                    mark(name) = 1
+                    Dim childs As HashSet(Of String) = Nothing
+                    If parentToChildren.TryGetValue(name, childs) Then
+                        For Each cn In childs
+                            dfs(cn)
+                        Next
+                    End If
+                    mark(name) = 2
+                    order.Add(name)   ' 자식 먼저 처리 후 자기 자신 ⇒ 하위 → 상위
+                End Sub
+
+            For Each name In allTargetNames
+                dfs(name)
+            Next
 
             '----- 3. 계층 역순으로 파라미터 추가 & 연동 -----
             Dim fatalEx As Exception = Nothing
@@ -1188,87 +978,55 @@ Namespace Services
             Dim childFails As New List(Of String)()
             Dim skips As New List(Of String)()
             Dim compositeSuccessCount As Integer = 0
-            Dim applyIndex As Integer = 0
-            Dim publishedRfaPathByName As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
-            Dim lastErrorMessage As String = String.Empty
-            reporter.Report("APPLY", 0.0R, 0, totalToProcess, "파라미터 적용 준비", String.Empty, True)
 
-            ' (중요) 전체 TransactionGroup 으로 묶어 RollBack 하면,
-            ' 중간에 하나라도 오류가 나면 "추가/로드가 전부 안 된 것처럼" 보이게 된다.
-            ' 따라서 패밀리 단위로만 트랜잭션/로드를 커밋하고, 오류는 수집만 한다.
-            Dim hadAnyError As Boolean = False
-
-            ' 하위 → 상위 1패스 (레벨 순서 보장: DFS order는 자식 먼저 처리)
-            applyIndex = 0
-            For Each famName In order
-                Dim famId As ElementId = Nothing
-                If Not nameToFamilyId.TryGetValue(famName, famId) Then
-                    famId = FindFamilyIdByName(doc, famName)
-                    If famId IsNot Nothing Then nameToFamilyId(famName) = famId
-                End If
-
-                Dim isParent As Boolean = parentToChildren.ContainsKey(famName)
-                Dim isChild As Boolean = childNames.Contains(famName)
-
+            Using tgAll As New TransactionGroup(doc, "KKY Shared Param Propagate")
+                tgAll.Start()
                 Try
-                    ' doAssociate:=True 로 실행하면,
-                    ' - 자식이 있는 패밀리는 (1) 자식 최신본 재로드 → (2) 연동 → (3) 프로젝트 로드
-                    ' - 자식이 없는 패밀리는 파라미터 추가 후 바로 프로젝트 로드
-                    ProcessFamilyBottomUp(doc,
-                                          famId,
-                                          famName,
-                                          extDefs,
-                                          paramNames,
-                                          parentToChildren,
-                                          excludeDummy,
-                                          chosenIsInstance,
-                                          chosenPG,
-                                          isParent,
-                                          isChild,
-                                          addedHost,
-                                          addedChild,
-                                          linkCnt,
-                                          verifyOk,
-                                          verifyFail,
-                                          skipTotal,
-                                          parentFails,
-                                          childFails,
-                                          skips,
-                                          compositeSuccessCount,
-                                          nameToFamilyId,
-                                          True,
-                                          publishedRfaPathByName)
+                    ' order: 하위 → 상위. leaf(A-6) 먼저 처리.
+                    For Each famName In order
+                        Dim fam As Family = Nothing
+                        If Not nameToFamily.TryGetValue(famName, fam) Then Continue For
+
+                        Dim isParent As Boolean = parentToChildren.ContainsKey(famName)
+                        Dim isChild As Boolean = childNames.Contains(famName)
+
+                        ProcessFamilyBottomUp(doc,
+                                              fam,
+                                              extDefs,
+                                              paramNames,
+                                              parentToChildren,
+                                              excludeDummy,
+                                              chosenIsInstance,
+                                              chosenPG,
+                                              isParent,
+                                              isChild,
+                                              addedHost,
+                                              addedChild,
+                                              linkCnt,
+                                              verifyOk,
+                                              verifyFail,
+                                              skipTotal,
+                                              parentFails,
+                                              childFails,
+                                              skips,
+                                              compositeSuccessCount)
+                    Next
+
+                    tgAll.Assimilate()
                 Catch ex As Exception
-                    hadAnyError = True
-                    lastErrorMessage = MakePhaseError("APPLY", famName, famId, ex.Message)
-                    If isParent Then
-                        parentFails.Add(lastErrorMessage)
-                    ElseIf isChild Then
-                        childFails.Add(lastErrorMessage)
-                    Else
-                        parentFails.Add(lastErrorMessage)
-                    End If
+                    fatalEx = ex
+                    Try : tgAll.RollBack() : Catch : End Try
                 End Try
+            End Using
 
-                applyIndex += 1
-                reporter.Report("APPLY",
-                                If(totalToProcess = 0, 1.0R, CDbl(applyIndex) / CDbl(Math.Max(1, totalToProcess))),
-                                applyIndex,
-                                totalToProcess,
-                                "파라미터 추가/연동/로드 중",
-                                famName)
-            Next
-
-            reporter.Report("SAVE", 1.0R, applyIndex, totalToProcess, "결과 저장/정리 중", String.Empty, True)
-
-            If hadAnyError Then
-                result.Message = If(String.IsNullOrWhiteSpace(lastErrorMessage), "오류가 발생했습니다.", lastErrorMessage)
+            If fatalEx IsNot Nothing Then
+                result.Message = fatalEx.Message
                 Return RunStatus.Failed
             End If
 
             '----- 4. 리포트 구성 -----
             Dim header As New StringBuilder()
-            header.AppendLine($"패밀리 스캔: {totalEditableCount}개 / 복합 패밀리: {compositeFamilyNames.Count}개 / 성공: {compositeSuccessCount}개")
+            header.AppendLine($"패밀리 스캔: {totalEditableCount}개 / 복합 패밀리: {compositeFamilies.Count}개 / 성공: {compositeSuccessCount}개")
             header.AppendLine($"하위 패밀리 파라미터 추가: {addedChild}")
             header.AppendLine($"복합 패밀리 파라미터 추가/교정: {addedHost}")
             header.AppendLine($"파라미터 연동 성공 카운트: {linkCnt}")
@@ -1306,17 +1064,12 @@ Namespace Services
 
             result.Report = header.ToString()
             result.Details = BuildDetails(scanLines, skipLines, failLines, childFails)
-            reporter.Report("DONE", 1.0R, applyIndex, totalToProcess, "완료", String.Empty, True)
-            If String.IsNullOrWhiteSpace(result.Message) AndAlso Not String.IsNullOrWhiteSpace(lastErrorMessage) Then
-                result.Message = lastErrorMessage
-            End If
             Return RunStatus.Succeeded
         End Function
 
         ' 패밀리 1개 단위 처리 (계층 역순에서 호출)
         Private Shared Sub ProcessFamilyBottomUp(projDoc As Document,
-                                                 famId As ElementId,
-                                                 famName As String,
+                                                 fam As Family,
                                                  extDefs As IEnumerable(Of ExternalDefinition),
                                                  paramNames As List(Of String),
                                                  parentToChildren As Dictionary(Of String, HashSet(Of String)),
@@ -1334,27 +1087,12 @@ Namespace Services
                                                  parentFails As List(Of String),
                                                  childFails As List(Of String),
                                                  skips As List(Of String),
-                                                 ByRef compositeSuccessCount As Integer,
-                                                 nameToFamilyId As Dictionary(Of String, ElementId),
-                                                 doAssociate As Boolean,
-                                                 publishedRfaPathByName As Dictionary(Of String, String))
+                                                 ByRef compositeSuccessCount As Integer)
 
-            If projDoc Is Nothing OrElse String.IsNullOrWhiteSpace(famName) Then Return
+            If fam Is Nothing Then Return
+            If IsAnnotationFamily(fam) Then Return
 
-            Dim fam As Family = TryGetFreshFamily(projDoc, famName, famId, nameToFamilyId)
-
-            If fam Is Nothing OrElse IsAnnotationFamily(fam) Then
-                Dim missingMsg = MakePhaseError("APPLY", famName, famId, "패밀리 인스턴스를 찾을 수 없습니다.")
-                If isParent Then
-                    parentFails.Add(missingMsg)
-                End If
-                If isChild Then
-                    childFails.Add(missingMsg)
-                End If
-                Return
-            End If
-
-            Dim safeFamId As ElementId = If(fam IsNot Nothing, fam.Id, famId)
+            Dim famName As String = fam.Name
             Dim hasChildren As Boolean = parentToChildren.ContainsKey(famName)
 
             Dim famDoc As Document = Nothing
@@ -1363,23 +1101,7 @@ Namespace Services
             Dim localSkipAssoc As Integer = 0
 
             Try
-                Try
-                    famDoc = projDoc.EditFamily(fam)
-                Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
-                    ok = False
-                    Dim msg = MakeInvalidObjectMessage("APPLY", famName, safeFamId, "EditFamily", ex)
-                    If isParent Then
-                        parentFails.Add(msg)
-                    ElseIf isChild Then
-                        childFails.Add(msg)
-                    End If
-                    Return
-                End Try
-
-                If famDoc Is Nothing Then
-                    parentFails.Add(MakePhaseError("APPLY", famName, safeFamId, "패밀리 편집에 실패했습니다."))
-                    Return
-                End If
+                famDoc = projDoc.EditFamily(fam)
                 Dim fm As FamilyManager = famDoc.FamilyManager
 
                 ' 1) 이 패밀리에 공유 파라미터 추가/교정
@@ -1403,7 +1125,7 @@ Namespace Services
                 End If
 
                 ' 2) 자식이 있는 패밀리라면 하위 인스턴스와 연동
-                If hasChildren AndAlso doAssociate Then
+                If hasChildren Then
                     Dim hostParams As New Dictionary(Of String, FamilyParameter)(StringComparer.OrdinalIgnoreCase)
                     For Each p As FamilyParameter In fm.Parameters
                         If p.Definition IsNot Nothing Then
@@ -1416,28 +1138,6 @@ Namespace Services
 
                     Dim childrenOfHost As HashSet(Of String) = Nothing
                     parentToChildren.TryGetValue(famName, childrenOfHost)
-
-                    ' (중요) 상위 패밀리 문서에 최신 하위 패밀리를 다시 로드
-                    ' - 하위가 먼저 프로젝트에 로드되더라도, 상위 famDoc 내부 중첩 정의는 구버전일 수 있음
-                    ' - 상위 로드 시 구버전 하위가 다시 덮어써져 "추가가 안 된 것처럼" 보이는 문제를 방지
-                    If childrenOfHost IsNot Nothing AndAlso childrenOfHost.Count > 0 AndAlso publishedRfaPathByName IsNot Nothing Then
-                        Try
-                            TxnUtil.WithTxn(famDoc, "KKY: Reload nested families",
-                                Sub()
-                                    For Each cn In childrenOfHost
-                                        Dim fp As String = Nothing
-                                        If publishedRfaPathByName.TryGetValue(cn, fp) AndAlso
-                                           Not String.IsNullOrWhiteSpace(fp) AndAlso File.Exists(fp) Then
-                                            TxnUtil.LoadFamilyFromFile(famDoc, fp, $"KKY Load nested '{cn}'")
-                                        End If
-                                    Next
-                                End Sub)
-                            Try : famDoc.Regenerate() : Catch : End Try
-                        Catch ex As Exception
-                            ok = False
-                            parentFails.Add(MakePhaseError("APPLY", famName, safeFamId, $"[ReloadChild] {ex.Message}"))
-                        End Try
-                    End If
 
                     Using t As New Transaction(famDoc, "KKY: Associate nested shared params")
                         t.Start()
@@ -1455,16 +1155,11 @@ Namespace Services
                                 childF = sym.Family
                             Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
                                 ok = False
-                                Dim msg = MakeInvalidObjectMessage("APPLY", famName, safeFamId, "Associate:ResolveChildSymbol", ex)
-                                If isParent Then
-                                    parentFails.Add(msg)
-                                ElseIf isChild Then
-                                    childFails.Add(msg)
-                                End If
+                                parentFails.Add($"{famName}: [Associate] 오류 - {ex.Message}")
                                 Continue For
                             Catch ex As Exception
                                 ok = False
-                                parentFails.Add(MakePhaseError("APPLY", famName, safeFamId, $"[Associate] 오류 - {ex.Message}"))
+                                parentFails.Add($"{famName}: [Associate] 오류 - {ex.Message}")
                                 Continue For
                             End Try
 
@@ -1505,30 +1200,17 @@ Namespace Services
                                     Try
                                         famDoc.FamilyManager.AssociateElementParameterToFamilyParameter(p, hostParam)
                                         linkCnt += 1
-                                    Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
+                                    Catch
                                         ok = False
-                                        Dim msg = MakeInvalidObjectMessage("APPLY", famName, safeFamId, $"Associate:{name}", ex)
-                                        If isParent Then
-                                            parentFails.Add(msg)
-                                        ElseIf isChild Then
-                                            childFails.Add(msg)
-                                        End If
-                                    Catch ex As Exception
-                                        ok = False
-                                        parentFails.Add(MakePhaseError("APPLY", famName, safeFamId, $"[Associate] 실패 - {name}: {ex.Message}"))
+                                        parentFails.Add($"{famName}: [Associate] 실패 - {name}")
                                     End Try
                                 Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
                                     ok = False
-                                    Dim msg = MakeInvalidObjectMessage("APPLY", famName, safeFamId, $"Associate:{name}", ex)
-                                    If isParent Then
-                                        parentFails.Add(msg)
-                                    ElseIf isChild Then
-                                        childFails.Add(msg)
-                                    End If
+                                    parentFails.Add($"{famName}: [Associate] 오류 - {ex.Message}")
                                     Continue For
                                 Catch ex As Exception
                                     ok = False
-                                    parentFails.Add(MakePhaseError("APPLY", famName, safeFamId, $"[Associate] 오류 - {ex.Message}"))
+                                    parentFails.Add($"{famName}: [Associate] 오류 - {ex.Message}")
                                     Continue For
                                 End Try
                             Next
@@ -1561,44 +1243,19 @@ Namespace Services
                     End If
                 End If
 
-
-                ' 4) 프로젝트에 로드 (파일 기반 Publish - 트랜잭션 보장)
-                Try
-                    Dim tempPath As String = TxnUtil.SaveAsTempRfa(famDoc, famName)
-                    TxnUtil.LoadFamilyFromFile(projDoc, tempPath, $"KKY Load '{famName}'")
-                    If publishedRfaPathByName IsNot Nothing Then
-                        publishedRfaPathByName(famName) = tempPath
-                    End If
-                Catch ex As Exception
-                    ok = False
-                    Dim msg = MakePhaseError("APPLY", famName, safeFamId, $"[LoadFamily] {ex.Message}")
-                    If isParent Then
-                        parentFails.Add(msg)
-                    ElseIf isChild Then
-                        childFails.Add(msg)
-                    End If
-                End Try
-
-                If ok AndAlso doAssociate AndAlso hasChildren Then
+                ' 4) 프로젝트에 로드
+                TxnUtil.SafeLoadFamily(famDoc, projDoc, $"KKY Load '{famName}'")
+                If ok AndAlso hasChildren Then
                     compositeSuccessCount += 1
                 End If
 
-            Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
-                ok = False
-                Dim failMsg As String = MakeInvalidObjectMessage("APPLY", famName, safeFamId, "ProcessFamilyBottomUp", ex)
-                If isParent Then
-                    parentFails.Add(failMsg)
-                ElseIf isChild Then
-                    childFails.Add(failMsg)
-                End If
             Catch ex As Exception
                 ok = False
                 If Not IsNoTxnNoise(ex.Message) Then
-                    Dim failMsg As String = MakePhaseError("APPLY", famName, safeFamId, ex.Message)
                     If isParent Then
-                        parentFails.Add(failMsg)
+                        parentFails.Add(famName)
                     ElseIf isChild Then
-                        childFails.Add(failMsg)
+                        childFails.Add(famName)
                     End If
                 End If
             Finally
@@ -1616,220 +1273,115 @@ Namespace Services
             Public ErrorMessage As String
         End Structure
 
-
         Private Shared Function EnsureSharedParamInFamily(famDoc As Document,
-                                                 extDef As ExternalDefinition,
-                                                 isInstance As Boolean,
-                                                 groupPG As BuiltInParameterGroup) As EnsureResult
-
+                                                         extDef As ExternalDefinition,
+                                                         isInstance As Boolean,
+                                                         groupPG As BuiltInParameterGroup) As EnsureResult
             Dim fm As FamilyManager = famDoc.FamilyManager
             Dim result As New EnsureResult With {
-        .Added = False,
-        .FinalOk = False,
-        .HadMismatch = False,
-        .ErrorMessage = Nothing
-    }
+                .Added = False,
+                .FinalOk = False,
+                .HadMismatch = False,
+                .ErrorMessage = Nothing
+            }
 
-            If famDoc Is Nothing OrElse fm Is Nothing OrElse extDef Is Nothing Then
-                result.ErrorMessage = "EnsureSharedParamInFamily: invalid input."
-                Return result
-            End If
+            Dim anyByName As FamilyParameter =
+                fm.Parameters.Cast(Of FamilyParameter)().
+                FirstOrDefault(Function(p) p.Definition IsNot Nothing AndAlso
+                                           String.Equals(p.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
 
-#If REVIT2025 Then
-    Dim groupTypeId As ForgeTypeId = Nothing
-    Try
-        groupTypeId = extDef.GetGroupTypeId()
-    Catch
-        groupTypeId = Nothing
-    End Try
-#End If
-
-            Dim findByName As Func(Of FamilyParameter) =
-                Function()
-                    Return fm.Parameters.Cast(Of FamilyParameter)().
-                        FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Definition IsNot Nothing AndAlso
-                                                   String.Equals((If(p.Definition.Name, String.Empty)).Trim(),
-                                                                 (If(extDef.Name, String.Empty)).Trim(),
-                                                                 StringComparison.OrdinalIgnoreCase))
-                End Function
-
-            Dim findByGuid As Func(Of FamilyParameter) =
-                Function()
-                    Try
-                        Dim g As Guid = extDef.GUID
-                        If g = Guid.Empty Then Return Nothing
-                        Return fm.Parameters.Cast(Of FamilyParameter)().
-                            FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.IsShared AndAlso p.GUID = g)
-                    Catch
-                        Return Nothing
-                    End Try
-                End Function
-
-
-
-            Dim isOk As Func(Of FamilyParameter, Boolean) =
-        Function(p As FamilyParameter)
-            If p Is Nothing OrElse p.Definition Is Nothing Then Return False
-            If Not p.IsShared Then Return False
-            If p.IsInstance <> isInstance Then Return False
-#If REVIT2025 Then
-            Try
-                If groupTypeId Is Nothing Then Return True ' 그룹 비교 불가(방어)
-                Dim dt As ForgeTypeId = p.Definition.GetGroupTypeId()
-                If dt Is Nothing Then Return False
-                If Not dt.Equals(groupTypeId) Then Return False
-            Catch
-                ' group 비교 불가면 보수적으로 실패 처리
-                Return False
-            End Try
-#Else
-            If p.Definition.ParameterGroup <> groupPG Then Return False
-#End If
-            Return True
-        End Function
-
-            Dim existedBefore As Boolean = False
-            Dim cur As FamilyParameter = findByName()
-            existedBefore = (cur IsNot Nothing)
-
-            ' 이미 올바르면 OK
-            If isOk(cur) Then
-                result.FinalOk = True
-                Return result
-            End If
-
-            ' 1) 없으면 shared로 추가
-            If cur Is Nothing Then
-                Dim added As FamilyParameter = Nothing
+            If anyByName Is Nothing Then
                 Try
-                    TxnUtil.WithTxn(famDoc, $"Add shared: {extDef.Name}",
-                Sub()
+                    TxnUtil.WithTxn(famDoc, $"TEMP non-shared add: {extDef.Name}",
+                        Sub()
 #If REVIT2019 Or REVIT2021 Then
-                    added = fm.AddParameter(extDef, groupPG, isInstance)
-#ElseIf REVIT2023 Then
-                    added = fm.AddParameter(extDef, groupPG, isInstance)
-#ElseIf REVIT2025 Then
-                    added = fm.AddParameter(extDef, groupTypeId, isInstance)
+                            fm.AddParameter(extDef.Name, groupPG, extDef.ParameterType, isInstance)
+#ElseIf REVIT2023 Or REVIT2025 Then
+                            fm.AddParameter(extDef, groupPG, isInstance)
 #End If
-                End Sub)
+                        End Sub)
                     result.Added = True
                     Try : famDoc.Regenerate() : Catch : End Try
+                    anyByName =
+                        fm.Parameters.Cast(Of FamilyParameter)().
+                        FirstOrDefault(Function(x) x.Definition IsNot Nothing AndAlso
+                                                   String.Equals(x.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
                 Catch ex As Exception
-                    result.ErrorMessage = $"AddParameter(shared) 실패: {ex.Message}"
+                    result.ErrorMessage = $"임시 비공유 추가 실패: {ex.Message}"
                     Return result
                 End Try
-
-                If added Is Nothing Then
-                    cur = findByGuid()
-                    If cur Is Nothing Then cur = findByName()
-                Else
-                    cur = added
-                End If
-
-                If isOk(cur) Then
-                    result.FinalOk = True
-                    Return result
-                End If
-
-                ' 추가는 됐지만 속성(그룹/Instance)이 안 맞으면 교정 단계로 진행
-                result.HadMismatch = True
-            Else
-                result.HadMismatch = True
             End If
 
-            If cur Is Nothing Then
-                result.ErrorMessage = "AddParameter 후에도 동일 이름 파라미터를 찾을 수 없습니다."
+            If anyByName Is Nothing Then
+                result.ErrorMessage = "동일 이름 파라미터를 찾을 수 없음(임시 생성 실패)."
+
+
                 Return result
             End If
 
-            ' 2) Replace로 교정 (Replace 예외여도 결과가 OK면 HardFix로 가지 않음)
-            Dim replaceEx As Exception = Nothing
+            Dim replaceFailed As Boolean = False
             Try
-                TxnUtil.WithTxn(famDoc, $"ReplaceParameter: {extDef.Name}",
-            Sub()
-#If REVIT2019 Or REVIT2021 Then
-                fm.ReplaceParameter(cur, extDef, groupPG, isInstance)
-#ElseIf REVIT2023 Then
-                fm.ReplaceParameter(cur, extDef, groupPG, isInstance)
-#ElseIf REVIT2025 Then
-                fm.ReplaceParameter(cur, extDef, groupTypeId, isInstance)
-#End If
-            End Sub)
-                Try : famDoc.Regenerate() : Catch : End Try
-            Catch ex As Exception
-                replaceEx = ex
+                TxnUtil.WithTxn(famDoc, $"Replace to shared: {extDef.Name}",
+                    Sub()
+                        fm.ReplaceParameter(anyByName, extDef, groupPG, isInstance)
+                    End Sub)
+            Catch
+                replaceFailed = True
             End Try
 
-            Dim corrected As FamilyParameter = findByName()
-            If isOk(corrected) Then
-                result.FinalOk = True
-                result.Added = (Not existedBefore)
-                Return result
-            End If
-
-            ' 3) HardFix: Remove/Add(shared) - SubTransaction 롤백으로 "삭제만 되고 끝" 방지
-            Try
-                TxnUtil.WithTxn(famDoc, $"HardFix Remove/Add(shared): {extDef.Name}",
-            Sub()
-                Dim st As New SubTransaction(famDoc)
-                st.Start()
-                Try
-                    Dim curNow As FamilyParameter = findByName()
-                    If curNow IsNot Nothing Then
-                        fm.RemoveParameter(curNow)
-                    End If
-
-#If REVIT2019 Or REVIT2021 Then
-                    fm.AddParameter(extDef, groupPG, isInstance)
-#ElseIf REVIT2023 Then
-                    fm.AddParameter(extDef, groupPG, isInstance)
-#ElseIf REVIT2025 Then
-                    fm.AddParameter(extDef, groupTypeId, isInstance)
-#End If
-
-                    st.Commit()
-                Catch
-                    Try : st.RollBack() : Catch : End Try
-                    Throw
-                End Try
-            End Sub)
-                Try : famDoc.Regenerate() : Catch : End Try
-            Catch ex As Exception
-                result.ErrorMessage = $"HardFix 실패(Remove/Add): {ex.Message}" & If(replaceEx Is Nothing, "", $" / Replace 실패: {replaceEx.Message}")
-                Return result
-            End Try
-
-            corrected = findByName()
-            If isOk(corrected) Then
-                result.FinalOk = True
-                result.Added = (Not existedBefore)
-                Return result
-            End If
-
-            ' 최종 실패: 존재는 하나 조건 불일치
-            Dim any As FamilyParameter = findByName()
-            If any Is Nothing Then
-                result.ErrorMessage = "파라미터 추가 실패(패밀리 내에 파라미터가 존재하지 않음)."
-            Else
-                Dim state As String = $"IsShared={any.IsShared}, IsInstance={any.IsInstance}"
+            Dim corrected As FamilyParameter =
+                fm.Parameters.Cast(Of FamilyParameter)().
+                FirstOrDefault(Function(x) x.Definition IsNot Nothing AndAlso
+                                           String.Equals(x.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
 #If REVIT2025 Then
-        Dim grp As String = ""
-        Try
-            Dim gt As ForgeTypeId = any.Definition.GetGroupTypeId()
-                If gt IsNot Nothing Then grp = $" GroupTypeId={gt.TypeId}"
-        Catch
-        End Try
-        result.ErrorMessage = $"파라미터는 존재하나 조건 불일치: {state}{grp}"
+            Dim okNow As Boolean =
+                (corrected IsNot Nothing AndAlso corrected.IsShared AndAlso
+                 BuiltInParameterGroupCompat.IsInGroup(corrected.Definition, groupPG))
 #Else
-                result.ErrorMessage = $"파라미터는 존재하나 조건 불일치: {state}, Group={any.Definition.ParameterGroup}"
+            Dim okNow As Boolean =
+                (corrected IsNot Nothing AndAlso corrected.IsShared AndAlso
+                 corrected.Definition.ParameterGroup = groupPG)
 #End If
+
+            If okNow AndAlso Not replaceFailed Then
+                result.FinalOk = True
+                Return result
             End If
 
-            If replaceEx IsNot Nothing Then
-                result.ErrorMessage &= $" / Replace 실패: {replaceEx.Message}"
-            End If
+            result.HadMismatch = True
+            Try
+                TxnUtil.WithTxn(famDoc, $"HardFix Remove/Add: {extDef.Name}",
+                    Sub()
+                        Try
+                            fm.RemoveParameter(anyByName)
+                        Catch remEx As Exception
+                            Throw New InvalidOperationException(
+                                $"Remove 실패(레이블/치수/공식 참조 중일 수 있음): {remEx.Message}")
+                        End Try
+#If REVIT2019 Or REVIT2021 Then
+                        fm.AddParameter(extDef.Name, groupPG, extDef.ParameterType, isInstance)
+#ElseIf REVIT2023 Or REVIT2025 Then
+                        fm.AddParameter(extDef, groupPG, isInstance)
+#End If
+                    End Sub)
+                Try : famDoc.Regenerate() : Catch : End Try
+            Catch ex As Exception
+                result.ErrorMessage = $"HardFix 실패: {ex.Message}"
+                Return result
+            End Try
 
-            result.FinalOk = False
+            corrected =
+                fm.Parameters.Cast(Of FamilyParameter)().
+                FirstOrDefault(Function(x) x.Definition IsNot Nothing AndAlso
+                                           x.IsShared AndAlso
+                                           String.Equals(x.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
+#If REVIT2025 Then
+            result.FinalOk = (corrected IsNot Nothing AndAlso
+                              BuiltInParameterGroupCompat.IsInGroup(corrected.Definition, groupPG))
+#Else
+            result.FinalOk = (corrected IsNot Nothing AndAlso
+                              corrected.Definition.ParameterGroup = groupPG)
+#End If
             Return result
         End Function
 
