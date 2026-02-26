@@ -86,6 +86,7 @@ Namespace UI.Hub
         ' 라우팅
         ' -----------------------------
         Private Shared Sub Dispatch(app As UIApplication, name As String, payload As Object)
+            name = If(name, "").Trim()
             ' 공통(웹 UI 쪽 요청)
             Select Case name
                 Case "ui:query-topmost"
@@ -137,6 +138,11 @@ Namespace UI.Hub
             map.Add("sharedparam:list", "HandleSharedParamList")
             map.Add("sharedparam:status", "HandleSharedParamStatus")
             map.Add("sharedparam:export-excel", "HandleSharedParamExport")
+            ' (호환) 일부 번들/구버전 UI에서 paramprop:* 로 호출하는 경우를 허용
+            map.Add("paramprop:list", "HandleSharedParamList")
+            map.Add("paramprop:status", "HandleSharedParamStatus")
+            map.Add("paramprop:export-excel", "HandleSharedParamExport")
+            map.Add("sharedparam:export", "HandleSharedParamExport")
             ' Shared Parameter Batch
             map.Add("sharedparambatch:init", "HandleSharedParamBatchInit")
             map.Add("sharedparambatch:browse-rvts", "HandleSharedParamBatchBrowseRvts")
@@ -177,7 +183,9 @@ Namespace UI.Hub
 
             Dim methodName As String = Nothing
             If Not map.TryGetValue(name, methodName) Then
+                ' warn만 남기면(특히 Busy 상태) UI가 복귀하지 못하는 경우가 있어 error도 함께 전송
                 SendToWeb("host:warn", New With {.message = String.Format("알 수 없는 이벤트 '{0}'", name)})
+                SendToWeb("host:error", New With {.message = String.Format("알 수 없는 이벤트 '{0}'", name)})
                 Return
             End If
 
@@ -187,8 +195,9 @@ Namespace UI.Hub
             Dim m As MethodInfo = t.GetMethod(methodName, flags)
 
             If m Is Nothing Then
-                ' 메서드가 아직 구현되지 않은 경우에도 앱이 죽지 않도록 안전하게 로그만 남김
+                ' 핸들러 누락은 실제로 기능이 동작하지 않는 치명 오류이므로, warn + error 둘 다 전송
                 SendToWeb("host:warn", New With {.message = String.Format("핸들러 '{0}' 가 구현되어 있지 않습니다.", methodName)})
+                SendToWeb("host:error", New With {.message = String.Format("핸들러 '{0}' 가 구현되어 있지 않습니다.", methodName)})
                 Return
             End If
 
