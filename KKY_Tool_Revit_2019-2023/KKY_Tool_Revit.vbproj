@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
 
 	<PropertyGroup>
 		<TargetFramework>net48</TargetFramework>
@@ -19,8 +19,8 @@
 		<AddinYear Condition="'$(AddinYear)'==''">2019</AddinYear>
 
 				<!-- Conditional compile symbols for version-specific code paths -->
-		<DefineConstants Condition="\'$(DefineConstants)\'==\'\'">REVIT$(AddinYear)=1</DefineConstants>
-		<DefineConstants Condition="\'$(DefineConstants)\'!=\'\'">$(DefineConstants),REVIT$(AddinYear)=1</DefineConstants>
+		<DefineConstants Condition="'$(DefineConstants)'==''">REVIT$(AddinYear)=1</DefineConstants>
+		<DefineConstants Condition="'$(DefineConstants)'!=''">$(DefineConstants),REVIT$(AddinYear)=1</DefineConstants>
 
 <!-- ✅ 산출물: 프로젝트 bin 하위로 고정 -->
 		<OutputPath>bin\Rvt$(AddinYear)\net48\</OutputPath>
@@ -98,7 +98,7 @@
 	</ItemGroup>
 
 	<!-- ✅ 1회 빌드로 2019/2021/2023 출력 폴더 + ProgramData addin 파일 생성 -->
-	<Target Name="DeployAllYears" AfterTargets="Build" Condition="\'$(SkipDeployAllYears)\'!=\'true\'">
+	<Target Name="DeployAllYears" AfterTargets="Build" Condition="'$(SkipDeployAllYears)'!='true'">
 		<ItemGroup>
 			<!-- MSBuild는 Include에 세미콜론을 자동 분리 -->
 			<_DeployYear Include="$(DeployYears)" />

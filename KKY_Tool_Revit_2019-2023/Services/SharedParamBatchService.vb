@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -528,7 +528,7 @@ Namespace Services
                     row("파라미터명") = If(p.ParamName, String.Empty)
                     row("GUID") = p.GuidString
                     row("바인딩") = If(p.Settings IsNot Nothing AndAlso p.Settings.IsInstanceBinding, "Instance", "Type")
-                    row("파라미터 그룹") = GetParamGroupLabel(If(p.Settings IsNot Nothing, p.Settings.ParamGroup, BuiltInParameterGroup.INVALID))
+                    row("파라미터 그룹") = GetParamGroupLabel(If(p.Settings IsNot Nothing, p.Settings.ParamGroup, GetDefaultParamGroup()))
                     row("BoundCategories") = FormatCategoryRefs(If(p.Settings IsNot Nothing, p.Settings.Categories, Nothing))
                     row("성공여부") = status
                     row("메시지") = message
@@ -670,13 +670,30 @@ Namespace Services
             End Select
         End Function
 
+        Private Shared Function GetDefaultParamGroup() As BuiltInParameterGroup
+#If REVIT2025 = 1 Then
+            Return BuiltInParameterGroup.PG_DATA
+#Else
+            Return BuiltInParameterGroup.INVALID
+#End If
+        End Function
+
         Private Shared Function GetParamGroupLabel(groupValue As BuiltInParameterGroup) As String
+#If REVIT2025 = 1 Then
+            Try
+                Dim gId As ForgeTypeId = BuiltInParameterGroupCompat.ToGroupTypeId(groupValue)
+                Return LabelUtils.GetLabelForGroup(gId)
+            Catch
+                Return groupValue.ToString()
+            End Try
+#Else
             If groupValue = BuiltInParameterGroup.INVALID Then Return ""
             Try
                 Return LabelUtils.GetLabelFor(groupValue)
             Catch
                 Return groupValue.ToString()
             End Try
+#End If
         End Function
 
         Private Shared Function ValidateExportSchema(dt As DataTable, headers As String()) As Boolean
@@ -757,6 +774,25 @@ Namespace Services
             Dim opts As New List(Of ParamGroupOption)()
             Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
 
+#If REVIT2025 = 1 Then
+            For Each v As BuiltInParameterGroup In [Enum].GetValues(GetType(BuiltInParameterGroup))
+                Dim key As String = v.ToString()
+                If seen.Contains(key) Then Continue For
+                seen.Add(key)
+
+                Dim label As String = key
+                Try
+                    Dim gId As ForgeTypeId = BuiltInParameterGroupCompat.ToGroupTypeId(v)
+                    label = LabelUtils.GetLabelForGroup(gId)
+                Catch
+                    label = key
+                End Try
+
+                opts.Add(New ParamGroupOption With {.Key = key, .Id = key, .Label = label})
+            Next
+
+            Return opts.OrderBy(Function(o) o.Label).ToList()
+#Else
             For Each v As BuiltInParameterGroup In [Enum].GetValues(GetType(BuiltInParameterGroup))
                 If v = BuiltInParameterGroup.INVALID Then Continue For
                 Dim key As String = v.ToString()
@@ -790,6 +826,7 @@ Namespace Services
             End If
 
             Return opts.OrderBy(Function(o) o.Label).ToList()
+#End If
         End Function
 
         Private Shared Sub AddLog(logs As List(Of LogEntry), lines As List(Of String), level As String, filePath As String, message As String)
@@ -967,7 +1004,7 @@ Namespace Services
                 payload.TryGetValue(key, raw)
             End If
 
-            If raw Is Nothing Then Return BuiltInParameterGroup.INVALID
+            If raw Is Nothing Then Return GetDefaultParamGroup()
 
             Try
                 Dim s As String = raw.ToString()
@@ -988,7 +1025,7 @@ Namespace Services
             Catch
             End Try
 
-            Return BuiltInParameterGroup.INVALID
+            Return GetDefaultParamGroup()
         End Function
 
         Private Shared Function ValidateBatchSettings(s As BatchSettings, spFilePath As String) As String
@@ -1172,10 +1209,18 @@ Namespace Services
 
                     Dim map As BindingMap = doc.ParameterBindings
 
+                    #If REVIT2025 = 1 Then
+                    Dim groupTypeId As ForgeTypeId = BuiltInParameterGroupCompat.ToGroupTypeId(p.Settings.ParamGroup)
+                    Dim insertedOk As Boolean = map.Insert(extDef, binding, groupTypeId)
+                    If Not insertedOk Then
+                        insertedOk = map.ReInsert(extDef, binding, groupTypeId)
+                    End If
+#Else
                     Dim insertedOk As Boolean = map.Insert(extDef, binding, p.Settings.ParamGroup)
                     If Not insertedOk Then
                         insertedOk = map.ReInsert(extDef, binding, p.Settings.ParamGroup)
                     End If
+#End If
 
                     If Not insertedOk Then
                         t.RollBack()

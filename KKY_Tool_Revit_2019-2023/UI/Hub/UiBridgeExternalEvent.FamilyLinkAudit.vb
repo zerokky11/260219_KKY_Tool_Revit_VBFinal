@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -287,7 +287,7 @@ End Function
         Private Shared Function SafeDefTypeToken(defn As Definition) As String
             If defn Is Nothing Then Return ""
             Try
-#If REVIT2023 = 1 Then
+#If REVIT2023 = 1 Or REVIT2025 = 1 Then
                 Dim dt As ForgeTypeId = defn.GetDataType()
                 If dt IsNot Nothing Then Return SafeStr(dt.TypeId)
                 Return ""
