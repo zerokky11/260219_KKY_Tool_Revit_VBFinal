@@ -86,7 +86,7 @@ Namespace UI.Hub
         ' 라우팅
         ' -----------------------------
         Private Shared Sub Dispatch(app As UIApplication, name As String, payload As Object)
-            name = If(name, "").Trim()
+            name = NormalizeEventName(name)
             ' 공통(웹 UI 쪽 요청)
             Select Case name
                 Case "ui:query-topmost"
@@ -280,6 +280,28 @@ Namespace UI.Hub
         End Function
 
         ' payload 속성 안전 추출(익명/Dictionary 수용)
+
+        Private Shared Function NormalizeEventName(name As String) As String
+            Dim s As String = If(name, "")
+            s = s.Trim()
+
+            ' Some host parsers pass JSON raw text for strings: ""ui:xxx"" (including the quotes).
+            ' Normalize by stripping wrapping quotes (single or double).
+            For i As Integer = 0 To 1
+                If s.Length >= 2 AndAlso s(0) = """"c AndAlso s(s.Length - 1) = """"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                If s.Length >= 2 AndAlso s(0) = "'"c AndAlso s(s.Length - 1) = "'"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                Exit For
+            Next
+
+            Return s
+        End Function
+
         Private Shared Function GetProp(obj As Object, prop As String) As Object
             If obj Is Nothing Then Return Nothing
 

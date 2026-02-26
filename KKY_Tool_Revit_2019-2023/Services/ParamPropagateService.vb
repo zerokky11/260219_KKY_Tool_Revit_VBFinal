@@ -617,6 +617,7 @@ Namespace Services
 
         Public Class SharedParamRunRequest
             Public Property ParamNames As List(Of String)
+            Public Property ParamGuids As List(Of String)
             Public Property TargetGroup As Integer
             Public Property IsInstance As Boolean
             Public Property ExcludeDummy As Boolean
@@ -624,6 +625,7 @@ Namespace Services
             Public Shared Function FromPayload(payload As Object) As SharedParamRunRequest
                 Dim req As New SharedParamRunRequest With {
                     .ParamNames = New List(Of String)(),
+                    .ParamGuids = New List(Of String)(),
                     .TargetGroup = CInt(BuiltInParameterGroup.PG_TEXT),
                     .IsInstance = True,
                     .ExcludeDummy = True
@@ -635,7 +637,24 @@ Namespace Services
                     Dim namesObj = ReadProp(payload, "paramNames")
                     If TypeOf namesObj Is IEnumerable Then
                         For Each n In CType(namesObj, IEnumerable)
-                            If n IsNot Nothing Then req.ParamNames.Add(n.ToString())
+                            If n Is Nothing Then Continue For
+                            Dim raw As String = n.ToString()
+                            If String.IsNullOrWhiteSpace(raw) Then Continue For
+
+                            ' Allow both ["A","B"] and ["A,B"] input styles
+                            For Each part As String In raw.Split(New Char() {","c}, StringSplitOptions.RemoveEmptyEntries)
+                                Dim nm As String = NormalizeParamName(part)
+                                If Not String.IsNullOrWhiteSpace(nm) Then req.ParamNames.Add(nm)
+                            Next
+                        Next
+                    End If
+
+                    Dim guidsObj = ReadProp(payload, "paramGuids")
+                    If TypeOf guidsObj Is IEnumerable Then
+                        For Each g In CType(guidsObj, IEnumerable)
+                            If g Is Nothing Then Continue For
+                            Dim gs As String = NormalizeParamName(g.ToString())
+                            If Not String.IsNullOrWhiteSpace(gs) Then req.ParamGuids.Add(gs)
                         Next
                     End If
 
@@ -649,6 +668,10 @@ Namespace Services
                     If dummyObj IsNot Nothing Then req.ExcludeDummy = Convert.ToBoolean(dummyObj)
                 Catch
                 End Try
+
+                ' De-duplicate
+                req.ParamNames = req.ParamNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                req.ParamGuids = req.ParamGuids.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
 
                 Return req
             End Function
@@ -783,7 +806,7 @@ Namespace Services
                 chosenPG = BuiltInParameterGroup.PG_TEXT
             End Try
 
-            Dim extDefs As List(Of ExternalDefinition) = ResolveDefinitions(app.Application, request.ParamNames)
+            Dim extDefs As List(Of ExternalDefinition) = ResolveDefinitions(app.Application, request.ParamNames, request.ParamGuids)
             If extDefs Is Nothing OrElse extDefs.Count = 0 Then
                 result.Message = "선택한 공유 파라미터를 Shared Parameters 파일에서 찾을 수 없습니다."
                 Return result
@@ -1318,6 +1341,124 @@ Namespace Services
         End Sub
 
         '==================== 공통 헬퍼들 ====================
+
+#If REVIT2025 Then
+        '==================== Revit 2025: Parameter groupTypeId mapping ====================
+        Private Shared ReadOnly _builtInGroupTypeIds As Lazy(Of List(Of ForgeTypeId)) =
+            New Lazy(Of List(Of ForgeTypeId))(AddressOf BuildBuiltInGroupTypeIdMap)
+
+        Private Shared Function BuildBuiltInGroupTypeIdMap() As List(Of ForgeTypeId)
+            Dim list As New List(Of ForgeTypeId)()
+            Dim added As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            ' preferred first (stable property names)
+            Dim prefNames As String() = {"Text", "IdentityData", "Data", "Constraints"}
+            For Each pn As String In prefNames
+                Dim v As ForgeTypeId = GetGroupTypeIdByPropertyName(pn)
+                If v IsNot Nothing Then
+                    Dim key As String = SafeTypeId(v)
+                    If Not added.Contains(key) Then
+                        added.Add(key)
+                        list.Add(v)
+                    End If
+                End If
+            Next
+
+            ' then all built-in groups
+            Dim allGroups As IList(Of ForgeTypeId) = Nothing
+            Try
+                allGroups = ParameterUtils.GetAllBuiltInGroups()
+            Catch
+                allGroups = Nothing
+            End Try
+
+            If allGroups IsNot Nothing Then
+                For Each g As ForgeTypeId In allGroups
+                    If g Is Nothing Then Continue For
+                    Dim key As String = SafeTypeId(g)
+                    If Not added.Contains(key) Then
+                        added.Add(key)
+                        list.Add(g)
+                    End If
+                Next
+            End If
+
+            ' last resort
+            If list.Count = 0 Then
+                Dim fallback As ForgeTypeId = GetGroupTypeIdByPropertyName("IdentityData")
+                If fallback IsNot Nothing Then list.Add(fallback)
+            End If
+
+            Return list
+        End Function
+
+        Private Shared Function GetGroupTypeIdByPropertyName(propName As String) As ForgeTypeId
+            Try
+                Dim p = GetType(GroupTypeId).GetProperty(propName, System.Reflection.BindingFlags.Public Or System.Reflection.BindingFlags.Static)
+                If p Is Nothing Then Return Nothing
+                Return TryCast(p.GetValue(Nothing, Nothing), ForgeTypeId)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function SafeTypeId(id As ForgeTypeId) As String
+            If id Is Nothing Then Return ""
+            Try
+                Return id.TypeId
+            Catch
+                Try
+                    Return id.ToString()
+                Catch
+                    Return ""
+                End Try
+            End Try
+        End Function
+
+        Private Shared Function ResolveGroupTypeIdByIndex(groupIndex As Integer) As ForgeTypeId
+            Dim map As List(Of ForgeTypeId) = _builtInGroupTypeIds.Value
+            Dim fallback As ForgeTypeId = GetGroupTypeIdByPropertyName("IdentityData")
+            If map Is Nothing OrElse map.Count = 0 Then Return fallback
+            If groupIndex < 0 OrElse groupIndex >= map.Count Then Return fallback
+            Dim g As ForgeTypeId = map(groupIndex)
+            If g Is Nothing Then g = fallback
+            Return g
+        End Function
+
+        Private Shared Function ResolveUserAssignableGroupTypeId(fm As FamilyManager, groupIndex As Integer, extDef As ExternalDefinition) As ForgeTypeId
+            Dim gtid As ForgeTypeId = ResolveGroupTypeIdByIndex(groupIndex)
+
+            ' fallback to definition's own group if needed
+            If gtid Is Nothing Then
+                Try
+                    gtid = extDef.GetGroupTypeId()
+                Catch
+                    gtid = Nothing
+                End Try
+            End If
+
+            If gtid Is Nothing Then
+                gtid = GetGroupTypeIdByPropertyName("IdentityData")
+            End If
+            If gtid Is Nothing Then
+                gtid = New ForgeTypeId() ' empty (treated as "Other" by some APIs)
+            End If
+
+            ' ensure user-assignable group
+            Try
+                If fm IsNot Nothing AndAlso gtid IsNot Nothing Then
+                    If Not fm.IsUserAssignableParameterGroup(gtid) Then
+                        Dim fb As ForgeTypeId = GetGroupTypeIdByPropertyName("IdentityData")
+                        If fb IsNot Nothing Then gtid = fb
+                    End If
+                End If
+            Catch
+            End Try
+
+            Return gtid
+        End Function
+#End If
+
         Private Structure EnsureResult
             Public Added As Boolean
             Public FinalOk As Boolean
@@ -1346,11 +1487,11 @@ Namespace Services
                 Try
                     TxnUtil.WithTxn(famDoc, $"TEMP non-shared add: {extDef.Name}",
                         Sub()
-#If REVIT2019 Or REVIT2021 Then
+#If REVIT2019 Or REVIT2021 Or REVIT2023 Then
                             ' shared parameter directly
                             fm.AddParameter(extDef, groupPG, isInstance)
-#ElseIf REVIT2023 Or REVIT2025 Then
-                            Dim gtid As ForgeTypeId = extDef.GetGroupTypeId()
+#ElseIf REVIT2025 Then
+                            Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, CInt(groupPG), extDef)
                             fm.AddParameter(extDef, gtid, isInstance)
 #End If
                         End Sub)
@@ -1377,10 +1518,10 @@ Namespace Services
             Try
                 TxnUtil.WithTxn(famDoc, $"Replace to shared: {extDef.Name}",
                     Sub()
-#If REVIT2019 Or REVIT2021 Then
+#If REVIT2019 Or REVIT2021 Or REVIT2023 Then
                         fm.ReplaceParameter(anyByName, extDef, groupPG, isInstance)
-#ElseIf REVIT2023 Or REVIT2025 Then
-                        Dim gtid As ForgeTypeId = extDef.GetGroupTypeId()
+#ElseIf REVIT2025 Then
+                        Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, CInt(groupPG), extDef)
                         fm.ReplaceParameter(anyByName, extDef, gtid, isInstance)
 #End If
                     End Sub)
@@ -1392,15 +1533,15 @@ Namespace Services
                 fm.Parameters.Cast(Of FamilyParameter)().
                 FirstOrDefault(Function(x) x.Definition IsNot Nothing AndAlso
                                            String.Equals(x.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
-#If REVIT2019 Or REVIT2021 Then
+#If REVIT2019 Or REVIT2021 Or REVIT2023 Then
             Dim okNow As Boolean =
                 (corrected IsNot Nothing AndAlso corrected.IsShared AndAlso corrected.IsInstance = isInstance AndAlso
                  corrected.Definition.ParameterGroup = groupPG)
-#ElseIf REVIT2023 Or REVIT2025 Then
+#ElseIf REVIT2025 Then
             Dim groupOk As Boolean = True
             Try
                 groupOk = (corrected IsNot Nothing AndAlso corrected.Definition IsNot Nothing AndAlso
-                           corrected.Definition.GetGroupTypeId().Equals(extDef.GetGroupTypeId()))
+                           corrected.Definition.GetGroupTypeId().Equals(ResolveUserAssignableGroupTypeId(fm, CInt(groupPG), extDef)))
             Catch
                 groupOk = True
             End Try
@@ -1424,11 +1565,11 @@ Namespace Services
                             Throw New InvalidOperationException(
                                 $"Remove 실패(레이블/치수/공식 참조 중일 수 있음): {remEx.Message}")
                         End Try
-#If REVIT2019 Or REVIT2021 Then
+#If REVIT2019 Or REVIT2021 Or REVIT2023 Then
                         fm.AddParameter(extDef, groupPG, isInstance)
-#ElseIf REVIT2023 Or REVIT2025 Then
-                        Dim gtid As ForgeTypeId = extDef.GetGroupTypeId()
-                        fm.AddParameter(extDef, gtid, isInstance)
+#ElseIf REVIT2025 Then
+                            Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, CInt(groupPG), extDef)
+                            fm.AddParameter(extDef, gtid, isInstance)
 #End If
                     End Sub)
                 Try : famDoc.Regenerate() : Catch : End Try
@@ -1442,13 +1583,13 @@ Namespace Services
                 FirstOrDefault(Function(x) x.Definition IsNot Nothing AndAlso
                                            x.IsShared AndAlso
                                            String.Equals(x.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
-#If REVIT2019 Or REVIT2021 Then
+#If REVIT2019 Or REVIT2021 Or REVIT2023 Then
             result.FinalOk = (corrected IsNot Nothing AndAlso corrected.Definition.ParameterGroup = groupPG)
-#ElseIf REVIT2023 Or REVIT2025 Then
+#ElseIf REVIT2025 Then
             Dim groupOk2 As Boolean = True
             Try
                 groupOk2 = (corrected IsNot Nothing AndAlso corrected.Definition IsNot Nothing AndAlso
-                            corrected.Definition.GetGroupTypeId().Equals(extDef.GetGroupTypeId()))
+                            corrected.Definition.GetGroupTypeId().Equals(ResolveUserAssignableGroupTypeId(fm, CInt(groupPG), extDef)))
             Catch
                 groupOk2 = True
             End Try
@@ -1614,25 +1755,94 @@ Namespace Services
                    (msg.IndexOf(key3, StringComparison.OrdinalIgnoreCase) >= 0)
         End Function
 
-        Private Shared Function ResolveDefinitions(app As Application,
-                                                   names As IEnumerable(Of String)) As List(Of ExternalDefinition)
-            Dim list As New List(Of ExternalDefinition)()
-            If app Is Nothing OrElse names Is Nothing Then Return list
 
-            Dim setNames As New HashSet(Of String)(
-                names.Where(Function(n) Not String.IsNullOrWhiteSpace(n)),
-                StringComparer.OrdinalIgnoreCase)
-            If setNames.Count = 0 Then Return list
+        Private Shared Function NormalizeParamName(name As String) As String
+            If name Is Nothing Then Return String.Empty
+            Dim s As String = name.Trim()
+
+            ' Remove wrapping quotes if any (e.g. "\"NAME\"")
+            If s.Length >= 2 AndAlso s(0) = """"c AndAlso s(s.Length - 1) = """"c Then
+                s = s.Substring(1, s.Length - 2).Trim()
+            End If
+
+            ' Normalize whitespace (tabs/NBSP -> space, collapse repeats)
+            Dim sb As New StringBuilder(s.Length)
+            Dim prevSpace As Boolean = False
+            For Each ch As Char In s
+                Dim isWs As Boolean = Char.IsWhiteSpace(ch) OrElse ch = ChrW(&HA0) ' NBSP
+                If isWs Then
+                    If Not prevSpace Then
+                        sb.Append(" "c)
+                        prevSpace = True
+                    End If
+                Else
+                    sb.Append(ch)
+                    prevSpace = False
+                End If
+            Next
+
+            Return sb.ToString().Trim()
+        End Function
+        Private Shared Function ResolveDefinitions(app As Application,
+                                                   names As IEnumerable(Of String),
+                                                   guids As IEnumerable(Of String)) As List(Of ExternalDefinition)
+            Dim list As New List(Of ExternalDefinition)()
+            If app Is Nothing Then Return list
+
+            Dim reqNames As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            If names IsNot Nothing Then
+                For Each n In names
+                    Dim nm As String = NormalizeParamName(If(n, String.Empty))
+                    If Not String.IsNullOrWhiteSpace(nm) Then reqNames.Add(nm)
+                Next
+            End If
+
+            Dim reqGuids As New HashSet(Of Guid)()
+            If guids IsNot Nothing Then
+                For Each g In guids
+                    Dim gs As String = NormalizeParamName(If(g, String.Empty))
+                    Dim id As Guid
+                    If Guid.TryParse(gs, id) Then reqGuids.Add(id)
+                Next
+            End If
+
+            If reqNames.Count = 0 AndAlso reqGuids.Count = 0 Then Return list
 
             Dim defFile = app.OpenSharedParameterFile()
             If defFile Is Nothing Then Return list
 
-            For Each g As DefinitionGroup In defFile.Groups
-                For Each d As Definition In g.Definitions
-                    Dim ed = TryCast(d, ExternalDefinition)
+            Dim added As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            For Each grp As DefinitionGroup In defFile.Groups
+                If grp Is Nothing Then Continue For
+                For Each defn As Definition In grp.Definitions
+                    If defn Is Nothing Then Continue For
+                    Dim ed = TryCast(defn, ExternalDefinition)
                     If ed Is Nothing Then Continue For
-                    If setNames.Contains(ed.Name) Then
-                        list.Add(ed)
+
+                    Dim hit As Boolean = False
+
+                    If reqGuids.Count > 0 Then
+                        Try
+                            hit = reqGuids.Contains(ed.GUID)
+                        Catch
+                            hit = False
+                        End Try
+                    End If
+
+                    If Not hit AndAlso reqNames.Count > 0 Then
+                        Dim key As String = NormalizeParamName(ed.Name)
+                        hit = reqNames.Contains(key)
+                    End If
+
+                    If hit Then
+                        ' De-dupe by GUID when possible
+                        Dim keyId As String = ""
+                        Try : keyId = ed.GUID.ToString("D") : Catch : keyId = ed.Name : End Try
+                        If Not added.Contains(keyId) Then
+                            added.Add(keyId)
+                            list.Add(ed)
+                        End If
                     End If
                 Next
             Next
@@ -1641,6 +1851,25 @@ Namespace Services
         End Function
 
         Private Shared Function BuildGroupOptions() As List(Of ParameterGroupOption)
+#If REVIT2025 Then
+            Dim items As New List(Of ParameterGroupOption)()
+            Dim map As List(Of ForgeTypeId) = _builtInGroupTypeIds.Value
+            If map Is Nothing Then map = New List(Of ForgeTypeId)()
+            For i As Integer = 0 To map.Count - 1
+                Dim nm As String = ""
+                Try
+                    nm = LabelUtils.GetLabelForGroup(map(i))
+                Catch
+                    nm = ""
+                End Try
+                If String.IsNullOrWhiteSpace(nm) Then
+                    nm = SafeTypeId(map(i))
+                End If
+                If String.IsNullOrWhiteSpace(nm) Then nm = $"Group {i}"
+                items.Add(New ParameterGroupOption With {.Id = i, .Name = nm})
+            Next
+            Return items
+#Else
             Dim items As New List(Of ParameterGroupOption)()
             Dim preferred As BuiltInParameterGroup() = {
                 BuiltInParameterGroup.PG_TEXT,
@@ -1668,6 +1897,7 @@ Namespace Services
             Next
 
             Return items
+#End If
         End Function
 
         Private Shared Function BuildDetails(scanFails As IEnumerable(Of String),
