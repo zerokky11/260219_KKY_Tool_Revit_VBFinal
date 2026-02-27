@@ -47,7 +47,7 @@ Namespace UI.Hub
             Dim options As New HubCommonOptionsStorageService.HubCommonOptions() With {
                 .ExtraParamsText = If(extraText, String.Empty),
                 .TargetFilterText = If(filterText, String.Empty),
-                .excludeEndDummy = excludeEndDummy
+                .ExcludeEndDummy = excludeEndDummy
             }
 
             Dim ok = HubCommonOptionsStorageService.Save(options)
@@ -314,7 +314,15 @@ Namespace UI.Hub
                 End If
 
                 Dim mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(filePath)
-                doc = app.Application.OpenDocumentFile(mp, BuildOpenOptions())
+
+                Dim preferConnectorWorksets As Boolean = False
+                Try
+                    preferConnectorWorksets = (_multiRequest IsNot Nothing AndAlso _multiRequest.Connector IsNot Nothing AndAlso _multiRequest.Connector.Enabled)
+                Catch
+                    preferConnectorWorksets = False
+                End Try
+
+                doc = app.Application.OpenDocumentFile(mp, BuildOpenOptions(mp, preferConnectorWorksets))
                 ReportMultiProgress(basePct * 100.0R, "파일 열기 완료", safeName)
                 phase = "RUN"
 
@@ -490,7 +498,7 @@ NextItem:
             End Try
         End Sub
 
-                Private Sub ExportConnector(doAutoFit As Boolean, excelMode As String)
+        Private Sub ExportConnector(doAutoFit As Boolean, excelMode As String)
             Dim allRows = If(_multiConnectorRows, New List(Of Dictionary(Of String, Object))())
 
             ' 파일 목록(선택 순서 유지)
@@ -666,8 +674,33 @@ NextItem:
 
                 saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, defaultFileName, doAutoFit, "hub:multi-progress", sheetKeyOverride:="connector", exportKind:="connector")
             Else
-                ' 단일 파일(기존 동작)
-                Dim table = BuildConnectorTableFromRows(headers, issueRows)
+                ' 단일 파일
+                Dim rowsForSingle As List(Of Dictionary(Of String, Object)) = issueRows
+
+                ' ✅ 선택한 파라미터 중 이슈 0건인 항목도 안내행 추가(멀티와 동일)
+                If reviewParams IsNot Nothing AndAlso reviewParams.Count > 0 Then
+                    Dim msgRows = BuildNoIssueMessageRows(rowsForSingle, reviewParams)
+                    If msgRows IsNot Nothing AndAlso msgRows.Count > 0 Then
+                        Dim singleName As String = ""
+                        Try
+                            If fileList IsNot Nothing AndAlso fileList.Count = 1 Then singleName = fileList(0)
+                        Catch
+                            singleName = ""
+                        End Try
+                        For Each mr In msgRows
+                            If mr Is Nothing Then Continue For
+                            Try
+                                If (Not mr.ContainsKey("File")) OrElse mr("File") Is Nothing OrElse String.IsNullOrWhiteSpace(mr("File").ToString()) Then
+                                    mr("File") = singleName
+                                End If
+                            Catch
+                            End Try
+                        Next
+                        rowsForSingle = msgRows.Concat(rowsForSingle).ToList()
+                    End If
+                End If
+
+                Dim table = BuildConnectorTableFromRows(headers, rowsForSingle)
                 ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
                 If Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: 커넥터")
                 saved = ExcelCore.PickAndSaveXlsx("Connector Diagnostics", table, defaultFileName, doAutoFit, "hub:multi-progress", "connector")
@@ -968,18 +1001,58 @@ NextItem:
             Return Math.Min(stepPct, 99.9R)
         End Function
 
-        Private Shared Function BuildOpenOptions() As OpenOptions
+        Private Shared Function BuildOpenOptions(projectPath As ModelPath, preferConnectorWorksets As Boolean) As OpenOptions
             Dim opt As New OpenOptions()
             Try
                 opt.DetachFromCentralOption = DetachFromCentralOption.DetachAndPreserveWorksets
             Catch
             End Try
-            Try
-                Dim ws = New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
-                opt.SetOpenWorksetsConfiguration(ws)
-            Catch
-            End Try
+
+            Dim applied As Boolean = False
+
+            ' 커넥터 진단은 연결대상이 다른 Workset에 있을 수 있어,
+            ' 링크 Workset(보통 LINK/링크 포함)만 제외하고 사용자 Workset을 열어 정확도를 확보한다.
+            If preferConnectorWorksets AndAlso projectPath IsNot Nothing Then
+                Try
+                    Dim previews = WorksharingUtils.GetUserWorksetInfo(projectPath)
+                    If previews IsNot Nothing AndAlso previews.Count > 0 Then
+                        Dim ws = New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
+                        For Each p In previews
+                            Dim n As String = ""
+                            Try
+                                n = If(p.Name, "")
+                            Catch
+                                n = ""
+                            End Try
+                            If IsLinkWorksetName(n) Then Continue For
+                            Try
+                                ws.Open(p.Id)
+                            Catch
+                            End Try
+                        Next
+                        opt.SetOpenWorksetsConfiguration(ws)
+                        applied = True
+                    End If
+                Catch
+                End Try
+            End If
+
+            ' 기본: CloseAllWorksets (속도 우선)
+            If Not applied Then
+                Try
+                    Dim ws = New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
+                    opt.SetOpenWorksetsConfiguration(ws)
+                Catch
+                End Try
+            End If
+
             Return opt
+        End Function
+
+        Private Shared Function IsLinkWorksetName(name As String) As Boolean
+            Dim s As String = If(name, "").Trim().ToLowerInvariant()
+            If s.Length = 0 Then Return False
+            Return (s.Contains("link") OrElse s.Contains("링크"))
         End Function
 
         Private Shared Function BuildConnectorHeaders(extras As IList(Of String), uiUnit As String) As List(Of String)
@@ -1047,7 +1120,15 @@ NextItem:
                             dr(i) = DBNull.Value
                         End If
                     Else
-                        dr(i) = If(r IsNot Nothing AndAlso r.ContainsKey(key) AndAlso r(key) IsNot Nothing, r(key).ToString(), String.Empty)
+                        If String.Equals(key, "검토내용", StringComparison.Ordinal) Then
+                            dr(i) = BuildConnectorReviewTextForExport(r)
+                        ElseIf String.Equals(key, "ParamCompare", StringComparison.Ordinal) Then
+                            dr(i) = NormalizeConnectorParamCompareForExport(r)
+                        ElseIf String.Equals(key, "비고(답변)", StringComparison.Ordinal) Then
+                            dr(i) = ""
+                        Else
+                            dr(i) = If(r IsNot Nothing AndAlso r.ContainsKey(key) AndAlso r(key) IsNot Nothing, r(key).ToString(), String.Empty)
+                        End If
                     End If
                 Next
                 dt.Rows.Add(dr)

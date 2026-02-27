@@ -1518,33 +1518,83 @@ Namespace Services
             Dim roots As New List(Of CategoryTreeItem)()
             If doc Is Nothing Then Return roots
 
-            For Each c As Category In doc.Settings.Categories
-                If c Is Nothing Then Continue For
+            Dim visitedPaths As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
 
-                Dim parent As Category = Nothing
-                Try
-                    parent = c.Parent
-                Catch
-                    parent = Nothing
-                End Try
-                If parent IsNot Nothing Then Continue For
-
-                Dim name As String = SafeCategoryName(c)
-                If String.IsNullOrWhiteSpace(name) Then Continue For
-
-                If Not IsRepresentativeBindableCategory(c) Then Continue For
-
-                Dim node As New CategoryTreeItem() With {
-                    .IdInt = c.Id.IntegerValue,
-                    .Name = name,
-                    .Path = name,
-                    .CatType = c.CategoryType,
-                    .IsBindable = True
-                }
-                roots.Add(node)
-            Next
+            Try
+                For Each c As Category In doc.Settings.Categories
+                    Dim node As CategoryTreeItem = BuildCategoryTreeItemRecursive(c, Nothing, visitedPaths)
+                    If node IsNot Nothing Then roots.Add(node)
+                Next
+            Catch
+                ' ignore
+            End Try
 
             Return roots.OrderBy(Function(x) x.Name, StringComparer.OrdinalIgnoreCase).ToList()
+        End Function
+
+        Private Shared Function BuildCategoryTreeItemRecursive(cat As Category,
+                                                             parentPath As String,
+                                                             visitedPaths As HashSet(Of String)) As CategoryTreeItem
+            If cat Is Nothing Then Return Nothing
+
+            Dim name As String = SafeCategoryName(cat)
+            If String.IsNullOrWhiteSpace(name) Then Return Nothing
+
+            ' Skip special/internal groups that should not be user-selectable
+            If name.StartsWith("<", StringComparison.OrdinalIgnoreCase) Then Return Nothing
+            If name.IndexOf("line style", StringComparison.OrdinalIgnoreCase) >= 0 Then Return Nothing
+
+            Dim path As String = If(String.IsNullOrEmpty(parentPath), name, parentPath & "\" & name)
+
+            If visitedPaths IsNot Nothing Then
+                If visitedPaths.Contains(path) Then Return Nothing
+                visitedPaths.Add(path)
+            End If
+
+            Dim bindable As Boolean = False
+            Try
+                bindable = cat.AllowsBoundParameters
+            Catch
+                bindable = False
+            End Try
+
+            ' Special-case: allow selection of Stairs: Supports in UI (actual binding is substituted later)
+            Try
+                If cat.Id.IntegerValue = CInt(BuiltInCategory.OST_StairsSupports) Then
+                    bindable = True
+                End If
+            Catch
+            End Try
+
+            Dim node As New CategoryTreeItem() With {
+                .IdInt = cat.Id.IntegerValue,
+                .Name = name,
+                .Path = path,
+                .CatType = cat.CategoryType,
+                .IsBindable = bindable
+            }
+
+            ' Recurse into sub-categories (supported across Revit 2019/2021/2023/2025)
+            Try
+                Dim subs As CategoryNameMap = cat.SubCategories
+                If subs IsNot Nothing Then
+                    For Each sc As Category In subs
+                        Dim child As CategoryTreeItem = BuildCategoryTreeItemRecursive(sc, path, visitedPaths)
+                        If child IsNot Nothing Then
+                            node.Children.Add(child)
+                        End If
+                    Next
+                End If
+            Catch
+                ' ignore
+            End Try
+
+            ' Keep non-bindable nodes only if they have children (so user can drill down)
+            If Not node.IsBindable AndAlso (node.Children Is Nothing OrElse node.Children.Count = 0) Then
+                Return Nothing
+            End If
+
+            Return node
         End Function
 
         Private Shared Function BuildAvailableCategoryMaps(doc As Document) As CategoryMaps
