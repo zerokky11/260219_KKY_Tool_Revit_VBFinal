@@ -659,27 +659,36 @@ Namespace UI.Hub
             If String.Equals(status, "연결 필요(Proximity)", StringComparison.OrdinalIgnoreCase) Then
                 Dim pcNorm As String = NormalizeConnectorParamCompareForExport(row)
                 If String.Equals(pcNorm, "Mismatch", StringComparison.OrdinalIgnoreCase) Then
-                    If pc.IndexOf("불일치", StringComparison.OrdinalIgnoreCase) >= 0 Then Return pc
-                    If param <> "" Then Return $"{param} 값이 서로 불일치. 확인이 필요 합니다."
-                    Return "값이 서로 불일치. 확인이 필요 합니다."
+                    If param <> "" Then Return $"[{param}] 값이 서로 불일치. 확인이 필요합니다."
+                    Return "값이 서로 불일치. 확인이 필요합니다."
                 End If
 
-                ' BothEmpty / Match / 기타는 OK로 취급
+                If String.Equals(pcNorm, "BothEmpty", StringComparison.OrdinalIgnoreCase) Then
+                    If param <> "" Then Return $"[{param}] 파라미터 속성이 모두 누락되어있습니다."
+                    Return "파라미터 속성이 모두 누락되어있습니다."
+                End If
+
+                ' Match / 기타는 OK로 취급
                 If pc.IndexOf("연속성 오류가 없습니다", StringComparison.OrdinalIgnoreCase) >= 0 Then Return pc
                 If param <> "" Then Return $"[{param}] 파라미터에 대한 연속성 오류가 없습니다."
                 Return "연속성 오류가 없습니다."
             End If
 
             If String.Equals(status, "OK", StringComparison.OrdinalIgnoreCase) Then
+                Dim pcNormOk As String = NormalizeConnectorParamCompareForExport(row)
+                If String.Equals(pcNormOk, "BothEmpty", StringComparison.OrdinalIgnoreCase) Then
+                    If param <> "" Then Return $"[{param}] 파라미터 속성이 모두 누락되어있습니다."
+                    Return "파라미터 속성이 모두 누락되어있습니다."
+                End If
+
                 If pc.IndexOf("연속성 오류가 없습니다", StringComparison.OrdinalIgnoreCase) >= 0 Then Return pc
                 If param <> "" Then Return $"[{param}] 파라미터에 대한 연속성 오류가 없습니다."
                 Return "연속성 오류가 없습니다."
             End If
 
             If String.Equals(status, "Mismatch", StringComparison.OrdinalIgnoreCase) Then
-                If pc.IndexOf("불일치", StringComparison.OrdinalIgnoreCase) >= 0 Then Return pc
-                If param <> "" Then Return $"{param} 값이 서로 불일치. 확인이 필요 합니다."
-                Return "값이 서로 불일치. 확인이 필요 합니다."
+                If param <> "" Then Return $"[{param}] 값이 서로 불일치. 확인이 필요합니다."
+                Return "값이 서로 불일치. 확인이 필요합니다."
             End If
 
             If String.Equals(status, "Shared Parameter 등록 필요", StringComparison.OrdinalIgnoreCase) Then
@@ -1016,6 +1025,12 @@ Namespace UI.Hub
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_WRITE", "엑셀 데이터 작성", totalCount, totalCount, Nothing, True)
                     SaveConnectorRowsMultiSheet(savePath, sheetTables, doAutoFit, progressChannel)
                     Global.KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey("connector", savePath, autoFit:=doAutoFit, excelMode:=If(doAutoFit, "normal", "fast"))
+
+                    Try
+                        ApplyConnectorReviewContentIssueStyles(savePath)
+                    Catch
+                        ' ignore
+                    End Try
 
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_SAVE", "파일 저장 중", totalCount, totalCount, Nothing, True)
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "AUTOFIT", If(doAutoFit, "AutoFit 적용", "빠른 모드: AutoFit 생략"), totalCount, totalCount, Nothing, True)
@@ -1881,6 +1896,92 @@ Namespace UI.Hub
         End Function
 
 #End Region
+
+
+
+        ' 검토내용(F열) 셀에 대해 연속성 오류(Mismatch/BothEmpty)일 때만 배경색+빨간 글씨 서식 적용
+        ' - 다른 상태(등록 필요/연결 대상 없음/ERROR/Match 등)는 서식 변경 없음
+        Private Shared Sub ApplyConnectorReviewContentIssueStyles(xlsxPath As String)
+            If String.IsNullOrWhiteSpace(xlsxPath) Then Return
+            If Not File.Exists(xlsxPath) Then Return
+
+            Dim wb As XSSFWorkbook = Nothing
+            Try
+                Using fs As New FileStream(xlsxPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
+                    wb = New XSSFWorkbook(fs)
+                End Using
+
+                ' 연한 노랑 배경 + 빨간 글씨
+                Dim fillRgb As Byte() = New Byte() {255, 242, 204} ' #FFF2CC
+                Dim fontRed As Short = IndexedColors.Red.Index
+
+                For si As Integer = 0 To wb.NumberOfSheets - 1
+                    Dim sh As ISheet = wb.GetSheetAt(si)
+                    If sh Is Nothing Then Continue For
+
+                    Dim header As IRow = sh.GetRow(0)
+                    If header Is Nothing Then Continue For
+
+                    Dim colReview As Integer = -1 ' 검토내용
+                    Dim colPc As Integer = -1     ' ParamCompare
+
+                    For c As Integer = 0 To header.LastCellNum - 1
+                        Dim hc As ICell = header.GetCell(c)
+                        Dim t As String = If(hc Is Nothing, "", hc.ToString()).Trim()
+
+                        If colReview < 0 AndAlso String.Equals(t, "검토내용", StringComparison.OrdinalIgnoreCase) Then colReview = c
+                        If colPc < 0 AndAlso String.Equals(t, "ParamCompare", StringComparison.OrdinalIgnoreCase) Then colPc = c
+                    Next
+
+                    If colReview < 0 Then colReview = 5 ' F열
+                    If colPc < 0 Then colPc = header.LastCellNum - 1
+
+                    ' base style: 첫 데이터행의 검토내용 셀 스타일을 기반으로 clone
+                    Dim baseStyle As ICellStyle = Nothing
+                    Dim r1 As IRow = sh.GetRow(1)
+                    If r1 IsNot Nothing Then
+                        Dim cReview As ICell = r1.GetCell(colReview)
+                        If cReview IsNot Nothing Then baseStyle = cReview.CellStyle
+                    End If
+                    If baseStyle Is Nothing Then baseStyle = wb.CreateCellStyle()
+
+                    ' style 1개만 만들어 재사용(스타일 폭증 방지)
+                    Dim issueStyle As XSSFCellStyle = CType(wb.CreateCellStyle(), XSSFCellStyle)
+                    issueStyle.CloneStyleFrom(baseStyle)
+                    issueStyle.FillPattern = NPOI.SS.UserModel.FillPattern.SolidForeground
+                    issueStyle.SetFillForegroundColor(New XSSFColor(fillRgb))
+
+                    Dim f As IFont = wb.CreateFont()
+                    f.Color = fontRed
+                    issueStyle.SetFont(f)
+
+                    For r As Integer = 1 To sh.LastRowNum
+                        Dim row As IRow = sh.GetRow(r)
+                        If row Is Nothing Then Continue For
+
+                        Dim pcCell As ICell = row.GetCell(colPc)
+                        Dim pc As String = If(pcCell Is Nothing, "", pcCell.ToString()).Trim()
+
+                        If pc.Equals("Mismatch", StringComparison.OrdinalIgnoreCase) OrElse pc.Equals("BothEmpty", StringComparison.OrdinalIgnoreCase) Then
+                            Dim reviewCell As ICell = row.GetCell(colReview)
+                            If reviewCell Is Nothing Then reviewCell = row.CreateCell(colReview)
+                            reviewCell.CellStyle = issueStyle
+                        End If
+                    Next
+                Next
+
+                Using fsw As New FileStream(xlsxPath, FileMode.Create, FileAccess.Write, FileShare.Read)
+                    wb.Write(fsw)
+                End Using
+            Catch
+                ' ignore
+            Finally
+                Try
+                    If wb IsNot Nothing Then wb.Close()
+                Catch
+                End Try
+            End Try
+        End Sub
 
 
     End Class

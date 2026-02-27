@@ -1008,51 +1008,14 @@ NextItem:
             Catch
             End Try
 
-            Dim applied As Boolean = False
-
-            ' 커넥터 진단은 연결대상이 다른 Workset에 있을 수 있어,
-            ' 링크 Workset(보통 LINK/링크 포함)만 제외하고 사용자 Workset을 열어 정확도를 확보한다.
-            If preferConnectorWorksets AndAlso projectPath IsNot Nothing Then
-                Try
-                    Dim previews = WorksharingUtils.GetUserWorksetInfo(projectPath)
-                    If previews IsNot Nothing AndAlso previews.Count > 0 Then
-                        Dim ws = New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
-                        For Each p In previews
-                            Dim n As String = ""
-                            Try
-                                n = If(p.Name, "")
-                            Catch
-                                n = ""
-                            End Try
-                            If IsLinkWorksetName(n) Then Continue For
-                            Try
-                                ws.Open(p.Id)
-                            Catch
-                            End Try
-                        Next
-                        opt.SetOpenWorksetsConfiguration(ws)
-                        applied = True
-                    End If
-                Catch
-                End Try
-            End If
-
-            ' 기본: CloseAllWorksets (속도 우선)
-            If Not applied Then
-                Try
-                    Dim ws = New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
-                    opt.SetOpenWorksetsConfiguration(ws)
-                Catch
-                End Try
-            End If
+            ' 속도 우선: 멀티 RVT는 항상 Workset을 닫고 열기
+            Try
+                Dim ws = New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
+                opt.SetOpenWorksetsConfiguration(ws)
+            Catch
+            End Try
 
             Return opt
-        End Function
-
-        Private Shared Function IsLinkWorksetName(name As String) As Boolean
-            Dim s As String = If(name, "").Trim().ToLowerInvariant()
-            If s.Length = 0 Then Return False
-            Return (s.Contains("link") OrElse s.Contains("링크"))
         End Function
 
         Private Shared Function BuildConnectorHeaders(extras As IList(Of String), uiUnit As String) As List(Of String)
