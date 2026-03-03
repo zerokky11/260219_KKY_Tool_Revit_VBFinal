@@ -7,21 +7,26 @@ import { onHost, post } from '../core/bridge.js';
 const RESP_ROWS_EVENTS = ['dup:list', 'dup:rows', 'duplicate:list'];
 const EV_DELETE_REQ = 'duplicate:delete';
 const EV_RESTORE_REQ = 'duplicate:restore';
-const EV_SELECT_REQ  = 'duplicate:select';
-const EV_EXPORT_REQ  = 'duplicate:export';
+const EV_SELECT_REQ = 'duplicate:select';
+const EV_EXPORT_REQ = 'duplicate:export';
 
-const EV_DELETED_ONE   = 'dup:deleted';
-const EV_RESTORED_ONE  = 'dup:restored';
+const EV_DELETED_ONE = 'dup:deleted';
+const EV_RESTORED_ONE = 'dup:restored';
 const EV_DELETED_MULTI = 'duplicate:delete';
-const EV_RESTORED_MULTI= 'duplicate:restore';
-const EV_EXPORTED_A    = 'duplicate:export';
-const EV_EXPORTED_B    = 'dup:exported';
+const EV_RESTORED_MULTI = 'duplicate:restore';
+const EV_EXPORTED_A = 'duplicate:export';
+const EV_EXPORTED_B = 'dup:exported';
+
+// 상위호환 업그레이드: 모드(중복/자체간섭) + 허용오차(mm)
+const DUP_MODE_KEY = 'kky_dup_mode';         // "duplicate" | "clash"
+const DUP_TOL_MM_KEY = 'kky_dup_tol_mm';     // number as string
+const DUP_TOL_MM_DEFAULT = 4.7625;           // 1/64 ft ≈ 4.7625mm
 
 export function renderDup(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');
   clear(target);
 
-  // 삭제행 시각 보정: 취소선은 없애고, 약간 흐리게만
+  // 삭제행 시각 보정 + 모드 토글/허용오차 UI 스타일
   if (!document.getElementById('dup-style-override')) {
     const st = document.createElement('style');
     st.id = 'dup-style-override';
@@ -31,6 +36,34 @@ export function renderDup(root) {
         background: color-mix(in oklab, var(--accent, #4c6fff) 85%, #ffffff 15%);
         color:#fff;
       }
+
+      .dup-modebar { display:flex; align-items:center; gap:8px; }
+      .dup-modebar .chip-btn.is-active{
+        background: color-mix(in oklab, var(--accent, #4c6fff) 18%, transparent 82%);
+        border-color: color-mix(in oklab, var(--accent, #4c6fff) 55%, transparent 45%);
+        font-weight: 600;
+      }
+
+      .dup-tol {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
+        background: color-mix(in oklab, var(--panel, #ffffff) 92%, #000000 8%);
+      }
+      .dup-tol .dup-tol-label { font-size: 12px; opacity: .85; white-space: nowrap; }
+      .dup-tol .dup-tol-input {
+        width: 92px;
+        padding: 4px 8px;
+        border-radius: 10px;
+        border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
+        background: transparent;
+        color: inherit;
+        outline: none;
+      }
+      .dup-tol .dup-tol-input:disabled { opacity: .6; }
     `;
     document.head.appendChild(st);
   }
@@ -40,21 +73,28 @@ export function renderDup(root) {
   if (topbarEl) topbarEl.classList.add('hub-topbar');
 
   // ===== 페이지 뼈대 =====
-  const page    = div('dup-page feature-shell');
+  const page = div('dup-page feature-shell');
+  const header = div('feature-header dup-toolbar');
 
-    const header = div('feature-header dup-toolbar');
-    const heading = div('feature-heading');
-    heading.innerHTML = `
-      <span class="feature-kicker">Duplicate Inspector</span>
-      <h2 class="feature-title">중복검토</h2>
-      <p class="feature-sub">중복 패밀리/요소를 그룹별로 확인하고 삭제/되돌리기를 관리합니다.</p>`;
+  const heading = div('feature-heading');
 
-  const runBtn    = cardBtn('검토 시작', onRun);
+  // 상태
+  let mode = readMode();
+  let tolInputEl = null;
+  let modeBtns = [];
+  let activeModeForView = mode;
+
+  // 상단 UI
+  const runBtn = cardBtn('검토 시작', onRun);
   const exportBtn = cardBtn('엑셀 내보내기', onExport);
   exportBtn.disabled = true;
 
+  const modeBar = buildModeBar();
+  const tolCtl = buildTolControl();
+
   const actions = div('feature-actions');
-  actions.append(runBtn, exportBtn);
+  actions.append(runBtn, modeBar, tolCtl, exportBtn);
+
   header.append(heading, actions);
   page.append(header);
 
@@ -64,22 +104,25 @@ export function renderDup(root) {
 
   const body = div('dup-body');
   page.append(body);
+
   target.append(page);
 
+  // 엑셀 프로그레스
   const EXCEL_PHASE_WEIGHT = { EXCEL_INIT: 0.05, EXCEL_WRITE: 0.85, EXCEL_SAVE: 0.08, AUTOFIT: 0.02, DONE: 1, ERROR: 1 };
   const EXCEL_PHASE_ORDER = ['EXCEL_INIT', 'EXCEL_WRITE', 'EXCEL_SAVE', 'AUTOFIT', 'DONE'];
 
   // ---- state ----
-  let rows      = [];
-  let groups    = [];
-  let deleted   = new Set();
-  let expanded  = new Set();
+  let rows = [];
+  let groups = [];
+  let deleted = new Set();
+  let expanded = new Set();
   let waitTimer = null;
-  let busy      = false;
+  let busy = false;
   let exporting = false;
   let lastExcelPct = 0;
 
-  renderIntro(body);
+  applyHeadingByMode(mode);
+  renderIntro(body, mode);
 
   // 공통 오류
   onHost('revit:error', ({ message }) => {
@@ -90,14 +133,16 @@ export function renderDup(root) {
     exportBtn.disabled = rows.length === 0;
     toast(message || 'Revit 오류가 발생했습니다.', 'err', 3200);
   });
-  onHost('host:error',  ({ message }) => {
+
+  onHost('host:error', ({ message }) => {
     setLoading(false);
     ProgressDialog.hide();
     lastExcelPct = 0;
     exporting = false;
     toast(message || '호스트 오류가 발생했습니다.', 'err', 3200);
   });
-  onHost('host:warn',   ({ message }) => {
+
+  onHost('host:warn', ({ message }) => {
     setLoading(false);
     if (message) toast(message, 'warn', 3600);
   });
@@ -113,6 +158,15 @@ export function renderDup(root) {
 
     if (ev === 'dup:result') {
       setLoading(false);
+      // Host가 mode를 같이 내려주면 동기화
+      const m = String(payload?.mode ?? '').trim();
+      if (m === 'duplicate' || m === 'clash') {
+        activeModeForView = m;
+        // 헤더/intro는 결과 표시 중엔 바꾸지 않고(혼란 방지),
+        // 그룹 타이틀만 activeModeForView를 사용
+        paintGroups();
+        refreshSummary();
+      }
       return;
     }
 
@@ -162,6 +216,7 @@ export function renderDup(root) {
     if (ev === EV_EXPORTED_A || ev === EV_EXPORTED_B) {
       lastExcelPct = 0;
       ProgressDialog.hide();
+
       const path = payload?.path || '';
       if (payload?.ok || path) {
         showExcelSavedDialog('엑셀로 내보냈습니다.', path, (p) => {
@@ -170,6 +225,7 @@ export function renderDup(root) {
       } else {
         toast(payload?.message || '엑셀 내보내기 실패', 'err');
       }
+
       exporting = false;
       exportBtn.disabled = rows.length === 0;
       return;
@@ -177,11 +233,13 @@ export function renderDup(root) {
   });
 
   // ===== 액션 =====
-
   function setLoading(on) {
     busy = on;
     runBtn.disabled = on;
     runBtn.textContent = on ? '검토 중…' : '검토 시작';
+
+    modeBtns.forEach(b => { try { b.disabled = on; } catch {} });
+    if (tolInputEl) tolInputEl.disabled = on;
 
     if (!on && waitTimer) {
       clearTimeout(waitTimer);
@@ -199,19 +257,22 @@ export function renderDup(root) {
 
     waitTimer = setTimeout(() => {
       setLoading(false);
-      toast('응답이 없습니다. Add-in 이벤트명을 확인하세요 (예: dup:list).', 'err');
+      toast('응답이 없습니다.\nAdd-in 이벤트명을 확인하세요 (예: dup:list).', 'err');
       body.innerHTML = '';
-      renderIntro(body);
+      renderIntro(body, mode);
     }, 10000);
 
-    post('dup:run', {});
+    // 모드/허용오차 전달
+    const tolFeet = getTolFeet();
+    activeModeForView = mode;
+    post('dup:run', { mode, tolFeet });
   }
 
   function onExport() {
     if (exporting) return;
     exporting = true;
     exportBtn.disabled = true;
-    chooseExcelMode((mode) => post(EV_EXPORT_REQ, { excelMode: mode || 'fast' }));
+    chooseExcelMode((excelMode) => post(EV_EXPORT_REQ, { excelMode: excelMode || 'fast' }));
   }
 
   function handleExcelProgress(payload) {
@@ -222,9 +283,11 @@ export function renderDup(root) {
       lastExcelPct = 0;
       return;
     }
+
     const phase = normalizeExcelPhase(payload.phase);
     const total = Number(payload.total) || 0;
     const current = Number(payload.current) || 0;
+
     const percent = computeExcelPercent(phase, current, total, payload.phaseProgress);
     const subtitle = buildExcelSubtitle(phase, current, total);
     const detail = payload.message || '';
@@ -232,11 +295,14 @@ export function renderDup(root) {
     exporting = phase !== 'DONE' && phase !== 'ERROR';
     exportBtn.disabled = exporting || rows.length === 0;
 
-    ProgressDialog.show('중복검토 엑셀 내보내기', subtitle);
+    ProgressDialog.show(`${modeTitle(activeModeForView)} 엑셀 내보내기`, subtitle);
     ProgressDialog.update(percent, subtitle, detail);
 
     if (!exporting) {
-      setTimeout(() => { ProgressDialog.hide(); lastExcelPct = 0; }, 280);
+      setTimeout(() => {
+        ProgressDialog.hide();
+        lastExcelPct = 0;
+      }, 280);
     }
   }
 
@@ -248,13 +314,16 @@ export function renderDup(root) {
     const norm = normalizeExcelPhase(phase);
     if (norm === 'DONE') { lastExcelPct = 100; return 100; }
     if (norm === 'ERROR') return lastExcelPct;
+
     const completed = EXCEL_PHASE_ORDER.reduce((acc, key) => {
       if (key === norm) return acc;
       return acc + (EXCEL_PHASE_WEIGHT[key] || 0);
     }, 0);
+
     const weight = EXCEL_PHASE_WEIGHT[norm] || 0;
     const ratio = total > 0 ? Math.min(1, Math.max(0, current / total)) : 0;
     const staged = Math.max(ratio, clamp01(phaseProgress));
+
     const pct = Math.min(100, Math.max(lastExcelPct, (completed + weight * staged) * 100));
     lastExcelPct = pct;
     return pct;
@@ -281,62 +350,63 @@ export function renderDup(root) {
   }
 
   // ===== 호스트 응답 처리 =====
-
   function handleRows(listLike) {
     const list = Array.isArray(listLike) ? listLike : [];
-    rows   = list.map(normalizeRow);
-    groups = buildGroups(rows);
+    rows = list.map(normalizeRow);
+
+    // mode는 현재 선택값을 기본으로, Host가 row마다 mode를 줄 경우 보정
+    const rowMode = rows.find(r => r.mode)?.mode;
+    if (rowMode === 'duplicate' || rowMode === 'clash') {
+      activeModeForView = rowMode;
+    }
+
+    groups = buildGroups(rows, activeModeForView);
 
     exportBtn.disabled = rows.length === 0;
     setLoading(false);
 
-  
     // 처음부터 전 그룹 펼치기
-expanded = new Set(groups.map(g => g.key));
+    expanded = new Set(groups.map(g => g.key));
     paintGroups();
 
     if (!rows.length) {
       body.innerHTML = '';
       const empty = div('dup-emptycard');
+      const isClash = activeModeForView === 'clash';
       empty.innerHTML = `
-        <div class="icon">✅</div>
-        <div class="title">중복이 없어요</div>
-        <div class="desc">모델 상태가 깨끗합니다. 필요 시 다시 검토를 실행하세요.</div>
+        <div class="empty-emoji">✅</div>
+        <h3 class="empty-title">${isClash ? '간섭이 없어요' : '중복이 없어요'}</h3>
+        <p class="empty-sub">모델 상태가 깨끗합니다. 필요 시 다시 검토를 실행하세요.</p>
       `;
       body.append(empty);
     }
-
     refreshSummary();
   }
 
   // ===== 렌더링 =====
-
   function paintGroups() {
     body.innerHTML = '';
+    const isClash = activeModeForView === 'clash';
+    const grpPrefix = isClash ? '간섭 그룹' : '중복 그룹';
 
     groups.forEach((g, idx) => {
       const card = div('dup-grp');
       card.classList.add(g.rows.length >= 2 ? 'accent-danger' : 'accent-info');
 
       // 그룹 헤더
-      const h    = div('grp-h');
+      const h = div('grp-h');
       const left = div('grp-txt');
-      const famLabel  = g.family  ? g.family  : (g.category ? `${g.category} Type` : '—');
-      const typeLabel = g.type || '—';
 
+      const meta = buildGroupMeta(g, isClash);
       left.innerHTML = `
-        <div class="grp-line">
-          <span class="chip alt">중복 그룹 ${idx + 1}</span>
-          <span class="grp-cat mono">${esc(g.category || '—')}</span>
-          <span class="grp-sep">·</span>
-          <span class="grp-fam">${esc(famLabel)}</span>
-          <span class="grp-sep">·</span>
-          <span class="grp-fam">${esc(typeLabel)}</span>
-          <span class="chip mono tone">${g.rows.length}개</span>
+        <div class="grp-title">
+          <span class="grp-badge">${grpPrefix} ${idx + 1}</span>
+          <span class="grp-meta">${esc(meta)}</span>
         </div>
+        <div class="grp-count">${g.rows.length}개</div>
       `;
 
-      const right  = div('grp-actions');
+      const right = div('grp-actions');
       const toggle = kbtn(expanded.has(g.key) ? '접기' : '펼치기', 'subtle', () => toggleGroup(g.key));
       right.append(toggle);
 
@@ -345,8 +415,8 @@ expanded = new Set(groups.map(g => g.key));
 
       // 서브헤더 + 행
       const tbl = div('grp-body');
-      const sh  = div('dup-subhead');
 
+      const sh = div('dup-subhead');
       sh.append(
         cell('', 'ck'),
         cell('Element ID', 'th'),
@@ -355,7 +425,6 @@ expanded = new Set(groups.map(g => g.key));
         cell('Type', 'th'),
         cell('작업', 'th right')
       );
-
       tbl.append(sh);
 
       if (expanded.has(g.key)) {
@@ -369,18 +438,32 @@ expanded = new Set(groups.map(g => g.key));
     updateRowStates();
   }
 
+  function buildGroupMeta(g, isClash) {
+    // duplicate: 기존처럼 cat/fam/type 중심
+    // clash: 혼합 가능하므로, set 크기 기준으로 "혼합" 표시
+    const cats = uniq(g.rows.map(r => r.category || '—'));
+    const fams = uniq(g.rows.map(r => (r.family || (r.category ? `${r.category} Type` : '—')) || '—'));
+    const types = uniq(g.rows.map(r => r.type || '—'));
+
+    const catOut = cats.length === 1 ? cats[0] : `혼합(${cats.length})`;
+    const famOut = fams.length === 1 ? fams[0] : `혼합(${fams.length})`;
+    const typOut = types.length === 1 ? types[0] : `혼합(${types.length})`;
+
+    return `${catOut} · ${famOut} · ${typOut}`;
+  }
+
   function renderRow(r) {
     const row = div('dup-row');
     row.dataset.id = r.id;
 
     const ckCell = cell(null, 'ck');
-    const ck     = document.createElement('input');
-    ck.type      = 'checkbox';
+    const ck = document.createElement('input');
+    ck.type = 'checkbox';
     ck.className = 'ckbox';
-    ck.onchange  = () => row.classList.toggle('is-selected', ck.checked);
+    ck.onchange = () => row.classList.toggle('is-selected', ck.checked);
     ckCell.append(ck);
-    row.append(ckCell);
 
+    row.append(ckCell);
     row.append(cell(r.id ?? '-', 'td mono right'));
     row.append(cell(r.category || '—', 'td'));
 
@@ -388,22 +471,24 @@ expanded = new Set(groups.map(g => g.key));
     row.append(cell(famOut, 'td ell'));
     row.append(cell(r.type || '—', 'td ell'));
 
-    const act    = div('row-actions');
+    const act = div('row-actions');
+
     const viewBtn = tableBtn('선택/줌', '', () =>
       post(EV_SELECT_REQ, { id: r.id, zoom: true, mode: 'zoom' })
     );
 
-    const delBtn = tableBtn(r.deleted ? '되돌리기' : '삭제',
-                        r.deleted ? 'restore' : 'table-action-btn--danger',
-                        () => {
-                          const ids = [r.id];
-                          if (delBtn.dataset.mode === 'restore') {
-                            post(EV_RESTORE_REQ, { id: r.id, ids });
-                          } else {
-                            post(EV_DELETE_REQ,  { id: r.id, ids });
-                          }
-                        });
-
+    const delBtn = tableBtn(
+      r.deleted ? '되돌리기' : '삭제',
+      r.deleted ? 'restore' : 'table-action-btn--danger',
+      () => {
+        const ids = [r.id];
+        if (delBtn.dataset.mode === 'restore') {
+          post(EV_RESTORE_REQ, { id: r.id, ids });
+        } else {
+          post(EV_DELETE_REQ, { id: r.id, ids });
+        }
+      }
+    );
     delBtn.dataset.mode = r.deleted ? 'restore' : 'delete';
 
     act.append(viewBtn, delBtn);
@@ -429,7 +514,7 @@ expanded = new Set(groups.map(g => g.key));
       const delBtn = rowEl.querySelector('.row-actions .table-action-btn:last-child');
       if (delBtn) {
         delBtn.textContent = isDel ? '되돌리기' : '삭제';
-        delBtn.className   = 'table-action-btn ' + (isDel ? 'restore' : 'table-action-btn--danger');
+        delBtn.className = 'table-action-btn ' + (isDel ? 'restore' : 'table-action-btn--danger');
         delBtn.dataset.mode = isDel ? 'restore' : 'delete';
       }
 
@@ -443,18 +528,102 @@ expanded = new Set(groups.map(g => g.key));
     summaryBar.innerHTML = '';
     summaryBar.classList.toggle('hidden', totals.totalCount === 0 && !busy);
 
-    [chip(`그룹 ${totals.groupCount}`), chip(`요소 ${totals.totalCount}`)]
+    const isClash = activeModeForView === 'clash';
+    const gLabel = isClash ? '간섭 그룹' : '중복 그룹';
+    [chip(`${gLabel} ${totals.groupCount}`), chip(`요소 ${totals.totalCount}`)]
       .forEach(c => summaryBar.append(c));
   }
 
-  // ===== 유틸 =====
+  // ===== 상단 UI 구성 =====
+  function buildModeBar() {
+    const wrap = div('dup-modebar');
 
+    const bDup = kbtn('중복', 'subtle', () => setMode('duplicate'));
+    const bClash = kbtn('자체간섭', 'subtle', () => setMode('clash'));
+
+    modeBtns = [bDup, bClash];
+    syncModeButtons();
+
+    wrap.append(bDup, bClash);
+    return wrap;
+  }
+
+  function setMode(next) {
+    if (next !== 'duplicate' && next !== 'clash') return;
+    mode = next;
+    try { localStorage.setItem(DUP_MODE_KEY, mode); } catch {}
+    syncModeButtons();
+
+    // 모드 변경 시 화면 초기화(혼선 방지)
+    rows = [];
+    groups = [];
+    deleted.clear();
+    exportBtn.disabled = true;
+    body.innerHTML = '';
+    applyHeadingByMode(mode);
+    renderIntro(body, mode);
+    refreshSummary();
+  }
+
+  function syncModeButtons() {
+    if (!modeBtns || modeBtns.length < 2) return;
+    const [bDup, bClash] = modeBtns;
+    bDup.classList.toggle('is-active', mode === 'duplicate');
+    bClash.classList.toggle('is-active', mode === 'clash');
+  }
+
+  function buildTolControl() {
+    const wrap = div('dup-tol');
+    wrap.title = '허용오차(mm). 중복=좌표양자화, 자체간섭=BoundingBox 확장(여유)로 사용됩니다.';
+
+    const label = document.createElement('span');
+    label.className = 'dup-tol-label';
+    label.textContent = '허용오차(mm)';
+
+    const input = document.createElement('input');
+    input.className = 'dup-tol-input';
+    input.type = 'number';
+    input.min = '0.01';
+    input.step = '0.1';
+
+    const initMm = readTolMm();
+    input.value = fmtTolMm(initMm);
+
+    input.addEventListener('change', () => {
+      const mm = sanitizeTolMm(Number(input.value));
+      input.value = fmtTolMm(mm);
+      try { localStorage.setItem(DUP_TOL_MM_KEY, String(mm)); } catch {}
+    });
+
+    wrap.append(label, input);
+    tolInputEl = input;
+    return wrap;
+  }
+
+  function applyHeadingByMode(m) {
+    const title = modeTitle(m);
+    const sub = (m === 'clash')
+      ? '같은 파일 내에서 BoundingBox 기준 1차 자체간섭(클래시)을 그룹으로 묶어 보여줍니다.'
+      : '중복 패밀리/요소를 그룹별로 확인하고 삭제/되돌리기를 관리합니다.';
+
+    heading.innerHTML = `
+      <span class="feature-kicker">Duplicate Inspector</span>
+      <h2 class="feature-title">${title}</h2>
+      <p class="feature-sub">${sub}</p>
+    `;
+  }
+
+  function modeTitle(m) {
+    return m === 'clash' ? '자체간섭 검토' : '중복검토';
+  }
+
+  // ===== 유틸 =====
   function cardBtn(label, handler) {
     const b = document.createElement('button');
     b.className = 'card-action-btn';
-    b.type      = 'button';
+    b.type = 'button';
     b.textContent = label;
-    b.onclick   = handler;
+    b.onclick = handler;
     return b;
   }
 
@@ -471,7 +640,7 @@ expanded = new Set(groups.map(g => g.key));
     const c = document.createElement('div');
     c.className = 'cell ' + (cls || '');
     if (content instanceof Node) c.append(content);
-    else if (content != null)   c.textContent = content;
+    else if (content != null) c.textContent = content;
     return c;
   }
 
@@ -481,7 +650,7 @@ expanded = new Set(groups.map(g => g.key));
     return b;
   }
 
-  // Localized compact button (replaces missing legacy kbtn helper)
+  // Localized compact button
   function kbtn(label, tone, handler) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -508,29 +677,45 @@ expanded = new Set(groups.map(g => g.key));
   }
 
   function normalizeRow(r) {
-    const id  = safeId(r.elementId ?? r.ElementId ?? r.id ?? r.Id);
+    const id = safeId(r.elementId ?? r.ElementId ?? r.id ?? r.Id);
     const category = val(r.category ?? r.Category);
-    const family   = val(r.family   ?? r.Family);
-    const type     = val(r.type     ?? r.Type);
+    const family = val(r.family ?? r.Family);
+    const type = val(r.type ?? r.Type);
 
-    const connectedIdsRaw =
-      r.connectedIds ?? r.ConnectedIds ?? r.links ?? r.Links ?? r.connected ?? [];
-
+    const connectedIdsRaw = r.connectedIds ?? r.ConnectedIds ?? r.links ?? r.Links ?? r.connected ?? [];
     const connectedIds = Array.isArray(connectedIdsRaw)
       ? connectedIdsRaw.map(String)
       : (typeof connectedIdsRaw === 'string' && connectedIdsRaw.length
-          ? connectedIdsRaw.split(/[,\s]+/).filter(Boolean)
-          : []);
+        ? connectedIdsRaw.split(/[,\s]+/).filter(Boolean)
+        : []);
 
     const deletedFlag = !!(r.deleted ?? r.isDeleted ?? r.Deleted);
 
-    return { id: id || '-', category, family, type, connectedIds, deleted: deletedFlag };
+    const groupKey = val(r.groupKey ?? r.GroupKey);
+    const rm = val(r.mode ?? r.Mode);
+
+    return { id: id || '-', category, family, type, connectedIds, deleted: deletedFlag, groupKey, mode: rm };
   }
 
-  // (Category / Family / Type / 연결세트) 기준 그룹
-  function buildGroups(rs) {
-    const map = new Map();
+  // groupKey 우선(상위호환), 없으면 기존 로직 유지
+  function buildGroups(rs, m) {
+    const hasGroupKey = rs.some(x => !!x.groupKey);
+    if (hasGroupKey) {
+      const map = new Map();
+      for (const r of rs) {
+        const key = r.groupKey || '_';
+        let g = map.get(key);
+        if (!g) {
+          g = { key, rows: [] };
+          map.set(key, g);
+        }
+        g.rows.push(r);
+      }
+      return [...map.values()];
+    }
 
+    // (기존) Category / Family / Type / 연결세트 기반
+    const map = new Map();
     for (const r of rs) {
       const cluster = [String(r.id), ...r.connectedIds.map(String)]
         .filter(Boolean)
@@ -539,14 +724,14 @@ expanded = new Set(groups.map(g => g.key));
         .join(',');
 
       const key = [r.category || '', r.family || '', r.type || '', cluster].join('|');
+
       let g = map.get(key);
       if (!g) {
-        g = { key, category: r.category || '', family: r.family || '', type: r.type || '', rows: [] };
+        g = { key, rows: [] };
         map.set(key, g);
       }
       g.rows.push(r);
     }
-
     return [...map.values()];
   }
 
@@ -566,21 +751,25 @@ expanded = new Set(groups.map(g => g.key));
     return v == null || v === '' ? '' : String(v);
   }
 
-  function renderIntro(container) {
+  function uniq(arr) {
+    const set = new Set();
+    arr.forEach(x => set.add(String(x)));
+    return [...set.values()];
+  }
+
+  function renderIntro(container, m) {
     const hero = div('dup-hero');
+    const isClash = m === 'clash';
     hero.innerHTML = `
-      <div class="ill">🧭</div>
-      <div class="title">중복검토를 시작해 보세요</div>
-      <div class="desc">
-        모델의 중복 요소를 그룹으로 묶어 보여줍니다.
-        각 행에서 <b>삭제/되돌리기</b>, <b>선택/줌</b>을 실행할 수 있어요.
-      </div>
-      <ul class="tips">
-        <li>그룹 헤더 우측의 <b>펼치기</b>로 상세를 열어보세요.</li>
-        <li>System Family는 <b>"Category Type"</b> 으로 표시됩니다.</li>
+      <h3 class="hero-title">${isClash ? '자체간섭 검토를 시작해 보세요' : '중복검토를 시작해 보세요'}</h3>
+      <p class="hero-sub">${isClash
+        ? '같은 파일 내에서 1차 간섭(클래시) 후보를 그룹으로 묶어 보여줍니다. 각 행에서 삭제/되돌리기, 선택/줌 을 실행할 수 있어요.'
+        : '모델의 중복 요소를 그룹으로 묶어 보여줍니다. 각 행에서 삭제/되돌리기, 선택/줌 을 실행할 수 있어요.'}</p>
+      <ul class="hero-list">
+        <li>상단 토글로 <b>중복</b>/<b>자체간섭</b> 모드를 전환할 수 있습니다.</li>
+        <li><b>허용오차(mm)</b>는 중복=좌표 버킷, 자체간섭=BoundingBox 여유로 사용됩니다.</li>
         <li>엑셀 내보내기는 결과가 있을 때만 활성화됩니다.</li>
-      </ul>
-    `;
+      </ul>`;
     container.append(hero);
   }
 
@@ -598,5 +787,43 @@ expanded = new Set(groups.map(g => g.key));
       wrap.append(line);
     }
     return wrap;
+  }
+
+  // ===== localStorage helpers =====
+  function readMode() {
+    try {
+      const m = String(localStorage.getItem(DUP_MODE_KEY) || '').trim();
+      if (m === 'duplicate' || m === 'clash') return m;
+    } catch {}
+    return 'duplicate';
+  }
+
+  function readTolMm() {
+    // 1) localStorage
+    try {
+      const raw = localStorage.getItem(DUP_TOL_MM_KEY);
+      const n = Number(String(raw || '').trim());
+      if (Number.isFinite(n) && n > 0) return sanitizeTolMm(n);
+    } catch {}
+    // 2) default
+    return DUP_TOL_MM_DEFAULT;
+  }
+
+  function sanitizeTolMm(n) {
+    if (!Number.isFinite(n)) return DUP_TOL_MM_DEFAULT;
+    // 너무 작은 값/너무 큰 값 방지
+    return Math.max(0.01, Math.min(1000, n));
+  }
+
+  function fmtTolMm(mm) {
+    const n = Number(mm);
+    if (!Number.isFinite(n)) return String(DUP_TOL_MM_DEFAULT);
+    return (Math.round(n * 1000) / 1000).toString();
+  }
+
+  function getTolFeet() {
+    const mm = (tolInputEl ? sanitizeTolMm(Number(tolInputEl.value)) : readTolMm());
+    const feet = mm / 304.8;
+    return Math.max(0.000001, Number.isFinite(feet) ? feet : (DUP_TOL_MM_DEFAULT / 304.8));
   }
 }

@@ -105,6 +105,14 @@
 		</Compile>
 	</ItemGroup>
 
+	<!-- ✅ 빌드 전: 출력 HubUI 폴더 제거 (증분 복사로 인한 구버전 JS 잔존 방지) -->
+	<Target Name="CleanHubUIOutput" BeforeTargets="PrepareForBuild">
+		<PropertyGroup>
+			<HubUIOutDir>$(OutputPath)Resources\HubUI\</HubUIOutDir>
+		</PropertyGroup>
+		<RemoveDir Directories="$(HubUIOutDir)" Condition="Exists('$(HubUIOutDir)')" />
+	</Target>
+
 	<!-- 리소스 / HubUI -->
 	<ItemGroup>
 		<EmbeddedResource Include="Resources\icons\hub_16.png" Link="Resources\icons\hub_16.png" Condition="Exists('Resources\icons\hub_16.png')">
@@ -120,7 +128,7 @@
 		<!-- ✅ HubUI: 2025 프로젝트에 있으면 그걸 사용 -->
 		<Content Include="Resources\HubUI\**\*" Condition="Exists('Resources\HubUI\index.html')"
 				 Link="Resources\HubUI\%(RecursiveDir)%(Filename)%(Extension)">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 			<TargetPath>Resources\HubUI\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
 		</Content>
 
@@ -128,7 +136,7 @@
 		<Content Include="..\KKY_Tool_Revit_2019-2023\Resources\HubUI\**\*"
 				 Condition="!Exists('Resources\HubUI\index.html')"
 				 Link="Resources\HubUI\%(RecursiveDir)%(Filename)%(Extension)">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 			<TargetPath>Resources\HubUI\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
 		</Content>
 	</ItemGroup>
