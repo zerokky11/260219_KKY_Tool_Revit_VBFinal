@@ -461,8 +461,10 @@ NextItem:
         ' === hub:multi-export ===
         ' payload: { key, excelMode }
         Private Sub HandleMultiExport(payload As Object)
-            Dim key As String = TryCast(GetProp(payload, "key"), String)
-            Dim excelMode As String = TryCast(GetProp(payload, "excelMode"), String)
+            Dim keyObj As Object = GetProp(payload, "key")
+            Dim key As String = NormalizeEventName(Convert.ToString(keyObj))
+            Dim excelModeObj As Object = GetProp(payload, "excelMode")
+            Dim excelMode As String = NormalizeEventName(Convert.ToString(excelModeObj))
             Dim doAutoFit As Boolean = ParseExcelMode(payload)
 
             Try

@@ -281,7 +281,28 @@ Namespace UI.Hub
 
         ' payload 속성 안전 추출(익명/Dictionary 수용)
 
-        Private Shared Function NormalizeEventName(name As String) As String
+        
+        ' 문자열이 ""..."" 또는 '...'(따옴표)로 감싸져 들어오는 경우(특히 JSON/인자 구성 과정) 제거
+        Private Shared Function NormalizeWrappedQuotesText(value As String) As String
+            Dim s As String = If(value, "")
+            s = s.Trim()
+
+            For i As Integer = 0 To 1
+                If s.Length >= 2 AndAlso s(0) = """"c AndAlso s(s.Length - 1) = """"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                If s.Length >= 2 AndAlso s(0) = "'"c AndAlso s(s.Length - 1) = "'"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                Exit For
+            Next
+
+            Return s
+        End Function
+
+Private Shared Function NormalizeEventName(name As String) As String
             Dim s As String = If(name, "")
             s = s.Trim()
 
@@ -335,9 +356,28 @@ Namespace UI.Hub
                 Return
             End If
 
+            ' 일부 호출 경로에서 "C:\...ile.xlsx" 처럼 따옴표가 포함되어 전달되는 경우가 있어 정규화
+            inputPath = NormalizeWrappedQuotesText(inputPath)
+
+            ' file:///C:/... 형태 대응
+            Try
+                If inputPath.StartsWith("file:", StringComparison.OrdinalIgnoreCase) Then
+                    Dim u As New Uri(inputPath)
+                    If u IsNot Nothing AndAlso u.IsFile Then
+                        inputPath = u.LocalPath
+                    End If
+                End If
+            Catch
+                ' ignore
+            End Try
+
             Dim fullPath As String = inputPath
             Try
-                fullPath = System.IO.Path.GetFullPath(inputPath)
+                If System.IO.Path.IsPathRooted(inputPath) Then
+                    fullPath = inputPath
+                Else
+                    fullPath = System.IO.Path.GetFullPath(inputPath)
+                End If
             Catch
                 ' ignore
             End Try

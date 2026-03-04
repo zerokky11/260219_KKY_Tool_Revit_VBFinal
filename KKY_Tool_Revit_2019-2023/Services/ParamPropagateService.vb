@@ -1343,113 +1343,58 @@ Namespace Services
         '==================== 공통 헬퍼들 ====================
 
 #If REVIT2025 Then
-        '==================== Revit 2025: Parameter groupTypeId mapping ====================
-        Private Shared ReadOnly _builtInGroupTypeIds As Lazy(Of List(Of ForgeTypeId)) =
-            New Lazy(Of List(Of ForgeTypeId))(AddressOf BuildBuiltInGroupTypeIdMap)
+        '==================== Revit 2025: Parameter groupTypeId mapping (FIX) ====================
+        ' 기존 인덱스 기반 매핑(CInt(enum) → list index) 제거
+        Private Shared Function ResolveUserAssignableGroupTypeId(
+            fm As FamilyManager,
+            groupPG As BuiltInParameterGroup,
+            extDef As ExternalDefinition
+        ) As ForgeTypeId
 
-        Private Shared Function BuildBuiltInGroupTypeIdMap() As List(Of ForgeTypeId)
-            Dim list As New List(Of ForgeTypeId)()
-            Dim added As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            Dim gtid As ForgeTypeId = Nothing
 
-            ' preferred first (stable property names)
-            Dim prefNames As String() = {"Text", "IdentityData", "Data", "Constraints"}
-            For Each pn As String In prefNames
-                Dim v As ForgeTypeId = GetGroupTypeIdByPropertyName(pn)
-                If v IsNot Nothing Then
-                    Dim key As String = SafeTypeId(v)
-                    If Not added.Contains(key) Then
-                        added.Add(key)
-                        list.Add(v)
-                    End If
-                End If
-            Next
-
-            ' then all built-in groups
-            Dim allGroups As IList(Of ForgeTypeId) = Nothing
+            ' 1) enum 값을 "직접" GroupTypeId로 매핑 (안정)
             Try
-                allGroups = ParameterUtils.GetAllBuiltInGroups()
+                Select Case groupPG
+                    Case BuiltInParameterGroup.PG_TEXT
+                        gtid = GroupTypeId.Text
+                    Case BuiltInParameterGroup.PG_GEOMETRY
+                        gtid = GroupTypeId.Geometry
+                    Case BuiltInParameterGroup.PG_CONSTRAINTS
+                        gtid = GroupTypeId.Constraints
+                    Case BuiltInParameterGroup.PG_MATERIALS
+                        gtid = GroupTypeId.Materials
+                    Case BuiltInParameterGroup.PG_GRAPHICS
+                        gtid = GroupTypeId.Graphics
+                    Case BuiltInParameterGroup.PG_IDENTITY_DATA
+                        gtid = GroupTypeId.IdentityData
+                    Case Else
+                        gtid = GroupTypeId.Data
+                End Select
             Catch
-                allGroups = Nothing
+                gtid = Nothing
             End Try
 
-            If allGroups IsNot Nothing Then
-                For Each g As ForgeTypeId In allGroups
-                    If g Is Nothing Then Continue For
-                    Dim key As String = SafeTypeId(g)
-                    If Not added.Contains(key) Then
-                        added.Add(key)
-                        list.Add(g)
-                    End If
-                Next
-            End If
-
-            ' last resort
-            If list.Count = 0 Then
-                Dim fallback As ForgeTypeId = GetGroupTypeIdByPropertyName("IdentityData")
-                If fallback IsNot Nothing Then list.Add(fallback)
-            End If
-
-            Return list
-        End Function
-
-        Private Shared Function GetGroupTypeIdByPropertyName(propName As String) As ForgeTypeId
-            Try
-                Dim p = GetType(GroupTypeId).GetProperty(propName, System.Reflection.BindingFlags.Public Or System.Reflection.BindingFlags.Static)
-                If p Is Nothing Then Return Nothing
-                Return TryCast(p.GetValue(Nothing, Nothing), ForgeTypeId)
-            Catch
-                Return Nothing
-            End Try
-        End Function
-
-        Private Shared Function SafeTypeId(id As ForgeTypeId) As String
-            If id Is Nothing Then Return ""
-            Try
-                Return id.TypeId
-            Catch
-                Try
-                    Return id.ToString()
-                Catch
-                    Return ""
-                End Try
-            End Try
-        End Function
-
-        Private Shared Function ResolveGroupTypeIdByIndex(groupIndex As Integer) As ForgeTypeId
-            Dim map As List(Of ForgeTypeId) = _builtInGroupTypeIds.Value
-            Dim fallback As ForgeTypeId = GetGroupTypeIdByPropertyName("IdentityData")
-            If map Is Nothing OrElse map.Count = 0 Then Return fallback
-            If groupIndex < 0 OrElse groupIndex >= map.Count Then Return fallback
-            Dim g As ForgeTypeId = map(groupIndex)
-            If g Is Nothing Then g = fallback
-            Return g
-        End Function
-
-        Private Shared Function ResolveUserAssignableGroupTypeId(fm As FamilyManager, groupIndex As Integer, extDef As ExternalDefinition) As ForgeTypeId
-            Dim gtid As ForgeTypeId = ResolveGroupTypeIdByIndex(groupIndex)
-
-            ' fallback to definition's own group if needed
+            ' 2) fallback: 정의 자체의 그룹
             If gtid Is Nothing Then
-                Try
-                    gtid = extDef.GetGroupTypeId()
-                Catch
-                    gtid = Nothing
-                End Try
+                Try : gtid = extDef.GetGroupTypeId() : Catch : gtid = Nothing : End Try
             End If
 
+            ' 3) 최후 fallback
             If gtid Is Nothing Then
-                gtid = GetGroupTypeIdByPropertyName("IdentityData")
+                Try : gtid = GroupTypeId.Data : Catch : End Try
             End If
-            If gtid Is Nothing Then
-                gtid = New ForgeTypeId() ' empty (treated as "Other" by some APIs)
-            End If
+            If gtid Is Nothing Then gtid = New ForgeTypeId()
 
-            ' ensure user-assignable group
+            ' 4) FamilyManager에서 assign 가능한 그룹인지 보정
             Try
                 If fm IsNot Nothing AndAlso gtid IsNot Nothing Then
                     If Not fm.IsUserAssignableParameterGroup(gtid) Then
-                        Dim fb As ForgeTypeId = GetGroupTypeIdByPropertyName("IdentityData")
-                        If fb IsNot Nothing Then gtid = fb
+                        Try : gtid = GroupTypeId.IdentityData : Catch : End Try
+                        If gtid Is Nothing Then
+                            Try : gtid = GroupTypeId.Data : Catch : End Try
+                        End If
+                        If gtid Is Nothing Then gtid = New ForgeTypeId()
                     End If
                 End If
             Catch
@@ -1491,7 +1436,7 @@ Namespace Services
                             ' shared parameter directly
                             fm.AddParameter(extDef, groupPG, isInstance)
 #ElseIf REVIT2025 Then
-                            Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, CInt(groupPG), extDef)
+                            Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, groupPG, extDef)
                             fm.AddParameter(extDef, gtid, isInstance)
 #End If
                         End Sub)
@@ -1521,7 +1466,7 @@ Namespace Services
 #If REVIT2019 Or REVIT2021 Or REVIT2023 Then
                         fm.ReplaceParameter(anyByName, extDef, groupPG, isInstance)
 #ElseIf REVIT2025 Then
-                        Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, CInt(groupPG), extDef)
+                        Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, groupPG, extDef)
                         fm.ReplaceParameter(anyByName, extDef, gtid, isInstance)
 #End If
                     End Sub)
@@ -1541,7 +1486,7 @@ Namespace Services
             Dim groupOk As Boolean = True
             Try
                 groupOk = (corrected IsNot Nothing AndAlso corrected.Definition IsNot Nothing AndAlso
-                           corrected.Definition.GetGroupTypeId().Equals(ResolveUserAssignableGroupTypeId(fm, CInt(groupPG), extDef)))
+                           corrected.Definition.GetGroupTypeId().Equals(ResolveUserAssignableGroupTypeId(fm, groupPG, extDef)))
             Catch
                 groupOk = True
             End Try
@@ -1568,7 +1513,7 @@ Namespace Services
 #If REVIT2019 Or REVIT2021 Or REVIT2023 Then
                         fm.AddParameter(extDef, groupPG, isInstance)
 #ElseIf REVIT2025 Then
-                            Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, CInt(groupPG), extDef)
+                            Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, groupPG, extDef)
                             fm.AddParameter(extDef, gtid, isInstance)
 #End If
                     End Sub)
@@ -1589,7 +1534,7 @@ Namespace Services
             Dim groupOk2 As Boolean = True
             Try
                 groupOk2 = (corrected IsNot Nothing AndAlso corrected.Definition IsNot Nothing AndAlso
-                            corrected.Definition.GetGroupTypeId().Equals(ResolveUserAssignableGroupTypeId(fm, CInt(groupPG), extDef)))
+                            corrected.Definition.GetGroupTypeId().Equals(ResolveUserAssignableGroupTypeId(fm, groupPG, extDef)))
             Catch
                 groupOk2 = True
             End Try
@@ -1853,21 +1798,88 @@ Namespace Services
         Private Shared Function BuildGroupOptions() As List(Of ParameterGroupOption)
 #If REVIT2025 Then
             Dim items As New List(Of ParameterGroupOption)()
-            Dim map As List(Of ForgeTypeId) = _builtInGroupTypeIds.Value
-            If map Is Nothing Then map = New List(Of ForgeTypeId)()
-            For i As Integer = 0 To map.Count - 1
+            Dim preferred As BuiltInParameterGroup() = {
+                BuiltInParameterGroup.PG_TEXT,
+                BuiltInParameterGroup.PG_IDENTITY_DATA,
+                BuiltInParameterGroup.PG_DATA,
+                BuiltInParameterGroup.PG_CONSTRAINTS
+            }
+
+            Dim added As New HashSet(Of Integer)()
+
+            For Each pg In preferred
                 Dim nm As String = ""
+                Dim gtid As ForgeTypeId = Nothing
+
                 Try
-                    nm = LabelUtils.GetLabelForGroup(map(i))
+                    Select Case pg
+                        Case BuiltInParameterGroup.PG_TEXT
+                            gtid = GroupTypeId.Text
+                        Case BuiltInParameterGroup.PG_IDENTITY_DATA
+                            gtid = GroupTypeId.IdentityData
+                        Case BuiltInParameterGroup.PG_CONSTRAINTS
+                            gtid = GroupTypeId.Constraints
+                        Case BuiltInParameterGroup.PG_GEOMETRY
+                            gtid = GroupTypeId.Geometry
+                        Case BuiltInParameterGroup.PG_MATERIALS
+                            gtid = GroupTypeId.Materials
+                        Case BuiltInParameterGroup.PG_GRAPHICS
+                            gtid = GroupTypeId.Graphics
+                        Case Else
+                            gtid = GroupTypeId.Data
+                    End Select
+                Catch
+                    gtid = Nothing
+                End Try
+
+                Try
+                    If gtid IsNot Nothing Then nm = LabelUtils.GetLabelForGroup(gtid)
                 Catch
                     nm = ""
                 End Try
-                If String.IsNullOrWhiteSpace(nm) Then
-                    nm = SafeTypeId(map(i))
-                End If
-                If String.IsNullOrWhiteSpace(nm) Then nm = $"Group {i}"
-                items.Add(New ParameterGroupOption With {.Id = i, .Name = nm})
+                If String.IsNullOrWhiteSpace(nm) Then nm = pg.ToString()
+
+                items.Add(New ParameterGroupOption With {.Id = CInt(pg), .Name = nm})
+                added.Add(CInt(pg))
             Next
+
+            For Each pg As BuiltInParameterGroup In [Enum].GetValues(GetType(BuiltInParameterGroup))
+                If Not added.Contains(CInt(pg)) Then
+                    Dim nm As String = ""
+                    Dim gtid As ForgeTypeId = Nothing
+
+                    Try
+                        Select Case pg
+                            Case BuiltInParameterGroup.PG_TEXT
+                                gtid = GroupTypeId.Text
+                            Case BuiltInParameterGroup.PG_IDENTITY_DATA
+                                gtid = GroupTypeId.IdentityData
+                            Case BuiltInParameterGroup.PG_CONSTRAINTS
+                                gtid = GroupTypeId.Constraints
+                            Case BuiltInParameterGroup.PG_GEOMETRY
+                                gtid = GroupTypeId.Geometry
+                            Case BuiltInParameterGroup.PG_MATERIALS
+                                gtid = GroupTypeId.Materials
+                            Case BuiltInParameterGroup.PG_GRAPHICS
+                                gtid = GroupTypeId.Graphics
+                            Case Else
+                                gtid = GroupTypeId.Data
+                        End Select
+                    Catch
+                        gtid = Nothing
+                    End Try
+
+                    Try
+                        If gtid IsNot Nothing Then nm = LabelUtils.GetLabelForGroup(gtid)
+                    Catch
+                        nm = ""
+                    End Try
+                    If String.IsNullOrWhiteSpace(nm) Then nm = pg.ToString()
+
+                    items.Add(New ParameterGroupOption With {.Id = CInt(pg), .Name = nm})
+                End If
+            Next
+
             Return items
 #Else
             Dim items As New List(Of ParameterGroupOption)()

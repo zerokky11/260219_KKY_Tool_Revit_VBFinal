@@ -64,9 +64,11 @@ Namespace Global.Autodesk.Revit.DB
                 Case BuiltInParameterGroup.PG_GRAPHICS
                     Return GroupTypeId.Graphics
 
+                Case BuiltInParameterGroup.PG_IDENTITY_DATA
+                    Return GroupTypeId.IdentityData
+
                 ' 나머지 그룹들은 전부 Data 그룹으로 통일
                 Case BuiltInParameterGroup.PG_DATA,
-                     BuiltInParameterGroup.PG_IDENTITY_DATA,
                      BuiltInParameterGroup.PG_ANALYSIS,
                      BuiltInParameterGroup.PG_GENERAL
                     Return GroupTypeId.Data
@@ -95,6 +97,9 @@ Namespace Global.Autodesk.Revit.DB
             End If
             If groupId.Equals(GroupTypeId.Graphics) Then
                 Return BuiltInParameterGroup.PG_GRAPHICS
+            End If
+            If groupId.Equals(GroupTypeId.IdentityData) Then
+                Return BuiltInParameterGroup.PG_IDENTITY_DATA
             End If
 
             ' 나머지는 전부 Data로 처리

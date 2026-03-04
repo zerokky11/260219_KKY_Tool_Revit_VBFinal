@@ -17,6 +17,7 @@ Namespace Exports
 
     Public Module DuplicateExport
 
+        ' ✅ 기존 호출 호환: reportTitle은 마지막 Optional로만 추가
         Public Function Save(rows As System.Collections.IEnumerable,
                              Optional doAutoFit As Boolean = False,
                              Optional progressChannel As String = Nothing,
@@ -27,6 +28,7 @@ Namespace Exports
             Return ExcelCore.PickAndSaveXlsx(title, dt, "Duplicates.xlsx", doAutoFit, progressChannel)
         End Function
 
+        ' ✅ 기존 호출 호환: reportTitle은 마지막 Optional로만 추가
         Public Sub Save(outPath As String,
                         rows As System.Collections.IEnumerable,
                         Optional doAutoFit As Boolean = False,

@@ -18,7 +18,7 @@ const EV_EXPORTED_B    = 'dup:exported';
 
 const DUP_MODE_KEY = 'kky_dup_mode';         // "duplicate" | "clash"
 const DUP_TOL_MM_KEY = 'kky_dup_tol_mm';
-const DUP_TOL_MM_DEFAULT = 4.7625;
+const DUP_TOL_MM_DEFAULT = 4.7625;           // 1/64 ft ≈ 4.7625mm
 
 export function renderDup(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');
@@ -120,7 +120,7 @@ export function renderDup(root) {
   let exporting = false;
   let lastExcelPct = 0;
 
-  // ✅ 상태 요약(dup:result로 온 값 저장)
+  // 결과 요약(Host)
   let lastResult = null;
   let lastTruncToastKey = '';
 
@@ -164,7 +164,6 @@ export function renderDup(root) {
       const m = String(payload?.mode ?? '').trim();
       if (m === 'duplicate' || m === 'clash') activeModeForView = m;
 
-      // ✅ 표시 제한 안내(한 번만)
       if (payload?.truncated) {
         const k = `${payload?.mode}|${payload?.shown}|${payload?.total}`;
         if (k !== lastTruncToastKey) {
@@ -173,18 +172,16 @@ export function renderDup(root) {
         }
       }
 
-      // ✅ dup:list가 안 와도(또는 0건일 때) 상태를 확실히 표시
       const groupsN = Number(payload?.groups ?? 0) || 0;
       const candN   = Number(payload?.candidates ?? 0) || 0;
 
+      // dup:list가 안 오거나(전송 실패/과다) 0건일 때도 상태를 확실히 표시
       if ((groupsN === 0 && candN === 0) && rows.length === 0 && !busy) {
-        handleRows([]); // 빈 결과 카드 강제 표시
+        handleRows([]);
       } else {
-        // 그룹 목록 렌더 중이면 배너만 갱신
         paintGroups();
         refreshSummary();
       }
-
       return;
     }
 
@@ -363,7 +360,7 @@ export function renderDup(root) {
 
     if (!rows.length) {
       body.innerHTML = '';
-      // ✅ 0건/표시제한 여부를 명확히 표시
+
       const isClash = activeModeForView === 'clash';
       const title = isClash ? '간섭이 없습니다' : '중복이 없습니다';
 
@@ -377,9 +374,7 @@ export function renderDup(root) {
       empty.innerHTML = `
         <div class="empty-emoji">✅</div>
         <h3 class="empty-title">${title}</h3>
-        <p class="empty-sub">
-          ${(gN === 0 && cN === 0) ? '검토 결과가 0건입니다.' : '표시할 결과가 없습니다.'}
-        </p>
+        <p class="empty-sub">${(gN === 0 && cN === 0) ? '검토 결과가 0건입니다.' : '표시할 결과가 없습니다.'}</p>
       `;
       body.append(empty);
 
@@ -387,9 +382,7 @@ export function renderDup(root) {
       info.innerHTML = `
         <div class="t">검토 상태</div>
         <div class="s">스캔: ${scan.toLocaleString()}개 · 그룹: ${gN.toLocaleString()}개 · 결과행: ${cN.toLocaleString()}개</div>
-        ${(lastResult?.truncated)
-          ? `<div class="s">표시 제한: ${shown.toLocaleString()} / ${total.toLocaleString()} (전체는 엑셀 내보내기에서 확인)</div>`
-          : ``}
+        ${lastResult?.truncated ? `<div class="s">표시 제한: ${shown.toLocaleString()} / ${total.toLocaleString()} (전체는 엑셀 내보내기)</div>` : ``}
       `;
       body.append(info);
     }
@@ -400,7 +393,6 @@ export function renderDup(root) {
   function paintGroups() {
     body.innerHTML = '';
 
-    // ✅ 표시 제한 배너
     if (lastResult?.truncated) {
       const shown = Number(lastResult?.shown ?? 0) || 0;
       const total = Number(lastResult?.total ?? 0) || 0;
@@ -586,7 +578,7 @@ export function renderDup(root) {
 
   function buildTolControl() {
     const wrap = div('dup-tol');
-    wrap.title = '허용오차(mm). 중복=좌표 버킷, 자체간섭=여유/정밀판정 허용치로 사용됩니다.';
+    wrap.title = '허용오차(mm). 중복=좌표/끝점 양자화, 자체간섭=여유/정밀판정 허용치로 사용됩니다.';
 
     const label = document.createElement('span');
     label.className = 'dup-tol-label';
@@ -615,8 +607,8 @@ export function renderDup(root) {
   function applyHeadingByMode(m) {
     const title = modeTitle(m);
     const sub = (m === 'clash')
-      ? '같은 파일 내 자체간섭 후보를 그룹으로 묶어 보여줍니다. (결과가 많을 경우 표시 제한될 수 있음)'
-      : '중복 요소 후보를 그룹별로 확인하고 삭제/되돌리기를 관리합니다. (결과가 많을 경우 표시 제한될 수 있음)';
+      ? '같은 파일 내 자체간섭 후보를 그룹으로 묶어 보여줍니다. (결과 과다 시 표시 제한될 수 있음)'
+      : '중복 요소 후보를 그룹별로 확인하고 삭제/되돌리기를 관리합니다. (결과 과다 시 표시 제한될 수 있음)';
 
     heading.innerHTML = `
       <span class="feature-kicker">Duplicate Inspector</span>
@@ -632,12 +624,10 @@ export function renderDup(root) {
     const isClash = m === 'clash';
     hero.innerHTML = `
       <h3 class="hero-title">${isClash ? '자체간섭 검토를 시작해 보세요' : '중복검토를 시작해 보세요'}</h3>
-      <p class="hero-sub">${isClash
-        ? '같은 파일 내에서 자체간섭 후보를 그룹으로 묶어 보여줍니다.'
-        : '모델의 중복 요소를 그룹으로 묶어 보여줍니다.'}</p>
+      <p class="hero-sub">${isClash ? '같은 파일 내에서 자체간섭 후보를 그룹으로 묶어 보여줍니다.' : '모델의 중복 요소를 그룹으로 묶어 보여줍니다.'}</p>
       <ul class="hero-list">
         <li>상단 토글로 <b>중복</b>/<b>자체간섭</b> 모드를 전환할 수 있습니다.</li>
-        <li>결과가 0건이면 <b>0건 안내 카드</b>가 표시됩니다.</li>
+        <li>결과가 0건이면 <b>0건 안내</b>가 표시됩니다.</li>
         <li>결과가 너무 많으면 <b>표시 제한</b> 안내가 표시됩니다(전체는 엑셀).</li>
       </ul>`;
     container.append(hero);
