@@ -80,7 +80,44 @@ export function renderDup(root) {
       .dup-info .t { font-weight: 600; margin-bottom: 6px; }
       .dup-info .s { opacity: .85; font-size: 12px; line-height: 1.35; }
 
-      .dup-rulepanel{ position: fixed; top: 74px; right: -420px; width: 400px; height: calc(100vh - 86px); z-index: 30; border-radius: 16px 0 0 16px; border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%); background: color-mix(in oklab, var(--panel, #ffffff) 92%, #000 8%); box-shadow: 0 14px 40px rgba(0,0,0,.18); transition: right .22s ease; overflow: hidden; }
+      /* Rule/Set modal (floating window) */
+      .dup-rulemodal{ position: fixed; inset: 0; z-index: 5000; display:none; }
+      .dup-rulemodal.is-open{ display:block; }
+      .dup-rulemodal .rm-backdrop{ position:absolute; inset:0; background: rgba(0,0,0,.22); }
+      .dup-rulemodal .rm-window{ position:absolute; top:74px; right:18px; width: 820px; max-width: calc(100vw - 36px); height: calc(100vh - 92px); max-height: calc(100vh - 92px);
+        border-radius: 18px; border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
+        background: color-mix(in oklab, var(--panel, #ffffff) 94%, #000000 6%);
+        box-shadow: 0 20px 60px rgba(0,0,0,.28); overflow:hidden; display:flex; flex-direction: column; }
+      .dup-rulemodal .rm-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding: 14px 16px; border-bottom: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
+        background: linear-gradient(180deg, color-mix(in oklab, var(--panel, #ffffff) 92%, #000000 8%), color-mix(in oklab, var(--panel, #ffffff) 96%, #000000 4%)); }
+      .dup-rulemodal .rm-title{ font-weight: 700; }
+      .dup-rulemodal .rm-sub{ font-size:12px; opacity:.75; margin-top:2px; }
+      .dup-rulemodal .rm-head-left{ display:flex; flex-direction:column; }
+      .dup-rulemodal .rm-actions{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+      .dup-rulemodal .rm-body{ padding: 14px 16px; overflow:auto; }
+      .dup-rulemodal .rp-sec{ margin: 10px 0 14px 0; padding: 12px 12px; border-radius: 14px;
+        border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
+        background: color-mix(in oklab, var(--panel, #ffffff) 92%, #000000 8%);
+      }
+      .dup-rulemodal .rp-sec-title{ font-weight: 700; margin-bottom: 8px; display:flex; align-items:center; gap:8px; }
+      .dup-rulemodal .rp-sec-title .rp-pill{ font-size:11px; padding: 2px 8px; border-radius:999px;
+        border:1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
+        opacity:.8; }
+      .dup-rulemodal .rp-grid{ display:grid; grid-template-columns: 160px 1fr; gap: 10px 12px; align-items:center; }
+      .dup-rulemodal .rp-row{ display: contents; }
+      .dup-rulemodal .rp-label{ font-size:12px; opacity:.82; }
+      .dup-rulemodal .rp-hint{ font-size: 12px; opacity: .8; margin-top: 8px; line-height: 1.35; }
+      .dup-rulemodal .rp-help{ font-size: 12px; opacity: .9; line-height: 1.4; }
+      .dup-rulemodal .rp-help b{ font-weight: 700; }
+      .dup-rulemodal .rp-examples{ margin-top: 8px; display:flex; flex-direction:column; gap:6px; opacity:.9; }
+      .dup-rulemodal .rp-pair .rp-chk{ white-space:nowrap; font-size:12px; opacity:.85; }
+      .dup-rulemodal .rp-pair .rp-chk input{ transform: translateY(1px); }
+      .dup-rulemodal .rp-foot{ position: sticky; bottom: 0; background: linear-gradient(180deg, transparent, color-mix(in oklab, var(--panel, #ffffff) 92%, #000000 8%)); padding-top:10px; }
+
+
+      .dup-summarybar{ z-index: 15; }
+
+      .dup-rulepanel{ position: fixed; top: 74px; right: -420px; width: 400px; height: calc(100vh - 86px); z-index: 120; border-radius: 16px 0 0 16px; border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%); background: color-mix(in oklab, var(--panel, #ffffff) 92%, #000 8%); box-shadow: 0 14px 40px rgba(0,0,0,.18); transition: right .22s ease; overflow: hidden; }
       .dup-rulepanel.is-open{ right: 10px; }
       .dup-rulepanel .rp-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 12px; border-bottom:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); }
       .dup-rulepanel .rp-title{ font-weight:700; }
@@ -116,7 +153,55 @@ export function renderDup(root) {
 
       .conn-cell{ display:inline-block; min-width: 18px; padding:2px 6px; border-radius: 999px; border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%); }
 
-    `;
+    
+
+/* Button polish v18 (size-safe) */
+.card-action-btn, .control-chip, .table-action-btn, .rp-btn {
+  border-radius: 12px;
+  border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 75%, transparent 25%);
+  transition: transform .06s ease, filter .12s ease, background-color .12s ease, border-color .12s ease;
+}
+.card-action-btn:active, .control-chip:active, .table-action-btn:active, .rp-btn:active { transform: translateY(1px); }
+.card-action-btn:hover, .control-chip:hover, .table-action-btn:hover, .rp-btn:hover {
+  filter: brightness(1.02);
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 35%, var(--border, #d7dbe7) 65%);
+}
+.card-action-btn:focus-visible, .control-chip:focus-visible, .table-action-btn:focus-visible, .rp-btn:focus-visible,
+.rp-input:focus-visible, .rp-select:focus-visible, .dup-tol-input:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent, #4c6fff) 55%, transparent 45%);
+  outline-offset: 2px;
+}
+
+.control-chip { padding: 8px 12px; }
+.control-chip.is-active {
+  background: color-mix(in oklab, var(--accent, #4c6fff) 18%, transparent 82%);
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 55%, transparent 45%);
+  font-weight: 650;
+}
+
+.table-action-btn { padding: 6px 10px; border-radius: 10px; }
+.table-action-btn--danger { border-color: color-mix(in oklab, #ff3b30 35%, var(--border, #d7dbe7) 65%); }
+.table-action-btn.restore { border-color: color-mix(in oklab, var(--accent, #4c6fff) 45%, var(--border, #d7dbe7) 55%); }
+
+.dup-tol, .rp-input, .rp-select { border-radius: 12px; }
+.rp-input, .rp-select, .rp-textarea {
+  border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 75%, transparent 25%);
+  background: color-mix(in oklab, var(--panel, #ffffff) 96%, #000000 4%);
+  color: inherit;
+}
+.rp-select { padding: 8px 10px; }
+.rp-input { padding: 8px 10px; }
+.rp-btn--primary {
+  background: color-mix(in oklab, var(--accent, #4c6fff) 88%, #ffffff 12%);
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 70%, transparent 30%);
+  color: #fff;
+}
+.rp-btn--ghost { background: transparent; }
+.rp-btn--add {
+  background: color-mix(in oklab, var(--accent, #4c6fff) 10%, transparent 90%);
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 22%, var(--border, #d7dbe7) 78%);
+}
+`;
     document.head.appendChild(st);
   }
 
@@ -144,20 +229,24 @@ export function renderDup(root) {
   exportBtn.disabled = true;
 
   const modeBar = buildModeBar();
-  const tolCtl  = buildTolControl();
 
-const scopeBar = buildScopeBar();
-const exclCtl  = buildExcludeKeywordControl();
 
+
+const settingsBtn = kbtn('규칙/Set', 'subtle', () => {
+  onOpenRulePanel();
+  try { syncSettingsBtn(); } catch {}
+});
+settingsBtn.title = '규칙/Set 창 열기/닫기';
 
   const actions = div('feature-actions');
-  actions.append(runBtn, modeBar, settingsBtn, scopeBar, exclCtl, tolCtl, exportBtn);
+  actions.append(runBtn, modeBar, settingsBtn, exportBtn);
 
   header.append(heading, actions);
   page.append(header);
 
   rulePanelEl = buildRulePanel();
   page.append(rulePanelEl);
+  try { syncSettingsBtn(); } catch {}
 
 
   const summaryBar = div('dup-summarybar sticky hidden');
@@ -172,6 +261,7 @@ const exclCtl  = buildExcludeKeywordControl();
   const EXCEL_PHASE_ORDER = ['EXCEL_INIT', 'EXCEL_WRITE', 'EXCEL_SAVE', 'AUTOFIT', 'DONE'];
 
   let rows = [];
+  let idDisplayMap = new Map();
   let groups = [];
   let deleted = new Set();
   let expanded = new Set();
@@ -549,7 +639,7 @@ onHost('dup:meta', (payload) => {
     ckCell.append(ck);
 
     row.append(ckCell);
-    row.append(cell(r.id ?? '-', 'td mono right'));
+    row.append(cell((r.displayId ?? r.id) ?? '-', 'td mono right'));
     row.append(cell(r.category || '—', 'td'));
 
     const famOut = r.family ? r.family : (r.category ? `${r.category} Type` : '—');
@@ -709,16 +799,18 @@ function buildExcludeKeywordControl() {
 
 
 function defaultRuleConfig() {
-  return { version: 1, sets: [], pairs: [], excludeSetIds: [] };
+  return { version: 1, sets: [], pairs: [], excludeSetIds: [], includeLinks: false, linkMode: 'hostlink', linkInstanceIds: [] };
 }
-
 function normalizeRuleConfig(cfg) {
   const c = cfg && typeof cfg === 'object' ? cfg : {};
   const out = {
     version: 1,
     sets: Array.isArray(c.sets) ? c.sets : [],
     pairs: Array.isArray(c.pairs) ? c.pairs : [],
-    excludeSetIds: Array.isArray(c.excludeSetIds) ? c.excludeSetIds : []
+    excludeSetIds: Array.isArray(c.excludeSetIds) ? c.excludeSetIds : [],
+    includeLinks: !!c.includeLinks,
+    linkMode: (c.linkMode === 'all') ? 'all' : 'hostlink',
+    linkInstanceIds: Array.isArray(c.linkInstanceIds) ? c.linkInstanceIds.map(x => Number(x)).filter(n => Number.isFinite(n) && n > 0) : []
   };
 
   // normalize sets
@@ -811,86 +903,140 @@ function getExcludeKeywordList() {
   return raw.split(',').map(s => s.trim()).filter(Boolean);
 }
 
-function onOpenRulePanel() {
-  rulePanelOpen = !rulePanelOpen;
-  if (rulePanelEl) rulePanelEl.classList.toggle('is-open', rulePanelOpen);
+function onOpenRulePanel(forceOpen) {
+  if (typeof forceOpen === 'boolean') rulePanelOpen = forceOpen;
+  else rulePanelOpen = !rulePanelOpen;
+
+  if (rulePanelEl) rulePanelEl.classList.toggle('is-open', !!rulePanelOpen);
+
   if (rulePanelOpen) {
     try { renderRulePanel(); } catch {}
+    try { rulePanelEl.setAttribute('tabindex','-1'); rulePanelEl.focus(); } catch {}
   }
+  try { syncSettingsBtn(); } catch {}
+}
+
+function syncSettingsBtn() {
+  try {
+    if (typeof settingsBtn !== 'undefined' && settingsBtn) {
+      settingsBtn.classList.toggle('is-active', !!rulePanelOpen);
+    }
+  } catch {}
 }
 
 function buildRulePanel() {
-  const wrap = div('dup-rulepanel');
+  const wrap = div('dup-rulemodal');
   wrap.innerHTML = `
-    <div class="rp-head">
-      <div class="rp-title">규칙 / Set</div>
-      <div class="rp-actions">
-        <button class="rp-btn rp-btn--ghost" data-act="refresh">목록 새로고침</button>
-        <button class="rp-btn rp-btn--ghost" data-act="export">Export</button>
-        <button class="rp-btn rp-btn--ghost" data-act="import">Import</button>
-        <button class="rp-btn" data-act="close">닫기</button>
+    <div class="rm-backdrop" data-act="close"></div>
+    <div class="rm-window" role="dialog" aria-label="규칙/Set 설정">
+      <div class="rm-head">
+        <div class="rm-head-left">
+          <div class="rm-title">규칙 / Set 설정</div>
+          <div class="rm-sub">자체간섭(클래시) 상위호환 · Set/Rule/허용오차를 한 곳에서 관리합니다.</div>
+        </div>
+        <div class="rm-actions">
+          <button class="rp-btn rp-btn--ghost" data-act="refresh">목록 새로고침</button>
+          <button class="rp-btn rp-btn--ghost" data-act="export">Export</button>
+          <button class="rp-btn rp-btn--ghost" data-act="import">Import</button>
+          <button class="rp-btn" data-act="close">닫기</button>
+        </div>
       </div>
-    </div>
-    <div class="rp-body">
-      <section class="rp-sec">
-        <div class="rp-sec-title">허용오차</div>
-        <div class="rp-row">
-          <label class="rp-label">허용오차(mm)</label>
-          <input class="rp-input" type="number" step="0.1" min="0.01" data-bind="tolMm"/>
+
+      <div class="rm-body">
+        <section class="rp-sec rp-sec--help">
+          <div class="rp-sec-title">작동 방식 <span class="rp-pill">순서</span></div>
+          <div class="rp-help">
+            <ol>
+              <li><b>범위(Selection)</b>로 검사 대상 풀(U)을 먼저 정합니다. <span class="rp-muted">(전체 / 선택만 / 선택 제외)</span></li>
+              <li><b>제외(키워드/Exclude Sets)</b>로 U에서 1차 제거합니다.</li>
+              <li><b>Pair(Set vs Set)</b>가 있으면 Pair만 간섭을 계산합니다. (없으면 U 전체끼리 계산)</li>
+            </ol>
+            <div class="rp-examples">
+              <div><b>예1)</b> Dummy 무시: Dummy 선택 → <b>범위=선택 제외</b> → 검토 시작</div>
+              <div><b>예2)</b> 장비만 검사: 장비 선택 → <b>범위=선택만</b> → 검토 시작</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="rp-sec">
+          <div class="rp-sec-title">공통 설정 <span class="rp-pill">Global</span></div>
+          <div class="rp-grid">
+            <div class="rp-label">허용오차(mm)</div>
+            <input class="rp-input" type="number" step="0.1" min="0.01" data-bind="tolMm"/>
+
+            <div class="rp-label">범위(Selection)</div>
+            <select class="rp-select" data-bind="scopeMode">
+              <option value="all">전체</option>
+              <option value="scope">선택한 요소만 검사</option>
+              <option value="exclude">선택한 요소는 제외</option>
+            </select>
+
+            <div class="rp-label">제외 키워드</div>
+            <input class="rp-input" type="text" placeholder="예: Dummy, Temp, _TEST (콤마 구분)" data-bind="excludeKeywords"/>
+
+<div class="rp-label">링크 모델 포함</div>
+<label class="rp-chk">
+  <input type="checkbox" data-bind="includeLinks"/> 링크(RevitLink) 요소도 간섭 검토에 포함
+</label>
+
+<div class="rp-label">링크 비교</div>
+<select class="rp-select" data-bind="linkMode">
+  <option value="hostlink">호스트 ↔ 링크만</option>
+  <option value="all">전체(호스트/링크/링크↔링크)</option>
+</select>
+
+<div class="rp-label">링크 선택</div>
+<div class="rp-links" data-slot="links"></div>
+          </div>
+          <div class="rp-hint">※ 범위(Selection)는 Revit에서 요소를 선택한 뒤 <b>검토 시작</b>을 누르면 적용됩니다. Set/Rule은 이 범위 안에서만 동작합니다.</div>
+        </section>
+
+        <section class="rp-sec">
+          <div class="rp-sec-title">Set 정의 <span class="rp-pill">Selection Set</span></div>
+          <div class="rp-hint">Set은 <b>(그룹 OR) - (조건 AND)</b> 구조입니다. “Parameter” 조건은 목록 새로고침 후 선택할 수 있습니다.</div>
+          <div class="rp-sets" data-slot="sets"></div>
+          <button class="rp-btn rp-btn--add" data-act="add-set">+ Set 추가</button>
+        </section>
+
+        <section class="rp-sec">
+          <div class="rp-sec-title">Pair (Set vs Set) <span class="rp-pill">Rules</span></div>
+          <div class="rp-help">
+            <div>• 체크된 Pair만 적용됩니다. (체크 해제 = 비활성)</div>
+            <div>• <b>A vs B</b>: A에 속한 요소 ↔ B에 속한 요소 간 간섭만 계산</div>
+            <div>• <b>A vs A</b>: A 내부 요소들끼리(같은 Set 내부) 간섭을 계산 <span class="rp-muted">(제외가 아님)</span></div>
+            <div>• <b>__ALL__</b>: Set ↔ 전체(범위 U) 의미</div>
+          </div>
+          <div class="rp-pairs" data-slot="pairs"></div>
+          <button class="rp-btn rp-btn--add" data-act="add-pair">+ Pair 추가</button>
+        </section>
+
+        <section class="rp-sec">
+          <div class="rp-sec-title">Exclude Sets <span class="rp-pill">Ignore</span></div>
+          <div class="rp-hint">등록된 Set에 포함되는 요소는 모든 간섭 검토에서 제외됩니다. (Dummy 제외 등에 사용)</div>
+          <div class="rp-ex" data-slot="ex"></div>
+          <button class="rp-btn rp-btn--add" data-act="add-ex">+ Exclude Set 추가</button>
+        </section>
+
+        <section class="rp-sec">
+          <div class="rp-sec-title">Import / Export <span class="rp-pill">JSON</span></div>
+          <textarea class="rp-textarea" data-bind="json"></textarea>
+          <div class="rp-hint">Export는 현재 설정을 JSON으로 생성합니다. Import는 JSON을 붙여넣고 Import 버튼을 누르면 적용됩니다.</div>
+        </section>
+
+        <div class="rp-foot">
+          <button class="rp-btn rp-btn--primary" data-act="apply">적용</button>
         </div>
-        <div class="rp-row">
-          <label class="rp-label">범위</label>
-          <select class="rp-select" data-bind="scopeMode">
-            <option value="all">전체</option>
-            <option value="scope">선택만</option>
-            <option value="exclude">선택 제외</option>
-          </select>
-        </div>
-        <div class="rp-row">
-          <label class="rp-label">제외 키워드</label>
-          <input class="rp-input" type="text" placeholder="콤마로 구분" data-bind="excludeKeywords"/>
-        </div>
-        <div class="rp-hint">선택 기반 범위는 Revit에서 요소를 선택한 뒤 검토 시작을 누르면 적용됩니다.</div>
-      </section>
-
-      <section class="rp-sec">
-        <div class="rp-sec-title">Sets</div>
-        <div class="rp-hint">Set은 <b>(그룹 OR) - (조건 AND)</b> 구조입니다.</div>
-        <div class="rp-sets" data-slot="sets"></div>
-        <button class="rp-btn rp-btn--add" data-act="add-set">+ Set 추가</button>
-      </section>
-
-      <section class="rp-sec">
-        <div class="rp-sec-title">Set vs Set</div>
-        <div class="rp-hint">간섭 검토는 등록된 Pair만 대상으로 수행됩니다. (등록이 없으면 전체 대상)</div>
-        <div class="rp-pairs" data-slot="pairs"></div>
-        <button class="rp-btn rp-btn--add" data-act="add-pair">+ Pair 추가</button>
-      </section>
-
-      <section class="rp-sec">
-        <div class="rp-sec-title">Exclude Sets</div>
-        <div class="rp-hint">등록된 Set에 포함되는 요소는 모든 간섭 검토에서 제외됩니다.</div>
-        <div class="rp-ex" data-slot="ex"></div>
-        <button class="rp-btn rp-btn--add" data-act="add-ex">+ Exclude Set 추가</button>
-      </section>
-
-      <section class="rp-sec">
-        <div class="rp-sec-title">Import / Export</div>
-        <textarea class="rp-textarea" data-bind="json"></textarea>
-        <div class="rp-hint">Export는 현재 설정을 JSON으로 생성합니다.</div>
-      </section>
-
-      <div class="rp-foot">
-        <button class="rp-btn rp-btn--primary" data-act="apply">적용</button>
       </div>
     </div>
   `;
 
+  // click actions (backdrop 포함)
   wrap.addEventListener('click', (e) => {
-    const btn = e.target.closest('button[data-act]');
+    const btn = e.target.closest('[data-act]');
     if (!btn) return;
     const act = btn.dataset.act;
-    if (act === 'close') { onOpenRulePanel(); return; }
+
+    if (act === 'close') { onOpenRulePanel(false); return; }
     if (act === 'refresh') { post('dup:run', { mode, metaOnly: true }); return; }
     if (act === 'add-set') { addSet(); renderRulePanel(); return; }
     if (act === 'add-pair') { addPair(); renderRulePanel(); return; }
@@ -900,9 +1046,13 @@ function buildRulePanel() {
     if (act === 'apply') { applyRulePanel(); return; }
   });
 
+  // ESC to close
+  wrap.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { onOpenRulePanel(false); }
+  });
+
   return wrap;
 }
-
 function renderRulePanelMeta() {
   if (!rulePanelEl || !rulePanelOpen) return;
   renderRulePanel();
@@ -961,6 +1111,8 @@ function applyRulePanel() {
   const tolEl = rulePanelEl.querySelector('[data-bind="tolMm"]');
   const smEl = rulePanelEl.querySelector('[data-bind="scopeMode"]');
   const kwEl = rulePanelEl.querySelector('[data-bind="excludeKeywords"]');
+  // 헤더 입력 컨트롤을 쓰지 않는 버전: 패널 입력을 소스로 사용
+  if (!exclKwInputEl && kwEl) exclKwInputEl = kwEl;
 
   // 기존 컨트롤과 동기화
   try {
@@ -981,6 +1133,23 @@ function applyRulePanel() {
     try { localStorage.setItem(DUP_EXCL_KW_KEY, kw); } catch {}
   } catch {}
 
+
+try {
+  const ilEl = rulePanelEl.querySelector('[data-bind="includeLinks"]');
+  ruleCfg.includeLinks = !!ilEl?.checked;
+} catch {}
+
+try {
+  const lmEl = rulePanelEl.querySelector('[data-bind="linkMode"]');
+  ruleCfg.linkMode = (String(lmEl?.value || 'hostlink') === 'all') ? 'all' : 'hostlink';
+} catch {}
+
+// linkInstanceIds는 체크박스 change에서 이미 ruleCfg에 반영됨(여기선 정규화만)
+try {
+  ruleCfg.linkInstanceIds = Array.isArray(ruleCfg.linkInstanceIds) ? ruleCfg.linkInstanceIds.map(Number).filter(n => Number.isFinite(n) && n > 0) : [];
+} catch { ruleCfg.linkInstanceIds = []; }
+
+try { saveRuleConfig(ruleCfg); } catch {}
   toast('설정 적용 완료', 'ok', 1600);
 }
 
@@ -996,7 +1165,58 @@ function renderRulePanel() {
   if (smEl) smEl.value = scopeMode;
 
   const kwEl = rulePanelEl.querySelector('[data-bind="excludeKeywords"]');
+  // 헤더 입력 컨트롤을 쓰지 않는 버전: 패널 입력을 소스로 사용
+  if (!exclKwInputEl && kwEl) exclKwInputEl = kwEl;
   if (kwEl) kwEl.value = readExcludeKeywords();
+
+
+const ilEl = rulePanelEl.querySelector('[data-bind="includeLinks"]');
+if (ilEl) ilEl.checked = !!ruleCfg.includeLinks;
+
+const lmEl = rulePanelEl.querySelector('[data-bind="linkMode"]');
+if (lmEl) lmEl.value = (ruleCfg.linkMode === 'all') ? 'all' : 'hostlink';
+
+// links list from meta
+const linksSlot = rulePanelEl.querySelector('[data-slot="links"]');
+if (linksSlot) {
+  linksSlot.innerHTML = '';
+  const links = Array.isArray(meta.links) ? meta.links : [];
+  if (!links.length) {
+    const d = document.createElement('div');
+    d.className = 'rp-hint';
+    d.textContent = '로드된 링크(RevitLink)가 없습니다.';
+    linksSlot.append(d);
+  } else {
+    const selected = new Set((ruleCfg.linkInstanceIds || []).map(Number));
+    links.forEach((lnk) => {
+      const id = Number(lnk.id);
+      const loaded = !!lnk.loaded;
+      const row = document.createElement('label');
+      row.className = 'rp-linkrow';
+      const ck = document.createElement('input');
+      ck.type = 'checkbox';
+      ck.disabled = !loaded;
+      ck.checked = loaded && selected.has(id);
+      ck.addEventListener('change', () => {
+        const s = new Set((ruleCfg.linkInstanceIds || []).map(Number).filter(n => Number.isFinite(n) && n > 0));
+        if (ck.checked) s.add(id); else s.delete(id);
+        ruleCfg.linkInstanceIds = Array.from(s);
+        saveRuleConfig(ruleCfg);
+      });
+
+      const nm = document.createElement('span');
+      nm.className = 'nm';
+      nm.textContent = lnk.docTitle ? `${lnk.docTitle}` : (lnk.name || `Link ${id}`);
+
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = loaded ? 'Loaded' : 'Unloaded';
+
+      row.append(ck, nm, tag);
+      linksSlot.append(row);
+    });
+  }
+}
 
   const meta = loadMeta();
   const params = Array.isArray(meta.parameters) ? meta.parameters : [];
@@ -1117,7 +1337,7 @@ function renderRulePanel() {
         <select class="rp-select rp-select--sm" data-p-a="${pi}">${opts.join('')}</select>
         <span class="rp-vs">vs</span>
         <select class="rp-select rp-select--sm" data-p-b="${pi}">${opts.join('')}</select>
-        <label class="rp-chk"><input type="checkbox" data-p-en="${pi}" ${p.enabled!==false?'checked':''}/> enabled</label>
+        <label class="rp-chk"><input type="checkbox" data-p-en="${pi}" ${p.enabled!==false?'checked':''}/> 사용</label>
         <button class="rp-x" data-del-pair="${pi}">×</button>
       `;
       pairsSlot.append(row);
@@ -1249,7 +1469,12 @@ function updateClause(si, gi, ci, next) {
       : (typeof connectedIdsRaw === 'string' && connectedIdsRaw.length
           ? connectedIdsRaw.split(/[,\s]+/).filter(Boolean)
           : []);
-    return { id: id || '-', category, family, type, deleted: deletedFlag, groupKey, mode: rm, connectedIds };
+    const displayId = val(r.displayId ?? r.DisplayId);
+    const isLinked = !!(r.isLinked ?? r.IsLinked);
+    const linkName = val(r.linkName ?? r.LinkName);
+    const linkInstanceId = val(r.linkInstanceId ?? r.LinkInstanceId);
+    const linkedElementId = val(r.linkedElementId ?? r.LinkedElementId);
+    return { id: id || '-', displayId, isLinked, linkName, linkInstanceId, linkedElementId, category, family, type, deleted: deletedFlag, groupKey, mode: rm, connectedIds };
   }
 
   function buildGroups(rs) {
