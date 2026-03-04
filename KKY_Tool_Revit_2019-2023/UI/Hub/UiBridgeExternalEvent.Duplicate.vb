@@ -20,6 +20,23 @@ Namespace UI.Hub
 
     Partial Public Class UiBridgeExternalEvent
 
+
+        ' ✅ 링크 문서 표기용(로드/언로드) 타이틀 안전 획득
+        Private Shared Function SafeDocTitle(doc As Document) As String
+            Try
+                If doc Is Nothing Then Return ""
+                Dim t As String = ""
+                Try : t = doc.Title : Catch : t = "" : End Try
+                If String.IsNullOrWhiteSpace(t) Then
+                    Try : t = doc.PathName : Catch : t = "" : End Try
+                End If
+                If String.IsNullOrWhiteSpace(t) Then t = "Document"
+                Return t
+            Catch
+                Return ""
+            End Try
+        End Function
+
 #Region "상태 (세션/결과 보관)"
 
         Private Const MAX_UI_ROWS As Integer = 5000
@@ -1168,24 +1185,8 @@ Namespace UI.Hub
             Public Property [Op] As String    ' contains|equals|startswith|endswith|notcontains|notequals
             Public Property Value As String
             Public Property Param As String   ' for param field
-            ' ✅ 링크 문서 표기용(로드/언로드) 타이틀 안전 획득
-            Private Shared Function SafeDocTitle(doc As Document) As String
-                Try
-                    If doc Is Nothing Then Return ""
-                    Dim t As String = ""
-                    Try : t = doc.Title : Catch : t = "" : End Try
-                    If String.IsNullOrWhiteSpace(t) Then
-                        Try : t = doc.PathName : Catch : t = "" : End Try
-                    End If
-                    If String.IsNullOrWhiteSpace(t) Then t = "Document"
-                    Return t
-                Catch
-                    Return ""
-                End Try
-            End Function
-
-
         End Class
+
         Private Class ClashGroup
             Public Property Clauses As New List(Of ClashClause)() ' AND
         End Class
