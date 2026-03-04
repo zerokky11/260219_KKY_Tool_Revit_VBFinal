@@ -3,30 +3,27 @@ import { clear, div, toast, showExcelSavedDialog, chooseExcelMode } from '../cor
 import { ProgressDialog } from '../core/progress.js';
 import { onHost, post } from '../core/bridge.js';
 
-// Host 이벤트 (fix2 고정)
 const RESP_ROWS_EVENTS = ['dup:list', 'dup:rows', 'duplicate:list'];
 const EV_DELETE_REQ = 'duplicate:delete';
 const EV_RESTORE_REQ = 'duplicate:restore';
-const EV_SELECT_REQ = 'duplicate:select';
-const EV_EXPORT_REQ = 'duplicate:export';
+const EV_SELECT_REQ  = 'duplicate:select';
+const EV_EXPORT_REQ  = 'duplicate:export';
 
-const EV_DELETED_ONE = 'dup:deleted';
-const EV_RESTORED_ONE = 'dup:restored';
+const EV_DELETED_ONE   = 'dup:deleted';
+const EV_RESTORED_ONE  = 'dup:restored';
 const EV_DELETED_MULTI = 'duplicate:delete';
-const EV_RESTORED_MULTI = 'duplicate:restore';
-const EV_EXPORTED_A = 'duplicate:export';
-const EV_EXPORTED_B = 'dup:exported';
+const EV_RESTORED_MULTI= 'duplicate:restore';
+const EV_EXPORTED_A    = 'duplicate:export';
+const EV_EXPORTED_B    = 'dup:exported';
 
-// 상위호환 업그레이드: 모드(중복/자체간섭) + 허용오차(mm)
 const DUP_MODE_KEY = 'kky_dup_mode';         // "duplicate" | "clash"
-const DUP_TOL_MM_KEY = 'kky_dup_tol_mm';     // number as string
-const DUP_TOL_MM_DEFAULT = 4.7625;           // 1/64 ft ≈ 4.7625mm
+const DUP_TOL_MM_KEY = 'kky_dup_tol_mm';
+const DUP_TOL_MM_DEFAULT = 4.7625;
 
 export function renderDup(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');
   clear(target);
 
-  // 삭제행 시각 보정 + 모드 토글/허용오차 UI 스타일
   if (!document.getElementById('dup-style-override')) {
     const st = document.createElement('style');
     st.id = 'dup-style-override';
@@ -64,33 +61,38 @@ export function renderDup(root) {
         outline: none;
       }
       .dup-tol .dup-tol-input:disabled { opacity: .6; }
+
+      .dup-info {
+        margin-bottom: 10px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
+        background: color-mix(in oklab, var(--panel, #ffffff) 92%, #000000 8%);
+      }
+      .dup-info .t { font-weight: 600; margin-bottom: 6px; }
+      .dup-info .s { opacity: .85; font-size: 12px; line-height: 1.35; }
     `;
     document.head.appendChild(st);
   }
 
-  // Topbar (HUB 헤더) 렌더 + sticky용 클래스
   const topbarEl = document.querySelector('#topbar-root .topbar') || document.querySelector('.topbar');
   if (topbarEl) topbarEl.classList.add('hub-topbar');
 
-  // ===== 페이지 뼈대 =====
-  const page = div('dup-page feature-shell');
-  const header = div('feature-header dup-toolbar');
-
+  const page    = div('dup-page feature-shell');
+  const header  = div('feature-header dup-toolbar');
   const heading = div('feature-heading');
 
-  // 상태
   let mode = readMode();
   let tolInputEl = null;
   let modeBtns = [];
   let activeModeForView = mode;
 
-  // 상단 UI
-  const runBtn = cardBtn('검토 시작', onRun);
+  const runBtn    = cardBtn('검토 시작', onRun);
   const exportBtn = cardBtn('엑셀 내보내기', onExport);
   exportBtn.disabled = true;
 
   const modeBar = buildModeBar();
-  const tolCtl = buildTolControl();
+  const tolCtl  = buildTolControl();
 
   const actions = div('feature-actions');
   actions.append(runBtn, modeBar, tolCtl, exportBtn);
@@ -98,7 +100,6 @@ export function renderDup(root) {
   header.append(heading, actions);
   page.append(header);
 
-  // sticky summary bar
   const summaryBar = div('dup-summarybar sticky hidden');
   page.append(summaryBar);
 
@@ -107,11 +108,9 @@ export function renderDup(root) {
 
   target.append(page);
 
-  // 엑셀 프로그레스
   const EXCEL_PHASE_WEIGHT = { EXCEL_INIT: 0.05, EXCEL_WRITE: 0.85, EXCEL_SAVE: 0.08, AUTOFIT: 0.02, DONE: 1, ERROR: 1 };
   const EXCEL_PHASE_ORDER = ['EXCEL_INIT', 'EXCEL_WRITE', 'EXCEL_SAVE', 'AUTOFIT', 'DONE'];
 
-  // ---- state ----
   let rows = [];
   let groups = [];
   let deleted = new Set();
@@ -121,10 +120,13 @@ export function renderDup(root) {
   let exporting = false;
   let lastExcelPct = 0;
 
+  // ✅ 상태 요약(dup:result로 온 값 저장)
+  let lastResult = null;
+  let lastTruncToastKey = '';
+
   applyHeadingByMode(mode);
   renderIntro(body, mode);
 
-  // 공통 오류
   onHost('revit:error', ({ message }) => {
     setLoading(false);
     ProgressDialog.hide();
@@ -147,7 +149,6 @@ export function renderDup(root) {
     if (message) toast(message, 'warn', 3600);
   });
 
-  // 모든 이벤트 수신
   onHost(({ ev, payload }) => {
     if (RESP_ROWS_EVENTS.includes(ev)) {
       setLoading(false);
@@ -158,53 +159,56 @@ export function renderDup(root) {
 
     if (ev === 'dup:result') {
       setLoading(false);
-      // Host가 mode를 같이 내려주면 동기화
+      lastResult = payload || null;
+
       const m = String(payload?.mode ?? '').trim();
-      if (m === 'duplicate' || m === 'clash') {
-        activeModeForView = m;
-        // 헤더/intro는 결과 표시 중엔 바꾸지 않고(혼란 방지),
-        // 그룹 타이틀만 activeModeForView를 사용
+      if (m === 'duplicate' || m === 'clash') activeModeForView = m;
+
+      // ✅ 표시 제한 안내(한 번만)
+      if (payload?.truncated) {
+        const k = `${payload?.mode}|${payload?.shown}|${payload?.total}`;
+        if (k !== lastTruncToastKey) {
+          lastTruncToastKey = k;
+          toast(`결과가 많아 상위 ${payload?.shown ?? ''}건만 표시합니다. 전체는 엑셀 내보내기에서 확인하세요.`, 'warn', 4200);
+        }
+      }
+
+      // ✅ dup:list가 안 와도(또는 0건일 때) 상태를 확실히 표시
+      const groupsN = Number(payload?.groups ?? 0) || 0;
+      const candN   = Number(payload?.candidates ?? 0) || 0;
+
+      if ((groupsN === 0 && candN === 0) && rows.length === 0 && !busy) {
+        handleRows([]); // 빈 결과 카드 강제 표시
+      } else {
+        // 그룹 목록 렌더 중이면 배너만 갱신
         paintGroups();
         refreshSummary();
       }
+
       return;
     }
 
     if (ev === EV_DELETED_ONE) {
       const id = String(payload?.id ?? '');
-      if (id) {
-        deleted.add(id);
-        updateRowStates();
-        refreshSummary();
-      }
+      if (id) { deleted.add(id); updateRowStates(); refreshSummary(); }
       return;
     }
 
     if (ev === EV_RESTORED_ONE) {
       const id = String(payload?.id ?? '');
-      if (id) {
-        deleted.delete(id);
-        updateRowStates();
-        refreshSummary();
-      }
+      if (id) { deleted.delete(id); updateRowStates(); refreshSummary(); }
       return;
     }
 
     if (ev === EV_DELETED_MULTI) {
       (toIdArray(payload?.ids)).forEach(id => deleted.add(id));
-      updateRowStates();
-      refreshSummary();
+      updateRowStates(); refreshSummary();
       return;
     }
 
     if (ev === EV_RESTORED_MULTI) {
       (toIdArray(payload?.ids)).forEach(id => deleted.delete(id));
-      updateRowStates();
-      refreshSummary();
-      return;
-    }
-
-    if (ev === EV_SELECT_REQ) {
+      updateRowStates(); refreshSummary();
       return;
     }
 
@@ -232,25 +236,23 @@ export function renderDup(root) {
     }
   });
 
-  // ===== 액션 =====
   function setLoading(on) {
     busy = on;
     runBtn.disabled = on;
     runBtn.textContent = on ? '검토 중…' : '검토 시작';
-
     modeBtns.forEach(b => { try { b.disabled = on; } catch {} });
     if (tolInputEl) tolInputEl.disabled = on;
 
-    if (!on && waitTimer) {
-      clearTimeout(waitTimer);
-      waitTimer = null;
-    }
+    if (!on && waitTimer) { clearTimeout(waitTimer); waitTimer = null; }
   }
 
   function onRun() {
     setLoading(true);
     exportBtn.disabled = true;
     deleted.clear();
+    rows = [];
+    groups = [];
+    lastResult = null;
 
     body.innerHTML = '';
     body.append(buildSkeleton(6));
@@ -262,7 +264,6 @@ export function renderDup(root) {
       renderIntro(body, mode);
     }, 10000);
 
-    // 모드/허용오차 전달
     const tolFeet = getTolFeet();
     activeModeForView = mode;
     post('dup:run', { mode, tolFeet });
@@ -299,10 +300,7 @@ export function renderDup(root) {
     ProgressDialog.update(percent, subtitle, detail);
 
     if (!exporting) {
-      setTimeout(() => {
-        ProgressDialog.hide();
-        lastExcelPct = 0;
-      }, 280);
+      setTimeout(() => { ProgressDialog.hide(); lastExcelPct = 0; }, 280);
     }
   }
 
@@ -349,43 +347,71 @@ export function renderDup(root) {
     return Math.max(0, Math.min(1, n));
   }
 
-  // ===== 호스트 응답 처리 =====
   function handleRows(listLike) {
     const list = Array.isArray(listLike) ? listLike : [];
     rows = list.map(normalizeRow);
 
-    // mode는 현재 선택값을 기본으로, Host가 row마다 mode를 줄 경우 보정
     const rowMode = rows.find(r => r.mode)?.mode;
-    if (rowMode === 'duplicate' || rowMode === 'clash') {
-      activeModeForView = rowMode;
-    }
+    if (rowMode === 'duplicate' || rowMode === 'clash') activeModeForView = rowMode;
 
-    groups = buildGroups(rows, activeModeForView);
-
+    groups = buildGroups(rows);
     exportBtn.disabled = rows.length === 0;
     setLoading(false);
 
-    // 처음부터 전 그룹 펼치기
     expanded = new Set(groups.map(g => g.key));
     paintGroups();
 
     if (!rows.length) {
       body.innerHTML = '';
-      const empty = div('dup-emptycard');
+      // ✅ 0건/표시제한 여부를 명확히 표시
       const isClash = activeModeForView === 'clash';
+      const title = isClash ? '간섭이 없습니다' : '중복이 없습니다';
+
+      const scan = Number(lastResult?.scan ?? 0) || 0;
+      const gN = Number(lastResult?.groups ?? 0) || 0;
+      const cN = Number(lastResult?.candidates ?? 0) || 0;
+      const shown = Number(lastResult?.shown ?? 0) || 0;
+      const total = Number(lastResult?.total ?? 0) || 0;
+
+      const empty = div('dup-emptycard');
       empty.innerHTML = `
         <div class="empty-emoji">✅</div>
-        <h3 class="empty-title">${isClash ? '간섭이 없어요' : '중복이 없어요'}</h3>
-        <p class="empty-sub">모델 상태가 깨끗합니다. 필요 시 다시 검토를 실행하세요.</p>
+        <h3 class="empty-title">${title}</h3>
+        <p class="empty-sub">
+          ${(gN === 0 && cN === 0) ? '검토 결과가 0건입니다.' : '표시할 결과가 없습니다.'}
+        </p>
       `;
       body.append(empty);
+
+      const info = div('dup-info');
+      info.innerHTML = `
+        <div class="t">검토 상태</div>
+        <div class="s">스캔: ${scan.toLocaleString()}개 · 그룹: ${gN.toLocaleString()}개 · 결과행: ${cN.toLocaleString()}개</div>
+        ${(lastResult?.truncated)
+          ? `<div class="s">표시 제한: ${shown.toLocaleString()} / ${total.toLocaleString()} (전체는 엑셀 내보내기에서 확인)</div>`
+          : ``}
+      `;
+      body.append(info);
     }
+
     refreshSummary();
   }
 
-  // ===== 렌더링 =====
   function paintGroups() {
     body.innerHTML = '';
+
+    // ✅ 표시 제한 배너
+    if (lastResult?.truncated) {
+      const shown = Number(lastResult?.shown ?? 0) || 0;
+      const total = Number(lastResult?.total ?? 0) || 0;
+      const info = div('dup-info');
+      info.innerHTML = `
+        <div class="t">표시 제한</div>
+        <div class="s">결과가 많아 상위 ${shown.toLocaleString()}건만 표시합니다. 전체(${total.toLocaleString()}건)는 엑셀 내보내기에서 확인하세요.</div>
+      `;
+      body.append(info);
+    }
+
     const isClash = activeModeForView === 'clash';
     const grpPrefix = isClash ? '간섭 그룹' : '중복 그룹';
 
@@ -393,11 +419,10 @@ export function renderDup(root) {
       const card = div('dup-grp');
       card.classList.add(g.rows.length >= 2 ? 'accent-danger' : 'accent-info');
 
-      // 그룹 헤더
       const h = div('grp-h');
       const left = div('grp-txt');
 
-      const meta = buildGroupMeta(g, isClash);
+      const meta = buildGroupMeta(g);
       left.innerHTML = `
         <div class="grp-title">
           <span class="grp-badge">${grpPrefix} ${idx + 1}</span>
@@ -413,7 +438,6 @@ export function renderDup(root) {
       h.append(left, right);
       card.append(h);
 
-      // 서브헤더 + 행
       const tbl = div('grp-body');
 
       const sh = div('dup-subhead');
@@ -427,9 +451,7 @@ export function renderDup(root) {
       );
       tbl.append(sh);
 
-      if (expanded.has(g.key)) {
-        g.rows.forEach(r => tbl.append(renderRow(r)));
-      }
+      if (expanded.has(g.key)) g.rows.forEach(r => tbl.append(renderRow(r)));
 
       card.append(tbl);
       body.append(card);
@@ -438,9 +460,7 @@ export function renderDup(root) {
     updateRowStates();
   }
 
-  function buildGroupMeta(g, isClash) {
-    // duplicate: 기존처럼 cat/fam/type 중심
-    // clash: 혼합 가능하므로, set 크기 기준으로 "혼합" 표시
+  function buildGroupMeta(g) {
     const cats = uniq(g.rows.map(r => r.category || '—'));
     const fams = uniq(g.rows.map(r => (r.family || (r.category ? `${r.category} Type` : '—')) || '—'));
     const types = uniq(g.rows.map(r => r.type || '—'));
@@ -473,20 +493,15 @@ export function renderDup(root) {
 
     const act = div('row-actions');
 
-    const viewBtn = tableBtn('선택/줌', '', () =>
-      post(EV_SELECT_REQ, { id: r.id, zoom: true, mode: 'zoom' })
-    );
+    const viewBtn = tableBtn('선택/줌', '', () => post(EV_SELECT_REQ, { id: r.id, zoom: true, mode: 'zoom' }));
 
     const delBtn = tableBtn(
       r.deleted ? '되돌리기' : '삭제',
       r.deleted ? 'restore' : 'table-action-btn--danger',
       () => {
         const ids = [r.id];
-        if (delBtn.dataset.mode === 'restore') {
-          post(EV_RESTORE_REQ, { id: r.id, ids });
-        } else {
-          post(EV_DELETE_REQ, { id: r.id, ids });
-        }
+        if (delBtn.dataset.mode === 'restore') post(EV_RESTORE_REQ, { id: r.id, ids });
+        else post(EV_DELETE_REQ, { id: r.id, ids });
       }
     );
     delBtn.dataset.mode = r.deleted ? 'restore' : 'delete';
@@ -534,16 +549,12 @@ export function renderDup(root) {
       .forEach(c => summaryBar.append(c));
   }
 
-  // ===== 상단 UI 구성 =====
   function buildModeBar() {
     const wrap = div('dup-modebar');
-
     const bDup = kbtn('중복', 'subtle', () => setMode('duplicate'));
     const bClash = kbtn('자체간섭', 'subtle', () => setMode('clash'));
-
     modeBtns = [bDup, bClash];
     syncModeButtons();
-
     wrap.append(bDup, bClash);
     return wrap;
   }
@@ -554,11 +565,12 @@ export function renderDup(root) {
     try { localStorage.setItem(DUP_MODE_KEY, mode); } catch {}
     syncModeButtons();
 
-    // 모드 변경 시 화면 초기화(혼선 방지)
     rows = [];
     groups = [];
     deleted.clear();
     exportBtn.disabled = true;
+    lastResult = null;
+
     body.innerHTML = '';
     applyHeadingByMode(mode);
     renderIntro(body, mode);
@@ -574,7 +586,7 @@ export function renderDup(root) {
 
   function buildTolControl() {
     const wrap = div('dup-tol');
-    wrap.title = '허용오차(mm). 중복=좌표양자화, 자체간섭=BoundingBox 확장(여유)로 사용됩니다.';
+    wrap.title = '허용오차(mm). 중복=좌표 버킷, 자체간섭=여유/정밀판정 허용치로 사용됩니다.';
 
     const label = document.createElement('span');
     label.className = 'dup-tol-label';
@@ -603,8 +615,8 @@ export function renderDup(root) {
   function applyHeadingByMode(m) {
     const title = modeTitle(m);
     const sub = (m === 'clash')
-      ? '같은 파일 내에서 BoundingBox 기준 1차 자체간섭(클래시)을 그룹으로 묶어 보여줍니다.'
-      : '중복 패밀리/요소를 그룹별로 확인하고 삭제/되돌리기를 관리합니다.';
+      ? '같은 파일 내 자체간섭 후보를 그룹으로 묶어 보여줍니다. (결과가 많을 경우 표시 제한될 수 있음)'
+      : '중복 요소 후보를 그룹별로 확인하고 삭제/되돌리기를 관리합니다. (결과가 많을 경우 표시 제한될 수 있음)';
 
     heading.innerHTML = `
       <span class="feature-kicker">Duplicate Inspector</span>
@@ -613,11 +625,75 @@ export function renderDup(root) {
     `;
   }
 
-  function modeTitle(m) {
-    return m === 'clash' ? '자체간섭 검토' : '중복검토';
+  function modeTitle(m) { return m === 'clash' ? '자체간섭 검토' : '중복검토'; }
+
+  function renderIntro(container, m) {
+    const hero = div('dup-hero');
+    const isClash = m === 'clash';
+    hero.innerHTML = `
+      <h3 class="hero-title">${isClash ? '자체간섭 검토를 시작해 보세요' : '중복검토를 시작해 보세요'}</h3>
+      <p class="hero-sub">${isClash
+        ? '같은 파일 내에서 자체간섭 후보를 그룹으로 묶어 보여줍니다.'
+        : '모델의 중복 요소를 그룹으로 묶어 보여줍니다.'}</p>
+      <ul class="hero-list">
+        <li>상단 토글로 <b>중복</b>/<b>자체간섭</b> 모드를 전환할 수 있습니다.</li>
+        <li>결과가 0건이면 <b>0건 안내 카드</b>가 표시됩니다.</li>
+        <li>결과가 너무 많으면 <b>표시 제한</b> 안내가 표시됩니다(전체는 엑셀).</li>
+      </ul>`;
+    container.append(hero);
   }
 
-  // ===== 유틸 =====
+  function normalizeRow(r) {
+    const id = safeId(r.elementId ?? r.ElementId ?? r.id ?? r.Id);
+    const category = val(r.category ?? r.Category);
+    const family   = val(r.family ?? r.Family);
+    const type     = val(r.type ?? r.Type);
+    const deletedFlag = !!(r.deleted ?? r.isDeleted ?? r.Deleted);
+    const groupKey = val(r.groupKey ?? r.GroupKey);
+    const rm = val(r.mode ?? r.Mode);
+    const connectedIdsRaw = r.connectedIds ?? r.ConnectedIds ?? [];
+    const connectedIds = Array.isArray(connectedIdsRaw)
+      ? connectedIdsRaw.map(String)
+      : (typeof connectedIdsRaw === 'string' && connectedIdsRaw.length
+          ? connectedIdsRaw.split(/[,\s]+/).filter(Boolean)
+          : []);
+    return { id: id || '-', category, family, type, deleted: deletedFlag, groupKey, mode: rm, connectedIds };
+  }
+
+  function buildGroups(rs) {
+    const hasGroupKey = rs.some(x => !!x.groupKey);
+    if (hasGroupKey) {
+      const map = new Map();
+      for (const r of rs) {
+        const key = r.groupKey || '_';
+        let g = map.get(key);
+        if (!g) { g = { key, rows: [] }; map.set(key, g); }
+        g.rows.push(r);
+      }
+      return [...map.values()];
+    }
+
+    const map = new Map();
+    for (const r of rs) {
+      const cluster = [String(r.id), ...r.connectedIds.map(String)]
+        .filter(Boolean)
+        .map(x => x.trim())
+        .sort((a, b) => Number(a) - Number(b))
+        .join(',');
+      const key = [r.category || '', r.family || '', r.type || '', cluster].join('|');
+      let g = map.get(key);
+      if (!g) { g = { key, rows: [] }; map.set(key, g); }
+      g.rows.push(r);
+    }
+    return [...map.values()];
+  }
+
+  function computeSummary(groups) {
+    let total = 0;
+    groups.forEach(g => { total += g.rows.length; });
+    return { groupCount: groups.length, totalCount: total };
+  }
+
   function cardBtn(label, handler) {
     const b = document.createElement('button');
     b.className = 'card-action-btn';
@@ -631,6 +707,15 @@ export function renderDup(root) {
     const b = document.createElement('button');
     b.className = 'table-action-btn ' + (tone || '');
     b.type = 'button';
+    b.textContent = label;
+    b.onclick = handler;
+    return b;
+  }
+
+  function kbtn(label, tone, handler) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'control-chip chip-btn ' + (tone || '');
     b.textContent = label;
     b.onclick = handler;
     return b;
@@ -650,14 +735,14 @@ export function renderDup(root) {
     return b;
   }
 
-  // Localized compact button
-  function kbtn(label, tone, handler) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'control-chip chip-btn ' + (tone || '');
-    b.textContent = label;
-    b.onclick = handler;
-    return b;
+  function buildSkeleton(n = 6) {
+    const wrap = div('dup-skeleton');
+    for (let i = 0; i < n; i++) {
+      const line = div('sk-row');
+      line.append(div('sk-chip'), div('sk-id'), div('sk-wide'), div('sk-wide'), div('sk-act'));
+      wrap.append(line);
+    }
+    return wrap;
   }
 
   function toIdArray(v) {
@@ -666,130 +751,21 @@ export function renderDup(root) {
     return [String(v)];
   }
 
-  function esc(s) {
-    return String(s ?? '').replace(/[&<>"']/g, m => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    }[m]));
-  }
-
-  function normalizeRow(r) {
-    const id = safeId(r.elementId ?? r.ElementId ?? r.id ?? r.Id);
-    const category = val(r.category ?? r.Category);
-    const family = val(r.family ?? r.Family);
-    const type = val(r.type ?? r.Type);
-
-    const connectedIdsRaw = r.connectedIds ?? r.ConnectedIds ?? r.links ?? r.Links ?? r.connected ?? [];
-    const connectedIds = Array.isArray(connectedIdsRaw)
-      ? connectedIdsRaw.map(String)
-      : (typeof connectedIdsRaw === 'string' && connectedIdsRaw.length
-        ? connectedIdsRaw.split(/[,\s]+/).filter(Boolean)
-        : []);
-
-    const deletedFlag = !!(r.deleted ?? r.isDeleted ?? r.Deleted);
-
-    const groupKey = val(r.groupKey ?? r.GroupKey);
-    const rm = val(r.mode ?? r.Mode);
-
-    return { id: id || '-', category, family, type, connectedIds, deleted: deletedFlag, groupKey, mode: rm };
-  }
-
-  // groupKey 우선(상위호환), 없으면 기존 로직 유지
-  function buildGroups(rs, m) {
-    const hasGroupKey = rs.some(x => !!x.groupKey);
-    if (hasGroupKey) {
-      const map = new Map();
-      for (const r of rs) {
-        const key = r.groupKey || '_';
-        let g = map.get(key);
-        if (!g) {
-          g = { key, rows: [] };
-          map.set(key, g);
-        }
-        g.rows.push(r);
-      }
-      return [...map.values()];
-    }
-
-    // (기존) Category / Family / Type / 연결세트 기반
-    const map = new Map();
-    for (const r of rs) {
-      const cluster = [String(r.id), ...r.connectedIds.map(String)]
-        .filter(Boolean)
-        .map(x => x.trim())
-        .sort((a, b) => Number(a) - Number(b))
-        .join(',');
-
-      const key = [r.category || '', r.family || '', r.type || '', cluster].join('|');
-
-      let g = map.get(key);
-      if (!g) {
-        g = { key, rows: [] };
-        map.set(key, g);
-      }
-      g.rows.push(r);
-    }
-    return [...map.values()];
-  }
-
-  function computeSummary(groups) {
-    let total = 0;
-    groups.forEach(g => { total += g.rows.length; });
-    return { groupCount: groups.length, totalCount: total };
-  }
-
-  function safeId(v) {
-    if (v === 0) return 0;
-    if (v == null) return '';
-    return String(v);
-  }
-
-  function val(v) {
-    return v == null || v === '' ? '' : String(v);
-  }
-
   function uniq(arr) {
     const set = new Set();
     arr.forEach(x => set.add(String(x)));
     return [...set.values()];
   }
 
-  function renderIntro(container, m) {
-    const hero = div('dup-hero');
-    const isClash = m === 'clash';
-    hero.innerHTML = `
-      <h3 class="hero-title">${isClash ? '자체간섭 검토를 시작해 보세요' : '중복검토를 시작해 보세요'}</h3>
-      <p class="hero-sub">${isClash
-        ? '같은 파일 내에서 1차 간섭(클래시) 후보를 그룹으로 묶어 보여줍니다. 각 행에서 삭제/되돌리기, 선택/줌 을 실행할 수 있어요.'
-        : '모델의 중복 요소를 그룹으로 묶어 보여줍니다. 각 행에서 삭제/되돌리기, 선택/줌 을 실행할 수 있어요.'}</p>
-      <ul class="hero-list">
-        <li>상단 토글로 <b>중복</b>/<b>자체간섭</b> 모드를 전환할 수 있습니다.</li>
-        <li><b>허용오차(mm)</b>는 중복=좌표 버킷, 자체간섭=BoundingBox 여유로 사용됩니다.</li>
-        <li>엑셀 내보내기는 결과가 있을 때만 활성화됩니다.</li>
-      </ul>`;
-    container.append(hero);
+  function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, m => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[m]));
   }
 
-  function buildSkeleton(n = 6) {
-    const wrap = div('dup-skeleton');
-    for (let i = 0; i < n; i++) {
-      const line = div('sk-row');
-      line.append(
-        div('sk-chip'),
-        div('sk-id'),
-        div('sk-wide'),
-        div('sk-wide'),
-        div('sk-act')
-      );
-      wrap.append(line);
-    }
-    return wrap;
-  }
+  function safeId(v) { if (v === 0) return 0; if (v == null) return ''; return String(v); }
+  function val(v) { return v == null || v === '' ? '' : String(v); }
 
-  // ===== localStorage helpers =====
   function readMode() {
     try {
       const m = String(localStorage.getItem(DUP_MODE_KEY) || '').trim();
@@ -799,19 +775,16 @@ export function renderDup(root) {
   }
 
   function readTolMm() {
-    // 1) localStorage
     try {
       const raw = localStorage.getItem(DUP_TOL_MM_KEY);
       const n = Number(String(raw || '').trim());
       if (Number.isFinite(n) && n > 0) return sanitizeTolMm(n);
     } catch {}
-    // 2) default
     return DUP_TOL_MM_DEFAULT;
   }
 
   function sanitizeTolMm(n) {
     if (!Number.isFinite(n)) return DUP_TOL_MM_DEFAULT;
-    // 너무 작은 값/너무 큰 값 방지
     return Math.max(0.01, Math.min(1000, n));
   }
 

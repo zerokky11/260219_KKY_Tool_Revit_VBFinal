@@ -118,7 +118,7 @@ Namespace UI.Hub
             End If
         End Sub
 
-        ' ====== 중복 스캔(기존) ======
+        ' ====== 중복 스캔(개선) ======
         Private Sub RunDuplicate(doc As Document, tolFeet As Double)
             Dim rows As New List(Of DupRowDto)()
             Dim total As Integer = 0
@@ -144,20 +144,28 @@ Namespace UI.Hub
                 If ShouldSkipForQuantity(e) Then Continue For
                 If e Is Nothing OrElse e.Category Is Nothing Then Continue For
 
-                Dim center As XYZ = TryGetCenter(e)
-                If center Is Nothing Then Continue For
-
                 Dim catName As String = SafeCategoryName(e, catCache)
                 Dim famName As String = SafeFamilyName(e, famCache)
                 Dim typName As String = SafeTypeName(e, typCache)
-
                 Dim lvl As Integer = TryGetLevelId(e)
-                Dim oriKey As String = GetOrientationKey(e)
 
-                Dim key As String =
-                    String.Concat(catName, "|", famName, "|", typName, "|",
-                                  "O", oriKey, "|", "L", lvl.ToString(), "|",
-                                  "Q(", q(center.X).ToString(), ",", q(center.Y).ToString(), ",", q(center.Z).ToString(), ")")
+                Dim key As String = Nothing
+
+                ' ✅ 개선 1: LocationCurve(배관/덕트 등)은 EndPoint + Size + Type 기반(센터버킷 사용 안함)
+                If TryBuildCurveDuplicateKey(e, tolFeet, catName, famName, typName, lvl, key) Then
+                    ' key already built
+                Else
+                    ' 기존 방식: center + orientation + level + type/family/category
+                    Dim center As XYZ = TryGetCenter(e)
+                    If center Is Nothing Then Continue For
+
+                    Dim oriKey As String = GetOrientationKey(e)
+
+                    key =
+                        String.Concat(catName, "|", famName, "|", typName, "|",
+                                      "O", oriKey, "|", "L", lvl.ToString(), "|",
+                                      "Q(", q(center.X).ToString(), ",", q(center.Y).ToString(), ",", q(center.Z).ToString(), ")")
+                End If
 
                 Dim list As List(Of ElementId) = Nothing
                 If Not buckets.TryGetValue(key, list) Then
@@ -226,7 +234,7 @@ Namespace UI.Hub
             SendToWeb("dup:result", New With {.mode = "duplicate", .scan = total, .groups = groupsCount, .candidates = candidates, .tolFeet = tolFeet})
         End Sub
 
-        ' ====== 자체간섭(클래시) 스캔(상위호환) ======
+        ' ====== 자체간섭(클래시) 스캔(개선) ======
         Private Sub RunSelfClash(doc As Document, tolFeet As Double)
             Dim rows As New List(Of DupRowDto)()
             Dim total As Integer = 0
@@ -257,10 +265,10 @@ Namespace UI.Hub
                 Dim maxY As Double = bb.Max.Y + tolFeet
                 Dim maxZ As Double = bb.Max.Z + tolFeet
 
-                ' invalid guard
                 If maxX < minX OrElse maxY < minY OrElse maxZ < minZ Then Continue For
 
                 Dim id As Integer = e.Id.IntegerValue
+
                 Dim ci As New ClashInfo With {
                     .Id = id,
                     .MinX = minX, .MinY = minY, .MinZ = minZ,
@@ -269,10 +277,26 @@ Namespace UI.Hub
                     .Family = SafeFamilyName(e, famCache),
                     .TypeName = SafeTypeName(e, typCache)
                 }
+
+                ' ✅ 개선 2: LocationCurve면 centerline/endpoints + radius 계산해서 정밀 판정에 활용
+                Dim p0 As XYZ = Nothing, p1 As XYZ = Nothing
+                If TryGetCurveEndpoints(e, p0, p1) Then
+                    ci.HasCurve = True
+                    ci.X0 = p0.X : ci.Y0 = p0.Y : ci.Z0 = p0.Z
+                    ci.X1 = p1.X : ci.Y1 = p1.Y : ci.Z1 = p1.Z
+
+                    Dim r As Double = 0
+                    If TryGetCrossSectionRadius(e, r) Then
+                        ci.Radius = Math.Max(0R, r)
+                    Else
+                        ci.Radius = 0R
+                    End If
+                End If
+
                 infos(id) = ci
             Next
 
-            ' 2) 공간 해시(2D)로 후보쌍 생성 → BB 교차 판정 → 그래프 구축
+            ' 2) 공간 해시(2D)로 후보쌍 생성 → (AABB 교차 확인 후) 정밀판정 → 그래프 구축
             Dim adjacency As New Dictionary(Of Integer, HashSet(Of Integer))()
             Dim pairSeen As New HashSet(Of Long)()
 
@@ -334,7 +358,11 @@ Namespace UI.Hub
                         Dim b As ClashInfo = Nothing
                         If Not infos.TryGetValue(bId, b) Then Continue For
 
-                        If BBoxIntersects(a, b) Then
+                        ' broadphase: AABB
+                        If Not BBoxIntersects(a, b) Then Continue For
+
+                        ' ✅ narrowphase: curve-curve는 centerline 기반, 나머지는 ElementIntersectsElementFilter 우선
+                        If IsRealClash(doc, a, b, tolFeet) Then
                             AddEdge(adjacency, aId, bId)
                         End If
                     Next
@@ -540,11 +568,9 @@ Namespace UI.Hub
                 Return
             End If
 
-            ' 요청으로 들어온 id (현재 UI는 단일 id 기준)
             Dim requestIds As List(Of Integer) = ExtractIds(payload)
             Dim lastPack As List(Of Integer) = _deleteOps.Peek()
 
-            ' 요청 id 집합이 직전 삭제 묶음과 동일한지 확인
             Dim same As Boolean =
                 requestIds IsNot Nothing AndAlso
                 requestIds.Count = lastPack.Count AndAlso
@@ -556,7 +582,6 @@ Namespace UI.Hub
             End If
 
             Try
-                ' Revit 공식 Undo 포스터블 커맨드 사용
                 Dim cmdId As RevitCommandId = RevitCommandId.LookupPostableCommandId(PostableCommand.Undo)
                 If cmdId Is Nothing Then Throw New InvalidOperationException("Undo 명령을 찾을 수 없습니다.")
                 uiDoc.Application.PostCommand(cmdId)
@@ -565,7 +590,6 @@ Namespace UI.Hub
                 Return
             End Try
 
-            ' 스택에서 제거 후 상태/UI 동기화
             _deleteOps.Pop()
 
             For Each i In lastPack
@@ -608,13 +632,12 @@ Namespace UI.Hub
 
                 Dim outPath As String = sfd.FileName
 
-                ' 엑셀 내보내기
                 Dim doAutoFit As Boolean = ParseExcelMode(payload)
                 Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Reset("dup:progress")
 
                 Dim sheetTitle As String = If(String.Equals(_lastMode, "clash", StringComparison.OrdinalIgnoreCase),
-                                              "Self Clash (Simple)",
-                                              "Duplicates (Simple)")
+                                              "Self Clash (Refined)",
+                                              "Duplicates (Refined)")
 
                 Exports.DuplicateExport.Save(outPath, _lastRows.Cast(Of Object)(), doAutoFit, "dup:progress", sheetTitle)
 
@@ -631,7 +654,7 @@ Namespace UI.Hub
 
 #End Region
 
-#Region "자체간섭 내부 구현"
+#Region "자체간섭 내부 구현(개선)"
 
         Private Structure ClashInfo
             Public Id As Integer
@@ -644,6 +667,16 @@ Namespace UI.Hub
             Public Category As String
             Public Family As String
             Public TypeName As String
+
+            ' curve info for narrowphase
+            Public HasCurve As Boolean
+            Public X0 As Double
+            Public Y0 As Double
+            Public Z0 As Double
+            Public X1 As Double
+            Public Y1 As Double
+            Public Z1 As Double
+            Public Radius As Double
         End Structure
 
         Private Shared Function BBoxIntersects(a As ClashInfo, b As ClashInfo) As Boolean
@@ -669,6 +702,154 @@ Namespace UI.Hub
             sb.Add(a)
         End Sub
 
+        ' ✅ refined clash decision
+        Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashInfo, tolFeet As Double) As Boolean
+            ' 1) curve-curve: centerline distance + overlap for near-parallel
+            If a.HasCurve AndAlso b.HasCurve Then
+                Dim p0 As New XYZ(a.X0, a.Y0, a.Z0)
+                Dim p1 As New XYZ(a.X1, a.Y1, a.Z1)
+                Dim q0 As New XYZ(b.X0, b.Y0, b.Z0)
+                Dim q1 As New XYZ(b.X1, b.Y1, b.Z1)
+
+                Dim radSum As Double = Math.Max(0R, a.Radius) + Math.Max(0R, b.Radius) + tolFeet
+
+                Dim dist As Double = SegmentDistance(p0, p1, q0, q1)
+                If dist > radSum Then
+                    Return False
+                End If
+
+                ' near-parallel이면 겹침 길이도 확인(오탐 감소)
+                Dim vA As XYZ = p1 - p0
+                Dim vB As XYZ = q1 - q0
+                Dim lenA As Double = vA.GetLength()
+                Dim lenB As Double = vB.GetLength()
+                If lenA > 0.000001R AndAlso lenB > 0.000001R Then
+                    Dim uA As XYZ = vA / lenA
+                    Dim uB As XYZ = vB / lenB
+                    Dim dot As Double = Math.Abs(uA.DotProduct(uB))
+
+                    ' cos(5deg) ≈ 0.996
+                    If dot >= 0.996R Then
+                        Dim overlap As Double = SegmentOverlapLengthAlongAxis(p0, p1, q0, q1, uA, lenA)
+                        Dim overlapTol As Double = Math.Max(tolFeet * 2.0R, 0.01R) ' 0.01ft ≈ 3mm
+                        If overlap < overlapTol Then
+                            Return False
+                        End If
+                    End If
+                End If
+
+                Return True
+            End If
+
+            ' 2) non-curve or mixed: try Revit built-in intersection filter first
+            Try
+                Dim ea As Element = doc.GetElement(New ElementId(a.Id))
+                Dim eb As Element = doc.GetElement(New ElementId(b.Id))
+                If ea IsNot Nothing AndAlso eb IsNot Nothing Then
+                    Dim f As New ElementIntersectsElementFilter(eb)
+                    If f.PassesFilter(doc, ea.Id) Then
+                        Return True
+                    End If
+                    ' If fails, treat as non-clash (narrowphase denies)
+                    Return False
+                End If
+            Catch
+                ' ignore and fallback below
+            End Try
+
+            ' 3) fallback: AABB (last resort)
+            Return True
+        End Function
+
+        Private Shared Function SegmentDistance(p0 As XYZ, p1 As XYZ, q0 As XYZ, q1 As XYZ) As Double
+            Dim d2 As Double = SegmentDistanceSquared(p0, p1, q0, q1)
+            If d2 <= 0R Then Return 0R
+            Return Math.Sqrt(d2)
+        End Function
+
+        ' robust segment-segment distance squared
+        ' robust segment-segment distance squared
+        Private Shared Function SegmentDistanceSquared(p1 As XYZ, p2 As XYZ, q1 As XYZ, q2 As XYZ) As Double
+            Dim u As XYZ = p2 - p1
+            Dim v As XYZ = q2 - q1
+            Dim w As XYZ = p1 - q1
+
+            Dim a As Double = u.DotProduct(u) ' always >= 0
+            Dim b As Double = u.DotProduct(v)
+            Dim c As Double = v.DotProduct(v) ' always >= 0
+            Dim d0 As Double = u.DotProduct(w)
+            Dim e0 As Double = v.DotProduct(w)
+
+            Dim denom As Double = a * c - b * b ' always >= 0
+            Dim sc As Double, sN As Double, sD As Double = denom
+            Dim tc As Double, tN As Double, tD As Double = denom
+
+            Const EPS As Double = 0.000000000001
+
+            If denom < EPS Then
+                ' almost parallel
+                sN = 0.0R
+                sD = 1.0R
+                tN = e0
+                tD = c
+            Else
+                sN = (b * e0 - c * d0)
+                tN = (a * e0 - b * d0)
+                If sN < 0.0R Then
+                    sN = 0.0R
+                    tN = e0
+                    tD = c
+                ElseIf sN > sD Then
+                    sN = sD
+                    tN = e0 + b
+                    tD = c
+                End If
+            End If
+
+            If tN < 0.0R Then
+                tN = 0.0R
+                If -d0 < 0.0R Then
+                    sN = 0.0R
+                ElseIf -d0 > a Then
+                    sN = sD
+                Else
+                    sN = -d0
+                    sD = a
+                End If
+            ElseIf tN > tD Then
+                tN = tD
+                If (-d0 + b) < 0.0R Then
+                    sN = 0.0R
+                ElseIf (-d0 + b) > a Then
+                    sN = sD
+                Else
+                    sN = (-d0 + b)
+                    sD = a
+                End If
+            End If
+
+            sc = If(Math.Abs(sN) < EPS, 0.0R, sN / sD)
+            tc = If(Math.Abs(tN) < EPS, 0.0R, tN / tD)
+
+            Dim dP As XYZ = w + (u * sc) - (v * tc)
+            Return dP.DotProduct(dP)
+        End Function
+
+        ' overlap length along axis uA for near-parallel segments
+        Private Shared Function SegmentOverlapLengthAlongAxis(a0 As XYZ, a1 As XYZ, b0 As XYZ, b1 As XYZ, uA As XYZ, lenA As Double) As Double
+            ' axis origin = a0, a interval = [0, lenA]
+            Dim t0 As Double = (b0 - a0).DotProduct(uA)
+            Dim t1 As Double = (b1 - a0).DotProduct(uA)
+            Dim bMin As Double = Math.Min(t0, t1)
+            Dim bMax As Double = Math.Max(t0, t1)
+
+            Dim i0 As Double = Math.Max(0.0R, bMin)
+            Dim i1 As Double = Math.Min(lenA, bMax)
+            Dim ov As Double = i1 - i0
+            If ov < 0.0R Then Return 0.0R
+            Return ov
+        End Function
+
         ' (ix,iy) → Long key
         Private Shared Function PackCell(ix As Integer, iy As Integer) As Long
             Dim x As Long = CLng(ix)
@@ -685,24 +866,182 @@ Namespace UI.Hub
 
 #End Region
 
+#Region "중복 키(개선: LocationCurve는 EndPoint+Size+Type)"
+
+        Private Shared Function TryBuildCurveDuplicateKey(e As Element,
+                                                         tolFeet As Double,
+                                                         catName As String,
+                                                         famName As String,
+                                                         typName As String,
+                                                         lvl As Integer,
+                                                         ByRef key As String) As Boolean
+            key = Nothing
+
+            Dim p0 As XYZ = Nothing, p1 As XYZ = Nothing
+            If Not TryGetCurveEndpoints(e, p0, p1) Then Return False
+
+            ' quantize endpoints
+            Dim q = Function(x As Double) As Long
+                        Return CLng(Math.Round(x / tolFeet))
+                    End Function
+
+            Dim a As String = $"P({q(p0.X)},{q(p0.Y)},{q(p0.Z)})"
+            Dim b As String = $"P({q(p1.X)},{q(p1.Y)},{q(p1.Z)})"
+
+            ' order-independent
+            Dim pA As String = a
+            Dim pB As String = b
+            If String.CompareOrdinal(pA, pB) > 0 Then
+                Dim tmp = pA : pA = pB : pB = tmp
+            End If
+
+            Dim sizeKey As String = GetMEPSizeKey(e)
+
+            key = String.Concat(catName, "|", famName, "|", typName, "|",
+                                "L", lvl.ToString(), "|",
+                                "LC|", pA, "|", pB, "|S(", sizeKey, ")")
+            Return True
+        End Function
+
+        Private Shared Function TryGetCurveEndpoints(e As Element, ByRef p0 As XYZ, ByRef p1 As XYZ) As Boolean
+            p0 = Nothing : p1 = Nothing
+            If e Is Nothing Then Return False
+
+            Try
+                Dim lc As LocationCurve = TryCast(e.Location, LocationCurve)
+                If lc Is Nothing OrElse lc.Curve Is Nothing Then Return False
+                Dim c As Curve = lc.Curve
+                p0 = c.GetEndPoint(0)
+                p1 = c.GetEndPoint(1)
+                If p0 Is Nothing OrElse p1 Is Nothing Then Return False
+                Return True
+            Catch
+            End Try
+
+            Return False
+        End Function
+
+        ' sizeKey: diameter/width/height 등을 소수점 버킷으로 문자열화(중복 정확도 강화)
+        Private Shared Function GetMEPSizeKey(e As Element) As String
+            ' sizeTol: 약 1.2mm
+            Const sizeTol As Double = (1.0R / 256.0R)
+
+            Dim qS = Function(x As Double) As Long
+                         Return CLng(Math.Round(x / sizeTol))
+                     End Function
+
+            Try
+                ' Pipe
+                If TypeOf e Is Autodesk.Revit.DB.Plumbing.Pipe Then
+                    Dim d As Double = GetParamDouble(e, BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)
+                    If d > 0 Then Return "D" & qS(d).ToString()
+                End If
+
+                ' Duct
+                If TypeOf e Is Autodesk.Revit.DB.Mechanical.Duct Then
+                    Dim w As Double = GetParamDouble(e, BuiltInParameter.RBS_CURVE_WIDTH_PARAM)
+                    Dim h As Double = GetParamDouble(e, BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)
+                    If w > 0 AndAlso h > 0 Then Return "W" & qS(w) & "H" & qS(h)
+                    If w > 0 Then Return "W" & qS(w)
+                End If
+
+                ' Conduit
+                If TypeOf e Is Autodesk.Revit.DB.Electrical.Conduit Then
+                    Dim d As Double = GetParamDouble(e, BuiltInParameter.RBS_CONDUIT_DIAMETER_PARAM)
+                    If d > 0 Then Return "D" & qS(d).ToString()
+                End If
+
+                ' CableTray
+                If TypeOf e Is Autodesk.Revit.DB.Electrical.CableTray Then
+                    Dim w As Double = GetParamDouble(e, BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)
+                    Dim h As Double = GetParamDouble(e, BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)
+                    If w > 0 AndAlso h > 0 Then Return "W" & qS(w) & "H" & qS(h)
+                    If w > 0 Then Return "W" & qS(w)
+                End If
+            Catch
+            End Try
+
+            Return ""
+        End Function
+
+        Private Shared Function GetParamDouble(e As Element, bip As BuiltInParameter) As Double
+            Try
+                Dim p As Parameter = e.Parameter(bip)
+                If p IsNot Nothing AndAlso p.StorageType = StorageType.Double Then
+                    Dim v As Double = p.AsDouble()
+                    If v > 0 Then Return v
+                End If
+            Catch
+            End Try
+            Return 0R
+        End Function
+
+        ' curve clash radius: pipe=diam/2, duct=diag/2, tray=diag/2, conduit=diam/2
+        Private Shared Function TryGetCrossSectionRadius(e As Element, ByRef radius As Double) As Boolean
+            radius = 0R
+            If e Is Nothing Then Return False
+
+            Try
+                If TypeOf e Is Autodesk.Revit.DB.Plumbing.Pipe Then
+                    Dim d As Double = GetParamDouble(e, BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)
+                    If d > 0 Then
+                        radius = d * 0.5R
+                        Return True
+                    End If
+                End If
+
+                If TypeOf e Is Autodesk.Revit.DB.Electrical.Conduit Then
+                    Dim d As Double = GetParamDouble(e, BuiltInParameter.RBS_CONDUIT_DIAMETER_PARAM)
+                    If d > 0 Then
+                        radius = d * 0.5R
+                        Return True
+                    End If
+                End If
+
+                If TypeOf e Is Autodesk.Revit.DB.Mechanical.Duct Then
+                    Dim w As Double = GetParamDouble(e, BuiltInParameter.RBS_CURVE_WIDTH_PARAM)
+                    Dim h As Double = GetParamDouble(e, BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)
+                    If w > 0 AndAlso h > 0 Then
+                        radius = Math.Sqrt((w * 0.5R) * (w * 0.5R) + (h * 0.5R) * (h * 0.5R))
+                        Return True
+                    ElseIf w > 0 Then
+                        radius = w * 0.5R
+                        Return True
+                    End If
+                End If
+
+                If TypeOf e Is Autodesk.Revit.DB.Electrical.CableTray Then
+                    Dim w As Double = GetParamDouble(e, BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)
+                    Dim h As Double = GetParamDouble(e, BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)
+                    If w > 0 AndAlso h > 0 Then
+                        radius = Math.Sqrt((w * 0.5R) * (w * 0.5R) + (h * 0.5R) * (h * 0.5R))
+                        Return True
+                    ElseIf w > 0 Then
+                        radius = w * 0.5R
+                        Return True
+                    End If
+                End If
+            Catch
+            End Try
+
+            Return False
+        End Function
+
+#End Region
+
 #Region "필터/유틸(물량 필터 강화)"
 
         ' ⭐ 실제 시공 물량으로 보는 객체만 남기기 위한 필터
-        ' ⭐ 모델링된 모든 요소 대상(주석/태그/참조/자동종속 제외)
         Private Shared Function ShouldSkipForQuantity(e As Element) As Boolean
-            ' 0) 기본 예외: 널 / 임포트
             If e Is Nothing Then Return True
             If TypeOf e Is ImportInstance Then Return True
 
-            ' 1) 뷰 전용(주석/태그/치수 등 대부분)
             Try
                 If e.ViewSpecific Then Return True
             Catch
-                ' 일부 요소는 ViewSpecific 접근 예외 가능 → 보수적으로 제외
                 Return True
             End Try
 
-            ' 2) 카테고리: Model만, 카테고리 없으면 제외
             Dim cat As Category = Nothing
             Try
                 cat = e.Category
@@ -720,18 +1059,12 @@ Namespace UI.Hub
             ' 하위 카테고리(서브카테고리) 제외
             If cat.Parent IsNot Nothing Then Return True
 
-            ' 3) 참조/기준/선류 제외(요구사항)
-            If TypeOf e Is CurveElement Then Return True ' ModelLine/ReferenceLine/SketchLine 등
+            If TypeOf e Is CurveElement Then Return True
             If TypeOf e Is ReferencePlane Then Return True
             If TypeOf e Is Level Then Return True
             If TypeOf e Is Grid Then Return True
             If TypeOf e Is DatumPlane Then Return True
 
-            ' 4) 합의 4가지:
-            ' - Opening / ShaftOpening: 포함(여기서 제외하지 않음)
-            ' - Rebar: 제외
-            ' - Parts: 제외
-            ' - Rooms/Spaces/Areas: 제외
             If TypeOf e Is Part Then Return True
             If TypeOf e Is Autodesk.Revit.DB.Architecture.Room Then Return True
             If TypeOf e Is Autodesk.Revit.DB.Mechanical.Space Then Return True
@@ -740,12 +1073,10 @@ Namespace UI.Hub
             If TypeOf e Is Autodesk.Revit.DB.Structure.AreaReinforcement Then Return True
             If TypeOf e Is Autodesk.Revit.DB.Structure.PathReinforcement Then Return True
 
-            ' 5) 자동 종속(호스트 의존)만 제외: Insulation/Lining
             If TypeOf e Is Autodesk.Revit.DB.Plumbing.PipeInsulation Then Return True
             If TypeOf e Is Autodesk.Revit.DB.Mechanical.DuctInsulation Then Return True
             If TypeOf e Is Autodesk.Revit.DB.Mechanical.DuctLining Then Return True
 
-            ' 6) 중첩 패밀리(패밀리 안 패밀리) → 상위만 남기고 서브는 제외
             Dim fi = TryCast(e, FamilyInstance)
             If fi IsNot Nothing Then
                 Try
@@ -755,7 +1086,6 @@ Namespace UI.Hub
                 End Try
             End If
 
-            ' ✅ Solid(Volume) 검사 제거: 커넥터/솔리드 유무 무관, 모델 요소면 대상
             Return False
         End Function
 
@@ -967,7 +1297,6 @@ Namespace UI.Hub
 
             If gkCount > 0 Then Return gkCount
 
-            ' fallback: 기존 로직(connectedIds cluster)
             Dim bucket As New HashSet(Of String)(StringComparer.Ordinal)
 
             For Each r In rows
@@ -1005,7 +1334,7 @@ Namespace UI.Hub
 #End Region
 
 #Region "WPF 팝업 (실패 시 TaskDialog 폴백)"
-
+        ' (이하 동일: 기존 WPF 팝업/테마 로직 유지)
         Private Function IsSystemDark() As Boolean
             Try
                 Dim key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey("Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
@@ -1018,10 +1347,6 @@ Namespace UI.Hub
             Return False
         End Function
 
-        ''' <summary>
-        ''' 엑셀 내보내기 안내를 WPF로 시도하고 실패하면 TaskDialog로 폴백한다.
-        ''' 반환값: True = 파일 열기
-        ''' </summary>
         Private Function ShowExcelSavedDialog(outPath As String,
                                              groupsCount As Integer,
                                              Optional chipLabel As String = "중복 그룹",
@@ -1038,7 +1363,6 @@ Namespace UI.Hub
 
                 win.Content = BuildExcelSavedContent(outPath, groupsCount, chipLabel, headerText, questionText, win)
 
-                ' Owner 연결(가능하면 Revit 메인 윈도우에 붙이기)
                 Try
                     Dim t = Type.GetType("Autodesk.Windows.ComponentManager, AdWindows")
                     If t IsNot Nothing Then
@@ -1056,7 +1380,6 @@ Namespace UI.Hub
                 Return If(res.HasValue AndAlso res.Value, True, False)
 
             Catch
-                ' 폴백: TaskDialog
                 Dim td As New TaskDialog(dialogTitle)
                 td.MainIcon = TaskDialogIcon.TaskDialogIconInformation
                 td.MainInstruction = headerText
@@ -1078,7 +1401,6 @@ Namespace UI.Hub
                                                host As WPF.Window) As WPF.UIElement
             Dim isDark = IsSystemDark()
 
-            ' 테마별 색상 정의 (Byte 캐스팅으로 Option Strict 대응)
             Dim bgPanel As WMedia.Color = If(isDark, WMedia.Color.FromRgb(CByte(&H12), CByte(&H16), CByte(&H1C)), WMedia.Color.FromRgb(CByte(&HFF), CByte(&HFF), CByte(&HFF)))
             Dim bgCard As WMedia.Color = If(isDark, WMedia.Color.FromRgb(CByte(&H18), CByte(&H1C), CByte(&H24)), WMedia.Color.FromRgb(CByte(&HF7), CByte(&HF8), CByte(&HFA)))
             Dim headG1 As WMedia.Color = If(isDark, WMedia.Color.FromRgb(CByte(&H1F), CByte(&H5A), CByte(&HFF)), WMedia.Color.FromRgb(CByte(&H66), CByte(&H99), CByte(&HFF)))
@@ -1105,7 +1427,6 @@ Namespace UI.Hub
 
             Dim wrap As New WControls.StackPanel() With {.Width = 560}
 
-            ' 헤더 (그라데이션 바)
             Dim header As New WControls.Border() With {
                 .CornerRadius = New WPF.CornerRadius(14, 14, 0, 0),
                 .Background = New WMedia.LinearGradientBrush(headG1, headG2, 0),
@@ -1120,7 +1441,6 @@ Namespace UI.Hub
             }
             header.Child = hTitle
 
-            ' 바디 패딩
             Dim bodyPad As New WControls.Border() With {
                 .Padding = New WPF.Thickness(20),
                 .Background = New WMedia.SolidColorBrush(bgCard),
@@ -1129,7 +1449,6 @@ Namespace UI.Hub
 
             Dim body As New WControls.StackPanel() With {.Orientation = WControls.Orientation.Vertical}
 
-            ' 그룹 수 칩
             Dim chip As New WControls.Border() With {
                 .CornerRadius = New WPF.CornerRadius(999),
                 .Background = New WMedia.SolidColorBrush(chipBg),
@@ -1144,7 +1463,6 @@ Namespace UI.Hub
             }
             chip.Child = chipText
 
-            ' 파일 경로
             Dim pathTb As New WControls.TextBlock() With {
                 .Text = $"파일: {outPath}",
                 .TextWrapping = WPF.TextWrapping.Wrap,
@@ -1152,14 +1470,12 @@ Namespace UI.Hub
                 .Margin = New WPF.Thickness(0, 0, 0, 14)
             }
 
-            ' 질문 텍스트
             Dim question As New WControls.TextBlock() With {
                 .Text = questionText,
                 .Foreground = New WMedia.SolidColorBrush(fgMain),
                 .Margin = New WPF.Thickness(0, 4, 0, 10)
             }
 
-            ' 버튼 바
             Dim btnBar As New WControls.StackPanel() With {
                 .Orientation = WControls.Orientation.Horizontal,
                 .HorizontalAlignment = WPF.HorizontalAlignment.Right
