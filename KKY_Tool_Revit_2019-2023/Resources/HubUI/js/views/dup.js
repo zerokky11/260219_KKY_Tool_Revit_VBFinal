@@ -20,6 +20,14 @@ const DUP_MODE_KEY = 'kky_dup_mode';         // "duplicate" | "clash"
 const DUP_TOL_MM_KEY = 'kky_dup_tol_mm';
 const DUP_TOL_MM_DEFAULT = 4.7625;           // 1/64 ft ≈ 4.7625mm
 
+const DUP_META_KEY = 'kky_dup_meta_v1';
+const DUP_RULECFG_KEY = 'kky_dup_ruleset_v1';
+
+
+const DUP_SCOPE_KEY = 'kky_dup_scope_mode';     // 'all' | 'scope' | 'exclude'
+const DUP_EXCL_KW_KEY = 'kky_dup_excl_kw';      // comma separated keywords
+
+
 export function renderDup(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');
   clear(target);
@@ -71,6 +79,43 @@ export function renderDup(root) {
       }
       .dup-info .t { font-weight: 600; margin-bottom: 6px; }
       .dup-info .s { opacity: .85; font-size: 12px; line-height: 1.35; }
+
+      .dup-rulepanel{ position: fixed; top: 74px; right: -420px; width: 400px; height: calc(100vh - 86px); z-index: 30; border-radius: 16px 0 0 16px; border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%); background: color-mix(in oklab, var(--panel, #ffffff) 92%, #000 8%); box-shadow: 0 14px 40px rgba(0,0,0,.18); transition: right .22s ease; overflow: hidden; }
+      .dup-rulepanel.is-open{ right: 10px; }
+      .dup-rulepanel .rp-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 12px; border-bottom:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); }
+      .dup-rulepanel .rp-title{ font-weight:700; }
+      .dup-rulepanel .rp-actions{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+      .dup-rulepanel .rp-btn{ padding:6px 10px; border-radius:10px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); background: transparent; color: inherit; cursor:pointer; }
+      .dup-rulepanel .rp-btn--ghost{ opacity:.85; }
+      .dup-rulepanel .rp-btn--add{ margin-top:8px; width:100%; }
+      .dup-rulepanel .rp-btn--tiny{ padding:5px 8px; border-radius:9px; }
+      .dup-rulepanel .rp-btn--primary{ background: color-mix(in oklab, var(--accent,#4c6fff) 18%, transparent 82%); border-color: color-mix(in oklab, var(--accent,#4c6fff) 55%, transparent 45%); font-weight:700; }
+      .dup-rulepanel .rp-body{ height: calc(100% - 52px); overflow:auto; padding:12px; }
+      .dup-rulepanel .rp-sec{ padding:10px; border-radius:14px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); margin-bottom:10px; }
+      .dup-rulepanel .rp-sec-title{ font-weight:700; margin-bottom:8px; }
+      .dup-rulepanel .rp-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+      .dup-rulepanel .rp-label{ width:88px; font-size:12px; opacity:.85; }
+      .dup-rulepanel .rp-input, .dup-rulepanel .rp-select{ flex:1; padding:6px 8px; border-radius:10px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); background: transparent; color: inherit; }
+      .dup-rulepanel .rp-input--sm{ padding:5px 8px; }
+      .dup-rulepanel .rp-select--sm{ padding:5px 8px; }
+      .dup-rulepanel .rp-hint{ font-size:12px; opacity:.8; line-height:1.35; }
+      .dup-rulepanel .rp-card{ padding:10px; border-radius:14px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); margin-bottom:8px; }
+      .dup-rulepanel .rp-card-head{ display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; }
+      .dup-rulepanel .rp-card-sub{ grid-column: 1 / -1; font-size:11px; opacity:.7; margin-top:-4px; }
+      .dup-rulepanel .rp-x{ border:none; background: transparent; color: inherit; font-size:18px; line-height:1; cursor:pointer; opacity:.7; }
+      .dup-rulepanel .rp-group{ padding:8px; border-radius:12px; border:1px dashed color-mix(in oklab, var(--border,#d7dbe7) 60%, transparent 40%); margin-top:8px; }
+      .dup-rulepanel .rp-group-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+      .dup-rulepanel .rp-group-title{ font-weight:600; font-size:12px; opacity:.9; }
+      .dup-rulepanel .rp-clause{ display:grid; grid-template-columns: 1fr 1fr 1.1fr 1.4fr auto; gap:6px; align-items:center; margin-bottom:6px; }
+      .dup-rulepanel .rp-param{ min-width: 120px; }
+      .dup-rulepanel .rp-pair, .dup-rulepanel .rp-exrow{ display:flex; gap:6px; align-items:center; margin-bottom:8px; }
+      .dup-rulepanel .rp-vs{ opacity:.75; font-size:12px; }
+      .dup-rulepanel .rp-chk{ display:flex; gap:6px; align-items:center; font-size:12px; opacity:.85; }
+      .dup-rulepanel .rp-textarea{ width:100%; min-height:140px; resize:vertical; padding:8px 10px; border-radius:12px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); background: transparent; color: inherit; }
+      .dup-rulepanel .rp-foot{ position: sticky; bottom: 0; background: color-mix(in oklab, var(--panel,#fff) 92%, #000 8%); padding-top:8px; }
+
+      .conn-cell{ display:inline-block; min-width: 18px; padding:2px 6px; border-radius: 999px; border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%); }
+
     `;
     document.head.appendChild(st);
   }
@@ -83,7 +128,14 @@ export function renderDup(root) {
   const heading = div('feature-heading');
 
   let mode = readMode();
+  let scopeMode = readScopeMode();
+  let exclKwInputEl = null;
+
   let tolInputEl = null;
+  let rulePanelEl = null;
+  let rulePanelOpen = false;
+  let ruleCfg = loadRuleConfig();
+
   let modeBtns = [];
   let activeModeForView = mode;
 
@@ -94,11 +146,19 @@ export function renderDup(root) {
   const modeBar = buildModeBar();
   const tolCtl  = buildTolControl();
 
+const scopeBar = buildScopeBar();
+const exclCtl  = buildExcludeKeywordControl();
+
+
   const actions = div('feature-actions');
-  actions.append(runBtn, modeBar, tolCtl, exportBtn);
+  actions.append(runBtn, modeBar, settingsBtn, scopeBar, exclCtl, tolCtl, exportBtn);
 
   header.append(heading, actions);
   page.append(header);
+
+  rulePanelEl = buildRulePanel();
+  page.append(rulePanelEl);
+
 
   const summaryBar = div('dup-summarybar sticky hidden');
   page.append(summaryBar);
@@ -126,6 +186,15 @@ export function renderDup(root) {
 
   applyHeadingByMode(mode);
   renderIntro(body, mode);
+
+onHost('dup:meta', (payload) => {
+  try {
+    const meta = payload || {};
+    try { localStorage.setItem(DUP_META_KEY, JSON.stringify(meta)); } catch {}
+    toast('목록을 갱신했습니다.', 'ok', 1800);
+    try { renderRulePanelMeta(); } catch {}
+  } catch {}
+});
 
   onHost('revit:error', ({ message }) => {
     setLoading(false);
@@ -239,6 +308,7 @@ export function renderDup(root) {
     runBtn.textContent = on ? '검토 중…' : '검토 시작';
     modeBtns.forEach(b => { try { b.disabled = on; } catch {} });
     if (tolInputEl) tolInputEl.disabled = on;
+    if (exclKwInputEl) exclKwInputEl.disabled = on;
 
     if (!on && waitTimer) { clearTimeout(waitTimer); waitTimer = null; }
   }
@@ -263,7 +333,9 @@ export function renderDup(root) {
 
     const tolFeet = getTolFeet();
     activeModeForView = mode;
-    post('dup:run', { mode, tolFeet });
+    const excludeKeywords = getExcludeKeywordList();
+    const ruleConfig = loadRuleConfig();
+    post('dup:run', { mode, tolFeet, scopeMode, excludeKeywords, ruleConfig });
   }
 
   function onExport() {
@@ -439,6 +511,7 @@ export function renderDup(root) {
         cell('Category', 'th'),
         cell('Family', 'th'),
         cell('Type', 'th'),
+        cell('연결', 'th'),
         cell('작업', 'th right')
       );
       tbl.append(sh);
@@ -482,6 +555,15 @@ export function renderDup(root) {
     const famOut = r.family ? r.family : (r.category ? `${r.category} Type` : '—');
     row.append(cell(famOut, 'td ell'));
     row.append(cell(r.type || '—', 'td ell'));
+
+    // 연결(간섭 상대) 표시: count + hover ids
+    const conn = document.createElement('div');
+    conn.className = 'conn-cell';
+    const ids = (r.connectedIds || []).map(String);
+    const cnt = ids.length;
+    conn.textContent = cnt ? String(cnt) : '0';
+    if (cnt) conn.title = ids.join(', ');
+    row.append(cell(conn, 'td mono right'));
 
     const act = div('row-actions');
 
@@ -575,6 +657,526 @@ export function renderDup(root) {
     bDup.classList.toggle('is-active', mode === 'duplicate');
     bClash.classList.toggle('is-active', mode === 'clash');
   }
+
+
+function buildScopeBar() {
+  const wrap = div('dup-modebar');
+  wrap.title = 'Navisworks Set처럼: 선택집합을 범위로 사용하거나(선택만), 선택집합을 제외할 수 있습니다.';
+  const bAll = kbtn('전체', 'subtle', () => setScopeMode('all'));
+  const bScope = kbtn('선택만', 'subtle', () => setScopeMode('scope'));
+  const bExcl = kbtn('선택 제외', 'subtle', () => setScopeMode('exclude'));
+  const btns = [bAll, bScope, bExcl];
+
+  function sync() {
+    bAll.classList.toggle('is-active', scopeMode === 'all');
+    bScope.classList.toggle('is-active', scopeMode === 'scope');
+    bExcl.classList.toggle('is-active', scopeMode === 'exclude');
+  }
+
+  function setScopeMode(m) {
+    if (!['all','scope','exclude'].includes(m)) return;
+    scopeMode = m;
+    try { localStorage.setItem(DUP_SCOPE_KEY, scopeMode); } catch {}
+    sync();
+  }
+
+  sync();
+  wrap.append(bAll, bScope, bExcl);
+  return wrap;
+}
+
+function buildExcludeKeywordControl() {
+  const wrap = div('dup-tol');
+  wrap.title = '제외 키워드(콤마 구분). Family/Type/Category/Name에 포함되면 결과에서 제외됩니다.';
+  const label = document.createElement('span');
+  label.className = 'dup-tol-label';
+  label.textContent = '제외 키워드';
+
+  const input = document.createElement('input');
+  input.className = 'dup-tol-input';
+  input.type = 'text';
+  input.placeholder = '예: Dummy, Temp';
+  input.value = readExcludeKeywords();
+
+  input.addEventListener('change', () => {
+    try { localStorage.setItem(DUP_EXCL_KW_KEY, String(input.value || '').trim()); } catch {}
+  });
+
+  exclKwInputEl = input;
+  wrap.append(label, input);
+  return wrap;
+}
+
+
+function defaultRuleConfig() {
+  return { version: 1, sets: [], pairs: [], excludeSetIds: [] };
+}
+
+function normalizeRuleConfig(cfg) {
+  const c = cfg && typeof cfg === 'object' ? cfg : {};
+  const out = {
+    version: 1,
+    sets: Array.isArray(c.sets) ? c.sets : [],
+    pairs: Array.isArray(c.pairs) ? c.pairs : [],
+    excludeSetIds: Array.isArray(c.excludeSetIds) ? c.excludeSetIds : []
+  };
+
+  // normalize sets
+  out.sets = out.sets.map((s, i) => {
+    const ss = s && typeof s === 'object' ? s : {};
+    return {
+      id: String(ss.id || `S${i + 1}`),
+      name: String(ss.name || ss.id || `Set ${i + 1}`),
+      logic: ss.logic === 'and' || ss.logic === 'or' ? ss.logic : 'or', // group logic (OR default)
+      groups: Array.isArray(ss.groups) ? ss.groups : []               // groups = OR list; each group has clauses(AND)
+    };
+  });
+
+  // normalize groups/clauses
+  out.sets.forEach(s => {
+    s.groups = s.groups.map(g => {
+      const gg = g && typeof g === 'object' ? g : {};
+      return {
+        clauses: Array.isArray(gg.clauses) ? gg.clauses : []
+      };
+    });
+    s.groups.forEach(g => {
+      g.clauses = g.clauses.map(cl => {
+        const cc = cl && typeof cl === 'object' ? cl : {};
+        return {
+          field: String(cc.field || 'category'), // category|family|type|name|param
+          op: String(cc.op || 'contains'),       // contains|equal|...
+          value: String(cc.value || ''),
+          param: String(cc.param || '')
+        };
+      });
+    });
+  });
+
+  // normalize pairs
+  out.pairs = out.pairs.map(p => {
+    const pp = p && typeof p === 'object' ? p : {};
+    return { a: String(pp.a || ''), b: String(pp.b || '') };
+  }).filter(p => p.a && p.b);
+
+  // exclude ids
+  out.excludeSetIds = out.excludeSetIds.map(String).filter(Boolean);
+
+  return out;
+}
+
+function loadRuleConfig() {
+  try {
+    const raw = localStorage.getItem(DUP_RULECFG_KEY);
+    if (!raw) return defaultRuleConfig();
+    const cfg = JSON.parse(raw);
+    return normalizeRuleConfig(cfg);
+  } catch {
+    return defaultRuleConfig();
+  }
+}
+
+function saveRuleConfig(cfg) {
+  const norm = normalizeRuleConfig(cfg);
+  try { localStorage.setItem(DUP_RULECFG_KEY, JSON.stringify(norm)); } catch {}
+  return norm;
+}
+
+function loadMeta() {
+  try {
+    const raw = localStorage.getItem(DUP_META_KEY);
+    if (!raw) return {};
+    const meta = JSON.parse(raw);
+    return meta && typeof meta === 'object' ? meta : {};
+  } catch {
+    return {};
+  }
+}
+
+function readScopeMode() {
+  try {
+    const m = String(localStorage.getItem(DUP_SCOPE_KEY) || '').trim();
+    if (m === 'all' || m === 'scope' || m === 'exclude') return m;
+  } catch {}
+  return 'all';
+}
+
+function readExcludeKeywords() {
+  try { return String(localStorage.getItem(DUP_EXCL_KW_KEY) || '').trim(); } catch {}
+  return '';
+}
+
+function getExcludeKeywordList() {
+  const raw = String(exclKwInputEl ? exclKwInputEl.value : readExcludeKeywords());
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function onOpenRulePanel() {
+  rulePanelOpen = !rulePanelOpen;
+  if (rulePanelEl) rulePanelEl.classList.toggle('is-open', rulePanelOpen);
+  if (rulePanelOpen) {
+    try { renderRulePanel(); } catch {}
+  }
+}
+
+function buildRulePanel() {
+  const wrap = div('dup-rulepanel');
+  wrap.innerHTML = `
+    <div class="rp-head">
+      <div class="rp-title">규칙 / Set</div>
+      <div class="rp-actions">
+        <button class="rp-btn rp-btn--ghost" data-act="refresh">목록 새로고침</button>
+        <button class="rp-btn rp-btn--ghost" data-act="export">Export</button>
+        <button class="rp-btn rp-btn--ghost" data-act="import">Import</button>
+        <button class="rp-btn" data-act="close">닫기</button>
+      </div>
+    </div>
+    <div class="rp-body">
+      <section class="rp-sec">
+        <div class="rp-sec-title">허용오차</div>
+        <div class="rp-row">
+          <label class="rp-label">허용오차(mm)</label>
+          <input class="rp-input" type="number" step="0.1" min="0.01" data-bind="tolMm"/>
+        </div>
+        <div class="rp-row">
+          <label class="rp-label">범위</label>
+          <select class="rp-select" data-bind="scopeMode">
+            <option value="all">전체</option>
+            <option value="scope">선택만</option>
+            <option value="exclude">선택 제외</option>
+          </select>
+        </div>
+        <div class="rp-row">
+          <label class="rp-label">제외 키워드</label>
+          <input class="rp-input" type="text" placeholder="콤마로 구분" data-bind="excludeKeywords"/>
+        </div>
+        <div class="rp-hint">선택 기반 범위는 Revit에서 요소를 선택한 뒤 검토 시작을 누르면 적용됩니다.</div>
+      </section>
+
+      <section class="rp-sec">
+        <div class="rp-sec-title">Sets</div>
+        <div class="rp-hint">Set은 <b>(그룹 OR) - (조건 AND)</b> 구조입니다.</div>
+        <div class="rp-sets" data-slot="sets"></div>
+        <button class="rp-btn rp-btn--add" data-act="add-set">+ Set 추가</button>
+      </section>
+
+      <section class="rp-sec">
+        <div class="rp-sec-title">Set vs Set</div>
+        <div class="rp-hint">간섭 검토는 등록된 Pair만 대상으로 수행됩니다. (등록이 없으면 전체 대상)</div>
+        <div class="rp-pairs" data-slot="pairs"></div>
+        <button class="rp-btn rp-btn--add" data-act="add-pair">+ Pair 추가</button>
+      </section>
+
+      <section class="rp-sec">
+        <div class="rp-sec-title">Exclude Sets</div>
+        <div class="rp-hint">등록된 Set에 포함되는 요소는 모든 간섭 검토에서 제외됩니다.</div>
+        <div class="rp-ex" data-slot="ex"></div>
+        <button class="rp-btn rp-btn--add" data-act="add-ex">+ Exclude Set 추가</button>
+      </section>
+
+      <section class="rp-sec">
+        <div class="rp-sec-title">Import / Export</div>
+        <textarea class="rp-textarea" data-bind="json"></textarea>
+        <div class="rp-hint">Export는 현재 설정을 JSON으로 생성합니다.</div>
+      </section>
+
+      <div class="rp-foot">
+        <button class="rp-btn rp-btn--primary" data-act="apply">적용</button>
+      </div>
+    </div>
+  `;
+
+  wrap.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-act]');
+    if (!btn) return;
+    const act = btn.dataset.act;
+    if (act === 'close') { onOpenRulePanel(); return; }
+    if (act === 'refresh') { post('dup:run', { mode, metaOnly: true }); return; }
+    if (act === 'add-set') { addSet(); renderRulePanel(); return; }
+    if (act === 'add-pair') { addPair(); renderRulePanel(); return; }
+    if (act === 'add-ex') { addExclude(); renderRulePanel(); return; }
+    if (act === 'export') { exportRuleJson(); return; }
+    if (act === 'import') { importRuleJson(); return; }
+    if (act === 'apply') { applyRulePanel(); return; }
+  });
+
+  return wrap;
+}
+
+function renderRulePanelMeta() {
+  if (!rulePanelEl || !rulePanelOpen) return;
+  renderRulePanel();
+}
+
+function ensureId(prefix='S') {
+  return prefix + Math.random().toString(16).slice(2, 10);
+}
+
+function addSet() {
+  ruleCfg = ruleCfg || { sets: [], pairs: [], excludeSetIds: [] };
+  ruleCfg.sets = Array.isArray(ruleCfg.sets) ? ruleCfg.sets : [];
+  ruleCfg.sets.push({ id: ensureId('S'), name: 'Set', groups: [{ clauses: [{ field: 'category', op: 'contains', value: '', param: '' }] }] });
+  saveRuleConfig(ruleCfg);
+}
+
+function addPair() {
+  ruleCfg = ruleCfg || { sets: [], pairs: [], excludeSetIds: [] };
+  ruleCfg.pairs = Array.isArray(ruleCfg.pairs) ? ruleCfg.pairs : [];
+  const a = (ruleCfg.sets[0]?.id) || '__ALL__';
+  const b = (ruleCfg.sets[0]?.id) || '__ALL__';
+  ruleCfg.pairs.push({ a, b, enabled: true });
+  saveRuleConfig(ruleCfg);
+}
+
+function addExclude() {
+  ruleCfg.excludeSetIds = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
+  const a = (ruleCfg.sets[0]?.id) || '';
+  if (a) ruleCfg.excludeSetIds.push(a);
+  saveRuleConfig(ruleCfg);
+}
+
+function exportRuleJson() {
+  const ta = rulePanelEl.querySelector('[data-bind="json"]');
+  if (!ta) return;
+  ta.value = JSON.stringify(loadRuleConfig(), null, 2);
+  try { navigator.clipboard.writeText(ta.value); } catch {}
+  toast('Export JSON 생성(클립보드 복사 시도)', 'ok', 1800);
+}
+
+function importRuleJson() {
+  const ta = rulePanelEl.querySelector('[data-bind="json"]');
+  if (!ta) return;
+  let cfg = null;
+  try { cfg = JSON.parse(String(ta.value || '').trim()); } catch { cfg = null; }
+  if (!cfg || typeof cfg !== 'object') { toast('Import JSON 형식이 올바르지 않습니다.', 'err', 2600); return; }
+  cfg.sets = Array.isArray(cfg.sets) ? cfg.sets : [];
+  cfg.pairs = Array.isArray(cfg.pairs) ? cfg.pairs : [];
+  cfg.excludeSetIds = Array.isArray(cfg.excludeSetIds) ? cfg.excludeSetIds : [];
+  saveRuleConfig(cfg);
+  renderRulePanel();
+  toast('Import 적용 완료', 'ok', 1600);
+}
+
+function applyRulePanel() {
+  const tolEl = rulePanelEl.querySelector('[data-bind="tolMm"]');
+  const smEl = rulePanelEl.querySelector('[data-bind="scopeMode"]');
+  const kwEl = rulePanelEl.querySelector('[data-bind="excludeKeywords"]');
+
+  // 기존 컨트롤과 동기화
+  try {
+    const mm = Number(tolEl?.value);
+    if (tolInputEl && Number.isFinite(mm)) tolInputEl.value = fmtTolMm(sanitizeTolMm(mm));
+    try { localStorage.setItem(DUP_TOL_MM_KEY, String(sanitizeTolMm(mm))); } catch {}
+  } catch {}
+
+  try {
+    const sm = String(smEl?.value || 'all');
+    scopeMode = sm;
+    try { localStorage.setItem(DUP_SCOPE_KEY, sm); } catch {}
+  } catch {}
+
+  try {
+    const kw = String(kwEl?.value || '').trim();
+    if (exclKwInputEl) exclKwInputEl.value = kw;
+    try { localStorage.setItem(DUP_EXCL_KW_KEY, kw); } catch {}
+  } catch {}
+
+  toast('설정 적용 완료', 'ok', 1600);
+}
+
+function renderRulePanel() {
+  if (!rulePanelEl) return;
+
+  // bind inputs
+  const tol = readTolMm();
+  const tolEl = rulePanelEl.querySelector('[data-bind="tolMm"]');
+  if (tolEl) tolEl.value = fmtTolMm(tol);
+
+  const smEl = rulePanelEl.querySelector('[data-bind="scopeMode"]');
+  if (smEl) smEl.value = scopeMode;
+
+  const kwEl = rulePanelEl.querySelector('[data-bind="excludeKeywords"]');
+  if (kwEl) kwEl.value = readExcludeKeywords();
+
+  const meta = loadMeta();
+  const params = Array.isArray(meta.parameters) ? meta.parameters : [];
+
+  // sets
+  const setsSlot = rulePanelEl.querySelector('[data-slot="sets"]');
+  if (setsSlot) {
+    setsSlot.innerHTML = '';
+    (ruleCfg.sets || []).forEach((s, si) => {
+      const card = document.createElement('div');
+      card.className = 'rp-card';
+      card.innerHTML = `
+        <div class="rp-card-head">
+          <input class="rp-input rp-input--sm" data-set-name="${si}" value="${esc(s.name || 'Set')}" />
+          <button class="rp-x" data-del-set="${si}">×</button>
+          <div class="rp-card-sub">id: ${esc(s.id || '')}</div>
+        </div>
+        <div class="rp-groups" data-groups="${si}"></div>
+        <button class="rp-btn rp-btn--tiny" data-add-group="${si}">+ OR 그룹</button>
+      `;
+      setsSlot.append(card);
+
+      const groupsWrap = card.querySelector(`[data-groups="${si}"]`);
+      (s.groups || []).forEach((g, gi) => {
+        const gEl = document.createElement('div');
+        gEl.className = 'rp-group';
+        gEl.innerHTML = `
+          <div class="rp-group-head">
+            <div class="rp-group-title">그룹 ${gi+1} (AND)</div>
+            <button class="rp-x" data-del-group="${si}:${gi}">×</button>
+          </div>
+          <div class="rp-clauses" data-clauses="${si}:${gi}"></div>
+          <button class="rp-btn rp-btn--tiny" data-add-clause="${si}:${gi}">+ 조건</button>
+        `;
+        groupsWrap.append(gEl);
+
+        const cWrap = gEl.querySelector(`[data-clauses="${si}:${gi}"]`);
+        (g.clauses || []).forEach((c, ci) => {
+          const row = document.createElement('div');
+          row.className = 'rp-clause';
+          row.innerHTML = `
+            <select class="rp-select rp-select--sm" data-c-field="${si}:${gi}:${ci}">
+              <option value="category">Category</option>
+              <option value="family">Family</option>
+              <option value="type">Type</option>
+              <option value="name">Name</option>
+              <option value="param">Parameter</option>
+            </select>
+            <select class="rp-select rp-select--sm" data-c-op="${si}:${gi}:${ci}">
+              <option value="contains">Contains</option>
+              <option value="equals">Equal</option>
+              <option value="startswith">StartsWith</option>
+              <option value="endswith">EndsWith</option>
+              <option value="notcontains">NotContains</option>
+              <option value="notequals">NotEqual</option>
+            </select>
+            <select class="rp-select rp-select--sm rp-param" data-c-param="${si}:${gi}:${ci}"></select>
+            <input class="rp-input rp-input--sm" data-c-val="${si}:${gi}:${ci}" value="${esc(c.value || '')}" />
+            <button class="rp-x" data-del-clause="${si}:${gi}:${ci}">×</button>
+          `;
+          cWrap.append(row);
+
+          const fSel = row.querySelector(`[data-c-field="${si}:${gi}:${ci}"]`);
+          const opSel = row.querySelector(`[data-c-op="${si}:${gi}:${ci}"]`);
+          const pSel = row.querySelector(`[data-c-param="${si}:${gi}:${ci}"]`);
+          const vInp = row.querySelector(`[data-c-val="${si}:${gi}:${ci}"]`);
+
+          fSel.value = (c.field || 'category');
+          opSel.value = (c.op || 'contains');
+
+          pSel.innerHTML = `<option value="">(param)</option>` + params.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+          pSel.value = c.param || '';
+          pSel.style.display = (fSel.value === 'param') ? '' : 'none';
+
+          const commit = () => {
+            updateClause(si, gi, ci, { field: fSel.value, op: opSel.value, param: pSel.value, value: vInp.value });
+          };
+
+          fSel.addEventListener('change', () => { pSel.style.display = (fSel.value === 'param') ? '' : 'none'; commit(); });
+          opSel.addEventListener('change', commit);
+          pSel.addEventListener('change', commit);
+          vInp.addEventListener('change', commit);
+        });
+      });
+    });
+
+    setsSlot.onclick = (e) => {
+      const delSet = e.target.closest('[data-del-set]');
+      if (delSet) { const i = Number(delSet.dataset.delSet); ruleCfg.sets.splice(i, 1); saveRuleConfig(ruleCfg); renderRulePanel(); return; }
+      const addG = e.target.closest('[data-add-group]');
+      if (addG) { const i = Number(addG.dataset.addGroup); ruleCfg.sets[i].groups.push({ clauses: [{ field:'category', op:'contains', value:'', param:'' }] }); saveRuleConfig(ruleCfg); renderRulePanel(); return; }
+      const delG = e.target.closest('[data-del-group]');
+      if (delG) { const [i,j] = delG.dataset.delGroup.split(':').map(Number); ruleCfg.sets[i].groups.splice(j,1); saveRuleConfig(ruleCfg); renderRulePanel(); return; }
+      const addC = e.target.closest('[data-add-clause]');
+      if (addC) { const [i,j] = addC.dataset.addClause.split(':').map(Number); ruleCfg.sets[i].groups[j].clauses.push({ field:'category', op:'contains', value:'', param:'' }); saveRuleConfig(ruleCfg); renderRulePanel(); return; }
+      const delC = e.target.closest('[data-del-clause]');
+      if (delC) { const [i,j,k] = delC.dataset.delClause.split(':').map(Number); ruleCfg.sets[i].groups[j].clauses.splice(k,1); saveRuleConfig(ruleCfg); renderRulePanel(); return; }
+    };
+
+    setsSlot.oninput = (e) => {
+      const inp = e.target.closest('input[data-set-name]');
+      if (!inp) return;
+      const i = Number(inp.dataset.setName);
+      ruleCfg.sets[i].name = inp.value;
+      saveRuleConfig(ruleCfg);
+    };
+  }
+
+  // pairs
+  const pairsSlot = rulePanelEl.querySelector('[data-slot="pairs"]');
+  if (pairsSlot) {
+    pairsSlot.innerHTML = '';
+    const opts = [`<option value="__ALL__">__ALL__ (전체)</option>`].concat((ruleCfg.sets||[]).map(s => `<option value="${esc(s.id)}">${esc(s.name||s.id)}</option>`));
+    (ruleCfg.pairs || []).forEach((p, pi) => {
+      const row = document.createElement('div');
+      row.className = 'rp-pair';
+      row.innerHTML = `
+        <select class="rp-select rp-select--sm" data-p-a="${pi}">${opts.join('')}</select>
+        <span class="rp-vs">vs</span>
+        <select class="rp-select rp-select--sm" data-p-b="${pi}">${opts.join('')}</select>
+        <label class="rp-chk"><input type="checkbox" data-p-en="${pi}" ${p.enabled!==false?'checked':''}/> enabled</label>
+        <button class="rp-x" data-del-pair="${pi}">×</button>
+      `;
+      pairsSlot.append(row);
+      row.querySelector(`[data-p-a="${pi}"]`).value = p.a || '__ALL__';
+      row.querySelector(`[data-p-b="${pi}"]`).value = p.b || '__ALL__';
+    });
+
+    pairsSlot.onclick = (e) => {
+      const del = e.target.closest('[data-del-pair]');
+      if (del) { const i = Number(del.dataset.delPair); ruleCfg.pairs.splice(i,1); saveRuleConfig(ruleCfg); renderRulePanel(); }
+    };
+    pairsSlot.onchange = (e) => {
+      const a = e.target.closest('select[data-p-a]');
+      const b = e.target.closest('select[data-p-b]');
+      const en = e.target.closest('input[data-p-en]');
+      if (a) { const i = Number(a.dataset.pA); ruleCfg.pairs[i].a = a.value; saveRuleConfig(ruleCfg); }
+      if (b) { const i = Number(b.dataset.pB); ruleCfg.pairs[i].b = b.value; saveRuleConfig(ruleCfg); }
+      if (en) { const i = Number(en.dataset.pEn); ruleCfg.pairs[i].enabled = !!en.checked; saveRuleConfig(ruleCfg); }
+    };
+  }
+
+  // exclude sets
+  const exSlot = rulePanelEl.querySelector('[data-slot="ex"]');
+  if (exSlot) {
+    exSlot.innerHTML = '';
+    const opts = (ruleCfg.sets||[]).map(s => `<option value="${esc(s.id)}">${esc(s.name||s.id)}</option>`);
+    (ruleCfg.excludeSetIds || []).forEach((sid, ei) => {
+      const row = document.createElement('div');
+      row.className = 'rp-exrow';
+      row.innerHTML = `
+        <select class="rp-select rp-select--sm" data-ex="${ei}">${opts.join('')}</select>
+        <button class="rp-x" data-del-ex="${ei}">×</button>
+      `;
+      exSlot.append(row);
+      const sel = row.querySelector(`[data-ex="${ei}"]`);
+      if (sel) sel.value = sid || '';
+    });
+
+    exSlot.onclick = (e) => {
+      const del = e.target.closest('[data-del-ex]');
+      if (del) { const i = Number(del.dataset.delEx); ruleCfg.excludeSetIds.splice(i,1); saveRuleConfig(ruleCfg); renderRulePanel(); }
+    };
+    exSlot.onchange = (e) => {
+      const sel = e.target.closest('select[data-ex]');
+      if (!sel) return;
+      const i = Number(sel.dataset.ex);
+      ruleCfg.excludeSetIds[i] = sel.value;
+      saveRuleConfig(ruleCfg);
+    };
+  }
+}
+
+function updateClause(si, gi, ci, next) {
+  const s = ruleCfg.sets[si];
+  const g = s.groups[gi];
+  const c = g.clauses[ci];
+  g.clauses[ci] = { ...c, ...next };
+  saveRuleConfig(ruleCfg);
+}
 
   function buildTolControl() {
     const wrap = div('dup-tol');
