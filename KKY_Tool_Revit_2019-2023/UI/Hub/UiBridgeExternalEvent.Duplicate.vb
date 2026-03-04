@@ -20,23 +20,6 @@ Namespace UI.Hub
 
     Partial Public Class UiBridgeExternalEvent
 
-
-        ' ✅ 링크 문서 표기용(로드/언로드) 타이틀 안전 획득
-        Private Shared Function SafeDocTitle(doc As Document) As String
-            Try
-                If doc Is Nothing Then Return ""
-                Dim t As String = ""
-                Try : t = doc.Title : Catch : t = "" : End Try
-                If String.IsNullOrWhiteSpace(t) Then
-                    Try : t = doc.PathName : Catch : t = "" : End Try
-                End If
-                If String.IsNullOrWhiteSpace(t) Then t = "Document"
-                Return t
-            Catch
-                Return ""
-            End Try
-        End Function
-
 #Region "상태 (세션/결과 보관)"
 
         Private Const MAX_UI_ROWS As Integer = 5000
@@ -47,9 +30,6 @@ Namespace UI.Hub
         ' 마지막 스캔 결과(엑셀 내보내기 및 UI 상태 동기화용)
         Private _lastRows As New List(Of DupRowDto)
 
-        ' 마지막 링크(가상 id → linkInstId, linkedId, linkName)
-        Private _lastLinkRefs As New Dictionary(Of Integer, Tuple(Of Integer, Integer, String))()
-
         ' 마지막 실행 모드 ("duplicate" | "clash")
         Private _lastMode As String = "duplicate"
 
@@ -58,11 +38,6 @@ Namespace UI.Hub
 
         Private Class DupRowDto
             Public Property ElementId As Integer
-            Public Property DisplayId As String
-            Public Property IsLinked As Boolean
-            Public Property LinkName As String
-            Public Property LinkInstanceId As Integer
-            Public Property LinkedElementId As Integer
             Public Property Category As String
             Public Property Family As String
             Public Property [Type] As String
@@ -146,6 +121,7 @@ Namespace UI.Hub
             Catch
             End Try
 
+
             ' ✅ Navisworks Set처럼: 선택집합을 범위/제외로 사용
             Dim scopeMode As String = "all"
             Try
@@ -207,46 +183,17 @@ Namespace UI.Hub
                 excludeKeywords = Nothing
             End Try
 
-            ' ✅ 메타(드롭다운 목록)만 요청하는 경우: 스캔 없이 목록만 전송
-            Dim metaOnly As Boolean = False
-            Try
-                Dim mo = GetProp(payload, "metaOnly")
-                If mo IsNot Nothing Then
-                    Dim s = Convert.ToString(mo).Trim().ToLowerInvariant()
-                    If s = "true" OrElse s = "1" OrElse s = "yes" Then metaOnly = True
-                End If
-            Catch
-            End Try
-
-            Dim ruleConfig As Object = Nothing
-            Try
-                ruleConfig = GetProp(payload, "ruleConfig")
-            Catch
-                ruleConfig = Nothing
-            End Try
-
-            If metaOnly Then
-                Try
-                    SendDupMeta(doc)
-                Catch
-                End Try
-                SendToWeb("dup:result", New With {.mode = mode, .scan = 0, .groups = 0, .candidates = 0, .tolFeet = tolFeet, .shown = 0, .total = 0, .truncated = False})
-                Return
-            End If
-
             _lastMode = mode
 
-            _lastLinkRefs.Clear()
-
             If mode = "clash" Then
-                RunSelfClash(doc, tolFeet, scopeIds, excludeIds, excludeKeywords, ruleConfig)
+                RunSelfClash(doc, tolFeet, scopeIds, excludeIds, excludeKeywords)
             Else
-                RunDuplicate(doc, tolFeet, scopeIds, excludeIds, excludeKeywords, ruleConfig)
+                RunDuplicate(doc, tolFeet, scopeIds, excludeIds, excludeKeywords)
             End If
         End Sub
 
         ' ====== 중복 스캔(개선: Curve는 EndPoint+Size 기반) ======
-        Private Sub RunDuplicate(doc As Document, tolFeet As Double, Optional scopeIds As HashSet(Of Integer) = Nothing, Optional excludeIds As HashSet(Of Integer) = Nothing, Optional excludeKeywords As List(Of String) = Nothing, Optional ruleConfig As Object = Nothing)
+        Private Sub RunDuplicate(doc As Document, tolFeet As Double, Optional scopeIds As HashSet(Of Integer) = Nothing, Optional excludeIds As HashSet(Of Integer) = Nothing, Optional excludeKeywords As List(Of String) = Nothing)
             Dim rows As New List(Of DupRowDto)()
             Dim total As Integer = 0
             Dim groupsCount As Integer = 0
@@ -272,17 +219,6 @@ Namespace UI.Hub
                     Catch
                         Continue For
                     End Try
-                End If
-
-                If excludeIds IsNot Nothing AndAlso excludeIds.Count > 0 Then
-                    Try
-                        If e IsNot Nothing AndAlso excludeIds.Contains(e.Id.IntegerValue) Then Continue For
-                    Catch
-                    End Try
-                End If
-
-                If excludeKeywords IsNot Nothing AndAlso excludeKeywords.Count > 0 Then
-                    If ShouldExcludeByKeywords(e, excludeKeywords) Then Continue For
                 End If
 
                 If excludeIds IsNot Nothing AndAlso excludeIds.Count > 0 Then
@@ -374,6 +310,7 @@ Namespace UI.Hub
             Next
 
             _lastRows = rows
+
             ' UI 표시 제한
             Dim truncated As Boolean = False
             Dim shownRows As List(Of DupRowDto) = rows
@@ -385,11 +322,6 @@ Namespace UI.Hub
 
             Dim wireRows = shownRows.Select(Function(r) New With {
             .elementId = r.ElementId,
-            .displayId = r.DisplayId,
-            .isLinked = r.IsLinked,
-            .linkName = r.LinkName,
-            .linkInstanceId = r.LinkInstanceId,
-            .linkedElementId = r.LinkedElementId,
             .category = r.Category,
             .family = r.Family,
             .type = r.Type,
@@ -415,7 +347,7 @@ Namespace UI.Hub
         End Sub
 
         ' ====== 자체간섭(클래시) 스캔(후보 누락 방지 + 정밀판정) ======
-        Private Sub RunSelfClash(doc As Document, tolFeet As Double, Optional scopeIds As HashSet(Of Integer) = Nothing, Optional excludeIds As HashSet(Of Integer) = Nothing, Optional excludeKeywords As List(Of String) = Nothing, Optional ruleConfig As Object = Nothing)
+        Private Sub RunSelfClash(doc As Document, tolFeet As Double, Optional scopeIds As HashSet(Of Integer) = Nothing, Optional excludeIds As HashSet(Of Integer) = Nothing, Optional excludeKeywords As List(Of String) = Nothing)
             Dim rows As New List(Of DupRowDto)()
             Dim total As Integer = 0
 
@@ -425,74 +357,6 @@ Namespace UI.Hub
             Dim catCache As New Dictionary(Of Integer, String)()
             Dim famCache As New Dictionary(Of Integer, String)()
             Dim typCache As New Dictionary(Of Integer, String)()
-            ' ✅ Rule/Set config (Navis-like)
-            Dim cfg As ClashRuleConfig = ParseRuleConfig(ruleConfig)
-
-            Dim linkRefMap As New Dictionary(Of Integer, Tuple(Of Integer, Integer, String))() ' virtualId -> (linkInstId, linkedId, linkName)
-            Dim linkInstMap As New Dictionary(Of Integer, RevitLinkInstance)()
-            Dim linkXfMap As New Dictionary(Of Integer, Transform)()
-            Dim linkDocMap As New Dictionary(Of Integer, Document)()
-
-            ' 선택된 링크 인스턴스 캐시
-            If cfg IsNot Nothing AndAlso cfg.IncludeLinks AndAlso cfg.LinkInstanceIds IsNot Nothing AndAlso cfg.LinkInstanceIds.Count > 0 Then
-                Try
-                    For Each lid As Integer In cfg.LinkInstanceIds.Distinct().ToList()
-                        If lid <= 0 Then Continue For
-                        Dim li As RevitLinkInstance = TryCast(doc.GetElement(New ElementId(lid)), RevitLinkInstance)
-                        If li Is Nothing Then Continue For
-                        Dim ldoc As Document = Nothing
-                        Try : ldoc = li.GetLinkDocument() : Catch : ldoc = Nothing : End Try
-                        If ldoc Is Nothing Then Continue For
-
-                        linkInstMap(lid) = li
-                        linkDocMap(lid) = ldoc
-                        Try : linkXfMap(lid) = li.GetTransform() : Catch : linkXfMap(lid) = Transform.Identity : End Try
-                    Next
-                Catch
-                End Try
-            End If
-
-            Dim nextVirtualId As Integer = -1
-
-            Dim setIndex As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
-            Dim setDefs As List(Of ClashSetDef) = cfg.Sets
-
-            For i As Integer = 0 To setDefs.Count - 1
-                If setDefs(i) IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(setDefs(i).Id) Then
-                    If Not setIndex.ContainsKey(setDefs(i).Id) Then setIndex.Add(setDefs(i).Id, i)
-                End If
-            Next
-
-            Dim excludeMask As ULong = 0UL
-            For Each sid As String In cfg.ExcludeSetIds
-                Dim si As Integer = -1
-                If Not String.IsNullOrWhiteSpace(sid) AndAlso setIndex.TryGetValue(sid, si) Then
-                    If si >= 0 AndAlso si < 64 Then excludeMask = excludeMask Or (1UL << si)
-                End If
-            Next
-
-            Dim pairRules As New List(Of Tuple(Of Integer, Integer, Boolean, Boolean))() ' (aIdx, bIdx, aAll, bAll)
-            For Each pr As ClashPairRule In cfg.Pairs
-                If pr Is Nothing OrElse Not pr.Enabled Then Continue For
-
-                Dim aId As String = pr.A
-                Dim bId As String = pr.B
-                Dim aAll As Boolean = String.Equals(aId, "__ALL__", StringComparison.OrdinalIgnoreCase)
-                Dim bAll As Boolean = String.Equals(bId, "__ALL__", StringComparison.OrdinalIgnoreCase)
-
-                Dim ai As Integer = -1
-                Dim bi As Integer = -1
-                If Not aAll Then
-                    If Not setIndex.TryGetValue(aId, ai) Then Continue For
-                End If
-                If Not bAll Then
-                    If Not setIndex.TryGetValue(bId, bi) Then Continue For
-                End If
-                pairRules.Add(Tuple.Create(ai, bi, aAll, bAll))
-            Next
-
-            Dim hasPairRules As Boolean = (pairRules.Count > 0)
-
 
             ' 1) 대상 요소 + BoundingBox 수집
             Dim infos As New Dictionary(Of Integer, ClashInfo)()
@@ -510,17 +374,6 @@ Namespace UI.Hub
                     Catch
                         Continue For
                     End Try
-                End If
-
-                If excludeIds IsNot Nothing AndAlso excludeIds.Count > 0 Then
-                    Try
-                        If e IsNot Nothing AndAlso excludeIds.Contains(e.Id.IntegerValue) Then Continue For
-                    Catch
-                    End Try
-                End If
-
-                If excludeKeywords IsNot Nothing AndAlso excludeKeywords.Count > 0 Then
-                    If ShouldExcludeByKeywords(e, excludeKeywords) Then Continue For
                 End If
 
                 If excludeIds IsNot Nothing AndAlso excludeIds.Count > 0 Then
@@ -562,8 +415,6 @@ Namespace UI.Hub
 
                 Dim ci As New ClashInfo With {
                 .Id = id,
-                .IsLinked = False,
-                .DisplayId = id.ToString(),
                 .MinX = minX, .MinY = minY, .MinZ = minZ,
                 .MaxX = maxX, .MaxY = maxY, .MaxZ = maxZ,
                 .Category = SafeCategoryName(e, catCache),
@@ -590,138 +441,9 @@ Namespace UI.Hub
                     End If
                 End If
 
-                ' set membership mask (max 64 sets)
-                Dim mask As ULong = 0UL
-                If setDefs IsNot Nothing AndAlso setDefs.Count > 0 Then
-                    Dim si As Integer = 0
-                    For Each sd As ClashSetDef In setDefs
-                        If sd IsNot Nothing Then
-                            Try
-                                If ElementMatchesSet(e, sd) Then
-                                    If si < 64 Then mask = mask Or (1UL << si)
-                                End If
-                            Catch
-                            End Try
-                        End If
-                        si += 1
-                        If si >= 64 Then Exit For
-                    Next
-                End If
-                ci.Mask = mask
-
                 infos(id) = ci
             Next
 
-
-            ' ---- LINK SCAN (host coords) ----
-            If linkInstMap IsNot Nothing AndAlso linkInstMap.Count > 0 Then
-                For Each kvL In linkInstMap
-                    Dim linkInstId As Integer = kvL.Key
-                    Dim li As RevitLinkInstance = kvL.Value
-                    Dim ldoc As Document = Nothing
-                    If Not linkDocMap.TryGetValue(linkInstId, ldoc) OrElse ldoc Is Nothing Then Continue For
-
-                    Dim xf As Transform = Transform.Identity
-                    If linkXfMap IsNot Nothing AndAlso linkXfMap.ContainsKey(linkInstId) Then xf = linkXfMap(linkInstId)
-
-                    Dim lCollector As New FilteredElementCollector(ldoc)
-                    lCollector.WhereElementIsNotElementType()
-
-                    For Each le As Element In lCollector
-                        total += 1
-
-                        If le Is Nothing OrElse le.Category Is Nothing Then Continue For
-
-                        ' 링크 내부도 동일 필터 적용
-                        If ShouldSkipForQuantity(le) Then Continue For
-
-                        Dim bbL As BoundingBoxXYZ = GetBoundingBox(le)
-                        If bbL Is Nothing OrElse bbL.Min Is Nothing OrElse bbL.Max Is Nothing Then Continue For
-
-                        Dim bbT = TransformBoundingBoxToHost(bbL, xf)
-                        If bbT Is Nothing Then Continue For
-
-                        Dim minP As XYZ = bbT.Item1
-                        Dim maxP As XYZ = bbT.Item2
-
-                        Dim minX As Double = minP.X - tolFeet
-                        Dim minY As Double = minP.Y - tolFeet
-                        Dim minZ As Double = minP.Z - tolFeet
-                        Dim maxX As Double = maxP.X + tolFeet
-                        Dim maxY As Double = maxP.Y + tolFeet
-                        Dim maxZ As Double = maxP.Z + tolFeet
-
-                        If maxX < minX OrElse maxY < minY OrElse maxZ < minZ Then Continue For
-
-                        ' virtual id 할당
-                        Dim vId As Integer = nextVirtualId
-                        nextVirtualId -= 1
-
-                        Dim linkName As String = ""
-                        Try : linkName = li.Name : Catch : linkName = "" : End Try
-
-                        linkRefMap(vId) = Tuple.Create(linkInstId, le.Id.IntegerValue, linkName)
-
-                        Dim ci As New ClashInfo With {
-                .Id = vId,
-                .IsLinked = True,
-                .LinkInstanceId = linkInstId,
-                .LinkedElementId = le.Id.IntegerValue,
-                .LinkName = linkName,
-                .DisplayId = ("L:" & linkName & ":" & le.Id.IntegerValue.ToString()),
-                .MinX = minX, .MinY = minY, .MinZ = minZ,
-                .MaxX = maxX, .MaxY = maxY, .MaxZ = maxZ,
-                .Category = SafeCategoryName(le, catCache),
-                .Family = SafeFamilyName(le, famCache),
-                .TypeName = SafeTypeName(le, typCache),
-                .TypeIdInt = TryGetTypeIdInt(le),
-                .SizeKey = GetMEPSizeKey(le),
-                .RadiusHint = 0R,
-                .HasCurve = False,
-                .Radius = 0R
-            }
-
-                        ci.RadiusHint = ComputeRadiusHint(ci.MinX, ci.MinY, ci.MinZ, ci.MaxX, ci.MaxY, ci.MaxZ, tolFeet)
-
-                        Dim p0 As XYZ = Nothing, p1 As XYZ = Nothing
-                        If TryGetCurveEndpoints(le, p0, p1) Then
-                            ci.HasCurve = True
-                            Dim tp0 = TransformPoint(xf, p0)
-                            Dim tp1 = TransformPoint(xf, p1)
-                            ci.X0 = tp0.X : ci.Y0 = tp0.Y : ci.Z0 = tp0.Z
-                            ci.X1 = tp1.X : ci.Y1 = tp1.Y : ci.Z1 = tp1.Z
-
-                            Dim r As Double = 0R
-                            If TryGetCrossSectionRadius(le, r) Then
-                                ci.Radius = Math.Max(0R, r)
-                            End If
-                        End If
-
-                        ' set membership mask
-                        Dim mask As ULong = 0UL
-                        If setDefs IsNot Nothing AndAlso setDefs.Count > 0 Then
-                            Dim si As Integer = 0
-                            For Each sd As ClashSetDef In setDefs
-                                If sd IsNot Nothing Then
-                                    Try
-                                        If ElementMatchesSet(le, sd) Then
-                                            If si < 64 Then mask = mask Or (1UL << si)
-                                        End If
-                                    Catch
-                                    End Try
-                                End If
-                                si += 1
-                                If si >= 64 Then Exit For
-                            Next
-                        End If
-                        ci.Mask = mask
-
-                        infos(vId) = ci
-                    Next
-                Next
-            End If
-
-            ' ---- LINK MODE: hostlink → 링크↔링크는 후보 생성에서 제외 ----
             ' 2) 공간 해시(2D)로 후보쌍 생성
             Dim adjacency As New Dictionary(Of Integer, HashSet(Of Integer))()
             Dim pairSeen As New HashSet(Of Long)()
@@ -778,13 +500,9 @@ Namespace UI.Hub
                         Dim b As ClashInfo = Nothing
                         If Not infos.TryGetValue(bId, b) Then Continue For
 
-                        If cfg IsNot Nothing AndAlso String.Equals(cfg.LinkMode, "hostlink", StringComparison.OrdinalIgnoreCase) Then
-                            If a.IsLinked AndAlso b.IsLinked Then Continue For
-                        End If
-
                         If Not BBoxIntersects(a, b) Then Continue For
 
-                        If IsRealClash(doc, a, b, tolFeet, optGeom, solidCache, linkRefMap, linkDocMap, linkXfMap) Then
+                        If IsRealClash(doc, a, b, tolFeet, optGeom, solidCache) Then
                             AddEdge(adjacency, aId, bId)
                         End If
                     Next
@@ -811,13 +529,9 @@ Namespace UI.Hub
                         Dim b As ClashInfo = Nothing
                         If Not infos.TryGetValue(bId, b) Then Continue For
 
-                        If cfg IsNot Nothing AndAlso String.Equals(cfg.LinkMode, "hostlink", StringComparison.OrdinalIgnoreCase) Then
-                            If a.IsLinked AndAlso b.IsLinked Then Continue For
-                        End If
-
                         If Not BBoxIntersects(a, b) Then Continue For
 
-                        If IsRealClash(doc, a, b, tolFeet, optGeom, solidCache, linkRefMap, linkDocMap, linkXfMap) Then
+                        If IsRealClash(doc, a, b, tolFeet, optGeom, solidCache) Then
                             AddEdge(adjacency, aId, bId)
                         End If
                     Next
@@ -878,11 +592,6 @@ Namespace UI.Hub
 
                     rows.Add(New DupRowDto With {
                     .ElementId = id,
-                    .DisplayId = If(ci.DisplayId, id.ToString()),
-                    .IsLinked = ci.IsLinked,
-                    .LinkName = If(ci.LinkName, ""),
-                    .LinkInstanceId = ci.LinkInstanceId,
-                    .LinkedElementId = ci.LinkedElementId,
                     .Category = ci.Category,
                     .Family = ci.Family,
                     .Type = ci.TypeName,
@@ -898,13 +607,6 @@ Namespace UI.Hub
 
             _lastRows = rows
 
-            ' 링크 가상 id 매핑 보관(선택/툴팁용)
-            Try
-                _lastLinkRefs = New Dictionary(Of Integer, Tuple(Of Integer, Integer, String))(linkRefMap)
-            Catch
-            End Try
-
-
             Dim truncated As Boolean = False
             Dim shownRows As List(Of DupRowDto) = rows
             If rows.Count > MAX_UI_ROWS Then
@@ -915,11 +617,6 @@ Namespace UI.Hub
 
             Dim wireRows = shownRows.Select(Function(r) New With {
             .elementId = r.ElementId,
-            .displayId = r.DisplayId,
-            .isLinked = r.IsLinked,
-            .linkName = r.LinkName,
-            .linkInstanceId = r.LinkInstanceId,
-            .linkedElementId = r.LinkedElementId,
             .category = r.Category,
             .family = r.Family,
             .type = r.Type,
@@ -950,41 +647,7 @@ Namespace UI.Hub
             If uiDoc Is Nothing Then Return
 
             Dim idVal As Integer = SafeInt(GetProp(payload, "id"))
-            If idVal = 0 Then Return
-
-            ' 링크 요소(가상 id) 선택/줌: 링크 인스턴스로 이동
-            If idVal < 0 Then
-                Try
-                    Dim lr As Tuple(Of Integer, Integer, String) = Nothing
-                    If _lastLinkRefs IsNot Nothing AndAlso _lastLinkRefs.TryGetValue(idVal, lr) Then
-                        Dim linkInstId As Integer = lr.Item1
-                        Dim linkedId As Integer = lr.Item2
-                        Dim linkName As String = lr.Item3
-
-                        Dim li As RevitLinkInstance = TryCast(uiDoc.Document.GetElement(New ElementId(linkInstId)), RevitLinkInstance)
-                        If li Is Nothing Then
-                            SendToWeb("host:warn", New With {.message = $"링크 인스턴스를 찾을 수 없습니다: {linkInstId}"})
-                            Return
-                        End If
-
-                        Try
-                            uiDoc.Selection.SetElementIds(New List(Of ElementId) From {li.Id})
-                        Catch
-                        End Try
-
-                        Try
-                            uiDoc.ShowElements(li.Id)
-                        Catch
-                        End Try
-
-                        SendToWeb("host:warn", New With {.message = $"링크 요소 선택: {linkName} / {linkedId} (링크 인스턴스로 이동)"})
-                        Return
-                    End If
-                Catch
-                End Try
-
-                Return
-            End If
+            If idVal <= 0 Then Return
 
             Dim elId As New ElementId(idVal)
             Dim el As Element = uiDoc.Document.GetElement(elId)
@@ -1177,395 +840,8 @@ Namespace UI.Hub
 
 #Region "자체간섭 내부 구현"
 
-        ' ===========================
-        ' Rule / Set (Navis-like) v1
-        ' ===========================
-        Private Class ClashClause
-            Public Property Field As String   ' category|family|type|name|param
-            Public Property [Op] As String    ' contains|equals|startswith|endswith|notcontains|notequals
-            Public Property Value As String
-            Public Property Param As String   ' for param field
-        End Class
-
-        Private Class ClashGroup
-            Public Property Clauses As New List(Of ClashClause)() ' AND
-        End Class
-
-        Private Class ClashSetDef
-            Public Property Id As String
-            Public Property Name As String
-            Public Property Groups As New List(Of ClashGroup)() ' OR
-        End Class
-
-        Private Class ClashPairRule
-            Public Property A As String
-            Public Property B As String
-            Public Property Enabled As Boolean = True
-        End Class
-
-        Private Class ClashRuleConfig
-            Public Property Sets As New List(Of ClashSetDef)()
-            Public Property Pairs As New List(Of ClashPairRule)()
-            Public Property ExcludeSetIds As New List(Of String)()
-
-            ' 링크 포함 옵션
-            Public Property IncludeLinks As Boolean = False
-            Public Property LinkMode As String = "hostlink" ' hostlink | all
-            Public Property LinkInstanceIds As New List(Of Integer)()
-        End Class
-
-        Private Shared Function GetAnyProp(obj As Object, name As String) As Object
-            If obj Is Nothing OrElse String.IsNullOrWhiteSpace(name) Then Return Nothing
-            Try
-                Dim d = TryCast(obj, System.Collections.IDictionary)
-                If d IsNot Nothing AndAlso d.Contains(name) Then Return d(name)
-            Catch
-            End Try
-            Try
-                Dim t = obj.GetType()
-                Dim pi = t.GetProperty(name)
-                If pi IsNot Nothing Then Return pi.GetValue(obj, Nothing)
-            Catch
-            End Try
-            Return Nothing
-        End Function
-
-        Private Shared Function ToLowerSafe(s As String) As String
-            If String.IsNullOrWhiteSpace(s) Then Return ""
-            Return s.Trim().ToLowerInvariant()
-        End Function
-
-        Private Shared Function AnyStr(obj As Object) As String
-            If obj Is Nothing Then Return ""
-            Try
-                Return Convert.ToString(obj)
-            Catch
-                Return ""
-            End Try
-        End Function
-
-        Private Shared Function ParseRuleConfig(ruleConfigObj As Object) As ClashRuleConfig
-            Dim cfg As New ClashRuleConfig()
-            If ruleConfigObj Is Nothing Then Return cfg
-
-            ' sets
-            Try
-                Dim setsObj = GetAnyProp(ruleConfigObj, "sets")
-                Dim en = TryCast(setsObj, System.Collections.IEnumerable)
-                If en IsNot Nothing AndAlso Not TypeOf setsObj Is String Then
-                    For Each so In en
-                        If so Is Nothing Then Continue For
-                        Dim sd As New ClashSetDef()
-                        sd.Id = AnyStr(GetAnyProp(so, "id"))
-                        sd.Name = AnyStr(GetAnyProp(so, "name"))
-                        If String.IsNullOrWhiteSpace(sd.Id) Then sd.Id = Guid.NewGuid().ToString("N")
-
-                        Dim groupsObj = GetAnyProp(so, "groups")
-                        Dim gen = TryCast(groupsObj, System.Collections.IEnumerable)
-                        If gen IsNot Nothing AndAlso Not TypeOf groupsObj Is String Then
-                            For Each go In gen
-                                If go Is Nothing Then Continue For
-                                Dim g As New ClashGroup()
-
-                                Dim clausesObj = GetAnyProp(go, "clauses")
-                                Dim cen = TryCast(clausesObj, System.Collections.IEnumerable)
-                                If cen IsNot Nothing AndAlso Not TypeOf clausesObj Is String Then
-                                    For Each co In cen
-                                        If co Is Nothing Then Continue For
-                                        Dim c As New ClashClause()
-                                        c.Field = ToLowerSafe(AnyStr(GetAnyProp(co, "field")))
-                                        c.Op = ToLowerSafe(AnyStr(GetAnyProp(co, "op")))
-                                        c.Value = AnyStr(GetAnyProp(co, "value"))
-                                        c.Param = AnyStr(GetAnyProp(co, "param"))
-                                        g.Clauses.Add(c)
-                                    Next
-                                End If
-
-                                If g.Clauses.Count > 0 Then sd.Groups.Add(g)
-                            Next
-                        End If
-
-                        If sd.Groups.Count > 0 Then cfg.Sets.Add(sd)
-                    Next
-                End If
-            Catch
-            End Try
-
-            ' pairs
-            Try
-                Dim pairsObj = GetAnyProp(ruleConfigObj, "pairs")
-                Dim en = TryCast(pairsObj, System.Collections.IEnumerable)
-                If en IsNot Nothing AndAlso Not TypeOf pairsObj Is String Then
-                    For Each po In en
-                        If po Is Nothing Then Continue For
-                        Dim pr As New ClashPairRule()
-                        pr.A = AnyStr(GetAnyProp(po, "a"))
-                        pr.B = AnyStr(GetAnyProp(po, "b"))
-                        Dim enb = GetAnyProp(po, "enabled")
-                        If enb IsNot Nothing Then
-                            Dim s = AnyStr(enb).Trim().ToLowerInvariant()
-                            pr.Enabled = Not (s = "false" OrElse s = "0" OrElse s = "no")
-                        End If
-                        If Not String.IsNullOrWhiteSpace(pr.A) AndAlso Not String.IsNullOrWhiteSpace(pr.B) Then
-                            cfg.Pairs.Add(pr)
-                        End If
-                    Next
-                End If
-            Catch
-            End Try
-
-            ' exclude sets
-            Try
-                Dim exObj = GetAnyProp(ruleConfigObj, "excludeSetIds")
-                Dim en = TryCast(exObj, System.Collections.IEnumerable)
-                If en IsNot Nothing AndAlso Not TypeOf exObj Is String Then
-                    For Each xo In en
-                        Dim s = AnyStr(xo)
-                        If Not String.IsNullOrWhiteSpace(s) Then cfg.ExcludeSetIds.Add(s)
-                    Next
-                End If
-            Catch
-            End Try
-
-
-            ' links
-            Try
-                Dim il = GetAnyProp(ruleConfigObj, "includeLinks")
-                If il IsNot Nothing Then
-                    Dim s = AnyStr(il).Trim().ToLowerInvariant()
-                    cfg.IncludeLinks = (s = "true" OrElse s = "1" OrElse s = "yes" OrElse s = "on")
-                End If
-            Catch
-            End Try
-
-            Try
-                Dim lm = AnyStr(GetAnyProp(ruleConfigObj, "linkMode")).Trim().ToLowerInvariant()
-                If lm = "all" Then cfg.LinkMode = "all" Else cfg.LinkMode = "hostlink"
-            Catch
-                cfg.LinkMode = "hostlink"
-            End Try
-
-            Try
-                Dim liObj = GetAnyProp(ruleConfigObj, "linkInstanceIds")
-                Dim en = TryCast(liObj, System.Collections.IEnumerable)
-                If en IsNot Nothing AndAlso Not TypeOf liObj Is String Then
-                    For Each o In en
-                        Dim iv As Integer = 0
-                        Try : iv = Convert.ToInt32(o) : Catch : iv = 0 : End Try
-                        If iv > 0 Then cfg.LinkInstanceIds.Add(iv)
-                    Next
-                End If
-                cfg.LinkInstanceIds = cfg.LinkInstanceIds.Distinct().ToList()
-            Catch
-            End Try
-
-            Return cfg
-        End Function
-
-        Private Shared Function GetElementStringForField(e As Element, field As String, paramName As String) As String
-            If e Is Nothing Then Return ""
-            field = ToLowerSafe(field)
-
-            Try
-                If field = "category" Then
-                    If e.Category IsNot Nothing Then Return AnyStr(e.Category.Name)
-                    Return ""
-                End If
-
-                If field = "family" Then
-                    Dim fi As FamilyInstance = TryCast(e, FamilyInstance)
-                    If fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing AndAlso fi.Symbol.Family IsNot Nothing Then
-                        Return AnyStr(fi.Symbol.Family.Name)
-                    End If
-                    Return ""
-                End If
-
-                If field = "type" Then
-                    Dim fi As FamilyInstance = TryCast(e, FamilyInstance)
-                    If fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing Then
-                        Return AnyStr(fi.Symbol.Name)
-                    End If
-                    Return AnyStr(e.Name)
-                End If
-
-                If field = "name" Then
-                    Return AnyStr(e.Name)
-                End If
-
-                If field = "param" OrElse field = "parameter" Then
-                    If String.IsNullOrWhiteSpace(paramName) Then Return ""
-                    Dim p As Parameter = Nothing
-                    Try : p = e.LookupParameter(paramName) : Catch : p = Nothing : End Try
-                    If p Is Nothing Then Return ""
-
-                    Try
-                        Select Case p.StorageType
-                            Case StorageType.String
-                                Dim s = p.AsString()
-                                If s IsNot Nothing Then Return s
-                            Case StorageType.Double
-                                Dim vs = p.AsValueString()
-                                If Not String.IsNullOrWhiteSpace(vs) Then Return vs
-                                Return p.AsDouble().ToString()
-                            Case StorageType.Integer
-                                Dim vs = p.AsValueString()
-                                If Not String.IsNullOrWhiteSpace(vs) Then Return vs
-                                Return p.AsInteger().ToString()
-                            Case StorageType.ElementId
-                                Dim id = p.AsElementId()
-                                If id IsNot Nothing Then Return id.IntegerValue.ToString()
-                        End Select
-                    Catch
-                    End Try
-
-                    Return ""
-                End If
-            Catch
-            End Try
-
-            Return ""
-        End Function
-
-        Private Shared Function EvalClause(val As String, c As ClashClause) As Boolean
-            Dim left = ToLowerSafe(val)
-            Dim right = ToLowerSafe(If(c Is Nothing, "", c.Value))
-            Dim op = ToLowerSafe(If(c Is Nothing, "", c.Op))
-
-            If op = "" OrElse op = "contains" Then
-                Return (right = "" OrElse left.Contains(right))
-            ElseIf op = "equals" OrElse op = "equal" Then
-                Return left = right
-            ElseIf op = "startswith" Then
-                Return (right = "" OrElse left.StartsWith(right))
-            ElseIf op = "endswith" Then
-                Return (right = "" OrElse left.EndsWith(right))
-            ElseIf op = "notcontains" Then
-                If right = "" Then Return True
-                Return Not left.Contains(right)
-            ElseIf op = "notequals" OrElse op = "notequal" Then
-                Return left <> right
-            End If
-
-            Return (right = "" OrElse left.Contains(right))
-        End Function
-
-        Private Shared Function ElementMatchesGroup(e As Element, g As ClashGroup) As Boolean
-            If g Is Nothing OrElse g.Clauses Is Nothing OrElse g.Clauses.Count = 0 Then Return False
-            For Each c In g.Clauses
-                Dim v = GetElementStringForField(e, c.Field, c.Param)
-                If Not EvalClause(v, c) Then Return False
-            Next
-            Return True
-        End Function
-
-        Private Shared Function ElementMatchesSet(e As Element, sdef As ClashSetDef) As Boolean
-            If sdef Is Nothing OrElse sdef.Groups Is Nothing OrElse sdef.Groups.Count = 0 Then Return False
-            For Each g In sdef.Groups
-                If ElementMatchesGroup(e, g) Then Return True
-            Next
-            Return False
-        End Function
-
-        Private Sub SendDupMeta(doc As Document)
-            If doc Is Nothing Then Return
-
-            Dim cats As New List(Of String)()
-            Try
-                For Each c As Category In doc.Settings.Categories
-                    If c Is Nothing Then Continue For
-                    Try
-                        If c.Parent IsNot Nothing Then Continue For
-                        If c.CategoryType <> CategoryType.Model Then Continue For
-                        cats.Add(c.Name)
-                    Catch
-                    End Try
-                Next
-            Catch
-            End Try
-            cats = cats.Distinct().OrderBy(Function(x) x).ToList()
-
-            Dim fams As New List(Of String)()
-            Try
-                Dim fc As New FilteredElementCollector(doc)
-                fc.OfClass(GetType(Family))
-                For Each f As Family In fc
-                    If f Is Nothing Then Continue For
-                    Try
-                        If Not String.IsNullOrWhiteSpace(f.Name) Then fams.Add(f.Name)
-                    Catch
-                    End Try
-                Next
-            Catch
-            End Try
-            fams = fams.Distinct().OrderBy(Function(x) x).ToList()
-
-            Dim types As New List(Of String)()
-            Try
-                Dim tc As New FilteredElementCollector(doc)
-                tc.WhereElementIsElementType()
-                For Each e As Element In tc
-                    If e Is Nothing Then Continue For
-                    Try
-                        If Not String.IsNullOrWhiteSpace(e.Name) Then types.Add(e.Name)
-                    Catch
-                    End Try
-                Next
-            Catch
-            End Try
-            types = types.Distinct().OrderBy(Function(x) x).ToList()
-
-            Dim pars As New List(Of String)()
-            Try
-                Dim bm As BindingMap = doc.ParameterBindings
-                Dim it As DefinitionBindingMapIterator = bm.ForwardIterator()
-                it.Reset()
-                While it.MoveNext()
-                    Dim def As Definition = it.Key
-                    If def Is Nothing Then Continue While
-                    If Not String.IsNullOrWhiteSpace(def.Name) Then pars.Add(def.Name)
-                End While
-            Catch
-            End Try
-            pars = pars.Distinct().OrderBy(Function(x) x).ToList()
-
-            ' links (loaded/unloaded)
-            Dim links As New List(Of Object)()
-            Try
-                Dim lc As New FilteredElementCollector(doc)
-                lc.OfClass(GetType(RevitLinkInstance)).WhereElementIsNotElementType()
-                For Each e As Element In lc
-                    Dim li As RevitLinkInstance = TryCast(e, RevitLinkInstance)
-                    If li Is Nothing Then Continue For
-
-                    Dim ldoc As Document = Nothing
-                    Try : ldoc = li.GetLinkDocument() : Catch : ldoc = Nothing : End Try
-
-                    Dim loaded As Boolean = (ldoc IsNot Nothing)
-                    Dim docTitle As String = If(loaded, SafeDocTitle(ldoc), "(Unloaded)")
-
-                    links.Add(New With {
-            .id = li.Id.IntegerValue,
-            .name = li.Name,
-            .loaded = loaded,
-            .docTitle = docTitle
-        })
-                Next
-            Catch
-            End Try
-
-            links = links.OrderBy(Function(o) AnyStr(GetAnyProp(o, "docTitle"))).ToList()
-
-            SendToWeb("dup:meta", New With {.categories = cats, .families = fams, .types = types, .parameters = pars, .links = links})
-        End Sub
-
-
         Private Structure ClashInfo
             Public Id As Integer
-            Public IsLinked As Boolean
-            Public LinkInstanceId As Integer
-            Public LinkedElementId As Integer
-            Public LinkName As String
-            Public DisplayId As String
             Public MinX As Double
             Public MinY As Double
             Public MinZ As Double
@@ -1578,7 +854,6 @@ Namespace UI.Hub
 
             Public TypeIdInt As Integer
             Public SizeKey As String
-            Public Mask As ULong
             Public RadiusHint As Double
 
             Public HasCurve As Boolean
@@ -1699,13 +974,7 @@ Namespace UI.Hub
             Next
         End Sub
 
-        Private Shared Function GetSolidsCached(doc As Document,
-                                       id As Integer,
-                                       opt As Options,
-                                       cache As Dictionary(Of Integer, List(Of Solid)),
-                                       linkRefMap As Dictionary(Of Integer, Tuple(Of Integer, Integer, String)),
-                                       linkDocMap As Dictionary(Of Integer, Document),
-                                       linkXfMap As Dictionary(Of Integer, Transform)) As List(Of Solid)
+        Private Shared Function GetSolidsCached(doc As Document, id As Integer, opt As Options, cache As Dictionary(Of Integer, List(Of Solid))) As List(Of Solid)
             If cache Is Nothing Then cache = New Dictionary(Of Integer, List(Of Solid))()
 
             Dim lst As List(Of Solid) = Nothing
@@ -1713,30 +982,10 @@ Namespace UI.Hub
 
             lst = New List(Of Solid)()
             Try
-                If id >= 0 Then
-                    Dim e As Element = doc.GetElement(New ElementId(id))
-                    If e IsNot Nothing Then
-                        Dim ge As GeometryElement = GetGeometryCompat(e, opt)
-                        CollectSolidsFromGeom(ge, Nothing, lst)
-                    End If
-                Else
-                    ' linked virtual id
-                    Dim lr As Tuple(Of Integer, Integer, String) = Nothing
-                    If linkRefMap IsNot Nothing AndAlso linkRefMap.TryGetValue(id, lr) Then
-                        Dim linkInstId As Integer = lr.Item1
-                        Dim linkedId As Integer = lr.Item2
-                        Dim ldoc As Document = Nothing
-                        If linkDocMap IsNot Nothing AndAlso linkDocMap.TryGetValue(linkInstId, ldoc) AndAlso ldoc IsNot Nothing Then
-                            Dim le As Element = Nothing
-                            Try : le = ldoc.GetElement(New ElementId(linkedId)) : Catch : le = Nothing : End Try
-                            If le IsNot Nothing Then
-                                Dim xf As Transform = Transform.Identity
-                                If linkXfMap IsNot Nothing AndAlso linkXfMap.ContainsKey(linkInstId) Then xf = linkXfMap(linkInstId)
-                                Dim ge As GeometryElement = GetGeometryCompat(le, opt)
-                                CollectSolidsFromGeom(ge, xf, lst)
-                            End If
-                        End If
-                    End If
+                Dim e As Element = doc.GetElement(New ElementId(id))
+                If e IsNot Nothing Then
+                    Dim ge As GeometryElement = GetGeometryCompat(e, opt)
+                    CollectSolidsFromGeom(ge, Nothing, lst)
                 End If
             Catch
             End Try
@@ -1750,35 +999,44 @@ Namespace UI.Hub
                                        bId As Integer,
                                        opt As Options,
                                        cache As Dictionary(Of Integer, List(Of Solid)),
-                                       linkRefMap As Dictionary(Of Integer, Tuple(Of Integer, Integer, String)),
-                                       linkDocMap As Dictionary(Of Integer, Document),
-                                       linkXfMap As Dictionary(Of Integer, Transform),
                                        tolFeet As Double) As Boolean
-            Dim sa = GetSolidsCached(doc, aId, opt, cache, linkRefMap, linkDocMap, linkXfMap)
-            Dim sb = GetSolidsCached(doc, bId, opt, cache, linkRefMap, linkDocMap, linkXfMap)
+            Dim sa = GetSolidsCached(doc, aId, opt, cache)
+            Dim sb = GetSolidsCached(doc, bId, opt, cache)
             If sa Is Nothing OrElse sb Is Nothing OrElse sa.Count = 0 OrElse sb.Count = 0 Then Return False
 
-            Dim tolVol As Double = Math.Max(0.0000000001, tolFeet * tolFeet * tolFeet)
+            ' ✅ tiny overlap/touch 누락 방지:
+            '    Intersect 결과 Solid가 생성되면, 볼륨이 극소(수치오차)여도 Faces/Edges가 있으면 간섭으로 본다.
+            Dim tolVol As Double = Math.Max(0.000000000001, tolFeet * tolFeet * tolFeet)
 
             For Each s1 In sa
                 If s1 Is Nothing Then Continue For
                 For Each s2 In sb
                     If s2 Is Nothing Then Continue For
+
                     Try
                         Dim inter As Solid = BooleanOperationsUtils.ExecuteBooleanOperation(s1, s2, BooleanOperationsType.Intersect)
-                        If inter IsNot Nothing Then
-                            Dim v As Double = 0R
-                            Try : v = inter.Volume : Catch : v = 0R : End Try
-                            If v > tolVol Then Return True
-                        End If
+                        If inter Is Nothing Then Continue For
+
+                        Dim v As Double = 0R
+                        Try : v = inter.Volume : Catch : v = 0R : End Try
+                        If v > tolVol Then Return True
+
+                        ' 볼륨이 0에 가까워도(면 접촉/미세 겹침) Faces/Edges가 있으면 간섭으로 포함
+                        Dim fCnt As Integer = 0
+                        Dim eCnt As Integer = 0
+                        Try : fCnt = inter.Faces.Size : Catch : fCnt = 0 : End Try
+                        Try : eCnt = inter.Edges.Size : Catch : eCnt = 0 : End Try
+                        If fCnt > 0 OrElse eCnt > 0 Then Return True
+
                     Catch
-                        ' boolean 실패 시 false로 처리(오탐 감소). 필요시 필터 결과만으로 결정.
+                        ' boolean 실패 시: 오탐 방지를 위해 여기서는 False 유지
                     End Try
                 Next
             Next
 
             Return False
         End Function
+
         Private Shared Sub AddEdge(adj As Dictionary(Of Integer, HashSet(Of Integer)), a As Integer, b As Integer)
             Dim sa As HashSet(Of Integer) = Nothing
             If Not adj.TryGetValue(a, sa) Then
@@ -1884,7 +1142,7 @@ Namespace UI.Hub
             Return True
         End Function
 
-        Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashInfo, tolFeet As Double, opt As Options, solidCache As Dictionary(Of Integer, List(Of Solid)), linkRefMap As Dictionary(Of Integer, Tuple(Of Integer, Integer, String)), linkDocMap As Dictionary(Of Integer, Document), linkXfMap As Dictionary(Of Integer, Transform)) As Boolean
+        Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashInfo, tolFeet As Double, opt As Options, solidCache As Dictionary(Of Integer, List(Of Solid))) As Boolean
             ' ✅ 완전 중복은 간섭에서 제외
             If IsExactBBoxDuplicate(a, b, tolFeet) Then Return False
 
@@ -1955,7 +1213,7 @@ Namespace UI.Hub
 
             ' 솔리드 볼륨 교차로 확정 (Navis Hard 성향)
             Try
-                If SolidsIntersect(doc, a.Id, b.Id, opt, solidCache, linkRefMap, linkDocMap, linkXfMap, tolFeet) Then Return True
+                If SolidsIntersect(doc, a.Id, b.Id, opt, solidCache, tolFeet) Then Return True
             Catch
             End Try
 
@@ -2490,53 +1748,6 @@ Namespace UI.Hub
             End If
 
             Return Nothing
-        End Function
-
-
-        Private Shared Function TransformPoint(xf As Transform, p As XYZ) As XYZ
-            If xf Is Nothing OrElse p Is Nothing Then Return p
-            Try
-                Return xf.OfPoint(p)
-            Catch
-                Return p
-            End Try
-        End Function
-
-        Private Shared Function TransformBoundingBoxToHost(bb As BoundingBoxXYZ, xf As Transform) As Tuple(Of XYZ, XYZ)
-            If bb Is Nothing OrElse bb.Min Is Nothing OrElse bb.Max Is Nothing Then Return Nothing
-            Dim minP As XYZ = bb.Min
-            Dim maxP As XYZ = bb.Max
-            Dim pts As XYZ() = New XYZ() {
-        New XYZ(minP.X, minP.Y, minP.Z),
-        New XYZ(minP.X, minP.Y, maxP.Z),
-        New XYZ(minP.X, maxP.Y, minP.Z),
-        New XYZ(minP.X, maxP.Y, maxP.Z),
-        New XYZ(maxP.X, minP.Y, minP.Z),
-        New XYZ(maxP.X, minP.Y, maxP.Z),
-        New XYZ(maxP.X, maxP.Y, minP.Z),
-        New XYZ(maxP.X, maxP.Y, maxP.Z)
-    }
-
-            Dim minX As Double = Double.PositiveInfinity
-            Dim minY As Double = Double.PositiveInfinity
-            Dim minZ As Double = Double.PositiveInfinity
-            Dim maxX As Double = Double.NegativeInfinity
-            Dim maxY As Double = Double.NegativeInfinity
-            Dim maxZ As Double = Double.NegativeInfinity
-
-            For Each p As XYZ In pts
-                Dim tp As XYZ = TransformPoint(xf, p)
-                If tp Is Nothing Then Continue For
-                If tp.X < minX Then minX = tp.X
-                If tp.Y < minY Then minY = tp.Y
-                If tp.Z < minZ Then minZ = tp.Z
-                If tp.X > maxX Then maxX = tp.X
-                If tp.Y > maxY Then maxY = tp.Y
-                If tp.Z > maxZ Then maxZ = tp.Z
-            Next
-
-            If Double.IsInfinity(minX) OrElse Double.IsInfinity(maxX) Then Return Nothing
-            Return Tuple.Create(New XYZ(minX, minY, minZ), New XYZ(maxX, maxY, maxZ))
         End Function
 
         Private Shared Function GetBoundingBox(e As Element) As BoundingBoxXYZ

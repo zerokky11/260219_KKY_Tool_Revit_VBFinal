@@ -94,7 +94,7 @@ export function renderDup(root) {
       .dup-rulemodal .rm-sub{ font-size:12px; opacity:.75; margin-top:2px; }
       .dup-rulemodal .rm-head-left{ display:flex; flex-direction:column; }
       .dup-rulemodal .rm-actions{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-      .dup-rulemodal .rm-body{ padding: 14px 16px; overflow:auto; }
+      .dup-rulemodal .rm-body{ padding: 14px 16px; overflow:auto; ; padding-bottom: 70px }
       .dup-rulemodal .rp-sec{ margin: 10px 0 14px 0; padding: 12px 12px; border-radius: 14px;
         border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
         background: color-mix(in oklab, var(--panel, #ffffff) 92%, #000000 8%);
@@ -117,90 +117,46 @@ export function renderDup(root) {
 
       .dup-summarybar{ z-index: 15; }
 
-      .dup-rulepanel{ position: fixed; top: 74px; right: -420px; width: 400px; height: calc(100vh - 86px); z-index: 120; border-radius: 16px 0 0 16px; border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%); background: color-mix(in oklab, var(--panel, #ffffff) 92%, #000 8%); box-shadow: 0 14px 40px rgba(0,0,0,.18); transition: right .22s ease; overflow: hidden; }
-      .dup-rulepanel.is-open{ right: 10px; }
-      .dup-rulepanel .rp-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 12px; border-bottom:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); }
-      .dup-rulepanel .rp-title{ font-weight:700; }
-      .dup-rulepanel .rp-actions{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
-      .dup-rulepanel .rp-btn{ padding:6px 10px; border-radius:10px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); background: transparent; color: inherit; cursor:pointer; }
-      .dup-rulepanel .rp-btn--ghost{ opacity:.85; }
-      .dup-rulepanel .rp-btn--add{ margin-top:8px; width:100%; }
-      .dup-rulepanel .rp-btn--tiny{ padding:5px 8px; border-radius:9px; }
-      .dup-rulepanel .rp-btn--primary{ background: color-mix(in oklab, var(--accent,#4c6fff) 18%, transparent 82%); border-color: color-mix(in oklab, var(--accent,#4c6fff) 55%, transparent 45%); font-weight:700; }
-      .dup-rulepanel .rp-body{ height: calc(100% - 52px); overflow:auto; padding:12px; }
-      .dup-rulepanel .rp-sec{ padding:10px; border-radius:14px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); margin-bottom:10px; }
-      .dup-rulepanel .rp-sec-title{ font-weight:700; margin-bottom:8px; }
-      .dup-rulepanel .rp-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
-      .dup-rulepanel .rp-label{ width:88px; font-size:12px; opacity:.85; }
-      .dup-rulepanel .rp-input, .dup-rulepanel .rp-select{ flex:1; padding:6px 8px; border-radius:10px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); background: transparent; color: inherit; }
-      .dup-rulepanel .rp-input--sm{ padding:5px 8px; }
-      .dup-rulepanel .rp-select--sm{ padding:5px 8px; }
-      .dup-rulepanel .rp-hint{ font-size:12px; opacity:.8; line-height:1.35; }
-      .dup-rulepanel .rp-card{ padding:10px; border-radius:14px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); margin-bottom:8px; }
-      .dup-rulepanel .rp-card-head{ display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; }
-      .dup-rulepanel .rp-card-sub{ grid-column: 1 / -1; font-size:11px; opacity:.7; margin-top:-4px; }
-      .dup-rulepanel .rp-x{ border:none; background: transparent; color: inherit; font-size:18px; line-height:1; cursor:pointer; opacity:.7; }
-      .dup-rulepanel .rp-group{ padding:8px; border-radius:12px; border:1px dashed color-mix(in oklab, var(--border,#d7dbe7) 60%, transparent 40%); margin-top:8px; }
-      .dup-rulepanel .rp-group-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
-      .dup-rulepanel .rp-group-title{ font-weight:600; font-size:12px; opacity:.9; }
-      .dup-rulepanel .rp-clause{ display:grid; grid-template-columns: 1fr 1fr 1.1fr 1.4fr auto; gap:6px; align-items:center; margin-bottom:6px; }
-      .dup-rulepanel .rp-param{ min-width: 120px; }
-      .dup-rulepanel .rp-pair, .dup-rulepanel .rp-exrow{ display:flex; gap:6px; align-items:center; margin-bottom:8px; }
-      .dup-rulepanel .rp-vs{ opacity:.75; font-size:12px; }
-      .dup-rulepanel .rp-chk{ display:flex; gap:6px; align-items:center; font-size:12px; opacity:.85; }
-      .dup-rulepanel .rp-textarea{ width:100%; min-height:140px; resize:vertical; padding:8px 10px; border-radius:12px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); background: transparent; color: inherit; }
-      .dup-rulepanel .rp-foot{ position: sticky; bottom: 0; background: color-mix(in oklab, var(--panel,#fff) 92%, #000 8%); padding-top:8px; }
+      .dup-rulemodal{ position: fixed; top: 74px; right: -420px; width: 400px; height: calc(100vh - 86px); z-index: 120; border-radius: 16px 0 0 16px; border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%); background: color-mix(in oklab, var(--panel, #ffffff) 92%, #000 8%); box-shadow: 0 14px 40px rgba(0,0,0,.18); transition: right .22s ease; overflow: hidden; }
+      .dup-rulemodal.is-open{ right: 10px; }
+      .dup-rulemodal .rp-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 12px; border-bottom:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); }
+      .dup-rulemodal .rp-title{ font-weight:700; }
+      .dup-rulemodal .rp-actions{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+      .dup-rulemodal .rp-btn{ padding:6px 10px; border-radius:10px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); background: transparent; color: inherit; cursor:pointer; }
+      .dup-rulemodal .rp-btn--ghost{ opacity:.85; }
+      .dup-rulemodal .rp-btn--add{ margin-top:8px; width:100%; }
+      .dup-rulemodal .rp-btn--tiny{ padding:5px 8px; border-radius:9px; }
+      .dup-rulemodal .rp-btn--primary{ background: color-mix(in oklab, var(--accent,#4c6fff) 18%, transparent 82%); border-color: color-mix(in oklab, var(--accent,#4c6fff) 55%, transparent 45%); font-weight:700; }
+      .dup-rulemodal .rp-body{ height: calc(100% - 52px); overflow:auto; padding:12px; }
+      .dup-rulemodal .rp-sec{ padding:10px; border-radius:14px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); margin-bottom:10px; }
+      .dup-rulemodal .rp-sec-title{ font-weight:700; margin-bottom:8px; }
+      .dup-rulemodal .rp-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+      .dup-rulemodal .rp-label{ width:88px; font-size:12px; opacity:.85; }
+      .dup-rulemodal .rp-input, .dup-rulemodal .rp-select{ flex:1; padding:6px 8px; border-radius:10px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); background: transparent; color: inherit; }
+      .dup-rulemodal .rp-input--sm{ padding:5px 8px; }
+      .dup-rulemodal .rp-select--sm{ padding:5px 8px; }
+      .dup-rulemodal .rp-hint{ font-size:12px; opacity:.8; line-height:1.35; }
+      .dup-rulemodal .rp-card{ padding:10px; border-radius:14px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); margin-bottom:8px; }
+      .dup-rulemodal .rp-card-head{ display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; }
+      .dup-rulemodal .rp-card-sub{ grid-column: 1 / -1; font-size:11px; opacity:.7; margin-top:-4px; }
+      .dup-rulemodal .rp-x{ border:none; background: transparent; color: inherit; font-size:18px; line-height:1; cursor:pointer; opacity:.7; }
+      .dup-rulemodal .rp-group{ padding:8px; border-radius:12px; border:1px dashed color-mix(in oklab, var(--border,#d7dbe7) 60%, transparent 40%); margin-top:8px; }
+      .dup-rulemodal .rp-group-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+      .dup-rulemodal .rp-group-title{ font-weight:600; font-size:12px; opacity:.9; }
+      .dup-rulemodal .rp-clause{ display:grid; grid-template-columns: 1fr 1fr 1.1fr 1.4fr auto; gap:6px; align-items:center; margin-bottom:6px; }
+      .dup-rulemodal .rp-param{ min-width: 120px; }
+      .dup-rulemodal .rp-pair, .dup-rulemodal .rp-exrow{ display:flex; gap:6px; align-items:center; margin-bottom:8px; }
+      .dup-rulemodal .rp-vs{ opacity:.75; font-size:12px; }
+      .dup-rulemodal .rp-chk{ display:flex; gap:6px; align-items:center; font-size:12px; opacity:.85; }
+      .dup-rulemodal .rp-textarea{ width:100%; min-height:140px; resize:vertical; padding:8px 10px; border-radius:12px; border:1px solid color-mix(in oklab, var(--border,#d7dbe7) 70%, transparent 30%); background: transparent; color: inherit; }
+      .dup-rulemodal .rp-foot{ position: sticky; bottom: 0; background: color-mix(in oklab, var(--panel,#fff) 92%, #000 8%); padding-top:8px; }
 
       .conn-cell{ display:inline-block; min-width: 18px; padding:2px 6px; border-radius: 999px; border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%); }
 
     
 
-/* Button polish v18 (size-safe) */
-.card-action-btn, .control-chip, .table-action-btn, .rp-btn {
-  border-radius: 12px;
-  border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 75%, transparent 25%);
-  transition: transform .06s ease, filter .12s ease, background-color .12s ease, border-color .12s ease;
-}
-.card-action-btn:active, .control-chip:active, .table-action-btn:active, .rp-btn:active { transform: translateY(1px); }
-.card-action-btn:hover, .control-chip:hover, .table-action-btn:hover, .rp-btn:hover {
-  filter: brightness(1.02);
-  border-color: color-mix(in oklab, var(--accent, #4c6fff) 35%, var(--border, #d7dbe7) 65%);
-}
-.card-action-btn:focus-visible, .control-chip:focus-visible, .table-action-btn:focus-visible, .rp-btn:focus-visible,
-.rp-input:focus-visible, .rp-select:focus-visible, .dup-tol-input:focus-visible {
-  outline: 2px solid color-mix(in oklab, var(--accent, #4c6fff) 55%, transparent 45%);
-  outline-offset: 2px;
-}
-
-.control-chip { padding: 8px 12px; }
-.control-chip.is-active {
-  background: color-mix(in oklab, var(--accent, #4c6fff) 18%, transparent 82%);
-  border-color: color-mix(in oklab, var(--accent, #4c6fff) 55%, transparent 45%);
-  font-weight: 650;
-}
-
-.table-action-btn { padding: 6px 10px; border-radius: 10px; }
-.table-action-btn--danger { border-color: color-mix(in oklab, #ff3b30 35%, var(--border, #d7dbe7) 65%); }
-.table-action-btn.restore { border-color: color-mix(in oklab, var(--accent, #4c6fff) 45%, var(--border, #d7dbe7) 55%); }
-
-.dup-tol, .rp-input, .rp-select { border-radius: 12px; }
-.rp-input, .rp-select, .rp-textarea {
-  border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 75%, transparent 25%);
-  background: color-mix(in oklab, var(--panel, #ffffff) 96%, #000000 4%);
-  color: inherit;
-}
-.rp-select { padding: 8px 10px; }
-.rp-input { padding: 8px 10px; }
-.rp-btn--primary {
-  background: color-mix(in oklab, var(--accent, #4c6fff) 88%, #ffffff 12%);
-  border-color: color-mix(in oklab, var(--accent, #4c6fff) 70%, transparent 30%);
-  color: #fff;
-}
-.rp-btn--ghost { background: transparent; }
-.rp-btn--add {
-  background: color-mix(in oklab, var(--accent, #4c6fff) 10%, transparent 90%);
-  border-color: color-mix(in oklab, var(--accent, #4c6fff) 22%, var(--border, #d7dbe7) 78%);
-}
+      /* rulepanel alias */
+      .dup-rulepanel{ display:none; }
 `;
     document.head.appendChild(st);
   }
@@ -261,7 +217,6 @@ settingsBtn.title = '규칙/Set 창 열기/닫기';
   const EXCEL_PHASE_ORDER = ['EXCEL_INIT', 'EXCEL_WRITE', 'EXCEL_SAVE', 'AUTOFIT', 'DONE'];
 
   let rows = [];
-  let idDisplayMap = new Map();
   let groups = [];
   let deleted = new Set();
   let expanded = new Set();
@@ -639,7 +594,7 @@ onHost('dup:meta', (payload) => {
     ckCell.append(ck);
 
     row.append(ckCell);
-    row.append(cell((r.displayId ?? r.id) ?? '-', 'td mono right'));
+    row.append(cell(r.id ?? '-', 'td mono right'));
     row.append(cell(r.category || '—', 'td'));
 
     const famOut = r.family ? r.family : (r.category ? `${r.category} Type` : '—');
@@ -799,18 +754,16 @@ function buildExcludeKeywordControl() {
 
 
 function defaultRuleConfig() {
-  return { version: 1, sets: [], pairs: [], excludeSetIds: [], includeLinks: false, linkMode: 'hostlink', linkInstanceIds: [] };
+  return { version: 1, sets: [], pairs: [], excludeSetIds: [] };
 }
+
 function normalizeRuleConfig(cfg) {
   const c = cfg && typeof cfg === 'object' ? cfg : {};
   const out = {
     version: 1,
     sets: Array.isArray(c.sets) ? c.sets : [],
     pairs: Array.isArray(c.pairs) ? c.pairs : [],
-    excludeSetIds: Array.isArray(c.excludeSetIds) ? c.excludeSetIds : [],
-    includeLinks: !!c.includeLinks,
-    linkMode: (c.linkMode === 'all') ? 'all' : 'hostlink',
-    linkInstanceIds: Array.isArray(c.linkInstanceIds) ? c.linkInstanceIds.map(x => Number(x)).filter(n => Number.isFinite(n) && n > 0) : []
+    excludeSetIds: Array.isArray(c.excludeSetIds) ? c.excludeSetIds : []
   };
 
   // normalize sets
@@ -973,20 +926,6 @@ function buildRulePanel() {
 
             <div class="rp-label">제외 키워드</div>
             <input class="rp-input" type="text" placeholder="예: Dummy, Temp, _TEST (콤마 구분)" data-bind="excludeKeywords"/>
-
-<div class="rp-label">링크 모델 포함</div>
-<label class="rp-chk">
-  <input type="checkbox" data-bind="includeLinks"/> 링크(RevitLink) 요소도 간섭 검토에 포함
-</label>
-
-<div class="rp-label">링크 비교</div>
-<select class="rp-select" data-bind="linkMode">
-  <option value="hostlink">호스트 ↔ 링크만</option>
-  <option value="all">전체(호스트/링크/링크↔링크)</option>
-</select>
-
-<div class="rp-label">링크 선택</div>
-<div class="rp-links" data-slot="links"></div>
           </div>
           <div class="rp-hint">※ 범위(Selection)는 Revit에서 요소를 선택한 뒤 <b>검토 시작</b>을 누르면 적용됩니다. Set/Rule은 이 범위 안에서만 동작합니다.</div>
         </section>
@@ -1133,23 +1072,6 @@ function applyRulePanel() {
     try { localStorage.setItem(DUP_EXCL_KW_KEY, kw); } catch {}
   } catch {}
 
-
-try {
-  const ilEl = rulePanelEl.querySelector('[data-bind="includeLinks"]');
-  ruleCfg.includeLinks = !!ilEl?.checked;
-} catch {}
-
-try {
-  const lmEl = rulePanelEl.querySelector('[data-bind="linkMode"]');
-  ruleCfg.linkMode = (String(lmEl?.value || 'hostlink') === 'all') ? 'all' : 'hostlink';
-} catch {}
-
-// linkInstanceIds는 체크박스 change에서 이미 ruleCfg에 반영됨(여기선 정규화만)
-try {
-  ruleCfg.linkInstanceIds = Array.isArray(ruleCfg.linkInstanceIds) ? ruleCfg.linkInstanceIds.map(Number).filter(n => Number.isFinite(n) && n > 0) : [];
-} catch { ruleCfg.linkInstanceIds = []; }
-
-try { saveRuleConfig(ruleCfg); } catch {}
   toast('설정 적용 완료', 'ok', 1600);
 }
 
@@ -1168,55 +1090,6 @@ function renderRulePanel() {
   // 헤더 입력 컨트롤을 쓰지 않는 버전: 패널 입력을 소스로 사용
   if (!exclKwInputEl && kwEl) exclKwInputEl = kwEl;
   if (kwEl) kwEl.value = readExcludeKeywords();
-
-
-const ilEl = rulePanelEl.querySelector('[data-bind="includeLinks"]');
-if (ilEl) ilEl.checked = !!ruleCfg.includeLinks;
-
-const lmEl = rulePanelEl.querySelector('[data-bind="linkMode"]');
-if (lmEl) lmEl.value = (ruleCfg.linkMode === 'all') ? 'all' : 'hostlink';
-
-// links list from meta
-const linksSlot = rulePanelEl.querySelector('[data-slot="links"]');
-if (linksSlot) {
-  linksSlot.innerHTML = '';
-  const links = Array.isArray(meta.links) ? meta.links : [];
-  if (!links.length) {
-    const d = document.createElement('div');
-    d.className = 'rp-hint';
-    d.textContent = '로드된 링크(RevitLink)가 없습니다.';
-    linksSlot.append(d);
-  } else {
-    const selected = new Set((ruleCfg.linkInstanceIds || []).map(Number));
-    links.forEach((lnk) => {
-      const id = Number(lnk.id);
-      const loaded = !!lnk.loaded;
-      const row = document.createElement('label');
-      row.className = 'rp-linkrow';
-      const ck = document.createElement('input');
-      ck.type = 'checkbox';
-      ck.disabled = !loaded;
-      ck.checked = loaded && selected.has(id);
-      ck.addEventListener('change', () => {
-        const s = new Set((ruleCfg.linkInstanceIds || []).map(Number).filter(n => Number.isFinite(n) && n > 0));
-        if (ck.checked) s.add(id); else s.delete(id);
-        ruleCfg.linkInstanceIds = Array.from(s);
-        saveRuleConfig(ruleCfg);
-      });
-
-      const nm = document.createElement('span');
-      nm.className = 'nm';
-      nm.textContent = lnk.docTitle ? `${lnk.docTitle}` : (lnk.name || `Link ${id}`);
-
-      const tag = document.createElement('span');
-      tag.className = 'tag';
-      tag.textContent = loaded ? 'Loaded' : 'Unloaded';
-
-      row.append(ck, nm, tag);
-      linksSlot.append(row);
-    });
-  }
-}
 
   const meta = loadMeta();
   const params = Array.isArray(meta.parameters) ? meta.parameters : [];
@@ -1469,12 +1342,7 @@ function updateClause(si, gi, ci, next) {
       : (typeof connectedIdsRaw === 'string' && connectedIdsRaw.length
           ? connectedIdsRaw.split(/[,\s]+/).filter(Boolean)
           : []);
-    const displayId = val(r.displayId ?? r.DisplayId);
-    const isLinked = !!(r.isLinked ?? r.IsLinked);
-    const linkName = val(r.linkName ?? r.LinkName);
-    const linkInstanceId = val(r.linkInstanceId ?? r.LinkInstanceId);
-    const linkedElementId = val(r.linkedElementId ?? r.LinkedElementId);
-    return { id: id || '-', displayId, isLinked, linkName, linkInstanceId, linkedElementId, category, family, type, deleted: deletedFlag, groupKey, mode: rm, connectedIds };
+    return { id: id || '-', category, family, type, deleted: deletedFlag, groupKey, mode: rm, connectedIds };
   }
 
   function buildGroups(rs) {
