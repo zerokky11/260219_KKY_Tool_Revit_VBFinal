@@ -36,6 +36,63 @@ Namespace UI.Hub
         ' 중첩(shared) 패밀리 인스턴스(서브컴포넌트) ID 집합
         Private Shared _nestedSharedIds As HashSet(Of Integer) = Nothing
 
+
+        ' ===== 진행도(dup/clash run) =====
+        Private _runProgSw As Stopwatch = Stopwatch.StartNew()
+        Private _runProgLastMs As Long = 0
+        Private _runProgLastPct As Integer = -1
+        Private _runProgLastPhase As String = ""
+
+        Private Sub SendRunProgress(phase As String,
+                            pct As Integer,
+                            message As String,
+                            Optional current As Integer = 0,
+                            Optional total As Integer = 0,
+                            Optional force As Boolean = False)
+            Try
+                If _runProgSw Is Nothing Then _runProgSw = Stopwatch.StartNew()
+                Dim ms As Long = _runProgSw.ElapsedMilliseconds
+
+                Dim p As Integer = Math.Max(0, Math.Min(100, pct))
+                Dim ph As String = If(phase, "")
+
+                If Not force Then
+                    If (ms - _runProgLastMs) < 200 AndAlso p = _runProgLastPct AndAlso String.Equals(ph, _runProgLastPhase, StringComparison.Ordinal) Then
+                        Return
+                    End If
+                End If
+
+                _runProgLastMs = ms
+                _runProgLastPct = p
+                _runProgLastPhase = ph
+
+                SendToWeb("dup:progress",
+                  New With {
+                      .kind = "run",
+                      .phase = ph,
+                      .percent = p,
+                      .current = current,
+                      .total = total,
+                      .message = message
+                  })
+            Catch
+            End Try
+        End Sub
+
+        Private Shared Function TryGetCollectorCount(col As FilteredElementCollector) As Integer
+            If col Is Nothing Then Return 0
+            Try
+                Dim mi = col.GetType().GetMethod("GetElementCount", Reflection.BindingFlags.Instance Or Reflection.BindingFlags.Public)
+                If mi IsNot Nothing Then
+                    Dim v = mi.Invoke(col, Nothing)
+                    If v IsNot Nothing Then Return Convert.ToInt32(v)
+                End If
+            Catch
+            End Try
+            Return 0
+        End Function
+
+
         Private Class DupRowDto
             Public Property ElementId As Integer
             Public Property Category As String
@@ -66,6 +123,7 @@ Namespace UI.Hub
             End If
 
             Dim doc As Document = uiDoc.Document
+            SendRunProgress("INIT", 0, "검토 준비 중…", 0, 0, True)
             ' 중첩 Shared 컴포넌트 목록 캐시
             _nestedSharedIds = New HashSet(Of Integer)()
             Try
@@ -201,6 +259,9 @@ Namespace UI.Hub
             Dim collector As New FilteredElementCollector(doc)
             collector.WhereElementIsNotElementType()
 
+
+            Dim estTotal As Integer = TryGetCollectorCount(collector)
+            SendRunProgress("COLLECT", 5, "대상 수집 중…", 0, estTotal, True)
             Dim q = Function(x As Double) As Long
                         Return CLng(Math.Round(x / tolFeet))
                     End Function
@@ -212,6 +273,15 @@ Namespace UI.Hub
             Dim typCache As New Dictionary(Of Integer, String)()
 
             For Each e As Element In collector
+                total += 1
+                If total Mod 300 = 0 Then
+                    Dim pct As Integer = 5
+                    If estTotal > 0 Then
+                        pct = 5 + CInt(Math.Min(40, Math.Round((total / CDbl(estTotal)) * 40)))
+                    End If
+                    SendRunProgress("COLLECT", pct, "대상 수집 중…", total, estTotal)
+                End If
+
                 ' scope/exclude/keyword 필터
                 If scopeIds IsNot Nothing AndAlso scopeIds.Count > 0 Then
                     Try
@@ -274,9 +344,25 @@ Namespace UI.Hub
 
             Dim groupIndex As Integer = 0
 
+            Dim groupsTotal As Integer = 0
+            Try
+                For Each v In buckets.Values
+                    If v IsNot Nothing AndAlso v.Count > 1 Then groupsTotal += 1
+                Next
+            Catch
+            End Try
+            SendRunProgress("GROUP", 50, "그룹 구성 중…", 0, groupsTotal, True)
+
+            Dim gDone As Integer = 0
             For Each kv In buckets
                 Dim ids As List(Of ElementId) = kv.Value
                 If ids.Count <= 1 Then Continue For
+                gDone += 1
+                If gDone Mod 20 = 0 Then
+                    Dim pct As Integer = 50
+                    If groupsTotal > 0 Then pct = 50 + CInt(Math.Min(50, Math.Round((gDone / CDbl(groupsTotal)) * 50)))
+                    SendRunProgress("GROUP", pct, "그룹 구성 중…", gDone, groupsTotal)
+                End If
 
                 groupsCount += 1
                 groupIndex += 1
@@ -334,6 +420,7 @@ Namespace UI.Hub
         }).ToList()
 
             SendToWeb("dup:list", wireRows)
+            SendRunProgress("DONE", 100, "완료", 0, 0, True)
             SendToWeb("dup:result", New With {
             .mode = "duplicate",
             .scan = total,
@@ -354,6 +441,9 @@ Namespace UI.Hub
             Dim collector As New FilteredElementCollector(doc)
             collector.WhereElementIsNotElementType()
 
+            Dim estTotal As Integer = TryGetCollectorCount(collector)
+            SendRunProgress("COLLECT", 5, "대상 수집 중…", 0, estTotal, True)
+
             Dim catCache As New Dictionary(Of Integer, String)()
             Dim famCache As New Dictionary(Of Integer, String)()
             Dim typCache As New Dictionary(Of Integer, String)()
@@ -367,6 +457,15 @@ Namespace UI.Hub
             Dim optGeom As New Options() With {.ComputeReferences = False, .IncludeNonVisibleObjects = False, .DetailLevel = ViewDetailLevel.Fine}
             Dim solidCache As New Dictionary(Of Integer, List(Of Solid))()
             For Each e As Element In collector
+                total += 1
+                If total Mod 300 = 0 Then
+                    Dim pct As Integer = 5
+                    If estTotal > 0 Then
+                        pct = 5 + CInt(Math.Min(40, Math.Round((total / CDbl(estTotal)) * 40)))
+                    End If
+                    SendRunProgress("COLLECT", pct, "대상 수집 중…", total, estTotal)
+                End If
+
                 ' scope/exclude/keyword 필터
                 If scopeIds IsNot Nothing AndAlso scopeIds.Count > 0 Then
                     Try
@@ -629,6 +728,7 @@ Namespace UI.Hub
         }).ToList()
 
             SendToWeb("dup:list", wireRows)
+            SendRunProgress("DONE", 100, "완료", 0, 0, True)
             SendToWeb("dup:result", New With {
             .mode = "clash",
             .scan = total,
@@ -1029,7 +1129,16 @@ Namespace UI.Hub
                         If fCnt > 0 OrElse eCnt > 0 Then Return True
 
                     Catch
-                        ' boolean 실패 시: 오탐 방지를 위해 여기서는 False 유지
+                        ' ✅ boolean 실패 시(슬리버/미세 겹침): Revit 교차 필터로 폴백
+                        Try
+                            Dim ea As Element = doc.GetElement(New ElementId(aId))
+                            Dim eb As Element = doc.GetElement(New ElementId(bId))
+                            If ea IsNot Nothing AndAlso eb IsNot Nothing Then
+                                Dim f As New ElementIntersectsElementFilter(eb)
+                                If f.PassesFilter(doc, ea.Id) Then Return True
+                            End If
+                        Catch
+                        End Try
                     End Try
                 Next
             Next
@@ -1158,7 +1267,19 @@ Namespace UI.Hub
                 Dim radSum As Double = rA + rB + tolFeet
 
                 Dim dist As Double = SegmentDistance(p0, p1, q0, q1)
-                If dist > radSum Then Return False
+                If dist > radSum Then
+                    ' ✅ 매우 작은 겹침/특수 형상으로 거리 판정이 빗나가는 경우 폴백
+                    Try
+                        Dim ea2 As Element = doc.GetElement(New ElementId(a.Id))
+                        Dim eb2 As Element = doc.GetElement(New ElementId(b.Id))
+                        If ea2 IsNot Nothing AndAlso eb2 IsNot Nothing Then
+                            Dim f As New ElementIntersectsElementFilter(eb2)
+                            If f.PassesFilter(doc, ea2.Id) Then Return True
+                        End If
+                    Catch
+                    End Try
+                    Return False
+                End If
 
                 Dim vA As XYZ = p1 - p0
                 Dim vB As XYZ = q1 - q0

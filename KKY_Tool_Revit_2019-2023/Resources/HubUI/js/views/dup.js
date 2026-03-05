@@ -84,10 +84,22 @@ export function renderDup(root) {
       .dup-rulemodal{ position: fixed; inset: 0; z-index: 5000; display:none; }
       .dup-rulemodal.is-open{ display:block; }
       .dup-rulemodal .rm-backdrop{ position:absolute; inset:0; background: rgba(0,0,0,.22); }
-      .dup-rulemodal .rm-window{ position:absolute; top:74px; right:18px; width: 820px; max-width: calc(100vw - 36px); height: calc(100vh - 92px); max-height: calc(100vh - 92px);
-        border-radius: 18px; border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
-        background: color-mix(in oklab, var(--panel, #ffffff) 94%, #000000 6%);
-        box-shadow: 0 20px 60px rgba(0,0,0,.28); overflow:hidden; display:flex; flex-direction: column; }
+      .dup-rulemodal .rm-window{
+  position:absolute;
+  inset: 10px;
+  width: auto;
+  height: auto;
+  border-radius: 18px;
+  border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
+  background: color-mix(in oklab, var(--panel, #ffffff) 94%, #000000 6%);
+  box-shadow: 0 20px 60px rgba(0,0,0,.28);
+  overflow:hidden;
+  display:flex;
+  flex-direction: column;
+}
+@media (max-width: 980px){
+  .dup-rulemodal .rm-window{ inset: 8px; border-radius: 14px; }
+}
       .dup-rulemodal .rm-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding: 14px 16px; border-bottom: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
         background: linear-gradient(180deg, color-mix(in oklab, var(--panel, #ffffff) 92%, #000000 8%), color-mix(in oklab, var(--panel, #ffffff) 96%, #000000 4%)); }
       .dup-rulemodal .rm-title{ font-weight: 700; }
@@ -157,6 +169,95 @@ export function renderDup(root) {
 
       /* rulepanel alias */
       .dup-rulepanel{ display:none; }
+
+
+/* v28 rule window override: make settings window truly large (like large list viewer) */
+.dup-rulemodal{ z-index: 9000; }
+.dup-rulemodal .rm-window{
+  position: fixed !important;
+  inset: 22px !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  max-height: none !important;
+}
+@media (max-width: 980px){
+  .dup-rulemodal .rm-window{ inset: 10px !important; }
+}
+.dup-rulemodal .rm-head{ position: sticky; top: 0; z-index: 2; }
+.dup-rulemodal .rp-foot{ position: sticky; bottom: 0; z-index: 2; }
+
+/* make 'Exclude Families' stand out */
+.dup-rulemodal .rp-sec--fam{
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 38%, var(--border, #d7dbe7) 62%);
+  background: linear-gradient(180deg,
+    color-mix(in oklab, var(--accent, #4c6fff) 8%, var(--panel, #ffffff) 92%),
+    color-mix(in oklab, var(--panel, #ffffff) 94%, #000000 6%));
+}
+.dup-rulemodal .rp-sec--fam .rp-sec-title{ justify-content: space-between; }
+.dup-rulemodal .rp-sec--fam .rp-pill{
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 55%, var(--border, #d7dbe7) 45%);
+}
+.dup-rulemodal .fam-row{
+  display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+}
+.dup-rulemodal .fam-row .rp-select{ min-width: 320px; flex: 1 1 320px; }
+.dup-rulemodal .fam-chips{ display:flex; gap:8px; flex-wrap:wrap; margin-top: 10px; }
+.dup-rulemodal .fam-chip{
+  padding: 6px 10px; border-radius: 999px;
+  border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
+  background: color-mix(in oklab, var(--panel, #ffffff) 94%, #000000 6%);
+  cursor: pointer;
+}
+.dup-rulemodal .fam-chip:hover{
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 40%, var(--border, #d7dbe7) 60%);
+}
+
+
+
+/* v29 run/ui polish */
+.dup-row .row-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:nowrap;
+  min-width: 176px;
+}
+.dup-row .row-actions .table-action-btn{
+  white-space: nowrap;
+  min-width: 84px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  letter-spacing: 0;
+}
+
+/* group cards: slightly denser, better scanability */
+.dup-grp{
+  margin: 10px 0;
+  border-radius: 14px;
+}
+.grp-h{ padding: 10px 12px; }
+.grp-txt .grp-title{ font-size: 14px; }
+.grp-count{ font-size: 12px; opacity:.85; }
+.dup-subhead .cell{ padding-top: 8px; padding-bottom: 8px; }
+.dup-row .cell{ padding-top: 8px; padding-bottom: 8px; }
+
+/* settings window readability */
+.dup-rulemodal .rm-title{ font-size: 16px; }
+.dup-rulemodal .rm-sub{ font-size: 13px; opacity: .78; }
+.dup-rulemodal .rp-label{ font-size: 13px; opacity: .9; }
+.dup-rulemodal .rp-sec-title{ font-size: 14px; }
+.dup-rulemodal .rp-hint, .dup-rulemodal .rp-help{ font-size: 13px; opacity:.9; }
+.dup-rulemodal .rp-textarea{ min-height: 140px; }
+
+/* make primary button more visible */
+.dup-rulemodal .rp-btn--primary{
+  background: color-mix(in oklab, var(--accent, #4c6fff) 92%, #ffffff 8%);
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 74%, transparent 26%);
+}
+
 `;
     document.head.appendChild(st);
   }
@@ -324,7 +425,9 @@ onHost('dup:meta', (payload) => {
     }
 
     if (ev === 'dup:progress') {
-      handleExcelProgress(payload || {});
+      const p = payload || {};
+      if (p && p.kind === 'run') { handleRunProgress(p); return; }
+      handleExcelProgress(p);
       return;
     }
 
@@ -360,6 +463,7 @@ onHost('dup:meta', (payload) => {
 
   function onRun() {
     setLoading(true);
+    try { startRunProgress(modeTitle(mode)); } catch {}
     exportBtn.disabled = true;
     deleted.clear();
     rows = [];
@@ -380,7 +484,9 @@ onHost('dup:meta', (payload) => {
     activeModeForView = mode;
     const excludeKeywords = getExcludeKeywordList();
     const ruleConfig = loadRuleConfig();
-    post('dup:run', { mode, tolFeet, scopeMode, excludeKeywords, ruleConfig });
+    const famKw = Array.isArray(ruleConfig.excludeFamilies) ? ruleConfig.excludeFamilies : [];
+    const mergedExcludeKeywords = ensureListUnique([ ...(excludeKeywords||[]), ...famKw ]);
+    post('dup:run', { mode, tolFeet, scopeMode, excludeKeywords: mergedExcludeKeywords, ruleConfig });
   }
 
   function onExport() {
@@ -418,7 +524,81 @@ onHost('dup:meta', (payload) => {
     }
   }
 
-  function normalizeExcelPhase(phase) {
+  
+// ===== RUN progress (dup/clash scan) =====
+let runProgOn = false;
+let runProgStart = 0;
+let runProgTimer = null;
+let runProgLastPct = 0;
+
+function startRunProgress(modeLabel) {
+  runProgOn = true;
+  runProgStart = Date.now();
+  runProgLastPct = 0;
+  ProgressDialog.show(`${modeLabel} 검토`, '대상 준비 중…');
+  ProgressDialog.update(0, '대상 준비 중…', '');
+
+  if (runProgTimer) clearInterval(runProgTimer);
+  runProgTimer = setInterval(() => {
+    if (!runProgOn) return;
+    const sec = Math.floor((Date.now() - runProgStart) / 1000);
+    const subtitle = `진행 중… (${sec}s)`;
+    // percent is kept as last known value
+    ProgressDialog.update(runProgLastPct || 0, subtitle, '');
+  }, 500);
+}
+
+function stopRunProgress() {
+  runProgOn = false;
+  if (runProgTimer) { clearInterval(runProgTimer); runProgTimer = null; }
+  setTimeout(() => { try { ProgressDialog.hide(); } catch {} }, 180);
+}
+
+function handleRunProgress(p) {
+  if (!p) return;
+
+  const phase = String(p.phase || '').toUpperCase();
+  const pct = Math.max(0, Math.min(100, Number(p.percent ?? p.pct ?? runProgLastPct) || 0));
+  const cur = Number(p.current || 0) || 0;
+  const tot = Number(p.total || 0) || 0;
+
+  const labelMap = {
+    INIT: '시작',
+    PREP: '대상 준비',
+    COLLECT: '대상 수집',
+    CANDIDATE: '후보 생성',
+    CHECK: '정밀 판정',
+    GROUP: '그룹 구성',
+    DONE: '완료',
+    ERROR: '오류'
+  };
+
+  runProgLastPct = pct;
+
+  const base = labelMap[phase] || '진행';
+  const count = (tot > 0 ? ` (${Math.max(cur,0)}/${tot})` : (cur > 0 ? ` (${cur})` : ''));
+  const subtitle = `${base}${count}`;
+
+  const detail = String(p.message || p.detail || '');
+
+  if (!runProgOn) {
+    startRunProgress(modeTitle(activeModeForView));
+  }
+
+  ProgressDialog.update(pct, subtitle, detail);
+
+  if (phase === 'DONE') {
+    stopRunProgress();
+    return;
+  }
+  if (phase === 'ERROR') {
+    // keep dialog briefly to show error, then hide
+    setTimeout(() => stopRunProgress(), 900);
+    return;
+  }
+}
+
+function normalizeExcelPhase(phase) {
     return String(phase || '').trim().toUpperCase() || 'EXCEL_WRITE';
   }
 
@@ -754,7 +934,7 @@ function buildExcludeKeywordControl() {
 
 
 function defaultRuleConfig() {
-  return { version: 1, sets: [], pairs: [], excludeSetIds: [] };
+  return { version: 1, sets: [], pairs: [], excludeSetIds: [], excludeFamilies: [] };
 }
 
 function normalizeRuleConfig(cfg) {
@@ -763,7 +943,8 @@ function normalizeRuleConfig(cfg) {
     version: 1,
     sets: Array.isArray(c.sets) ? c.sets : [],
     pairs: Array.isArray(c.pairs) ? c.pairs : [],
-    excludeSetIds: Array.isArray(c.excludeSetIds) ? c.excludeSetIds : []
+    excludeSetIds: Array.isArray(c.excludeSetIds) ? c.excludeSetIds : [],
+    excludeFamilies: Array.isArray(c.excludeFamilies) ? c.excludeFamilies : []
   };
 
   // normalize sets
@@ -806,6 +987,9 @@ function normalizeRuleConfig(cfg) {
 
   // exclude ids
   out.excludeSetIds = out.excludeSetIds.map(String).filter(Boolean);
+
+  // exclude families
+  out.excludeFamilies = out.excludeFamilies.map(String).filter(Boolean);
 
   return out;
 }
@@ -911,7 +1095,7 @@ function buildRulePanel() {
           </div>
         </section>
 
-        <section class="rp-sec">
+        <section class="rp-sec rp-sec--fam">
           <div class="rp-sec-title">공통 설정 <span class="rp-pill">Global</span></div>
           <div class="rp-grid">
             <div class="rp-label">허용오차(mm)</div>
@@ -956,7 +1140,22 @@ function buildRulePanel() {
           <button class="rp-btn rp-btn--add" data-act="add-ex">+ Exclude Set 추가</button>
         </section>
 
-        <section class="rp-sec">
+        
+<section class="rp-sec">
+  <div class="rp-sec-title">Exclude Families <span class="rp-pill">Ignore</span></div>
+  <div class="rp-hint">목록에 등록된 패밀리(Family)는 간섭 검토에서 제외됩니다. (중첩/하위 구성요소도 함께 제외 목적)</div>
+  <div class="rp-grid">
+    <div class="rp-label">패밀리 선택</div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <select class="rp-select" data-bind="exFamPick" style="flex:1 1 auto;"></select>
+      <button class="rp-btn rp-btn--add" data-act="add-exfam">추가</button>
+    </div>
+  </div>
+  <div class="rp-exfam" data-slot="exfam"></div>
+  <div class="rp-hint">※ 목록은 “목록 새로고침” 또는 한번 검토 후(결과 기반) 채워집니다.</div>
+</section>
+
+<section class="rp-sec">
           <div class="rp-sec-title">Import / Export <span class="rp-pill">JSON</span></div>
           <textarea class="rp-textarea" data-bind="json"></textarea>
           <div class="rp-hint">Export는 현재 설정을 JSON으로 생성합니다. Import는 JSON을 붙여넣고 Import 버튼을 누르면 적용됩니다.</div>
@@ -973,6 +1172,7 @@ function buildRulePanel() {
   wrap.addEventListener('click', (e) => {
     const btn = e.target.closest('[data-act]');
     if (!btn) return;
+    e.preventDefault();
     const act = btn.dataset.act;
 
     if (act === 'close') { onOpenRulePanel(false); return; }
@@ -980,6 +1180,7 @@ function buildRulePanel() {
     if (act === 'add-set') { addSet(); renderRulePanel(); return; }
     if (act === 'add-pair') { addPair(); renderRulePanel(); return; }
     if (act === 'add-ex') { addExclude(); renderRulePanel(); return; }
+    if (act === 'add-exfam') { addExcludeFamilyFromPick(); renderRulePanel(); return; }
     if (act === 'export') { exportRuleJson(); return; }
     if (act === 'import') { importRuleJson(); return; }
     if (act === 'apply') { applyRulePanel(); return; }
@@ -1006,6 +1207,7 @@ function addSet() {
   ruleCfg.sets = Array.isArray(ruleCfg.sets) ? ruleCfg.sets : [];
   ruleCfg.sets.push({ id: ensureId('S'), name: 'Set', groups: [{ clauses: [{ field: 'category', op: 'contains', value: '', param: '' }] }] });
   saveRuleConfig(ruleCfg);
+  try { toast('Set가 추가되었습니다.', 'ok', 1200); } catch {}
 }
 
 function addPair() {
@@ -1015,6 +1217,7 @@ function addPair() {
   const b = (ruleCfg.sets[0]?.id) || '__ALL__';
   ruleCfg.pairs.push({ a, b, enabled: true });
   saveRuleConfig(ruleCfg);
+  try { toast('Pair가 추가되었습니다.', 'ok', 1200); } catch {}
 }
 
 function addExclude() {
@@ -1022,7 +1225,58 @@ function addExclude() {
   const a = (ruleCfg.sets[0]?.id) || '';
   if (a) ruleCfg.excludeSetIds.push(a);
   saveRuleConfig(ruleCfg);
+  try { toast('Exclude Set이 추가되었습니다.', 'ok', 1200); } catch {}
 }
+
+function ensureListUnique(arr) {
+  const out = [];
+  const seen = new Set();
+  (arr || []).forEach(v => {
+    const s = String(v || '').trim();
+    if (!s) return;
+    const k = s.toLowerCase();
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(s);
+  });
+  return out;
+}
+
+function getFamiliesFromMeta(meta) {
+  const m = meta || {};
+  const a = Array.isArray(m.modelFamilies) ? m.modelFamilies
+          : Array.isArray(m.familiesInModel) ? m.familiesInModel
+          : Array.isArray(m.families) ? m.families
+          : [];
+  return ensureListUnique(a).sort((x,y)=>x.localeCompare(y));
+}
+
+function getFamiliesFromRows() {
+  const a = ensureListUnique((rows || []).map(r => r.family || '').filter(Boolean));
+  return a.sort((x,y)=>x.localeCompare(y));
+}
+
+function addExcludeFamilyFromPick() {
+  ruleCfg = ruleCfg || {};
+  ruleCfg.excludeFamilies = Array.isArray(ruleCfg.excludeFamilies) ? ruleCfg.excludeFamilies : [];
+
+  const sel = rulePanelEl && rulePanelEl.querySelector('[data-bind="exFamPick"]');
+  const name = sel ? String(sel.value || '').trim() : '';
+  if (!name) { toast('추가할 패밀리를 선택하세요.', 'warn', 1800); return; }
+
+  ruleCfg.excludeFamilies = ensureListUnique([ ...ruleCfg.excludeFamilies, name ]);
+  saveRuleConfig(ruleCfg);
+  try { toast('패밀리 제외 목록에 추가되었습니다.', 'ok', 1400); } catch {}
+}
+
+function removeExcludeFamily(name) {
+  ruleCfg = ruleCfg || {};
+  const cur = Array.isArray(ruleCfg.excludeFamilies) ? ruleCfg.excludeFamilies : [];
+  const key = String(name || '').toLowerCase();
+  ruleCfg.excludeFamilies = cur.filter(x => String(x).toLowerCase() !== key);
+  saveRuleConfig(ruleCfg);
+}
+
 
 function exportRuleJson() {
   const ta = rulePanelEl.querySelector('[data-bind="json"]');
@@ -1093,6 +1347,10 @@ function renderRulePanel() {
 
   const meta = loadMeta();
   const params = Array.isArray(meta.parameters) ? meta.parameters : [];
+
+  const fams = getFamiliesFromMeta(meta);
+  const famFallback = fams.length ? fams : getFamiliesFromRows();
+
 
   // sets
   const setsSlot = rulePanelEl.querySelector('[data-slot="sets"]');
@@ -1261,6 +1519,58 @@ function renderRulePanel() {
       saveRuleConfig(ruleCfg);
     };
   }
+// exclude families
+const famPick = rulePanelEl.querySelector('[data-bind="exFamPick"]');
+if (famPick) {
+  famPick.innerHTML = '';
+  const list = famFallback || [];
+  if (!list.length) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = '목록이 없습니다 (목록 새로고침)';
+    famPick.append(opt);
+  } else {
+    const opt0 = document.createElement('option');
+    opt0.value = '';
+    opt0.textContent = '선택...';
+    famPick.append(opt0);
+    list.forEach(n => {
+      const o = document.createElement('option');
+      o.value = n;
+      o.textContent = n;
+      famPick.append(o);
+    });
+  }
+}
+
+const exFamSlot = rulePanelEl.querySelector('[data-slot="exfam"]');
+if (exFamSlot) {
+  exFamSlot.innerHTML = '';
+  const cur = Array.isArray(ruleCfg.excludeFamilies) ? ruleCfg.excludeFamilies : [];
+  if (!cur.length) {
+    const t = document.createElement('div');
+    t.className = 'rp-hint';
+    t.textContent = '등록된 제외 패밀리가 없습니다.';
+    exFamSlot.append(t);
+  } else {
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.flexWrap = 'wrap';
+    wrap.style.gap = '8px';
+    cur.forEach(n => {
+      const chip = document.createElement('span');
+      chip.className = 'control-chip is-active';
+      chip.style.cursor = 'pointer';
+      chip.title = '클릭: 제거';
+      chip.textContent = n;
+      chip.addEventListener('click', () => { removeExcludeFamily(n); renderRulePanel(); });
+      wrap.append(chip);
+    });
+    exFamSlot.append(wrap);
+  }
+}
+
+
 }
 
 function updateClause(si, gi, ci, next) {
