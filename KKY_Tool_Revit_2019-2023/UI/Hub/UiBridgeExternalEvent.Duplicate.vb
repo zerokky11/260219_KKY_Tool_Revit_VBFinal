@@ -30,6 +30,9 @@ Namespace UI.Hub
         ' 마지막 스캔 결과(엑셀 내보내기 및 UI 상태 동기화용)
         Private _lastRows As New List(Of DupRowDto)
 
+        ' 마지막 간섭 Pair 목록(클래시 쌍)
+        Private _lastPairs As New List(Of PairRowDto)
+
         ' 마지막 실행 모드 ("duplicate" | "clash")
         Private _lastMode As String = "duplicate"
 
@@ -94,6 +97,7 @@ Namespace UI.Hub
 
 
         Private Class DupRowDto
+            Public Property FileName As String
             Public Property ElementId As Integer
             Public Property Category As String
             Public Property Family As String
@@ -108,6 +112,23 @@ Namespace UI.Hub
 
             ' 상위호환: mode
             Public Property Mode As String
+
+
+            Private Class PairRowDto
+                Public Property FileName As String
+                Public Property GroupKey As String
+
+                Public Property AId As String
+                Public Property ACategory As String
+                Public Property AFamily As String
+                Public Property AType As String
+
+                Public Property BId As String
+                Public Property BCategory As String
+                Public Property BFamily As String
+                Public Property BType As String
+            End Class
+
         End Class
 
 #End Region
@@ -123,6 +144,63 @@ Namespace UI.Hub
             End If
 
             Dim doc As Document = uiDoc.Document
+
+            ' ✅ metaOnly: 모델에 존재하는 패밀리/시스템(카테고리) 목록만 반환 (검토 수행 안 함)
+            Try
+                Dim moObj = GetProp(payload, "metaOnly")
+                Dim metaOnly As Boolean = False
+                If moObj IsNot Nothing Then
+                    If TypeOf moObj Is Boolean Then
+                        metaOnly = CBool(moObj)
+                    Else
+                        Dim s = Convert.ToString(moObj)
+                        If Not String.IsNullOrWhiteSpace(s) Then
+                            metaOnly = (s.Trim().ToLowerInvariant() = "true" OrElse s.Trim() = "1")
+                        End If
+                    End If
+                End If
+
+                If metaOnly Then
+                    Dim fams As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+                    Dim cats As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+                    Try
+                        Dim col As New FilteredElementCollector(doc)
+                        col.WhereElementIsNotElementType()
+
+                        For Each e As Element In col
+                            If e Is Nothing Then Continue For
+
+                            ' 카테고리(시스템 분류)
+                            Try
+                                If e.Category IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(e.Category.Name) Then
+                                    cats.Add(e.Category.Name)
+                                End If
+                            Catch
+                            End Try
+
+                            ' 모델 패밀리(로드된 패밀리 인스턴스)
+                            Try
+                                Dim fi As FamilyInstance = TryCast(e, FamilyInstance)
+                                If fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing AndAlso fi.Symbol.Family IsNot Nothing Then
+                                    Dim fn As String = fi.Symbol.Family.Name
+                                    If Not String.IsNullOrWhiteSpace(fn) Then fams.Add(fn)
+                                End If
+                            Catch
+                            End Try
+                        Next
+                    Catch
+                    End Try
+
+                    Dim famList = fams.OrderBy(Function(x) x).ToList()
+                    Dim catList = cats.OrderBy(Function(x) x).ToList()
+
+                    SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList})
+                    Return
+                End If
+
+            Catch
+            End Try
             SendRunProgress("INIT", 0, "검토 준비 중…", 0, 0, True)
             ' 중첩 Shared 컴포넌트 목록 캐시
             _nestedSharedIds = New HashSet(Of Integer)()
@@ -242,6 +320,13 @@ Namespace UI.Hub
             End Try
 
             _lastMode = mode
+            If Not String.Equals(mode, "clash", StringComparison.OrdinalIgnoreCase) Then
+                _lastPairs = New List(Of PairRowDto)()
+                Try
+                    SendToWeb("dup:pairs", New Object() {})
+                Catch
+                End Try
+            End If
 
             If mode = "clash" Then
                 RunSelfClash(doc, tolFeet, scopeIds, excludeIds, excludeKeywords)
@@ -381,7 +466,8 @@ Namespace UI.Hub
                     ToArray()
 
                     rows.Add(New DupRowDto With {
-                    .ElementId = id.IntegerValue,
+                    .FileName = doc.Title,
+.ElementId = id.IntegerValue,
                     .Category = catName,
                     .Family = famName,
                     .Type = typName,
@@ -394,6 +480,11 @@ Namespace UI.Hub
                 })
                 Next
             Next
+            _lastPairs = New List(Of PairRowDto)()
+            Try
+                SendToWeb("dup:pairs", New Object() {})
+            Catch
+            End Try
 
             _lastRows = rows
 
@@ -456,6 +547,7 @@ Namespace UI.Hub
             ' ✅ shape 기반(솔리드) 교차 판정용
             Dim optGeom As New Options() With {.ComputeReferences = False, .IncludeNonVisibleObjects = False, .DetailLevel = ViewDetailLevel.Fine}
             Dim solidCache As New Dictionary(Of Integer, List(Of Solid))()
+            Dim connCache As New Dictionary(Of Integer, HashSet(Of Integer))()
             For Each e As Element In collector
                 total += 1
                 If total Mod 300 = 0 Then
@@ -601,7 +693,7 @@ Namespace UI.Hub
 
                         If Not BBoxIntersects(a, b) Then Continue For
 
-                        If IsRealClash(doc, a, b, tolFeet, optGeom, solidCache) Then
+                        If IsRealClash(doc, a, b, tolFeet, optGeom, solidCache, connCache) Then
                             AddEdge(adjacency, aId, bId)
                         End If
                     Next
@@ -630,7 +722,7 @@ Namespace UI.Hub
 
                         If Not BBoxIntersects(a, b) Then Continue For
 
-                        If IsRealClash(doc, a, b, tolFeet, optGeom, solidCache) Then
+                        If IsRealClash(doc, a, b, tolFeet, optGeom, solidCache, connCache) Then
                             AddEdge(adjacency, aId, bId)
                         End If
                     Next
@@ -670,10 +762,22 @@ Namespace UI.Hub
 
             groups = groups.OrderByDescending(Function(g) g.Count).ToList()
 
+            ' 3.5) Pair 목록(누가 누구와 간섭인지) 생성 - (A,B)와 (B,A) 중복 제거
+            Dim nodeToGroupKey As New Dictionary(Of Integer, String)()
+            Dim pairs As New List(Of PairRowDto)()
+            Dim pairSeenUi As New HashSet(Of Long)()
+
+
+
             Dim groupIndex As Integer = 0
             For Each g In groups
                 groupIndex += 1
                 Dim gk As String = "C" & groupIndex.ToString("D4")
+
+                For Each nid As Integer In g
+                    If Not nodeToGroupKey.ContainsKey(nid) Then nodeToGroupKey(nid) = gk
+                Next
+
 
                 For Each id As Integer In g
                     Dim ci As ClashInfo = Nothing
@@ -690,7 +794,8 @@ Namespace UI.Hub
                     End If
 
                     rows.Add(New DupRowDto With {
-                    .ElementId = id,
+                    .FileName = doc.Title,
+.ElementId = id,
                     .Category = ci.Category,
                     .Family = ci.Family,
                     .Type = ci.TypeName,
@@ -703,6 +808,70 @@ Namespace UI.Hub
                 })
                 Next
             Next
+
+
+            ' Pair 목록 생성(adjacency 기반) - (A,B)/(B,A) 중복 제거
+            Try
+                For Each aId As Integer In adjacency.Keys
+                    Dim nb As HashSet(Of Integer) = Nothing
+                    If Not adjacency.TryGetValue(aId, nb) OrElse nb Is Nothing Then Continue For
+
+                    For Each bId As Integer In nb
+                        If aId = bId Then Continue For
+                        Dim key As Long = MakePairKey(aId, bId)
+                        If pairSeenUi.Contains(key) Then Continue For
+                        pairSeenUi.Add(key)
+
+                        Dim gk As String = ""
+                        If nodeToGroupKey.ContainsKey(aId) Then
+                            gk = nodeToGroupKey(aId)
+                        ElseIf nodeToGroupKey.ContainsKey(bId) Then
+                            gk = nodeToGroupKey(bId)
+                        End If
+
+                        Dim aInfo As ClashInfo = Nothing
+                        Dim bInfo As ClashInfo = Nothing
+                        If Not infos.TryGetValue(aId, aInfo) Then Continue For
+                        If Not infos.TryGetValue(bId, bInfo) Then Continue For
+
+                        pairs.Add(New PairRowDto With {
+                .FileName = doc.Title,
+                .GroupKey = gk,
+                .AId = aId.ToString(),
+                .ACategory = aInfo.Category,
+                .AFamily = aInfo.Family,
+                .AType = aInfo.TypeName,
+                .BId = bId.ToString(),
+                .BCategory = bInfo.Category,
+                .BFamily = bInfo.Family,
+                .BType = bInfo.TypeName
+            })
+                    Next
+                Next
+
+                _lastPairs = pairs
+
+                Dim wirePairs = pairs.Select(Function(p) New With {
+        .fileName = p.FileName,
+        .groupKey = p.GroupKey,
+        .aId = p.AId,
+        .aCategory = p.ACategory,
+        .aFamily = p.AFamily,
+        .aType = p.AType,
+        .bId = p.BId,
+        .bCategory = p.BCategory,
+        .bFamily = p.BFamily,
+        .bType = p.BType
+    }).ToList()
+
+                SendToWeb("dup:pairs", wirePairs)
+            Catch
+                _lastPairs = New List(Of PairRowDto)()
+                Try
+                    SendToWeb("dup:pairs", New Object() {})
+                Catch
+                End Try
+            End Try
 
             _lastRows = rows
 
@@ -787,6 +956,63 @@ Namespace UI.Hub
             End If
 
             Dim doc As Document = uiDoc.Document
+
+            ' ✅ metaOnly: 모델에 존재하는 패밀리/시스템(카테고리) 목록만 반환 (검토 수행 안 함)
+            Try
+                Dim moObj = GetProp(payload, "metaOnly")
+                Dim metaOnly As Boolean = False
+                If moObj IsNot Nothing Then
+                    If TypeOf moObj Is Boolean Then
+                        metaOnly = CBool(moObj)
+                    Else
+                        Dim s = Convert.ToString(moObj)
+                        If Not String.IsNullOrWhiteSpace(s) Then
+                            metaOnly = (s.Trim().ToLowerInvariant() = "true" OrElse s.Trim() = "1")
+                        End If
+                    End If
+                End If
+
+                If metaOnly Then
+                    Dim fams As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+                    Dim cats As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+                    Try
+                        Dim col As New FilteredElementCollector(doc)
+                        col.WhereElementIsNotElementType()
+
+                        For Each e As Element In col
+                            If e Is Nothing Then Continue For
+
+                            ' 카테고리(시스템 분류)
+                            Try
+                                If e.Category IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(e.Category.Name) Then
+                                    cats.Add(e.Category.Name)
+                                End If
+                            Catch
+                            End Try
+
+                            ' 모델 패밀리(로드된 패밀리 인스턴스)
+                            Try
+                                Dim fi As FamilyInstance = TryCast(e, FamilyInstance)
+                                If fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing AndAlso fi.Symbol.Family IsNot Nothing Then
+                                    Dim fn As String = fi.Symbol.Family.Name
+                                    If Not String.IsNullOrWhiteSpace(fn) Then fams.Add(fn)
+                                End If
+                            Catch
+                            End Try
+                        Next
+                    Catch
+                    End Try
+
+                    Dim famList = fams.OrderBy(Function(x) x).ToList()
+                    Dim catList = cats.OrderBy(Function(x) x).ToList()
+
+                    SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList})
+                    Return
+                End If
+
+            Catch
+            End Try
 
             Dim ids As List(Of Integer) = ExtractIds(payload)
             If ids Is Nothing OrElse ids.Count = 0 Then
@@ -923,7 +1149,24 @@ Namespace UI.Hub
                                           "Self Clash (Refined)",
                                           "Duplicates (Refined)")
 
-                Exports.DuplicateExport.Save(outPath, _lastRows.Cast(Of Object)(), doAutoFit, "dup:progress", sheetTitle)
+
+                Dim rvtFile As String = ""
+                Try
+                    If app.ActiveUIDocument IsNot Nothing AndAlso app.ActiveUIDocument.Document IsNot Nothing Then
+                        rvtFile = app.ActiveUIDocument.Document.Title
+                    End If
+                Catch
+                End Try
+
+                If String.Equals(_lastMode, "clash", StringComparison.OrdinalIgnoreCase) AndAlso _lastPairs IsNot Nothing AndAlso _lastPairs.Count > 0 Then
+                    Exports.DuplicateExport.ExportPairs(outPath, _lastPairs.Cast(Of Object)(), doAutoFit, "dup:progress", sheetTitle)
+                Else
+                    ' FileName 컬럼(A열) 채움
+                    For Each r In _lastRows
+                        If r IsNot Nothing Then r.FileName = rvtFile
+                    Next
+                    Exports.DuplicateExport.Save(outPath, _lastRows.Cast(Of Object)(), doAutoFit, "dup:progress", sheetTitle)
+                End If
 
                 SendToWeb("dup:exported", New With {.path = outPath, .ok = True, .token = token})
             Catch ioEx As IOException
@@ -1251,7 +1494,7 @@ Namespace UI.Hub
             Return True
         End Function
 
-        Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashInfo, tolFeet As Double, opt As Options, solidCache As Dictionary(Of Integer, List(Of Solid))) As Boolean
+        Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashInfo, tolFeet As Double, opt As Options, solidCache As Dictionary(Of Integer, List(Of Solid)), connCache As Dictionary(Of Integer, HashSet(Of Integer))) As Boolean
             ' ✅ 완전 중복은 간섭에서 제외
             If IsExactBBoxDuplicate(a, b, tolFeet) Then Return False
 
@@ -1787,6 +2030,168 @@ Namespace UI.Hub
             Next
 
             Return False
+        End Function
+
+
+        ' ===== 의도된 연결/조인 간섭 제외 =====
+        Private Shared Function IsIntentionallyConnectedOrJoined(doc As Document,
+                                                        aId As Integer,
+                                                        bId As Integer,
+                                                        connCache As Dictionary(Of Integer, HashSet(Of Integer))) As Boolean
+            If doc Is Nothing Then Return False
+            If aId = bId Then Return True
+
+            Dim ea As Element = Nothing
+            Dim eb As Element = Nothing
+            Try
+                ea = doc.GetElement(New ElementId(aId))
+                eb = doc.GetElement(New ElementId(bId))
+            Catch
+            End Try
+            If ea Is Nothing OrElse eb Is Nothing Then Return False
+
+            ' 1) Host / SuperComponent 관계(한 몸으로 움직이는 구성요소)
+            Try
+                Dim fa As FamilyInstance = TryCast(ea, FamilyInstance)
+                If fa IsNot Nothing Then
+                    Try
+                        If fa.Host IsNot Nothing AndAlso fa.Host.Id.IntegerValue = bId Then Return True
+                    Catch
+                    End Try
+                    Try
+                        If fa.SuperComponent IsNot Nothing AndAlso fa.SuperComponent.Id.IntegerValue = bId Then Return True
+                    Catch
+                    End Try
+                End If
+            Catch
+            End Try
+
+            Try
+                Dim fb As FamilyInstance = TryCast(eb, FamilyInstance)
+                If fb IsNot Nothing Then
+                    Try
+                        If fb.Host IsNot Nothing AndAlso fb.Host.Id.IntegerValue = aId Then Return True
+                    Catch
+                    End Try
+                    Try
+                        If fb.SuperComponent IsNot Nothing AndAlso fb.SuperComponent.Id.IntegerValue = aId Then Return True
+                    Catch
+                    End Try
+                End If
+            Catch
+            End Try
+
+            ' 2) JoinGeometry(의도된 결합)면 간섭 제외
+            Try
+                If JoinGeometryUtils.AreElementsJoined(doc, ea, eb) Then Return True
+            Catch
+            End Try
+
+            ' 3) MEP 커넥터 연결(직접 연결 또는 공통 피팅/조인트 연결)
+            Dim sa As HashSet(Of Integer) = GetOrBuildConnOwnerSet(doc, aId, connCache)
+            Dim sb As HashSet(Of Integer) = GetOrBuildConnOwnerSet(doc, bId, connCache)
+
+            If sa IsNot Nothing Then
+                If sa.Contains(bId) Then Return True
+            End If
+            If sb IsNot Nothing Then
+                If sb.Contains(aId) Then Return True
+            End If
+
+            If sa IsNot Nothing AndAlso sb IsNot Nothing AndAlso sa.Count > 0 AndAlso sb.Count > 0 Then
+                For Each x As Integer In sa
+                    If x = aId OrElse x = bId Then Continue For
+                    If sb.Contains(x) Then
+                        ' 예) 두 배관이 같은 Tap/피팅(공통 Owner)에 연결 → 정상 분기/연결로 간주
+                        Return True
+                    End If
+                Next
+            End If
+
+            Return False
+        End Function
+
+        Private Shared Function GetOrBuildConnOwnerSet(doc As Document,
+                                              id As Integer,
+                                              connCache As Dictionary(Of Integer, HashSet(Of Integer))) As HashSet(Of Integer)
+            If connCache Is Nothing Then Return Nothing
+
+            Dim s As HashSet(Of Integer) = Nothing
+            If connCache.TryGetValue(id, s) Then Return s
+
+            s = New HashSet(Of Integer)()
+
+            Try
+                Dim e As Element = doc.GetElement(New ElementId(id))
+                If e Is Nothing Then
+                    connCache(id) = s
+                    Return s
+                End If
+
+                Dim cm As ConnectorManager = GetConnectorManagerSafe(e)
+                If cm IsNot Nothing Then
+                    Try
+                        Dim conns = cm.Connectors
+                        If conns IsNot Nothing Then
+                            For Each c As Connector In conns
+                                If c Is Nothing Then Continue For
+                                Try
+                                    If c.ConnectorType = ConnectorType.Logical Then Continue For
+                                Catch
+                                End Try
+
+                                Try
+                                    Dim refs = c.AllRefs
+                                    If refs Is Nothing Then Continue For
+                                    For Each rc As Connector In refs
+                                        If rc Is Nothing Then Continue For
+                                        Try
+                                            Dim o As Element = rc.Owner
+                                            If o Is Nothing Then Continue For
+                                            s.Add(o.Id.IntegerValue)
+                                        Catch
+                                        End Try
+                                    Next
+                                Catch
+                                End Try
+                            Next
+                        End If
+                    Catch
+                    End Try
+                End If
+            Catch
+            End Try
+
+            connCache(id) = s
+            Return s
+        End Function
+
+        Private Shared Function GetConnectorManagerSafe(e As Element) As ConnectorManager
+            If e Is Nothing Then Return Nothing
+
+            Try
+                Dim mc As MEPCurve = TryCast(e, MEPCurve)
+                If mc IsNot Nothing Then
+                    Try
+                        Return mc.ConnectorManager
+                    Catch
+                    End Try
+                End If
+            Catch
+            End Try
+
+            Try
+                Dim fi As FamilyInstance = TryCast(e, FamilyInstance)
+                If fi IsNot Nothing AndAlso fi.MEPModel IsNot Nothing Then
+                    Try
+                        Return fi.MEPModel.ConnectorManager
+                    Catch
+                    End Try
+                End If
+            Catch
+            End Try
+
+            Return Nothing
         End Function
 
         Private Shared Function SafeCategoryName(e As Element, cache As Dictionary(Of Integer, String)) As String

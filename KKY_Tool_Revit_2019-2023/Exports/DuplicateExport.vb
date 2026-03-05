@@ -5,6 +5,8 @@ Imports KKY_Tool_Revit.Infrastructure
 Namespace Exports
 
     Public Class DupRowDto
+        Public Property FileName As String
+
         Public Property Id As String
         Public Property Category As String
         Public Property Family As String
@@ -14,6 +16,22 @@ Namespace Exports
         ' 상위호환: 그룹키(Host가 만들어 내려줌)
         Public Property GroupKey As String
     End Class
+
+Public Class PairRowDto
+    Public Property FileName As String
+    Public Property GroupKey As String
+
+    Public Property AId As String
+    Public Property ACategory As String
+    Public Property AFamily As String
+    Public Property AType As String
+
+    Public Property BId As String
+    Public Property BCategory As String
+    Public Property BFamily As String
+    Public Property BType As String
+End Class
+
 
     Public Module DuplicateExport
 
@@ -48,12 +66,104 @@ Namespace Exports
             ExcelCore.SaveStyledSimple(outPath, title, dt, "Group", doAutoFit, progressChannel)
         End Sub
 
-        Private Function MapRows(rows As System.Collections.IEnumerable) As System.Collections.Generic.List(Of DupRowDto)
+        
+
+' ===== Pair Export (Self Clash pairs) =====
+Public Function SavePairs(pairs As System.Collections.IEnumerable,
+                          Optional doAutoFit As Boolean = False,
+                          Optional progressChannel As String = Nothing,
+                          Optional reportTitle As String = Nothing) As String
+    Dim mapped = MapPairs(pairs)
+    Dim dt = BuildPairTable(mapped)
+    Dim title = If(String.IsNullOrWhiteSpace(reportTitle), "Self Clash Pairs", reportTitle)
+    Return ExcelCore.PickAndSaveXlsx(title, dt, "ClashPairs.xlsx", doAutoFit, progressChannel)
+End Function
+
+Public Sub ExportPairs(outPath As String,
+                       pairs As System.Collections.IEnumerable,
+                       Optional doAutoFit As Boolean = False,
+                       Optional progressChannel As String = Nothing,
+                       Optional reportTitle As String = Nothing)
+    Dim mapped = MapPairs(pairs)
+    Dim dt = BuildPairTable(mapped)
+    Dim title = If(String.IsNullOrWhiteSpace(reportTitle), "Self Clash Pairs", reportTitle)
+    ExcelCore.SaveStyledSimple(outPath, title, dt, "Group", doAutoFit, progressChannel)
+End Sub
+
+Private Function MapPairs(pairs As System.Collections.IEnumerable) As System.Collections.Generic.List(Of PairRowDto)
+    Dim list As New System.Collections.Generic.List(Of PairRowDto)
+    If pairs Is Nothing Then Return list
+
+    For Each o In pairs
+        Dim it As New PairRowDto()
+        it.FileName = ReadProp(o, "FileName", "File", "Rvt", "Doc")
+        it.GroupKey = ReadProp(o, "GroupKey", "groupKey", "Group", "group")
+
+        it.AId = ReadProp(o, "AId", "aId", "IdA", "A_ID")
+        it.ACategory = ReadProp(o, "ACategory", "aCategory", "CategoryA")
+        it.AFamily = ReadProp(o, "AFamily", "aFamily", "FamilyA")
+        it.AType = ReadProp(o, "AType", "aType", "TypeA")
+
+        it.BId = ReadProp(o, "BId", "bId", "IdB", "B_ID")
+        it.BCategory = ReadProp(o, "BCategory", "bCategory", "CategoryB")
+        it.BFamily = ReadProp(o, "BFamily", "bFamily", "FamilyB")
+        it.BType = ReadProp(o, "BType", "bType", "TypeB")
+
+        list.Add(it)
+    Next
+
+    Return list
+End Function
+
+Private Function BuildPairTable(pairs As System.Collections.Generic.List(Of PairRowDto)) As DataTable
+    Dim dt As New DataTable("pairs")
+    dt.Columns.Add("File")
+    dt.Columns.Add("Group")
+
+    dt.Columns.Add("A_ID")
+    dt.Columns.Add("A_Category")
+    dt.Columns.Add("A_Family")
+    dt.Columns.Add("A_Type")
+
+    dt.Columns.Add("B_ID")
+    dt.Columns.Add("B_Category")
+    dt.Columns.Add("B_Family")
+    dt.Columns.Add("B_Type")
+
+    If pairs IsNot Nothing AndAlso pairs.Count > 0 Then
+        For Each p In pairs
+            Dim dr = dt.NewRow()
+            dr("File") = Nz(p.FileName)
+            dr("Group") = Nz(p.GroupKey)
+
+            dr("A_ID") = Nz(p.AId)
+            dr("A_Category") = Nz(p.ACategory)
+            dr("A_Family") = Nz(p.AFamily)
+            dr("A_Type") = Nz(p.AType)
+
+            dr("B_ID") = Nz(p.BId)
+            dr("B_Category") = Nz(p.BCategory)
+            dr("B_Family") = Nz(p.BFamily)
+            dr("B_Type") = Nz(p.BType)
+
+            dt.Rows.Add(dr)
+        Next
+    Else
+        Dim dr = dt.NewRow()
+        dr(0) = "오류가 없습니다."
+        dt.Rows.Add(dr)
+    End If
+
+    Return dt
+End Function
+
+Private Function MapRows(rows As System.Collections.IEnumerable) As System.Collections.Generic.List(Of DupRowDto)
             Dim list As New System.Collections.Generic.List(Of DupRowDto)
             If rows Is Nothing Then Return list
 
             For Each o In rows
                 Dim it As New DupRowDto()
+                it.FileName = ReadProp(o, "FileName", "File", "Rvt", "Doc")
                 it.Id = ReadProp(o, "Id", "ID", "ElementId", "ElementID", "elementId")
                 it.Category = ReadProp(o, "Category", "category")
                 it.Family = ReadProp(o, "Family", "family")
@@ -70,6 +180,7 @@ Namespace Exports
 
         Private Function BuildSimpleTable(rows As System.Collections.Generic.List(Of DupRowDto)) As DataTable
             Dim dt As New DataTable("simple")
+            dt.Columns.Add("File")
             dt.Columns.Add("Group")
             dt.Columns.Add("ID")
             dt.Columns.Add("Category")
@@ -89,6 +200,7 @@ Namespace Exports
                 For Each r In groupList(i)
                     Dim famOut As String = If(String.IsNullOrWhiteSpace(r.Family), If(String.IsNullOrWhiteSpace(r.Category), "", r.Category & " Type"), r.Family)
                     Dim dr = dt.NewRow()
+                    dr("File") = Nz(r.FileName)
                     dr("Group") = gName
                     dr("ID") = Nz(r.Id)
                     dr("Category") = Nz(r.Category)

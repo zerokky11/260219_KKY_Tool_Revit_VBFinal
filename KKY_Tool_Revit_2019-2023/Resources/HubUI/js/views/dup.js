@@ -215,49 +215,249 @@ export function renderDup(root) {
 
 
 
-/* v29 run/ui polish */
+/* v33 results table layout: prevent vertical '작업', keep buttons horizontal, reduce awkward whitespace */
+.dup-grp{
+  max-width: 1120px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.dup-subhead, .dup-row{
+  display: grid;
+  grid-template-columns: 220px 110px 150px minmax(220px, 1fr) minmax(240px, 1.2fr) 72px;
+  align-items: center;
+  column-gap: 12px;
+}
+@media (max-width: 1180px){
+  .dup-subhead, .dup-row{
+    grid-template-columns: 200px 104px 140px minmax(180px, 1fr) minmax(200px, 1fr) 64px;
+  }
+}
+@media (max-width: 980px){
+  .dup-subhead, .dup-row{
+    grid-template-columns: 180px 96px 128px minmax(160px, 1fr) minmax(160px, 1fr) 56px;
+    column-gap: 10px;
+  }
+}
+
+.dup-subhead .cell, .dup-row .cell{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+.dup-subhead .cell{
+  font-weight: 650;
+}
+
+/* 작업(액션) 컬럼 */
 .dup-row .row-actions{
-  display:flex;
-  align-items:center;
-  justify-content:flex-end;
-  gap:8px;
-  flex-wrap:nowrap;
-  min-width: 176px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: nowrap;
 }
 .dup-row .row-actions .table-action-btn{
   white-space: nowrap;
-  min-width: 84px;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  letter-spacing: 0;
+  min-width: 88px;
+  height: 32px;
+  line-height: 32px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* group cards: slightly denser, better scanability */
-.dup-grp{
-  margin: 10px 0;
+/* 연결 컬럼: 가운데 정렬 + 불필요한 빈 공간 감소 */
+.dup-subhead .cell.conn, .dup-row .cell.conn{
+  justify-self: center;
+  text-align: center;
+}
+
+
+/* v33 conn fallback: if no .conn class is present, assume last column is connection */
+.dup-subhead > .cell:last-child, .dup-row > .cell:last-child{
+  justify-self: center;
+  text-align: center;
+}
+
+      /* 카드 내부 패딩/행 높이 살짝 정리 */
+.dup-subhead .cell{ padding-top: 10px; padding-bottom: 10px; }
+.dup-row .cell{ padding-top: 10px; padding-bottom: 10px; }
+
+
+
+/* v38 exclude lists */
+.exfam-wrap{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+@media (max-width: 980px){
+  .exfam-wrap{ grid-template-columns: 1fr; }
+}
+.exfam-col{
+  border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
   border-radius: 14px;
+  background: color-mix(in oklab, var(--panel, #ffffff) 96%, #000000 4%);
+  overflow:hidden;
 }
-.grp-h{ padding: 10px 12px; }
-.grp-txt .grp-title{ font-size: 14px; }
-.grp-count{ font-size: 12px; opacity:.85; }
-.dup-subhead .cell{ padding-top: 8px; padding-bottom: 8px; }
-.dup-row .cell{ padding-top: 8px; padding-bottom: 8px; }
+.exfam-title{
+  padding: 10px 12px;
+  font-weight: 700;
+  border-bottom: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
+  background: color-mix(in oklab, var(--panel, #ffffff) 90%, var(--accent, #4c6fff) 10%);
+}
+.exfam-list{ padding: 10px 12px; max-height: 260px; overflow:auto; }
+.exfam-item{ display:flex; gap:10px; align-items:center; padding: 6px 4px; border-radius: 10px; }
+.exfam-item:hover{ background: color-mix(in oklab, var(--accent, #4c6fff) 8%, transparent 92%); }
+.exfam-text{ flex:1; min-width:0; overflow:hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exfam-empty{ opacity:.75; font-size: 12px; padding: 6px 0; }
+.exfam-actions{ display:flex; gap:8px; margin-top: 10px; justify-content:flex-end; }
 
-/* settings window readability */
-.dup-rulemodal .rm-title{ font-size: 16px; }
-.dup-rulemodal .rm-sub{ font-size: 13px; opacity: .78; }
-.dup-rulemodal .rp-label{ font-size: 13px; opacity: .9; }
-.dup-rulemodal .rp-sec-title{ font-size: 14px; }
-.dup-rulemodal .rp-hint, .dup-rulemodal .rp-help{ font-size: 13px; opacity:.9; }
-.dup-rulemodal .rp-textarea{ min-height: 140px; }
+/* section background tints (lighter than gray) */
+.dup-rulemodal .rp-sec--help{ background: color-mix(in oklab, var(--panel, #ffffff) 92%, var(--accent, #4c6fff) 8%); }
+.dup-rulemodal .rp-sec--global{ background: color-mix(in oklab, var(--panel, #ffffff) 92%, #34c759 8%); }
+.dup-rulemodal .rp-sec--fam{ background: color-mix(in oklab, var(--panel, #ffffff) 92%, #ff9f0a 8%); }
+.dup-rulemodal .rp-sec--sets{ background: color-mix(in oklab, var(--panel, #ffffff) 92%, #af52de 8%); }
+.dup-rulemodal .rp-sec--pairs{ background: color-mix(in oklab, var(--panel, #ffffff) 92%, #ff3b30 6%); }
+.dup-rulemodal .rp-sec--ex{ background: color-mix(in oklab, var(--panel, #ffffff) 92%, #ff3b30 8%); }
+.dup-rulemodal .rp-sec--io{ background: color-mix(in oklab, var(--panel, #ffffff) 92%, #8e8e93 8%); }
 
-/* make primary button more visible */
+
+
+/* v39 settings contrast: make modal background distinct from sections */
+.dup-rulemodal .rm-window{
+  background: color-mix(in oklab, var(--panel, #ffffff) 98%, #000000 2%);
+}
+.dup-rulemodal .rm-body{
+  background: color-mix(in oklab, var(--panel, #ffffff) 94%, #000000 6%);
+}
+.dup-rulemodal .rp-sec{
+  border-color: color-mix(in oklab, var(--border, #d7dbe7) 80%, transparent 20%);
+  background: color-mix(in oklab, var(--panel, #ffffff) 99%, transparent 1%);
+  box-shadow: 0 1px 0 rgba(0,0,0,.04);
+}
+
+/* Exclude picker modal shares same styling */
+.dup-expicker{ position: fixed; inset: 0; z-index: 9100; display:none; }
+.dup-expicker.is-open{ display:block; }
+.dup-expicker .rm-backdrop{ position:absolute; inset:0; background: rgba(0,0,0,.22); }
+.dup-expicker .rm-window{ position: fixed; inset: 22px; border-radius: 18px; overflow:hidden;
+  border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 70%, transparent 30%);
+  background: color-mix(in oklab, var(--panel, #ffffff) 98%, #000000 2%);
+  box-shadow: 0 20px 60px rgba(0,0,0,.28);
+  display:flex; flex-direction:column;
+}
+.dup-expicker .rm-head{ position: sticky; top: 0; z-index:2; }
+.dup-expicker .rm-body{ padding: 14px 16px 64px 16px; overflow:auto; background: color-mix(in oklab, var(--panel, #ffffff) 94%, #000000 6%); }
+
+
+
+/* v40 button contrast */
+.rp-btn{
+  background: color-mix(in oklab, var(--panel, #ffffff) 96%, #000000 4%);
+  border-color: color-mix(in oklab, var(--border, #d7dbe7) 78%, transparent 22%);
+  color: inherit;
+}
+.rp-btn--ghost{
+  background: transparent;
+}
+.rp-btn--add{
+  background: color-mix(in oklab, var(--panel, #ffffff) 92%, var(--accent, #4c6fff) 8%);
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 34%, var(--border, #d7dbe7) 66%);
+}
+.rp-btn--primary{
+  color: #fff;
+}
+
+/* pair table */
+.pair-table{
+  margin: 10px 12px 14px 12px;
+  border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 75%, transparent 25%);
+  border-radius: 14px;
+  overflow:hidden;
+  background: color-mix(in oklab, var(--panel, #ffffff) 98%, #000000 2%);
+}
+.pair-subhead, .pair-row{
+  display:grid;
+  grid-template-columns: 120px minmax(220px, 1fr) 120px minmax(220px, 1fr);
+  column-gap: 12px;
+  align-items:center;
+}
+.pair-subhead{
+  background: color-mix(in oklab, var(--accent, #4c6fff) 8%, var(--panel, #ffffff) 92%);
+  font-weight: 650;
+}
+.pair-subhead .cell, .pair-row .cell{
+  padding: 10px 12px;
+  min-width:0;
+  overflow:hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pair-row{
+  border-top: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 75%, transparent 25%);
+}
+
+
+
+/* v41 header stabilize: prevent actions jumping between duplicate/clash */
+.feature-header.dup-toolbar{
+  display:flex;
+  align-items:flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: nowrap;
+}
+.feature-heading{ min-width: 0; }
+.feature-sub{
+  min-height: 40px; /* keep same height across modes */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.feature-actions{
+  flex: 0 0 auto;
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  flex-wrap: nowrap;
+}
+
+/* v41 stronger button contrast in settings window */
+.dup-rulemodal .rp-btn{
+  background: color-mix(in oklab, var(--panel, #ffffff) 99%, #000000 1%) !important;
+  border-color: color-mix(in oklab, var(--border, #d7dbe7) 82%, transparent 18%) !important;
+}
+.dup-rulemodal .rp-btn--add{
+  background: color-mix(in oklab, var(--accent, #4c6fff) 14%, var(--panel, #ffffff) 86%) !important;
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 42%, var(--border, #d7dbe7) 58%) !important;
+}
 .dup-rulemodal .rp-btn--primary{
-  background: color-mix(in oklab, var(--accent, #4c6fff) 92%, #ffffff 8%);
-  border-color: color-mix(in oklab, var(--accent, #4c6fff) 74%, transparent 26%);
+  background: color-mix(in oklab, var(--accent, #4c6fff) 92%, #000000 8%) !important;
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 78%, transparent 22%) !important;
+}
+.dup-rulemodal .rp-btn--ghost{
+  background: transparent !important;
 }
 
+
+
+.dup-expicker .rp-btn{
+  background: color-mix(in oklab, var(--panel, #ffffff) 99%, #000000 1%) !important;
+  border-color: color-mix(in oklab, var(--border, #d7dbe7) 82%, transparent 18%) !important;
+}
+.dup-expicker .rp-btn--primary{
+  background: color-mix(in oklab, var(--accent, #4c6fff) 92%, #000000 8%) !important;
+  border-color: color-mix(in oklab, var(--accent, #4c6fff) 78%, transparent 22%) !important;
+  color:#fff;
+}
 `;
     document.head.appendChild(st);
   }
@@ -303,6 +503,10 @@ settingsBtn.title = '규칙/Set 창 열기/닫기';
 
   rulePanelEl = buildRulePanel();
   page.append(rulePanelEl);
+
+  // Exclude picker(별도 창)
+  try { exPickerEl = buildExcludePicker(); page.append(exPickerEl); } catch {}
+
   try { syncSettingsBtn(); } catch {}
 
 
@@ -328,6 +532,9 @@ settingsBtn.title = '규칙/Set 창 열기/닫기';
 
   // 결과 요약(Host)
   let lastResult = null;
+  let lastPairs = [];
+  let metaModelFamilies = [];
+  let metaSystemCategories = [];
   let lastTruncToastKey = '';
 
   applyHeadingByMode(mode);
@@ -424,10 +631,23 @@ onHost('dup:meta', (payload) => {
       return;
     }
 
-    if (ev === 'dup:progress') {
+    if (ev === 'dup:pairs') {
+      lastPairs = Array.isArray(payload) ? payload : [];
+      try { paintGroups(); } catch {}
+      try { refreshSummary(); } catch {}
+      return;
+    }
+
+    if (ev === 'dup:meta') {
       const p = payload || {};
-      if (p && p.kind === 'run') { handleRunProgress(p); return; }
-      handleExcelProgress(p);
+      metaModelFamilies = Array.isArray(p.modelFamilies) ? p.modelFamilies : [];
+      metaSystemCategories = Array.isArray(p.systemCategories) ? p.systemCategories : [];
+      try { renderRulePanel(); } catch {}
+      return;
+    }
+
+    if (ev === 'dup:progress') {
+      handleExcelProgress(payload || {});
       return;
     }
 
@@ -463,7 +683,6 @@ onHost('dup:meta', (payload) => {
 
   function onRun() {
     setLoading(true);
-    try { startRunProgress(modeTitle(mode)); } catch {}
     exportBtn.disabled = true;
     deleted.clear();
     rows = [];
@@ -524,81 +743,7 @@ onHost('dup:meta', (payload) => {
     }
   }
 
-  
-// ===== RUN progress (dup/clash scan) =====
-let runProgOn = false;
-let runProgStart = 0;
-let runProgTimer = null;
-let runProgLastPct = 0;
-
-function startRunProgress(modeLabel) {
-  runProgOn = true;
-  runProgStart = Date.now();
-  runProgLastPct = 0;
-  ProgressDialog.show(`${modeLabel} 검토`, '대상 준비 중…');
-  ProgressDialog.update(0, '대상 준비 중…', '');
-
-  if (runProgTimer) clearInterval(runProgTimer);
-  runProgTimer = setInterval(() => {
-    if (!runProgOn) return;
-    const sec = Math.floor((Date.now() - runProgStart) / 1000);
-    const subtitle = `진행 중… (${sec}s)`;
-    // percent is kept as last known value
-    ProgressDialog.update(runProgLastPct || 0, subtitle, '');
-  }, 500);
-}
-
-function stopRunProgress() {
-  runProgOn = false;
-  if (runProgTimer) { clearInterval(runProgTimer); runProgTimer = null; }
-  setTimeout(() => { try { ProgressDialog.hide(); } catch {} }, 180);
-}
-
-function handleRunProgress(p) {
-  if (!p) return;
-
-  const phase = String(p.phase || '').toUpperCase();
-  const pct = Math.max(0, Math.min(100, Number(p.percent ?? p.pct ?? runProgLastPct) || 0));
-  const cur = Number(p.current || 0) || 0;
-  const tot = Number(p.total || 0) || 0;
-
-  const labelMap = {
-    INIT: '시작',
-    PREP: '대상 준비',
-    COLLECT: '대상 수집',
-    CANDIDATE: '후보 생성',
-    CHECK: '정밀 판정',
-    GROUP: '그룹 구성',
-    DONE: '완료',
-    ERROR: '오류'
-  };
-
-  runProgLastPct = pct;
-
-  const base = labelMap[phase] || '진행';
-  const count = (tot > 0 ? ` (${Math.max(cur,0)}/${tot})` : (cur > 0 ? ` (${cur})` : ''));
-  const subtitle = `${base}${count}`;
-
-  const detail = String(p.message || p.detail || '');
-
-  if (!runProgOn) {
-    startRunProgress(modeTitle(activeModeForView));
-  }
-
-  ProgressDialog.update(pct, subtitle, detail);
-
-  if (phase === 'DONE') {
-    stopRunProgress();
-    return;
-  }
-  if (phase === 'ERROR') {
-    // keep dialog briefly to show error, then hide
-    setTimeout(() => stopRunProgress(), 900);
-    return;
-  }
-}
-
-function normalizeExcelPhase(phase) {
+  function normalizeExcelPhase(phase) {
     return String(phase || '').trim().toUpperCase() || 'EXCEL_WRITE';
   }
 
@@ -687,7 +832,80 @@ function normalizeExcelPhase(phase) {
     refreshSummary();
   }
 
-  function paintGroups() {
+  
+
+function paintPairGroups() {
+  const pairs = Array.isArray(lastPairs) ? lastPairs : [];
+  if (!pairs.length) return;
+
+  // group by groupKey
+  const map = new Map();
+  for (const p of pairs) {
+    const gk = String(p.groupKey || 'C0000');
+    if (!map.has(gk)) map.set(gk, []);
+    map.get(gk).push(p);
+  }
+
+  const sorted = Array.from(map.entries()).sort((a,b)=>b[1].length-a[1].length);
+
+  for (let gi=0; gi<sorted.length; gi++) {
+    const [gk, items] = sorted[gi];
+
+    const card = div('dup-grp');
+    const head = div('grp-h');
+
+    const left = div('grp-txt');
+    const title = div('grp-title');
+    title.textContent = `간섭 그룹 ${gi+1} (${gk})`;
+
+    const count = div('grp-count');
+    count.textContent = `${items.length} 쌍`;
+
+    left.append(title, count);
+    head.append(left);
+    card.append(head);
+
+    const table = div('pair-table');
+    const sub = div('pair-subhead');
+    sub.innerHTML = `
+      <div class="cell">A ID</div>
+      <div class="cell">A 정보</div>
+      <div class="cell">B ID</div>
+      <div class="cell">B 정보</div>
+    `;
+    table.append(sub);
+
+    for (const p of items) {
+      const row = div('pair-row');
+
+      const aBtn = document.createElement('button');
+      aBtn.className = 'table-action-btn';
+      aBtn.textContent = String(p.aId || '—');
+      aBtn.onclick = () => post(EV_SELECT_REQ, { id: Number(p.aId) });
+
+      const bBtn = document.createElement('button');
+      bBtn.className = 'table-action-btn';
+      bBtn.textContent = String(p.bId || '—');
+      bBtn.onclick = () => post(EV_SELECT_REQ, { id: Number(p.bId) });
+
+      const aInfo = `${p.aCategory || ''} · ${p.aFamily || ''}${p.aType ? ' : ' + p.aType : ''}`.trim();
+      const bInfo = `${p.bCategory || ''} · ${p.bFamily || ''}${p.bType ? ' : ' + p.bType : ''}`.trim();
+
+      row.append(
+        cell(aBtn, 'cell'),
+        cell(aInfo || '—', 'cell'),
+        cell(bBtn, 'cell'),
+        cell(bInfo || '—', 'cell'),
+      );
+      table.append(row);
+    }
+
+    card.append(table);
+    out.append(card);
+  }
+}
+
+function paintGroups() {
     body.innerHTML = '';
 
     if (lastResult?.truncated) {
@@ -908,6 +1126,8 @@ function buildScopeBar() {
   sync();
   wrap.append(bAll, bScope, bExcl);
   return wrap;
+
+  try { paintGroups(); } catch {}
 }
 
 function buildExcludeKeywordControl() {
@@ -934,9 +1154,8 @@ function buildExcludeKeywordControl() {
 
 
 function defaultRuleConfig() {
-  return { version: 1, sets: [], pairs: [], excludeSetIds: [], excludeFamilies: [] };
+  return { version: 1, sets: [], pairs: [], excludeSetIds: [], excludeFamilies: [], excludeCategories: [] };
 }
-
 function normalizeRuleConfig(cfg) {
   const c = cfg && typeof cfg === 'object' ? cfg : {};
   const out = {
@@ -944,7 +1163,8 @@ function normalizeRuleConfig(cfg) {
     sets: Array.isArray(c.sets) ? c.sets : [],
     pairs: Array.isArray(c.pairs) ? c.pairs : [],
     excludeSetIds: Array.isArray(c.excludeSetIds) ? c.excludeSetIds : [],
-    excludeFamilies: Array.isArray(c.excludeFamilies) ? c.excludeFamilies : []
+    excludeFamilies: Array.isArray(c.excludeFamilies) ? c.excludeFamilies : [],
+    excludeCategories: Array.isArray(c.excludeCategories) ? c.excludeCategories : []
   };
 
   // normalize sets
@@ -1061,6 +1281,142 @@ function syncSettingsBtn() {
   } catch {}
 }
 
+function buildExcludePicker() {
+  const wrap = div('dup-expicker');
+  wrap.innerHTML = `
+    <div class="rm-backdrop" data-act="close"></div>
+    <div class="rm-window" role="dialog" aria-label="Exclude 목록 선택">
+      <div class="rm-head">
+        <div class="rm-head-left">
+          <div class="rm-title">Exclude 목록 선택</div>
+          <div class="rm-sub">모델에 존재하는 패밀리 / 시스템 카테고리를 검색해서 제외 목록으로 추가합니다.</div>
+        </div>
+        <div class="rm-actions">
+          <button class="rp-btn rp-btn--ghost" data-act="refresh">목록 새로고침</button>
+          <button class="rp-btn" data-act="close">닫기</button>
+        </div>
+      </div>
+
+      <div class="rm-body">
+        <div class="rp-sec rp-sec--global">
+          <div class="rp-sec-title">검색 <span class="rp-pill">Filter</span></div>
+          <div class="rp-grid">
+            <div class="rp-label">키워드</div>
+            <input class="rp-input" type="text" placeholder="검색…" data-bind="q"/>
+          </div>
+          <div class="rp-hint">체크 후 아래 “적용”을 누르면 설정창의 Exclude 목록에 반영됩니다.</div>
+        </div>
+
+        <div class="exfam-wrap">
+          <div class="exfam-col">
+            <div class="exfam-title">모델 패밀리</div>
+            <div class="exfam-list" data-slot="fam"></div>
+          </div>
+          <div class="exfam-col">
+            <div class="exfam-title">시스템(카테고리)</div>
+            <div class="exfam-list" data-slot="cat"></div>
+          </div>
+        </div>
+
+        <div class="exfam-actions">
+          <button class="rp-btn rp-btn--ghost" data-act="all">전체 체크</button>
+          <button class="rp-btn rp-btn--ghost" data-act="none">전체 해제</button>
+        </div>
+
+        <div class="rp-foot" style="margin-top:12px;">
+          <button class="rp-btn rp-btn--primary" data-act="apply">적용</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  wrap.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act]');
+    if (!btn) return;
+    e.preventDefault();
+    const act = btn.dataset.act;
+
+    if (act === 'close') { closeExcludePicker(); return; }
+    if (act === 'refresh') { post('dup:run', { mode, metaOnly: true }); return; }
+    if (act === 'all') { for (const cb of wrap.querySelectorAll('input[type="checkbox"]')) cb.checked = true; return; }
+    if (act === 'none') { for (const cb of wrap.querySelectorAll('input[type="checkbox"]')) cb.checked = false; return; }
+    if (act === 'apply') { applyExcludePicker(); return; }
+  });
+
+  wrap.addEventListener('input', (e) => {
+    if (e.target && e.target.matches('[data-bind="q"]')) renderExcludePicker();
+  });
+
+  return wrap;
+}
+
+let exPickerEl = null;
+let exPickerOpen = false;
+
+function openExcludePicker() {
+  exPickerOpen = true;
+  if (exPickerEl) exPickerEl.classList.add('is-open');
+  // auto refresh if empty
+  if ((!metaModelFamilies || !metaModelFamilies.length) && (!metaSystemCategories || !metaSystemCategories.length)) {
+    post('dup:run', { mode, metaOnly: true });
+  }
+  renderExcludePicker();
+}
+
+function closeExcludePicker() {
+  exPickerOpen = false;
+  if (exPickerEl) exPickerEl.classList.remove('is-open');
+}
+
+function renderExcludePicker() {
+  if (!exPickerEl) return;
+  const cfg = loadRuleConfig();
+  const famSel = new Set((cfg.excludeFamilies || []).map(String));
+  const catSel = new Set((cfg.excludeCategories || []).map(String));
+
+  const qEl = exPickerEl.querySelector('[data-bind="q"]');
+  const q = (qEl ? qEl.value : '').trim().toLowerCase();
+
+  const famBox = exPickerEl.querySelector('[data-slot="fam"]');
+  const catBox = exPickerEl.querySelector('[data-slot="cat"]');
+  if (!famBox || !catBox) return;
+
+  const fams = (Array.isArray(metaModelFamilies) ? metaModelFamilies : []).map(String).filter(Boolean);
+  const cats = (Array.isArray(metaSystemCategories) ? metaSystemCategories : []).map(String).filter(Boolean);
+
+  function mk(kind, val, checked) {
+    const safe = String(val).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return `<label class="exfam-item"><input type="checkbox" data-kind="${kind}" value="${safe}" ${checked?'checked':''}/><span class="exfam-text">${safe}</span></label>`;
+  }
+
+  const famHtml = [];
+  for (const f of fams) {
+    if (q && !f.toLowerCase().includes(q)) continue;
+    famHtml.push(mk('fam', f, famSel.has(f)));
+  }
+  famBox.innerHTML = famHtml.length ? famHtml.join('') : `<div class="exfam-empty">목록이 비어있습니다. “목록 새로고침”을 누르세요.</div>`;
+
+  const catHtml = [];
+  for (const c of cats) {
+    if (q && !c.toLowerCase().includes(q)) continue;
+    catHtml.push(mk('cat', c, catSel.has(c)));
+  }
+  catBox.innerHTML = catHtml.length ? catHtml.join('') : `<div class="exfam-empty">목록이 비어있습니다. “목록 새로고침”을 누르세요.</div>`;
+}
+
+function applyExcludePicker() {
+  if (!exPickerEl) return;
+  const cfg = loadRuleConfig();
+
+  cfg.excludeFamilies = Array.from(exPickerEl.querySelectorAll('input[data-kind="fam"]:checked')).map(x => x.value);
+  cfg.excludeCategories = Array.from(exPickerEl.querySelectorAll('input[data-kind="cat"]:checked')).map(x => x.value);
+
+  saveRuleConfig(cfg);
+  try { toast('Exclude 목록이 적용되었습니다.', 'ok', 1200); } catch {}
+  renderRulePanel();
+  closeExcludePicker();
+}
+
 function buildRulePanel() {
   const wrap = div('dup-rulemodal');
   wrap.innerHTML = `
@@ -1141,18 +1497,26 @@ function buildRulePanel() {
         </section>
 
         
-<section class="rp-sec">
-  <div class="rp-sec-title">Exclude Families <span class="rp-pill">Ignore</span></div>
-  <div class="rp-hint">목록에 등록된 패밀리(Family)는 간섭 검토에서 제외됩니다. (중첩/하위 구성요소도 함께 제외 목적)</div>
-  <div class="rp-grid">
-    <div class="rp-label">패밀리 선택</div>
-    <div style="display:flex; gap:8px; align-items:center;">
-      <select class="rp-select" data-bind="exFamPick" style="flex:1 1 auto;"></select>
-      <button class="rp-btn rp-btn--add" data-act="add-exfam">추가</button>
-    </div>
+<section class="rp-sec rp-sec--fam">
+  <div class="rp-sec-title">Exclude 목록 <span class="rp-pill">Ignore</span></div>
+  <div class="rp-hint">
+    체크된 항목(패밀리/시스템 카테고리)에 속한 요소는 간섭 검토에서 제외됩니다. (하위/중첩 포함 목적)
   </div>
-  <div class="rp-exfam" data-slot="exfam"></div>
-  <div class="rp-hint">※ 목록은 “목록 새로고침” 또는 한번 검토 후(결과 기반) 채워집니다.</div>
+
+  <div class="rp-grid">
+    <div class="rp-label">선택</div>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+      <button class="rp-btn rp-btn--add" data-act="open-expicker">패밀리/시스템 목록 열기…</button>
+      <button class="rp-btn rp-btn--ghost" data-act="refresh">목록 새로고침</button>
+    </div>
+
+    <div class="rp-label">현재 제외</div>
+    <div class="rp-hint" data-slot="exsum">—</div>
+  </div>
+
+  <div class="rp-hint" style="margin-top:8px;">
+    ※ 목록이 비어있으면 “목록 새로고침”을 누르세요. 목록이 매우 길면 별도 창에서 검색/체크 후 적용합니다.
+  </div>
 </section>
 
 <section class="rp-sec">
@@ -1180,7 +1544,8 @@ function buildRulePanel() {
     if (act === 'add-set') { addSet(); renderRulePanel(); return; }
     if (act === 'add-pair') { addPair(); renderRulePanel(); return; }
     if (act === 'add-ex') { addExclude(); renderRulePanel(); return; }
-    if (act === 'add-exfam') { addExcludeFamilyFromPick(); renderRulePanel(); return; }
+    if (act === 'open-expicker') { openExcludePicker(); return; }
+    if (act === 'add-exfam') { /* deprecated */ addExcludeFamilyFromPick(); renderRulePanel(); return; }
     if (act === 'export') { exportRuleJson(); return; }
     if (act === 'import') { importRuleJson(); return; }
     if (act === 'apply') { applyRulePanel(); return; }
@@ -1221,6 +1586,10 @@ function addPair() {
 }
 
 function addExclude() {
+  if (!ruleCfg.sets || !ruleCfg.sets.length) {
+    try { toast('Set이 없습니다. 먼저 Set을 추가하세요.', 'warn', 1600); } catch {}
+    return;
+  }
   ruleCfg.excludeSetIds = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
   const a = (ruleCfg.sets[0]?.id) || '';
   if (a) ruleCfg.excludeSetIds.push(a);
@@ -1794,4 +2163,41 @@ function updateClause(si, gi, ci, next) {
     const feet = mm / 304.8;
     return Math.max(0.000001, Number.isFinite(feet) ? feet : (DUP_TOL_MM_DEFAULT / 304.8));
   }
+
+// Exclude 목록(체크박스) 렌더링
+// exclude summary
+const exSum = rulePanelEl.querySelector('[data-slot="exsum"]');
+if (exSum) {
+  const f = Array.isArray(ruleCfg.excludeFamilies) ? ruleCfg.excludeFamilies : [];
+  const c = Array.isArray(ruleCfg.excludeCategories) ? ruleCfg.excludeCategories : [];
+  exSum.textContent = `패밀리 ${f.length}개, 시스템 ${c.length}개`;
+}
+
+
+// Exclude Sets UI
+try {
+  const exBox = rulePanelEl.querySelector('[data-slot="ex"]');
+  if (exBox) {
+    const sets = Array.isArray(ruleCfg.sets) ? ruleCfg.sets : [];
+    const ex = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
+    const rows = [];
+
+    for (let i=0; i<ex.length; i++) {
+      const sel = ex[i];
+      const opts = sets.map((s, idx) => `<option value="${idx}" ${idx===sel?'selected':''}>Set ${idx+1}${s && s.name ? ' - ' + s.name : ''}</option>`).join('');
+      rows.push(`
+        <div class="rp-card">
+          <div class="rp-card-head">
+            <div style="font-weight:650;">Exclude Set ${i+1}</div>
+            <button class="rp-x" data-act="rm-ex" data-i="${i}" title="삭제">×</button>
+          </div>
+          <select class="rp-select" data-act="chg-ex" data-i="${i}">${opts}</select>
+        </div>
+      `);
+    }
+
+    exBox.innerHTML = rows.length ? rows.join('') : `<div class="rp-hint">등록된 Exclude Set이 없습니다.</div>`;
+  }
+} catch {}
+
 }
