@@ -144,6 +144,63 @@ End Class
         End If
 
         Dim doc As Document = uiDoc.Document
+
+' ✅ metaOnly: 모델에 존재하는 패밀리/시스템(카테고리) 목록만 반환 (검토 수행 안 함)
+Try
+    Dim moObj = GetProp(payload, "metaOnly")
+    Dim metaOnly As Boolean = False
+    If moObj IsNot Nothing Then
+        If TypeOf moObj Is Boolean Then
+            metaOnly = CBool(moObj)
+        Else
+            Dim s = Convert.ToString(moObj)
+            If Not String.IsNullOrWhiteSpace(s) Then
+                metaOnly = (s.Trim().ToLowerInvariant() = "true" OrElse s.Trim() = "1")
+            End If
+        End If
+    End If
+
+    If metaOnly Then
+        Dim fams As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+        Dim cats As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+        Try
+            Dim col As New FilteredElementCollector(doc)
+            col.WhereElementIsNotElementType()
+
+            For Each e As Element In col
+                If e Is Nothing Then Continue For
+
+                ' 카테고리(시스템 분류)
+                Try
+                    If e.Category IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(e.Category.Name) Then
+                        cats.Add(e.Category.Name)
+                    End If
+                Catch
+                End Try
+
+                ' 모델 패밀리(로드된 패밀리 인스턴스)
+                Try
+                    Dim fi As FamilyInstance = TryCast(e, FamilyInstance)
+                    If fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing AndAlso fi.Symbol.Family IsNot Nothing Then
+                        Dim fn As String = fi.Symbol.Family.Name
+                        If Not String.IsNullOrWhiteSpace(fn) Then fams.Add(fn)
+                    End If
+                Catch
+                End Try
+            Next
+        Catch
+        End Try
+
+        Dim famList = fams.OrderBy(Function(x) x).ToList()
+        Dim catList = cats.OrderBy(Function(x) x).ToList()
+
+        SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList})
+        Return
+    End If
+
+Catch
+End Try
         SendRunProgress("INIT", 0, "검토 준비 중…", 0, 0, True)
 ' 중첩 Shared 컴포넌트 목록 캐시
         _nestedSharedIds = New HashSet(Of Integer)()
@@ -899,6 +956,63 @@ End Try
         End If
 
         Dim doc As Document = uiDoc.Document
+
+' ✅ metaOnly: 모델에 존재하는 패밀리/시스템(카테고리) 목록만 반환 (검토 수행 안 함)
+Try
+    Dim moObj = GetProp(payload, "metaOnly")
+    Dim metaOnly As Boolean = False
+    If moObj IsNot Nothing Then
+        If TypeOf moObj Is Boolean Then
+            metaOnly = CBool(moObj)
+        Else
+            Dim s = Convert.ToString(moObj)
+            If Not String.IsNullOrWhiteSpace(s) Then
+                metaOnly = (s.Trim().ToLowerInvariant() = "true" OrElse s.Trim() = "1")
+            End If
+        End If
+    End If
+
+    If metaOnly Then
+        Dim fams As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+        Dim cats As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+        Try
+            Dim col As New FilteredElementCollector(doc)
+            col.WhereElementIsNotElementType()
+
+            For Each e As Element In col
+                If e Is Nothing Then Continue For
+
+                ' 카테고리(시스템 분류)
+                Try
+                    If e.Category IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(e.Category.Name) Then
+                        cats.Add(e.Category.Name)
+                    End If
+                Catch
+                End Try
+
+                ' 모델 패밀리(로드된 패밀리 인스턴스)
+                Try
+                    Dim fi As FamilyInstance = TryCast(e, FamilyInstance)
+                    If fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing AndAlso fi.Symbol.Family IsNot Nothing Then
+                        Dim fn As String = fi.Symbol.Family.Name
+                        If Not String.IsNullOrWhiteSpace(fn) Then fams.Add(fn)
+                    End If
+                Catch
+                End Try
+            Next
+        Catch
+        End Try
+
+        Dim famList = fams.OrderBy(Function(x) x).ToList()
+        Dim catList = cats.OrderBy(Function(x) x).ToList()
+
+        SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList})
+        Return
+    End If
+
+Catch
+End Try
 
         Dim ids As List(Of Integer) = ExtractIds(payload)
         If ids Is Nothing OrElse ids.Count = 0 Then

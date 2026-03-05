@@ -504,8 +504,15 @@ settingsBtn.title = '규칙/Set 창 열기/닫기';
   rulePanelEl = buildRulePanel();
   page.append(rulePanelEl);
 
-  // Exclude picker(별도 창)
-  try { exPickerEl = buildExcludePicker(); page.append(exPickerEl); } catch {}
+  // Exclude picker(별도 창) - viewport 고정 표시를 위해 body에 1회만 append
+  try {
+    exPickerEl = document.getElementById('dup-expicker');
+    if (!exPickerEl) {
+      exPickerEl = buildExcludePicker();
+      exPickerEl.id = 'dup-expicker';
+      document.body.appendChild(exPickerEl);
+    }
+  } catch {}
 
   try { syncSettingsBtn(); } catch {}
 
@@ -566,14 +573,7 @@ onHost('dup:meta', (payload) => {
     toast(message || '호스트 오류가 발생했습니다.', 'err', 3200);
   });
 
-  
-// 간섭 Pair(쌍) 수신
-onHost('dup:pairs', (payload) => {
-  lastPairs = Array.isArray(payload) ? payload : [];
-  try { paintGroups(); } catch {}
-});
-
-onHost('host:warn', ({ message }) => {
+  onHost('host:warn', ({ message }) => {
     setLoading(false);
     if (message) toast(message, 'warn', 3600);
   });
@@ -1361,15 +1361,24 @@ let exPickerEl = null;
 let exPickerOpen = false;
 
 function openExcludePicker() {
-  if (!exPickerEl) {
-    try {
+  exPickerOpen = true;
+
+  try {
+    if (!exPickerEl) exPickerEl = document.getElementById('dup-expicker');
+    if (!exPickerEl) {
       exPickerEl = buildExcludePicker();
-      (document.body || document.documentElement).append(exPickerEl);
-    } catch {}
+      exPickerEl.id = 'dup-expicker';
+      document.body.appendChild(exPickerEl);
+    } else if (!document.body.contains(exPickerEl)) {
+      document.body.appendChild(exPickerEl);
+    }
+  } catch {}
+
+  if (exPickerEl) {
+    exPickerEl.classList.add('is-open');
+    exPickerEl.style.display = 'block';
   }
 
-  exPickerOpen = true;
-  if (exPickerEl) { exPickerEl.classList.add('is-open'); exPickerEl.style.display = 'block'; }
   // auto refresh if empty
   if ((!metaModelFamilies || !metaModelFamilies.length) && (!metaSystemCategories || !metaSystemCategories.length)) {
     post('dup:run', { mode, metaOnly: true });
@@ -1379,7 +1388,10 @@ function openExcludePicker() {
 
 function closeExcludePicker() {
   exPickerOpen = false;
-  if (exPickerEl) { exPickerEl.classList.remove('is-open'); exPickerEl.style.display = 'none'; }
+  if (exPickerEl) {
+    exPickerEl.classList.remove('is-open');
+    exPickerEl.style.display = 'none';
+  }
 }
 
 function renderExcludePicker() {
@@ -1600,22 +1612,13 @@ function addPair() {
 }
 
 function addExclude() {
-  ruleCfg = ruleCfg || { sets: [], pairs: [], excludeSetIds: [] };
-  ruleCfg.sets = Array.isArray(ruleCfg.sets) ? ruleCfg.sets : [];
-  ruleCfg.excludeSetIds = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
-
-  if (!ruleCfg.sets.length) {
+  if (!ruleCfg.sets || !ruleCfg.sets.length) {
     try { toast('Set이 없습니다. 먼저 Set을 추가하세요.', 'warn', 1600); } catch {}
     return;
   }
-
-  const firstId = String(ruleCfg.sets[0]?.id || '').trim();
-  if (!firstId) {
-    try { toast('Set ID를 찾을 수 없습니다. Set을 다시 추가해 주세요.', 'warn', 2000); } catch {}
-    return;
-  }
-
-  ruleCfg.excludeSetIds.push(firstId);
+  ruleCfg.excludeSetIds = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
+  const a = (ruleCfg.sets[0]?.id) || '';
+  if (a) ruleCfg.excludeSetIds.push(a);
   saveRuleConfig(ruleCfg);
   try { toast('Exclude Set이 추가되었습니다.', 'ok', 1200); } catch {}
 }
@@ -2207,12 +2210,7 @@ try {
 
     for (let i=0; i<ex.length; i++) {
       const sel = ex[i];
-      const opts = sets.map((s, idx) => {
-        const sid = String((s && s.id) ? s.id : idx);
-        const nm = (s && s.name) ? (' - ' + s.name) : '';
-        const on = String(sel) === sid ? 'selected' : '';
-        return `<option value="${sid}" ${on}>Set ${idx+1}${nm}</option>`;
-      }).join('');
+      const opts = sets.map((s, idx) => `<option value="${idx}" ${idx===sel?'selected':''}>Set ${idx+1}${s && s.name ? ' - ' + s.name : ''}</option>`).join('');
       rows.push(`
         <div class="rp-card">
           <div class="rp-card-head">
