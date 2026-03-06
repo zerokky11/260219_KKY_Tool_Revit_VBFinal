@@ -1762,27 +1762,6 @@ Private Shared Function PackCell(ix As Integer, iy As Integer) As Long
             Return True
         Catch
         End Try
-
-        
-' 2-hop 연결 보강: A가 연결된 중간 요소(X)가 B에 직접/간접 연결이면 정상 연결로 간주
-Try
-    If sa IsNot Nothing AndAlso sa.Count > 0 Then
-        For Each x As Integer In sa
-            If x = aId OrElse x = bId Then Continue For
-            Dim sx As HashSet(Of Integer) = GetOrBuildConnOwnerSet(doc, x, connCache)
-            If sx Is Nothing OrElse sx.Count = 0 Then Continue For
-            If sx.Contains(bId) Then Return True
-            If sb IsNot Nothing AndAlso sb.Count > 0 Then
-                For Each y As Integer In sx
-                    If y = aId OrElse y = bId Then Continue For
-                    If sb.Contains(y) Then Return True
-                Next
-            End If
-        Next
-    End If
-Catch
-End Try
-
 Return False
     End Function
 
@@ -2158,6 +2137,30 @@ Private Shared Function IsIntentionallyConnectedOrJoined(doc As Document,
             End If
         Next
     End If
+
+' 2-hop 연결 보강: A가 연결된 중간 요소(X)가 B에 직접/간접 연결이면 정상 연결로 간주
+Try
+    If sa IsNot Nothing AndAlso sa.Count > 0 Then
+        For Each x As Integer In sa
+            If x = aId OrElse x = bId Then Continue For
+
+            Dim sx As HashSet(Of Integer) = GetOrBuildConnOwnerSet(doc, x, connCache)
+            If sx Is Nothing OrElse sx.Count = 0 Then Continue For
+
+            ' X가 B에 직접 연결
+            If sx.Contains(bId) Then Return True
+
+            ' X가 B가 연결된 공통 Owner를 공유
+            If sb IsNot Nothing AndAlso sb.Count > 0 Then
+                For Each y As Integer In sx
+                    If y = aId OrElse y = bId Then Continue For
+                    If sb.Contains(y) Then Return True
+                Next
+            End If
+        Next
+    End If
+Catch
+End Try
 
     Return False
 End Function
