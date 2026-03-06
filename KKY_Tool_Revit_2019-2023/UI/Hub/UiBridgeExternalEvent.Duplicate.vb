@@ -196,35 +196,21 @@ Try
         Dim catList = cats.OrderBy(Function(x) x).ToList()
 
         
-' 프로젝트(공유/프로젝트) 파라미터 목록
-Dim prm As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+Dim parms As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
 Try
-    Dim peCol As New FilteredElementCollector(doc)
-    peCol.OfClass(GetType(ParameterElement))
-    For Each pe As ParameterElement In peCol
+    Dim pcol As New FilteredElementCollector(doc)
+    pcol.OfClass(GetType(ParameterElement))
+    For Each pe As Element In pcol
+        Dim p As ParameterElement = TryCast(pe, ParameterElement)
+        If p Is Nothing Then Continue For
         Try
-            If pe IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(pe.Name) Then prm.Add(pe.Name)
+            If Not String.IsNullOrWhiteSpace(p.Name) Then parms.Add(p.Name)
         Catch
         End Try
     Next
 Catch
 End Try
-
-' ParameterBindings에도 있는 정의명 포함(버전/상태에 따라 ParameterElement가 부족할 수 있음)
-Try
-    Dim it As DefinitionBindingMapIterator = doc.ParameterBindings.ForwardIterator()
-    While it.MoveNext()
-        Try
-            Dim d As Definition = it.Key
-            If d IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(d.Name) Then prm.Add(d.Name)
-        Catch
-        End Try
-    End While
-Catch
-End Try
-
-Dim prmList = prm.OrderBy(Function(x) x).ToList()
-SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList, .parameters = prmList, .projectParameters = prmList})
+SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList, .parameters = parms.OrderBy(Function(x) x).ToList()})
         Return
     End If
 
@@ -1037,35 +1023,21 @@ Try
         Dim catList = cats.OrderBy(Function(x) x).ToList()
 
         
-' 프로젝트(공유/프로젝트) 파라미터 목록
-Dim prm As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+Dim parms As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
 Try
-    Dim peCol As New FilteredElementCollector(doc)
-    peCol.OfClass(GetType(ParameterElement))
-    For Each pe As ParameterElement In peCol
+    Dim pcol As New FilteredElementCollector(doc)
+    pcol.OfClass(GetType(ParameterElement))
+    For Each pe As Element In pcol
+        Dim p As ParameterElement = TryCast(pe, ParameterElement)
+        If p Is Nothing Then Continue For
         Try
-            If pe IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(pe.Name) Then prm.Add(pe.Name)
+            If Not String.IsNullOrWhiteSpace(p.Name) Then parms.Add(p.Name)
         Catch
         End Try
     Next
 Catch
 End Try
-
-' ParameterBindings에도 있는 정의명 포함(버전/상태에 따라 ParameterElement가 부족할 수 있음)
-Try
-    Dim it As DefinitionBindingMapIterator = doc.ParameterBindings.ForwardIterator()
-    While it.MoveNext()
-        Try
-            Dim d As Definition = it.Key
-            If d IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(d.Name) Then prm.Add(d.Name)
-        Catch
-        End Try
-    End While
-Catch
-End Try
-
-Dim prmList = prm.OrderBy(Function(x) x).ToList()
-SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList, .parameters = prmList, .projectParameters = prmList})
+SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList, .parameters = parms.OrderBy(Function(x) x).ToList()})
         Return
     End If
 
@@ -1791,7 +1763,27 @@ Private Shared Function PackCell(ix As Integer, iy As Integer) As Long
         Catch
         End Try
 
-        Return False
+        
+' 2-hop 연결 보강: A가 연결된 중간 요소(X)가 B에 직접/간접 연결이면 정상 연결로 간주
+Try
+    If sa IsNot Nothing AndAlso sa.Count > 0 Then
+        For Each x As Integer In sa
+            If x = aId OrElse x = bId Then Continue For
+            Dim sx As HashSet(Of Integer) = GetOrBuildConnOwnerSet(doc, x, connCache)
+            If sx Is Nothing OrElse sx.Count = 0 Then Continue For
+            If sx.Contains(bId) Then Return True
+            If sb IsNot Nothing AndAlso sb.Count > 0 Then
+                For Each y As Integer In sx
+                    If y = aId OrElse y = bId Then Continue For
+                    If sb.Contains(y) Then Return True
+                Next
+            End If
+        Next
+    End If
+Catch
+End Try
+
+Return False
     End Function
 
     Private Shared Function GetMEPSizeKey(e As Element) As String
@@ -2156,7 +2148,8 @@ Private Shared Function IsIntentionallyConnectedOrJoined(doc As Document,
         If sb.Contains(aId) Then Return True
     End If
 
-    If sa IsNot Nothing AndAlso sb IsNot Nothing AndAlso sa.Count > 0 AndAlso sb.Count > 0 Then
+    ' 1-hop 공통 Owner
+        If sa IsNot Nothing AndAlso sb IsNot Nothing AndAlso sa.Count > 0 AndAlso sb.Count > 0 Then
         For Each x As Integer In sa
             If x = aId OrElse x = bId Then Continue For
             If sb.Contains(x) Then
