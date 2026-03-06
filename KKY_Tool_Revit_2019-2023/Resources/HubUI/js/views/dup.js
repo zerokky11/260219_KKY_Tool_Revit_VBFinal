@@ -679,13 +679,13 @@ onHost('dup:meta', (payload) => {
     }
 
     if (ev === EV_DELETED_MULTI) {
-      (toIdArray(_co(_oget(payload,'ids'), _oget(payload,'id')))).forEach(id => deleted.add(id));
+      (toIdArray(_oget(payload,'id')s)).forEach(id => deleted.add(id));
       updateRowStates(); refreshSummary();
       return;
     }
 
     if (ev === EV_RESTORED_MULTI) {
-      (toIdArray(_co(_oget(payload,'ids'), _oget(payload,'id')))).forEach(id => deleted.delete(id));
+      (toIdArray(_oget(payload,'id')s)).forEach(id => deleted.delete(id));
       updateRowStates(); refreshSummary();
       return;
     }
