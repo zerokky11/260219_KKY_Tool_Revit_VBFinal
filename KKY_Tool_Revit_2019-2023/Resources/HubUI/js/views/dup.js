@@ -1,12 +1,11 @@
-// Resources/HubUI/js/views/dup.js
-import { clear, div, toast, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
-import { ProgressDialog } from '../core/progress.js';
-import { onHost, post } from '../core/bridge.js';
-
 function escapeHtml(s){
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// Resources/HubUI/js/views/dup.js
+import { clear, div, toast, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
+import { ProgressDialog } from '../core/progress.js';
+import { onHost, post } from '../core/bridge.js';
 
 // ===== v48: compatibility helpers (no optional chaining / nullish coalescing) =====
 function _oget(o, k) { return (o == null) ? undefined : o[k]; }
@@ -680,13 +679,13 @@ onHost('dup:meta', (payload) => {
     }
 
     if (ev === EV_DELETED_MULTI) {
-      (toIdArray(_oget(payload,'id')s)).forEach(id => deleted.add(id));
+      (toIdArray(_co(_oget(payload,'ids'), _oget(payload,'id')))).forEach(id => deleted.add(id));
       updateRowStates(); refreshSummary();
       return;
     }
 
     if (ev === EV_RESTORED_MULTI) {
-      (toIdArray(_oget(payload,'id')s)).forEach(id => deleted.delete(id));
+      (toIdArray(_co(_oget(payload,'ids'), _oget(payload,'id')))).forEach(id => deleted.delete(id));
       updateRowStates(); refreshSummary();
       return;
     }
