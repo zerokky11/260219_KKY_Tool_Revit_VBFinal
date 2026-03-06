@@ -195,7 +195,36 @@ Try
         Dim famList = fams.OrderBy(Function(x) x).ToList()
         Dim catList = cats.OrderBy(Function(x) x).ToList()
 
-        SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList})
+        
+' 프로젝트(공유/프로젝트) 파라미터 목록
+Dim prm As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+Try
+    Dim peCol As New FilteredElementCollector(doc)
+    peCol.OfClass(GetType(ParameterElement))
+    For Each pe As ParameterElement In peCol
+        Try
+            If pe IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(pe.Name) Then prm.Add(pe.Name)
+        Catch
+        End Try
+    Next
+Catch
+End Try
+
+' ParameterBindings에도 있는 정의명 포함(버전/상태에 따라 ParameterElement가 부족할 수 있음)
+Try
+    Dim it As DefinitionBindingMapIterator = doc.ParameterBindings.ForwardIterator()
+    While it.MoveNext()
+        Try
+            Dim d As Definition = it.Key
+            If d IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(d.Name) Then prm.Add(d.Name)
+        Catch
+        End Try
+    End While
+Catch
+End Try
+
+Dim prmList = prm.OrderBy(Function(x) x).ToList()
+SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList, .parameters = prmList, .projectParameters = prmList})
         Return
     End If
 
@@ -1007,7 +1036,36 @@ Try
         Dim famList = fams.OrderBy(Function(x) x).ToList()
         Dim catList = cats.OrderBy(Function(x) x).ToList()
 
-        SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList})
+        
+' 프로젝트(공유/프로젝트) 파라미터 목록
+Dim prm As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+Try
+    Dim peCol As New FilteredElementCollector(doc)
+    peCol.OfClass(GetType(ParameterElement))
+    For Each pe As ParameterElement In peCol
+        Try
+            If pe IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(pe.Name) Then prm.Add(pe.Name)
+        Catch
+        End Try
+    Next
+Catch
+End Try
+
+' ParameterBindings에도 있는 정의명 포함(버전/상태에 따라 ParameterElement가 부족할 수 있음)
+Try
+    Dim it As DefinitionBindingMapIterator = doc.ParameterBindings.ForwardIterator()
+    While it.MoveNext()
+        Try
+            Dim d As Definition = it.Key
+            If d IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(d.Name) Then prm.Add(d.Name)
+        Catch
+        End Try
+    End While
+Catch
+End Try
+
+Dim prmList = prm.OrderBy(Function(x) x).ToList()
+SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList, .parameters = prmList, .projectParameters = prmList})
         Return
     End If
 

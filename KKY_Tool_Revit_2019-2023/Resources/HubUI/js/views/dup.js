@@ -3,32 +3,6 @@ import { clear, div, toast, showExcelSavedDialog, chooseExcelMode } from '../cor
 import { ProgressDialog } from '../core/progress.js';
 import { onHost, post } from '../core/bridge.js';
 
-
-function _pget(obj, key, defVal) {
-  try {
-    if (obj && Object.prototype.hasOwnProperty.call(obj, key)) {
-      const v = obj[key];
-      return (v === undefined || v === null) ? defVal : v;
-    }
-  } catch {}
-  return defVal;
-}
-function _nn(v, defVal) {
-  return (v === undefined || v === null) ? defVal : v;
-}
-function _co() {
-  for (let i=0; i<arguments.length; i++) {
-    const v = arguments[i];
-    if (v !== undefined && v !== null) return v;
-  }
-  return null;
-}
-function _pickList(payload) {
-  if (payload && payload.rows !== undefined && payload.rows !== null) return payload.rows;
-  if (payload && payload.data !== undefined && payload.data !== null) return payload.data;
-  return payload || [];
-}
-
 const RESP_ROWS_EVENTS = ['dup:list', 'dup:rows', 'duplicate:list'];
 const EV_DELETE_REQ = 'duplicate:delete';
 const EV_RESTORE_REQ = 'duplicate:restore';
@@ -484,6 +458,60 @@ export function renderDup(root) {
   border-color: color-mix(in oklab, var(--accent, #4c6fff) 78%, transparent 22%) !important;
   color:#fff;
 }
+
+
+/* v47 pair cards: show one pair per card for clarity */
+.pair-list{
+  padding: 10px 12px 14px 12px;
+  display: grid;
+  gap: 10px;
+}
+.pair-card{
+  border: 1px solid color-mix(in oklab, var(--border, #d7dbe7) 78%, transparent 22%);
+  border-radius: 14px;
+  background: color-mix(in oklab, var(--panel, #ffffff) 98%, #000000 2%);
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 980px){
+  .pair-card{ grid-template-columns: 1fr; }
+}
+.pair-side{
+  display: grid;
+  grid-template-columns: 22px 120px 1fr;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+.pair-tag{
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight: 750;
+  background: color-mix(in oklab, var(--accent, #4c6fff) 12%, transparent 88%);
+}
+.pair-text{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: .95;
+}
+
+/* Exclude picker UI polish */
+.dup-expicker .rm-window{ inset: 18px; border-radius: 20px; }
+.dup-expicker .rm-head{ padding: 14px 16px; }
+.dup-expicker .rm-title{ font-size: 18px; font-weight: 800; }
+.dup-expicker .rm-sub{ opacity: .85; margin-top: 2px; }
+.dup-expicker .rm-actions .rp-btn{ height: 34px; }
+.dup-expicker .exfam-list{ max-height: 420px; }
+.dup-expicker .exfam-item{ padding: 8px 6px; }
+
 `;
     document.head.appendChild(st);
   }
@@ -537,8 +565,8 @@ settingsBtn.title = '규칙/Set 창 열기/닫기';
       exPickerEl = buildExcludePicker();
       exPickerEl.id = 'dup-expicker';
       document.body.appendChild(exPickerEl);
-      exPickerEl.style.display = 'none';
     }
+    exPickerEl.style.display = 'none';
   } catch {}
 
   try { syncSettingsBtn(); } catch {}
@@ -569,6 +597,7 @@ settingsBtn.title = '규칙/Set 창 열기/닫기';
   let lastPairs = [];
   let metaModelFamilies = [];
   let metaSystemCategories = [];
+  let metaParameters = [];
   let lastTruncToastKey = '';
 
   applyHeadingByMode(mode);
@@ -608,7 +637,7 @@ onHost('dup:meta', (payload) => {
   onHost(({ ev, payload }) => {
     if (RESP_ROWS_EVENTS.includes(ev)) {
       setLoading(false);
-      const list = _pickList(payload);
+      const list = (payload && payload.rows) || (payload && payload.data) || payload || [];
       handleRows(list);
       return;
     }
@@ -617,19 +646,19 @@ onHost('dup:meta', (payload) => {
       setLoading(false);
       lastResult = payload || null;
 
-      const m = String(_pget(payload,'mode','')).trim();
+      const m = String((payload && payload.mode) || '').trim();
       if (m === 'duplicate' || m === 'clash') activeModeForView = m;
 
-      if (_pget(payload,'truncated',false)) {
-        const k = String(_pget(payload,'mode','')) + '|' + String(_pget(payload,'shown','')) + '|' + String(_pget(payload,'total',''));
+      if ((payload && payload.truncated)) {
+        const k = `${(payload && payload.mode)}|${(payload && payload.shown)}|${(payload && payload.total)}`;
         if (k !== lastTruncToastKey) {
           lastTruncToastKey = k;
-          toast('결과가 많아 상위 ' + String(_pget(payload,'shown','')) + '건만 표시합니다. 전체는 엑셀 내보내기에서 확인하세요.', 'warn', 4200);
+          toast(`결과가 많아 상위 ${(payload && payload.shown) || ''}건만 표시합니다. 전체는 엑셀 내보내기에서 확인하세요.`, 'warn', 4200);
         }
       }
 
-      const groupsN = Number(_pget(payload,'groups',0)) || 0;
-      const candN   = Number(_pget(payload,'candidates',0)) || 0;
+      const groupsN = Number((payload && payload.groups) || 0) || 0;
+      const candN   = Number((payload && payload.candidates) || 0) || 0;
 
       // dup:list가 안 오거나(전송 실패/과다) 0건일 때도 상태를 확실히 표시
       if ((groupsN === 0 && candN === 0) && rows.length === 0 && !busy) {
@@ -642,31 +671,49 @@ onHost('dup:meta', (payload) => {
     }
 
     if (ev === EV_DELETED_ONE) {
-      const id = String(_pget(payload,'id',''));
+      const id = String((payload && payload.id) || '');
       if (id) { deleted.add(id); updateRowStates(); refreshSummary(); }
       return;
     }
 
     if (ev === EV_RESTORED_ONE) {
-      const id = String(_pget(payload,'id',''));
+      const id = String((payload && payload.id) || '');
       if (id) { deleted.delete(id); updateRowStates(); refreshSummary(); }
       return;
     }
 
     if (ev === EV_DELETED_MULTI) {
-      (toIdArray(_pget(payload,'ids',null))).forEach(id => deleted.add(id));
+      (toIdArray((payload && payload.ids))).forEach(id => deleted.add(id));
       updateRowStates(); refreshSummary();
       return;
     }
 
     if (ev === EV_RESTORED_MULTI) {
-      (toIdArray(_pget(payload,'ids',null))).forEach(id => deleted.delete(id));
+      (toIdArray((payload && payload.ids))).forEach(id => deleted.delete(id));
       updateRowStates(); refreshSummary();
       return;
     }
 
     if (ev === 'dup:pairs') {
-      lastPairs = Array.isArray(payload) ? payload : [];
+lastPairs = Array.isArray(payload) ? payload : [];
+// (A,B)/(B,A) 중복 제거
+try {
+  const seen = {};
+  const outPairs = [];
+  for (let i=0; i<lastPairs.length; i++) {
+    const p = lastPairs[i] || {};
+    const a = Number(p.aId); const b = Number(p.bId);
+    const gk = String(p.groupKey || '');
+    if (!Number.isFinite(a) || !Number.isFinite(b)) { outPairs.push(p); continue; }
+    const x = Math.min(a,b), y = Math.max(a,b);
+    const key = gk + ':' + x + '-' + y;
+    if (seen[key]) continue;
+    seen[key] = true;
+    outPairs.push(p);
+  }
+  lastPairs = outPairs;
+} catch {}
+
       try { paintGroups(); } catch {}
       try { refreshSummary(); } catch {}
       return;
@@ -676,6 +723,7 @@ onHost('dup:meta', (payload) => {
       const p = payload || {};
       metaModelFamilies = Array.isArray(p.modelFamilies) ? p.modelFamilies : [];
       metaSystemCategories = Array.isArray(p.systemCategories) ? p.systemCategories : [];
+      metaParameters = Array.isArray(p.parameters) ? p.parameters : (Array.isArray(p.projectParameters) ? p.projectParameters : []);
       try { renderRulePanel(); } catch {}
       try { if (exPickerOpen) renderExcludePicker(); } catch {}
       return;
@@ -690,13 +738,13 @@ onHost('dup:meta', (payload) => {
       lastExcelPct = 0;
       ProgressDialog.hide();
 
-      const path = String(_pget(payload,'path','') || '');
-      if (_pget(payload,'ok',false) || path) {
+      const path = (payload && payload.path) || '';
+      if ((payload && payload.ok) || path) {
         showExcelSavedDialog('엑셀로 내보냈습니다.', path, (p) => {
           if (p) post('excel:open', { path: p });
         });
       } else {
-        toast(String(_pget(payload,'message','')) || '엑셀 내보내기 실패', 'err');
+        toast((payload && payload.message) || '엑셀 내보내기 실패', 'err');
       }
 
       exporting = false;
@@ -825,8 +873,7 @@ onHost('dup:meta', (payload) => {
     const list = Array.isArray(listLike) ? listLike : [];
     rows = list.map(normalizeRow);
 
-    const _rm = rows.find(r => r.mode);
-    const rowMode = _rm ? _rm.mode : null;
+    const rowMode = rows.find(r => (r.mode) && r.mode).mode);
     if (rowMode === 'duplicate' || rowMode === 'clash') activeModeForView = rowMode;
 
     groups = buildGroups(rows);
@@ -842,11 +889,11 @@ onHost('dup:meta', (payload) => {
       const isClash = activeModeForView === 'clash';
       const title = isClash ? '간섭이 없습니다' : '중복이 없습니다';
 
-      const scan = Number(_pget(lastResult,'scan',0)) || 0;
-      const gN = Number(_pget(lastResult,'groups',0)) || 0;
-      const cN = Number(_pget(lastResult,'candidates',0)) || 0;
-      const shown = Number(_pget(lastResult,'shown',0)) || 0;
-      const total = Number(_pget(lastResult,'total',0)) || 0;
+      const scan = Number((lastResult && lastResult.scan) || 0) || 0;
+      const gN = Number((lastResult && lastResult.groups) || 0) || 0;
+      const cN = Number((lastResult && lastResult.candidates) || 0) || 0;
+      const shown = Number((lastResult && lastResult.shown) || 0) || 0;
+      const total = Number((lastResult && lastResult.total) || 0) || 0;
 
       const empty = div('dup-emptycard');
       empty.innerHTML = `
@@ -860,7 +907,7 @@ onHost('dup:meta', (payload) => {
       info.innerHTML = `
         <div class="t">검토 상태</div>
         <div class="s">스캔: ${scan.toLocaleString()}개 · 그룹: ${gN.toLocaleString()}개 · 결과행: ${cN.toLocaleString()}개</div>
-        ${_pget(lastResult,'truncated',false) ? `<div class="s">표시 제한: ${shown.toLocaleString()} / ${total.toLocaleString()} (전체는 엑셀 내보내기)</div>` : ``}
+        ${(lastResult && lastResult.truncated) ? `<div class="s">표시 제한: ${shown.toLocaleString()} / ${total.toLocaleString()} (전체는 엑셀 내보내기)</div>` : ``}
       `;
       body.append(info);
     }
@@ -876,7 +923,8 @@ function paintPairGroups() {
 
   // group by groupKey
   const map = new Map();
-  for (const p of pairs) {
+  for (let i=0; i<pairs.length; i++) {
+    const p = pairs[i] || {};
     const gk = String(p.groupKey || 'C0000');
     if (!map.has(gk)) map.set(gk, []);
     map.get(gk).push(p);
@@ -885,34 +933,37 @@ function paintPairGroups() {
   const sorted = Array.from(map.entries()).sort((a,b)=>b[1].length-a[1].length);
 
   for (let gi=0; gi<sorted.length; gi++) {
-    const [gk, items] = sorted[gi];
+    const gk = sorted[gi][0];
+    const items = sorted[gi][1] || [];
 
     const card = div('dup-grp');
     const head = div('grp-h');
 
     const left = div('grp-txt');
     const title = div('grp-title');
-    title.textContent = `간섭 그룹 ${gi+1} (${gk})`;
+    title.textContent = '간섭 그룹 ' + (gi+1) + ' (' + gk + ')';
 
     const count = div('grp-count');
-    count.textContent = `${items.length} 쌍`;
+    count.textContent = items.length + ' 쌍';
 
     left.append(title, count);
     head.append(left);
     card.append(head);
 
-    const table = div('pair-table');
-    const sub = div('pair-subhead');
-    sub.innerHTML = `
-      <div class="cell">A ID</div>
-      <div class="cell">A 정보</div>
-      <div class="cell">B ID</div>
-      <div class="cell">B 정보</div>
-    `;
-    table.append(sub);
+    const list = div('pair-list');
 
-    for (const p of items) {
-      const row = div('pair-row');
+    for (let pi=0; pi<items.length; pi++) {
+      const p = items[pi] || {};
+
+      const pc = div('pair-card');
+
+      const aSide = div('pair-side');
+      const bSide = div('pair-side');
+
+      const aTag = div('pair-tag');
+      aTag.textContent = 'A';
+      const bTag = div('pair-tag');
+      bTag.textContent = 'B';
 
       const aBtn = document.createElement('button');
       aBtn.className = 'table-action-btn';
@@ -924,29 +975,40 @@ function paintPairGroups() {
       bBtn.textContent = String(p.bId || '—');
       bBtn.onclick = () => post(EV_SELECT_REQ, { id: Number(p.bId) });
 
-      const aInfo = `${p.aCategory || ''} · ${p.aFamily || ''}${p.aType ? ' : ' + p.aType : ''}`.trim();
-      const bInfo = `${p.bCategory || ''} · ${p.bFamily || ''}${p.bType ? ' : ' + p.bType : ''}`.trim();
+      const aInfo = (String(p.aCategory || '') + ' · ' + String(p.aFamily || '') + (p.aType ? (' : ' + p.aType) : '')).trim();
+      const bInfo = (String(p.bCategory || '') + ' · ' + String(p.bFamily || '') + (p.bType ? (' : ' + p.bType) : '')).trim();
 
-      row.append(
-        cell(aBtn, 'cell'),
-        cell(aInfo || '—', 'cell'),
-        cell(bBtn, 'cell'),
-        cell(bInfo || '—', 'cell'),
-      );
-      table.append(row);
+      const aText = div('pair-text');
+      aText.textContent = aInfo || '—';
+      const bText = div('pair-text');
+      bText.textContent = bInfo || '—';
+
+      aSide.append(aTag, aBtn, aText);
+      bSide.append(bTag, bBtn, bText);
+
+      pc.append(aSide, bSide);
+      list.append(pc);
     }
 
-    card.append(table);
-    out.append(card);
+    card.append(list);
+    body.append(card);
   }
 }
 
 function paintGroups() {
     body.innerHTML = '';
 
-    if (_pget(lastResult,'truncated',false)) {
-      const shown = Number(_pget(lastResult,'shown',0)) || 0;
-      const total = Number(_pget(lastResult,'total',0)) || 0;
+    // clash mode: show explicit pairs
+    try {
+      if (activeModeForView === 'clash' && Array.isArray(lastPairs) && lastPairs.length) {
+        paintPairGroups();
+        return;
+      }
+    } catch {}
+
+    if ((lastResult && lastResult.truncated)) {
+      const shown = Number((lastResult && lastResult.shown) || 0) || 0;
+      const total = Number((lastResult && lastResult.total) || 0) || 0;
       const info = div('dup-info');
       info.innerHTML = `
         <div class="t">표시 제한</div>
@@ -1028,7 +1090,7 @@ function paintGroups() {
     ckCell.append(ck);
 
     row.append(ckCell);
-    row.append(cell(_co(r.id, '-'), 'td mono right'));
+    row.append(cell(r.id || '-', 'td mono right'));
     row.append(cell(r.category || '—', 'td'));
 
     const famOut = r.family ? r.family : (r.category ? `${r.category} Type` : '—');
@@ -1304,7 +1366,6 @@ function onOpenRulePanel(forceOpen) {
 
   if (rulePanelOpen) {
     try { renderRulePanel(); } catch {}
-      try { if (exPickerOpen) renderExcludePicker(); } catch {}
     try { rulePanelEl.setAttribute('tabindex','-1'); rulePanelEl.focus(); } catch {}
   }
   try { syncSettingsBtn(); } catch {}
@@ -1410,8 +1471,8 @@ function openExcludePicker() {
   }
 
   // auto refresh if empty
-  if ((!metaModelFamilies || !metaModelFamilies.length) && (!metaSystemCategories || !metaSystemCategories.length)) {
-    try { post(EV_RUN, { mode: readMode(), metaOnly: true }); } catch {}
+  if ((!metaModelFamilies || !metaModelFamilies.length) && (!metaSystemCategories || !metaSystemCategories.length) && (!metaParameters || !metaParameters.length)) {
+    post('dup:run', { metaOnly: true });
   }
   renderExcludePicker();
 }
@@ -1467,7 +1528,25 @@ function applyExcludePicker() {
   cfg.excludeFamilies = Array.from(exPickerEl.querySelectorAll('input[data-kind="fam"]:checked')).map(x => x.value);
   cfg.excludeCategories = Array.from(exPickerEl.querySelectorAll('input[data-kind="cat"]:checked')).map(x => x.value);
 
+  // 키워드 필터에도 포함(Host 필터링)
+  try {
+    const base = String(cfg.excludeKeywords || '').split(',').map(s => s.trim()).filter(Boolean);
+    const merged = base.concat(cfg.excludeFamilies || [], cfg.excludeCategories || []);
+    const dedup = [];
+    const seen = {};
+    for (let i=0; i<merged.length; i++) {
+      const v = String(merged[i] || '').trim();
+      if (!v) continue;
+      const k = v.toLowerCase();
+      if (seen[k]) continue;
+      seen[k] = true;
+      dedup.push(v);
+    }
+    cfg.excludeKeywords = dedup.join(', ');
+  } catch {}
+
   saveRuleConfig(cfg);
+  ruleCfg = cfg; // 즉시 반영
   try { toast('Exclude 목록이 적용되었습니다.', 'ok', 1200); } catch {}
   renderRulePanel();
   closeExcludePicker();
@@ -1600,12 +1679,35 @@ function buildRulePanel() {
     if (act === 'add-set') { addSet(); renderRulePanel(); return; }
     if (act === 'add-pair') { addPair(); renderRulePanel(); return; }
     if (act === 'add-ex') { addExclude(); renderRulePanel(); return; }
+    if (act === 'rm-ex') {
+      const i = Number(btn.dataset.i || 0);
+      ruleCfg.excludeSetIds = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
+      ruleCfg.excludeSetIds.splice(i, 1);
+      saveRuleConfig(ruleCfg);
+      renderRulePanel();
+      return;
+    }
     if (act === 'open-expicker') { openExcludePicker(); return; }
     if (act === 'add-exfam') { /* deprecated */ addExcludeFamilyFromPick(); renderRulePanel(); return; }
     if (act === 'export') { exportRuleJson(); return; }
     if (act === 'import') { importRuleJson(); return; }
     if (act === 'apply') { applyRulePanel(); return; }
   });
+
+
+wrap.addEventListener('change', (e) => {
+  const el = e.target;
+  if (!el || !el.dataset) return;
+  const act = el.dataset.act || '';
+  if (act === 'chg-ex') {
+    const i = Number(el.dataset.i || 0);
+    const v = String(el.value || '');
+    ruleCfg.excludeSetIds = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
+    ruleCfg.excludeSetIds[i] = v;
+    saveRuleConfig(ruleCfg);
+    renderRulePanel();
+  }
+});
 
   // ESC to close
   wrap.addEventListener('keydown', (e) => {
@@ -1634,8 +1736,8 @@ function addSet() {
 function addPair() {
   ruleCfg = ruleCfg || { sets: [], pairs: [], excludeSetIds: [] };
   ruleCfg.pairs = Array.isArray(ruleCfg.pairs) ? ruleCfg.pairs : [];
-  const a = ((ruleCfg.sets && ruleCfg.sets[0] && ruleCfg.sets[0].id) ? ruleCfg.sets[0].id : null) || '__ALL__';
-  const b = ((ruleCfg.sets && ruleCfg.sets[0] && ruleCfg.sets[0].id) ? ruleCfg.sets[0].id : null) || '__ALL__';
+  const a = (ruleCfg.sets[(0] && 0].id)) || '__ALL__';
+  const b = (ruleCfg.sets[(0] && 0].id)) || '__ALL__';
   ruleCfg.pairs.push({ a, b, enabled: true });
   saveRuleConfig(ruleCfg);
   try { toast('Pair가 추가되었습니다.', 'ok', 1200); } catch {}
@@ -1647,7 +1749,7 @@ function addExclude() {
     return;
   }
   ruleCfg.excludeSetIds = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
-  const a = ((ruleCfg.sets && ruleCfg.sets[0] && ruleCfg.sets[0].id) ? ruleCfg.sets[0].id : null) || '';
+  const a = (ruleCfg.sets[(0] && 0].id)) || '';
   if (a) ruleCfg.excludeSetIds.push(a);
   saveRuleConfig(ruleCfg);
   try { toast('Exclude Set이 추가되었습니다.', 'ok', 1200); } catch {}
@@ -1734,19 +1836,19 @@ function applyRulePanel() {
 
   // 기존 컨트롤과 동기화
   try {
-    const mm = Number(tolEl ? tolEl.value : undefined);
+    const mm = Number((tolEl && tolEl.value));
     if (tolInputEl && Number.isFinite(mm)) tolInputEl.value = fmtTolMm(sanitizeTolMm(mm));
     try { localStorage.setItem(DUP_TOL_MM_KEY, String(sanitizeTolMm(mm))); } catch {}
   } catch {}
 
   try {
-    const sm = String((smEl ? smEl.value : '') || 'all');
+    const sm = String((smEl && smEl.value) || 'all');
     scopeMode = sm;
     try { localStorage.setItem(DUP_SCOPE_KEY, sm); } catch {}
   } catch {}
 
   try {
-    const kw = String((kwEl ? kwEl.value : '') || '').trim();
+    const kw = String((kwEl && kwEl.value) || '').trim();
     if (exclKwInputEl) exclKwInputEl.value = kw;
     try { localStorage.setItem(DUP_EXCL_KW_KEY, kw); } catch {}
   } catch {}
@@ -1756,6 +1858,8 @@ function applyRulePanel() {
 
 function renderRulePanel() {
   if (!rulePanelEl) return;
+  // always re-load latest config
+  ruleCfg = loadRuleConfig();
 
   // bind inputs
   const tol = readTolMm();
@@ -1771,7 +1875,9 @@ function renderRulePanel() {
   if (kwEl) kwEl.value = readExcludeKeywords();
 
   const meta = loadMeta();
-  const params = Array.isArray(meta.parameters) ? meta.parameters : [];
+  const params = (meta && Array.isArray(meta.parameters) && meta.parameters.length)
+    ? meta.parameters
+    : (Array.isArray(metaParameters) ? metaParameters : []);
 
   const fams = getFamiliesFromMeta(meta);
   const famFallback = fams.length ? fams : getFamiliesFromRows();
@@ -1996,6 +2102,50 @@ if (exFamSlot) {
 }
 
 
+
+
+// ===== Exclude summary (Families/Categories) =====
+try {
+  const exSum = rulePanelEl.querySelector('[data-slot="exsum"]');
+  if (exSum) {
+    const f = Array.isArray(ruleCfg.excludeFamilies) ? ruleCfg.excludeFamilies : [];
+    const c = Array.isArray(ruleCfg.excludeCategories) ? ruleCfg.excludeCategories : [];
+    exSum.textContent = '패밀리 ' + f.length + '개, 시스템 ' + c.length + '개';
+  }
+} catch {}
+
+// ===== Exclude Sets UI =====
+try {
+  const exBox = rulePanelEl.querySelector('[data-slot="ex"]');
+  if (exBox) {
+    const sets = Array.isArray(ruleCfg.sets) ? ruleCfg.sets : [];
+    const ex = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
+    const rows = [];
+
+    for (let i = 0; i < ex.length; i++) {
+      const sel = String(ex[i] || '');
+      const opts = sets.map((s) => {
+        const sid = String((s && s.id) ? s.id : '');
+        const sn = (s && s.name) ? (' - ' + s.name) : '';
+        const selAttr = (sid && sid === sel) ? 'selected' : '';
+        return '<option value="' + sid + '" ' + selAttr + '>' + sid + sn + '</option>';
+      }).join('');
+
+      rows.push(
+        '<div class="rp-card">' +
+          '<div class="rp-card-head">' +
+            '<div style="font-weight:650;">Exclude Set ' + (i + 1) + '</div>' +
+            '<button class="rp-x" data-act="rm-ex" data-i="' + i + '" title="삭제">×</button>' +
+          '</div>' +
+          '<select class="rp-select" data-act="chg-ex" data-i="' + i + '">' + opts + '</select>' +
+        '</div>'
+      );
+    }
+
+    exBox.innerHTML = rows.length ? rows.join('') : '<div class="rp-hint">등록된 Exclude Set이 없습니다.</div>';
+  }
+} catch {}
+
 }
 
 function updateClause(si, gi, ci, next) {
@@ -2064,14 +2214,14 @@ function updateClause(si, gi, ci, next) {
   }
 
   function normalizeRow(r) {
-    const id = safeId(_co(r.elementId, r.ElementId, r.id, r.Id));
-    const category = val(_co(r.category, r.Category));
-    const family   = val(_co(r.family, r.Family));
-    const type     = val(_co(r.type, r.Type));
-    const deletedFlag = !!(_co(r.deleted, r.isDeleted, r.Deleted));
-    const groupKey = val(_co(r.groupKey, r.GroupKey));
-    const rm = val(_co(r.mode, r.Mode));
-    const connectedIdsRaw = _co(r.connectedIds, r.ConnectedIds, []);
+    const id = safeId(r.elementId || r.ElementId || r.id || r.Id);
+    const category = val(r.category || r.Category);
+    const family   = val(r.family || r.Family);
+    const type     = val(r.type || r.Type);
+    const deletedFlag = !!(r.deleted || r.isDeleted || r.Deleted);
+    const groupKey = val(r.groupKey || r.GroupKey);
+    const rm = val(r.mode || r.Mode);
+    const connectedIdsRaw = r.connectedIds || r.ConnectedIds || [];
     const connectedIds = Array.isArray(connectedIdsRaw)
       ? connectedIdsRaw.map(String)
       : (typeof connectedIdsRaw === 'string' && connectedIdsRaw.length
@@ -2178,7 +2328,7 @@ function updateClause(si, gi, ci, next) {
   }
 
   function esc(s) {
-    return String(_co(s, '')).replace(/[&<>"']/g, m => ({
+    return String(s || '').replace(/[&<>"']/g, m => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[m]));
   }
@@ -2220,40 +2370,4 @@ function updateClause(si, gi, ci, next) {
     return Math.max(0.000001, Number.isFinite(feet) ? feet : (DUP_TOL_MM_DEFAULT / 304.8));
   }
 
-// Exclude 목록(체크박스) 렌더링
-// exclude summary
-const exSum = rulePanelEl.querySelector('[data-slot="exsum"]');
-if (exSum) {
-  const f = Array.isArray(ruleCfg.excludeFamilies) ? ruleCfg.excludeFamilies : [];
-  const c = Array.isArray(ruleCfg.excludeCategories) ? ruleCfg.excludeCategories : [];
-  exSum.textContent = `패밀리 ${f.length}개, 시스템 ${c.length}개`;
-}
 
-
-// Exclude Sets UI
-try {
-  const exBox = rulePanelEl.querySelector('[data-slot="ex"]');
-  if (exBox) {
-    const sets = Array.isArray(ruleCfg.sets) ? ruleCfg.sets : [];
-    const ex = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
-    const rows = [];
-
-    for (let i=0; i<ex.length; i++) {
-      const sel = ex[i];
-      const opts = sets.map((s, idx) => `<option value="${idx}" ${idx===sel?'selected':''}>Set ${idx+1}${s && s.name ? ' - ' + s.name : ''}</option>`).join('');
-      rows.push(`
-        <div class="rp-card">
-          <div class="rp-card-head">
-            <div style="font-weight:650;">Exclude Set ${i+1}</div>
-            <button class="rp-x" data-act="rm-ex" data-i="${i}" title="삭제">×</button>
-          </div>
-          <select class="rp-select" data-act="chg-ex" data-i="${i}">${opts}</select>
-        </div>
-      `);
-    }
-
-    exBox.innerHTML = rows.length ? rows.join('') : `<div class="rp-hint">등록된 Exclude Set이 없습니다.</div>`;
-  }
-} catch {}
-
-}
