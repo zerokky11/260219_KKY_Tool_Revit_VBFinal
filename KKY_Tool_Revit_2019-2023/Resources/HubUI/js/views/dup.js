@@ -458,6 +458,17 @@ export function renderDup(root) {
   border-color: color-mix(in oklab, var(--accent, #4c6fff) 78%, transparent 22%) !important;
   color:#fff;
 }
+
+
+/* v45 settings buttons: stronger contrast */
+.dup-rulemodal .rp-btn{ background: #fff !important; color: inherit !important; }
+.dup-rulemodal .rp-btn--ghost{ background: transparent !important; }
+.dup-rulemodal .rp-btn--add{ background: color-mix(in oklab, var(--accent, #4c6fff) 18%, #ffffff 82%) !important; }
+.dup-rulemodal .rp-btn--primary{ background: color-mix(in oklab, var(--accent, #4c6fff) 92%, #000000 8%) !important; color:#fff !important; }
+
+.dup-expicker .rp-btn{ background: #fff !important; color: inherit !important; }
+.dup-expicker .rp-btn--ghost{ background: transparent !important; }
+.dup-expicker .rp-btn--primary{ background: color-mix(in oklab, var(--accent, #4c6fff) 92%, #000000 8%) !important; color:#fff !important; }
 `;
     document.head.appendChild(st);
   }
@@ -640,6 +651,19 @@ onHost('dup:meta', (payload) => {
 
     if (ev === 'dup:pairs') {
       lastPairs = Array.isArray(payload) ? payload : [];
+// dedup (A,B) vs (B,A)
+try {
+  const seen = new Set();
+  lastPairs = (lastPairs || []).filter(p => {
+    const a = Number(p.aId); const b = Number(p.bId);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return true;
+    const x = Math.min(a,b), y = Math.max(a,b);
+    const key = `${p.groupKey||''}:${x}-${y}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+} catch {}
       try { paintGroups(); } catch {}
       try { refreshSummary(); } catch {}
       return;
@@ -650,6 +674,7 @@ onHost('dup:meta', (payload) => {
       metaModelFamilies = Array.isArray(p.modelFamilies) ? p.modelFamilies : [];
       metaSystemCategories = Array.isArray(p.systemCategories) ? p.systemCategories : [];
       try { renderRulePanel(); } catch {}
+      try { if (exPickerOpen) renderExcludePicker(); } catch {}
       return;
     }
 
@@ -927,6 +952,10 @@ function paintGroups() {
     }
 
     const isClash = activeModeForView === 'clash';
+    if (isClash && Array.isArray(lastPairs) && lastPairs.length) {
+      try { paintPairGroups(); } catch {}
+      return;
+    }
     const grpPrefix = isClash ? '간섭 그룹' : '중복 그룹';
 
     groups.forEach((g, idx) => {
@@ -969,7 +998,7 @@ function paintGroups() {
       if (expanded.has(g.key)) g.rows.forEach(r => tbl.append(renderRow(r)));
 
       card.append(tbl);
-      body.append(card);
+      out.append(card);
     });
 
     updateRowStates();
@@ -1348,7 +1377,24 @@ function buildExcludePicker() {
     if (act === 'all') { for (const cb of wrap.querySelectorAll('input[type="checkbox"]')) cb.checked = true; return; }
     if (act === 'none') { for (const cb of wrap.querySelectorAll('input[type="checkbox"]')) cb.checked = false; return; }
     if (act === 'apply') { applyExcludePicker(); return; }
-  });
+  }
+
+
+wrap.addEventListener('change', (e) => {
+  const el = e.target;
+  if (!el) return;
+  const act = el.dataset ? el.dataset.act : '';
+  if (act === 'chg-ex') {
+    const i = Number(el.dataset.i || 0);
+    const v = String(el.value || '');
+    ruleCfg.excludeSetIds = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
+    ruleCfg.excludeSetIds[i] = v;
+    saveRuleConfig(ruleCfg);
+    renderRulePanel();
+  }
+});
+
+);
 
   wrap.addEventListener('input', (e) => {
     if (e.target && e.target.matches('[data-bind="q"]')) renderExcludePicker();
@@ -1379,9 +1425,8 @@ function openExcludePicker() {
     exPickerEl.style.display = 'block';
   }
 
-  // auto refresh if empty
   if ((!metaModelFamilies || !metaModelFamilies.length) && (!metaSystemCategories || !metaSystemCategories.length)) {
-    post('dup:run', { mode, metaOnly: true });
+    post('dup:run', { mode: readMode(), metaOnly: true });
   }
   renderExcludePicker();
 }
@@ -1618,7 +1663,7 @@ function addExclude() {
   }
   ruleCfg.excludeSetIds = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
   const a = (ruleCfg.sets[0]?.id) || '';
-  if (a) ruleCfg.excludeSetIds.push(a);
+  if (a) ruleCfg.excludeSetIds.push(String((ruleCfg.sets[0] && ruleCfg.sets[0].id) ? ruleCfg.sets[0].id : ''));
   saveRuleConfig(ruleCfg);
   try { toast('Exclude Set이 추가되었습니다.', 'ok', 1200); } catch {}
 }
@@ -2210,7 +2255,12 @@ try {
 
     for (let i=0; i<ex.length; i++) {
       const sel = ex[i];
-      const opts = sets.map((s, idx) => `<option value="${idx}" ${idx===sel?'selected':''}>Set ${idx+1}${s && s.name ? ' - ' + s.name : ''}</option>`).join('');
+            const opts = sets.map((s) => {
+        const sid = String(s?.id ?? '');
+        const sn = s && s.name ? ' - ' + s.name : '';
+        const selAttr = (sid && String(sel) === sid) ? 'selected' : '';
+        return `<option value="${sid}" ${selAttr}>${sid}${sn}</option>`;
+      }).join('');
       rows.push(`
         <div class="rp-card">
           <div class="rp-card-head">
