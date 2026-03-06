@@ -3,6 +3,32 @@ import { clear, div, toast, showExcelSavedDialog, chooseExcelMode } from '../cor
 import { ProgressDialog } from '../core/progress.js';
 import { onHost, post } from '../core/bridge.js';
 
+
+function _pget(obj, key, defVal) {
+  try {
+    if (obj && Object.prototype.hasOwnProperty.call(obj, key)) {
+      const v = obj[key];
+      return (v === undefined || v === null) ? defVal : v;
+    }
+  } catch {}
+  return defVal;
+}
+function _nn(v, defVal) {
+  return (v === undefined || v === null) ? defVal : v;
+}
+function _co() {
+  for (let i=0; i<arguments.length; i++) {
+    const v = arguments[i];
+    if (v !== undefined && v !== null) return v;
+  }
+  return null;
+}
+function _pickList(payload) {
+  if (payload && payload.rows !== undefined && payload.rows !== null) return payload.rows;
+  if (payload && payload.data !== undefined && payload.data !== null) return payload.data;
+  return payload || [];
+}
+
 const RESP_ROWS_EVENTS = ['dup:list', 'dup:rows', 'duplicate:list'];
 const EV_DELETE_REQ = 'duplicate:delete';
 const EV_RESTORE_REQ = 'duplicate:restore';
@@ -458,17 +484,6 @@ export function renderDup(root) {
   border-color: color-mix(in oklab, var(--accent, #4c6fff) 78%, transparent 22%) !important;
   color:#fff;
 }
-
-
-/* v45 settings buttons: stronger contrast */
-.dup-rulemodal .rp-btn{ background: #fff !important; color: inherit !important; }
-.dup-rulemodal .rp-btn--ghost{ background: transparent !important; }
-.dup-rulemodal .rp-btn--add{ background: color-mix(in oklab, var(--accent, #4c6fff) 18%, #ffffff 82%) !important; }
-.dup-rulemodal .rp-btn--primary{ background: color-mix(in oklab, var(--accent, #4c6fff) 92%, #000000 8%) !important; color:#fff !important; }
-
-.dup-expicker .rp-btn{ background: #fff !important; color: inherit !important; }
-.dup-expicker .rp-btn--ghost{ background: transparent !important; }
-.dup-expicker .rp-btn--primary{ background: color-mix(in oklab, var(--accent, #4c6fff) 92%, #000000 8%) !important; color:#fff !important; }
 `;
     document.head.appendChild(st);
   }
@@ -522,6 +537,7 @@ settingsBtn.title = '규칙/Set 창 열기/닫기';
       exPickerEl = buildExcludePicker();
       exPickerEl.id = 'dup-expicker';
       document.body.appendChild(exPickerEl);
+      exPickerEl.style.display = 'none';
     }
   } catch {}
 
@@ -592,7 +608,7 @@ onHost('dup:meta', (payload) => {
   onHost(({ ev, payload }) => {
     if (RESP_ROWS_EVENTS.includes(ev)) {
       setLoading(false);
-      const list = payload?.rows ?? payload?.data ?? payload ?? [];
+      const list = _pickList(payload);
       handleRows(list);
       return;
     }
@@ -601,19 +617,19 @@ onHost('dup:meta', (payload) => {
       setLoading(false);
       lastResult = payload || null;
 
-      const m = String(payload?.mode ?? '').trim();
+      const m = String(_pget(payload,'mode','')).trim();
       if (m === 'duplicate' || m === 'clash') activeModeForView = m;
 
-      if (payload?.truncated) {
-        const k = `${payload?.mode}|${payload?.shown}|${payload?.total}`;
+      if (_pget(payload,'truncated',false)) {
+        const k = String(_pget(payload,'mode','')) + '|' + String(_pget(payload,'shown','')) + '|' + String(_pget(payload,'total',''));
         if (k !== lastTruncToastKey) {
           lastTruncToastKey = k;
-          toast(`결과가 많아 상위 ${payload?.shown ?? ''}건만 표시합니다. 전체는 엑셀 내보내기에서 확인하세요.`, 'warn', 4200);
+          toast('결과가 많아 상위 ' + String(_pget(payload,'shown','')) + '건만 표시합니다. 전체는 엑셀 내보내기에서 확인하세요.', 'warn', 4200);
         }
       }
 
-      const groupsN = Number(payload?.groups ?? 0) || 0;
-      const candN   = Number(payload?.candidates ?? 0) || 0;
+      const groupsN = Number(_pget(payload,'groups',0)) || 0;
+      const candN   = Number(_pget(payload,'candidates',0)) || 0;
 
       // dup:list가 안 오거나(전송 실패/과다) 0건일 때도 상태를 확실히 표시
       if ((groupsN === 0 && candN === 0) && rows.length === 0 && !busy) {
@@ -626,44 +642,31 @@ onHost('dup:meta', (payload) => {
     }
 
     if (ev === EV_DELETED_ONE) {
-      const id = String(payload?.id ?? '');
+      const id = String(_pget(payload,'id',''));
       if (id) { deleted.add(id); updateRowStates(); refreshSummary(); }
       return;
     }
 
     if (ev === EV_RESTORED_ONE) {
-      const id = String(payload?.id ?? '');
+      const id = String(_pget(payload,'id',''));
       if (id) { deleted.delete(id); updateRowStates(); refreshSummary(); }
       return;
     }
 
     if (ev === EV_DELETED_MULTI) {
-      (toIdArray(payload?.ids)).forEach(id => deleted.add(id));
+      (toIdArray(_pget(payload,'ids',null))).forEach(id => deleted.add(id));
       updateRowStates(); refreshSummary();
       return;
     }
 
     if (ev === EV_RESTORED_MULTI) {
-      (toIdArray(payload?.ids)).forEach(id => deleted.delete(id));
+      (toIdArray(_pget(payload,'ids',null))).forEach(id => deleted.delete(id));
       updateRowStates(); refreshSummary();
       return;
     }
 
     if (ev === 'dup:pairs') {
       lastPairs = Array.isArray(payload) ? payload : [];
-// dedup (A,B) vs (B,A)
-try {
-  const seen = new Set();
-  lastPairs = (lastPairs || []).filter(p => {
-    const a = Number(p.aId); const b = Number(p.bId);
-    if (!Number.isFinite(a) || !Number.isFinite(b)) return true;
-    const x = Math.min(a,b), y = Math.max(a,b);
-    const key = `${p.groupKey||''}:${x}-${y}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-} catch {}
       try { paintGroups(); } catch {}
       try { refreshSummary(); } catch {}
       return;
@@ -687,13 +690,13 @@ try {
       lastExcelPct = 0;
       ProgressDialog.hide();
 
-      const path = payload?.path || '';
-      if (payload?.ok || path) {
+      const path = String(_pget(payload,'path','') || '');
+      if (_pget(payload,'ok',false) || path) {
         showExcelSavedDialog('엑셀로 내보냈습니다.', path, (p) => {
           if (p) post('excel:open', { path: p });
         });
       } else {
-        toast(payload?.message || '엑셀 내보내기 실패', 'err');
+        toast(String(_pget(payload,'message','')) || '엑셀 내보내기 실패', 'err');
       }
 
       exporting = false;
@@ -822,7 +825,8 @@ try {
     const list = Array.isArray(listLike) ? listLike : [];
     rows = list.map(normalizeRow);
 
-    const rowMode = rows.find(r => r.mode)?.mode;
+    const _rm = rows.find(r => r.mode);
+    const rowMode = _rm ? _rm.mode : null;
     if (rowMode === 'duplicate' || rowMode === 'clash') activeModeForView = rowMode;
 
     groups = buildGroups(rows);
@@ -838,11 +842,11 @@ try {
       const isClash = activeModeForView === 'clash';
       const title = isClash ? '간섭이 없습니다' : '중복이 없습니다';
 
-      const scan = Number(lastResult?.scan ?? 0) || 0;
-      const gN = Number(lastResult?.groups ?? 0) || 0;
-      const cN = Number(lastResult?.candidates ?? 0) || 0;
-      const shown = Number(lastResult?.shown ?? 0) || 0;
-      const total = Number(lastResult?.total ?? 0) || 0;
+      const scan = Number(_pget(lastResult,'scan',0)) || 0;
+      const gN = Number(_pget(lastResult,'groups',0)) || 0;
+      const cN = Number(_pget(lastResult,'candidates',0)) || 0;
+      const shown = Number(_pget(lastResult,'shown',0)) || 0;
+      const total = Number(_pget(lastResult,'total',0)) || 0;
 
       const empty = div('dup-emptycard');
       empty.innerHTML = `
@@ -856,7 +860,7 @@ try {
       info.innerHTML = `
         <div class="t">검토 상태</div>
         <div class="s">스캔: ${scan.toLocaleString()}개 · 그룹: ${gN.toLocaleString()}개 · 결과행: ${cN.toLocaleString()}개</div>
-        ${lastResult?.truncated ? `<div class="s">표시 제한: ${shown.toLocaleString()} / ${total.toLocaleString()} (전체는 엑셀 내보내기)</div>` : ``}
+        ${_pget(lastResult,'truncated',false) ? `<div class="s">표시 제한: ${shown.toLocaleString()} / ${total.toLocaleString()} (전체는 엑셀 내보내기)</div>` : ``}
       `;
       body.append(info);
     }
@@ -940,9 +944,9 @@ function paintPairGroups() {
 function paintGroups() {
     body.innerHTML = '';
 
-    if (lastResult?.truncated) {
-      const shown = Number(lastResult?.shown ?? 0) || 0;
-      const total = Number(lastResult?.total ?? 0) || 0;
+    if (_pget(lastResult,'truncated',false)) {
+      const shown = Number(_pget(lastResult,'shown',0)) || 0;
+      const total = Number(_pget(lastResult,'total',0)) || 0;
       const info = div('dup-info');
       info.innerHTML = `
         <div class="t">표시 제한</div>
@@ -952,10 +956,6 @@ function paintGroups() {
     }
 
     const isClash = activeModeForView === 'clash';
-    if (isClash && Array.isArray(lastPairs) && lastPairs.length) {
-      try { paintPairGroups(); } catch {}
-      return;
-    }
     const grpPrefix = isClash ? '간섭 그룹' : '중복 그룹';
 
     groups.forEach((g, idx) => {
@@ -998,7 +998,7 @@ function paintGroups() {
       if (expanded.has(g.key)) g.rows.forEach(r => tbl.append(renderRow(r)));
 
       card.append(tbl);
-      out.append(card);
+      body.append(card);
     });
 
     updateRowStates();
@@ -1028,7 +1028,7 @@ function paintGroups() {
     ckCell.append(ck);
 
     row.append(ckCell);
-    row.append(cell(r.id ?? '-', 'td mono right'));
+    row.append(cell(_co(r.id, '-'), 'td mono right'));
     row.append(cell(r.category || '—', 'td'));
 
     const famOut = r.family ? r.family : (r.category ? `${r.category} Type` : '—');
@@ -1304,6 +1304,7 @@ function onOpenRulePanel(forceOpen) {
 
   if (rulePanelOpen) {
     try { renderRulePanel(); } catch {}
+      try { if (exPickerOpen) renderExcludePicker(); } catch {}
     try { rulePanelEl.setAttribute('tabindex','-1'); rulePanelEl.focus(); } catch {}
   }
   try { syncSettingsBtn(); } catch {}
@@ -1377,24 +1378,7 @@ function buildExcludePicker() {
     if (act === 'all') { for (const cb of wrap.querySelectorAll('input[type="checkbox"]')) cb.checked = true; return; }
     if (act === 'none') { for (const cb of wrap.querySelectorAll('input[type="checkbox"]')) cb.checked = false; return; }
     if (act === 'apply') { applyExcludePicker(); return; }
-  }
-
-
-wrap.addEventListener('change', (e) => {
-  const el = e.target;
-  if (!el) return;
-  const act = el.dataset ? el.dataset.act : '';
-  if (act === 'chg-ex') {
-    const i = Number(el.dataset.i || 0);
-    const v = String(el.value || '');
-    ruleCfg.excludeSetIds = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
-    ruleCfg.excludeSetIds[i] = v;
-    saveRuleConfig(ruleCfg);
-    renderRulePanel();
-  }
-});
-
-);
+  });
 
   wrap.addEventListener('input', (e) => {
     if (e.target && e.target.matches('[data-bind="q"]')) renderExcludePicker();
@@ -1425,8 +1409,9 @@ function openExcludePicker() {
     exPickerEl.style.display = 'block';
   }
 
+  // auto refresh if empty
   if ((!metaModelFamilies || !metaModelFamilies.length) && (!metaSystemCategories || !metaSystemCategories.length)) {
-    post('dup:run', { mode: readMode(), metaOnly: true });
+    try { post(EV_RUN, { mode: readMode(), metaOnly: true }); } catch {}
   }
   renderExcludePicker();
 }
@@ -1649,8 +1634,8 @@ function addSet() {
 function addPair() {
   ruleCfg = ruleCfg || { sets: [], pairs: [], excludeSetIds: [] };
   ruleCfg.pairs = Array.isArray(ruleCfg.pairs) ? ruleCfg.pairs : [];
-  const a = (ruleCfg.sets[0]?.id) || '__ALL__';
-  const b = (ruleCfg.sets[0]?.id) || '__ALL__';
+  const a = ((ruleCfg.sets && ruleCfg.sets[0] && ruleCfg.sets[0].id) ? ruleCfg.sets[0].id : null) || '__ALL__';
+  const b = ((ruleCfg.sets && ruleCfg.sets[0] && ruleCfg.sets[0].id) ? ruleCfg.sets[0].id : null) || '__ALL__';
   ruleCfg.pairs.push({ a, b, enabled: true });
   saveRuleConfig(ruleCfg);
   try { toast('Pair가 추가되었습니다.', 'ok', 1200); } catch {}
@@ -1662,8 +1647,8 @@ function addExclude() {
     return;
   }
   ruleCfg.excludeSetIds = Array.isArray(ruleCfg.excludeSetIds) ? ruleCfg.excludeSetIds : [];
-  const a = (ruleCfg.sets[0]?.id) || '';
-  if (a) ruleCfg.excludeSetIds.push(String((ruleCfg.sets[0] && ruleCfg.sets[0].id) ? ruleCfg.sets[0].id : ''));
+  const a = ((ruleCfg.sets && ruleCfg.sets[0] && ruleCfg.sets[0].id) ? ruleCfg.sets[0].id : null) || '';
+  if (a) ruleCfg.excludeSetIds.push(a);
   saveRuleConfig(ruleCfg);
   try { toast('Exclude Set이 추가되었습니다.', 'ok', 1200); } catch {}
 }
@@ -1749,19 +1734,19 @@ function applyRulePanel() {
 
   // 기존 컨트롤과 동기화
   try {
-    const mm = Number(tolEl?.value);
+    const mm = Number(tolEl ? tolEl.value : undefined);
     if (tolInputEl && Number.isFinite(mm)) tolInputEl.value = fmtTolMm(sanitizeTolMm(mm));
     try { localStorage.setItem(DUP_TOL_MM_KEY, String(sanitizeTolMm(mm))); } catch {}
   } catch {}
 
   try {
-    const sm = String(smEl?.value || 'all');
+    const sm = String((smEl ? smEl.value : '') || 'all');
     scopeMode = sm;
     try { localStorage.setItem(DUP_SCOPE_KEY, sm); } catch {}
   } catch {}
 
   try {
-    const kw = String(kwEl?.value || '').trim();
+    const kw = String((kwEl ? kwEl.value : '') || '').trim();
     if (exclKwInputEl) exclKwInputEl.value = kw;
     try { localStorage.setItem(DUP_EXCL_KW_KEY, kw); } catch {}
   } catch {}
@@ -2079,14 +2064,14 @@ function updateClause(si, gi, ci, next) {
   }
 
   function normalizeRow(r) {
-    const id = safeId(r.elementId ?? r.ElementId ?? r.id ?? r.Id);
-    const category = val(r.category ?? r.Category);
-    const family   = val(r.family ?? r.Family);
-    const type     = val(r.type ?? r.Type);
-    const deletedFlag = !!(r.deleted ?? r.isDeleted ?? r.Deleted);
-    const groupKey = val(r.groupKey ?? r.GroupKey);
-    const rm = val(r.mode ?? r.Mode);
-    const connectedIdsRaw = r.connectedIds ?? r.ConnectedIds ?? [];
+    const id = safeId(_co(r.elementId, r.ElementId, r.id, r.Id));
+    const category = val(_co(r.category, r.Category));
+    const family   = val(_co(r.family, r.Family));
+    const type     = val(_co(r.type, r.Type));
+    const deletedFlag = !!(_co(r.deleted, r.isDeleted, r.Deleted));
+    const groupKey = val(_co(r.groupKey, r.GroupKey));
+    const rm = val(_co(r.mode, r.Mode));
+    const connectedIdsRaw = _co(r.connectedIds, r.ConnectedIds, []);
     const connectedIds = Array.isArray(connectedIdsRaw)
       ? connectedIdsRaw.map(String)
       : (typeof connectedIdsRaw === 'string' && connectedIdsRaw.length
@@ -2193,7 +2178,7 @@ function updateClause(si, gi, ci, next) {
   }
 
   function esc(s) {
-    return String(s ?? '').replace(/[&<>"']/g, m => ({
+    return String(_co(s, '')).replace(/[&<>"']/g, m => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[m]));
   }
@@ -2255,12 +2240,7 @@ try {
 
     for (let i=0; i<ex.length; i++) {
       const sel = ex[i];
-            const opts = sets.map((s) => {
-        const sid = String(s?.id ?? '');
-        const sn = s && s.name ? ' - ' + s.name : '';
-        const selAttr = (sid && String(sel) === sid) ? 'selected' : '';
-        return `<option value="${sid}" ${selAttr}>${sid}${sn}</option>`;
-      }).join('');
+      const opts = sets.map((s, idx) => `<option value="${idx}" ${idx===sel?'selected':''}>Set ${idx+1}${s && s.name ? ' - ' + s.name : ''}</option>`).join('');
       rows.push(`
         <div class="rp-card">
           <div class="rp-card-head">
