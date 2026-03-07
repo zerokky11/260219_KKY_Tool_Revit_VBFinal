@@ -32,14 +32,16 @@ Namespace Infrastructure
         Public Function PickAndSaveXlsxMulti(sheets As IList(Of KeyValuePair(Of String, DataTable)),
                                              defaultFileName As String,
                                              Optional autoFit As Boolean = False,
-                                             Optional progressKey As String = Nothing) As String
+                                             Optional progressKey As String = Nothing,
+                                             Optional sheetKeyOverride As String = Nothing,
+                                             Optional exportKind As String = Nothing) As String
 
             If sheets Is Nothing OrElse sheets.Count = 0 Then Throw New ArgumentException("Sheets is empty.", NameOf(sheets))
 
             Dim path = PickSavePath("Excel Workbook (*.xlsx)|*.xlsx", defaultFileName, "엑셀 저장")
             If String.IsNullOrWhiteSpace(path) Then Return ""
 
-            SaveXlsxMulti(path, sheets, autoFit, progressKey)
+            SaveXlsxMulti(path, sheets, autoFit, progressKey, sheetKeyOverride:=sheetKeyOverride, exportKind:=exportKind)
             Return path
         End Function
 
@@ -74,7 +76,9 @@ Namespace Infrastructure
         Public Sub SaveXlsxMulti(filePath As String,
                                  sheets As IList(Of KeyValuePair(Of String, DataTable)),
                                  Optional autoFit As Boolean = False,
-                                 Optional progressKey As String = Nothing)
+                                 Optional progressKey As String = Nothing,
+                                 Optional sheetKeyOverride As String = Nothing,
+                                 Optional exportKind As String = Nothing)
 
             If String.IsNullOrWhiteSpace(filePath) Then Throw New ArgumentNullException(NameOf(filePath))
             If sheets Is Nothing OrElse sheets.Count = 0 Then Throw New ArgumentException("Sheets is empty.", NameOf(sheets))
@@ -96,7 +100,8 @@ Namespace Infrastructure
                         EnsureNoDataRow(table)
                     End If
                     Dim sheet = wb.CreateSheet(safe)
-                    WriteTableToSheet(wb, sheet, safe, table, sheetKey:=name, autoFit:=autoFit, progressKey:=progressKey, exportKind:=Nothing)
+                    Dim keyForStyle As String = If(String.IsNullOrWhiteSpace(sheetKeyOverride), name, sheetKeyOverride)
+                    WriteTableToSheet(wb, sheet, safe, table, sheetKey:=keyForStyle, autoFit:=autoFit, progressKey:=progressKey, exportKind:=exportKind)
                 Next
 
                 Using fs As New FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None)

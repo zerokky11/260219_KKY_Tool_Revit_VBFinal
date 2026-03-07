@@ -164,74 +164,6 @@ Namespace Services
 
     End Module
 
-    Friend Module ProgressMessageHelper
-        Friend Function MakePhaseError(phase As String, famName As String, famId As ElementId, message As String) As String
-            Dim idVal As Integer = 0
-            Try
-                If famId IsNot Nothing Then idVal = famId.IntegerValue
-            Catch
-                idVal = 0
-            End Try
-            Return $"[{phase}] Family='{famName}' (Id:{idVal}) - {message}"
-        End Function
-
-        Friend Function MakeInvalidObjectMessage(phase As String,
-                                                 famName As String,
-                                                 famId As ElementId,
-                                                 operation As String,
-                                                 ex As Autodesk.Revit.Exceptions.InvalidObjectException) As String
-            Dim action As String = If(String.IsNullOrWhiteSpace(operation), "Unknown", operation)
-            Dim baseMsg As String = If(ex Is Nothing, String.Empty, ex.Message)
-            Return MakePhaseError(phase, famName, famId, $"{action} -> {baseMsg}")
-        End Function
-
-        Friend Function TryGetFreshFamily(doc As Document,
-                                           famName As String,
-                                           ByRef famId As ElementId,
-                                           nameToFamilyId As Dictionary(Of String, ElementId)) As Family
-            Dim fam As Family = Nothing
-
-            If doc Is Nothing OrElse String.IsNullOrWhiteSpace(famName) Then Return Nothing
-
-            If famId IsNot Nothing Then
-                Try
-                    fam = TryCast(doc.GetElement(famId), Family)
-                Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
-                    fam = Nothing
-                Catch
-                    fam = Nothing
-                End Try
-            End If
-
-            If fam Is Nothing Then
-                Dim foundId As ElementId = FindFamilyIdByName(doc, famName)
-                famId = foundId
-                If foundId IsNot Nothing Then
-                    Try
-                        fam = TryCast(doc.GetElement(foundId), Family)
-                    Catch
-                        fam = Nothing
-                    End Try
-
-                    If fam IsNot Nothing AndAlso nameToFamilyId IsNot Nothing Then
-                        nameToFamilyId(famName) = foundId
-                    End If
-                End If
-            End If
-
-            Return fam
-        End Function
-
-        Friend Function FindFamilyIdByName(doc As Document, famName As String) As ElementId
-            If doc Is Nothing OrElse String.IsNullOrWhiteSpace(famName) Then Return Nothing
-            Return New FilteredElementCollector(doc).
-                   OfClass(GetType(Family)).
-                   Cast(Of Family)().
-                   FirstOrDefault(Function(f) String.Equals(f.Name, famName, StringComparison.OrdinalIgnoreCase))?.
-                   Id
-        End Function
-    End Module
-
     '==================== 파라미터 선택 폼 ====================
     Friend Class FormSharedParamPicker
         Inherits WinForms.Form
@@ -685,6 +617,7 @@ Namespace Services
 
         Public Class SharedParamRunRequest
             Public Property ParamNames As List(Of String)
+            Public Property ParamGuids As List(Of String)
             Public Property TargetGroup As Integer
             Public Property IsInstance As Boolean
             Public Property ExcludeDummy As Boolean
@@ -692,6 +625,7 @@ Namespace Services
             Public Shared Function FromPayload(payload As Object) As SharedParamRunRequest
                 Dim req As New SharedParamRunRequest With {
                     .ParamNames = New List(Of String)(),
+                    .ParamGuids = New List(Of String)(),
                     .TargetGroup = CInt(BuiltInParameterGroup.PG_TEXT),
                     .IsInstance = True,
                     .ExcludeDummy = True
@@ -703,7 +637,24 @@ Namespace Services
                     Dim namesObj = ReadProp(payload, "paramNames")
                     If TypeOf namesObj Is IEnumerable Then
                         For Each n In CType(namesObj, IEnumerable)
-                            If n IsNot Nothing Then req.ParamNames.Add(n.ToString())
+                            If n Is Nothing Then Continue For
+                            Dim raw As String = n.ToString()
+                            If String.IsNullOrWhiteSpace(raw) Then Continue For
+
+                            ' Allow both ["A","B"] and ["A,B"] input styles
+                            For Each part As String In raw.Split(New Char() {","c}, StringSplitOptions.RemoveEmptyEntries)
+                                Dim nm As String = NormalizeParamName(part)
+                                If Not String.IsNullOrWhiteSpace(nm) Then req.ParamNames.Add(nm)
+                            Next
+                        Next
+                    End If
+
+                    Dim guidsObj = ReadProp(payload, "paramGuids")
+                    If TypeOf guidsObj Is IEnumerable Then
+                        For Each g In CType(guidsObj, IEnumerable)
+                            If g Is Nothing Then Continue For
+                            Dim gs As String = NormalizeParamName(g.ToString())
+                            If Not String.IsNullOrWhiteSpace(gs) Then req.ParamGuids.Add(gs)
                         Next
                     End If
 
@@ -717,6 +668,10 @@ Namespace Services
                     If dummyObj IsNot Nothing Then req.ExcludeDummy = Convert.ToBoolean(dummyObj)
                 Catch
                 End Try
+
+                ' De-duplicate
+                req.ParamNames = req.ParamNames.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+                req.ParamGuids = req.ParamGuids.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
 
                 Return req
             End Function
@@ -804,43 +759,16 @@ Namespace Services
         End Function
 
         '==================== 실행 엔트리 ====================
-        Private Class ProgressDispatcher
-            Private ReadOnly _cb As Action(Of String, Double, Integer, Integer, String, String)
-            Private ReadOnly _minMs As Integer
-            Private _lastPhase As String = String.Empty
-            Private _lastSent As DateTime = DateTime.MinValue
-
-            Public Sub New(cb As Action(Of String, Double, Integer, Integer, String, String), Optional minIntervalMs As Integer = 180)
-                _cb = cb
-                _minMs = Math.Max(50, minIntervalMs)
-            End Sub
-
-            Public Sub Report(phase As String,
-                              phaseProgress As Double,
-                              current As Integer,
-                              total As Integer,
-                              message As String,
-                              target As String,
-                              Optional force As Boolean = False)
-                If _cb Is Nothing Then Return
-                Dim now As DateTime = DateTime.UtcNow
-                Dim elapsed As Double = (now - _lastSent).TotalMilliseconds
-                Dim phaseChanged As Boolean = Not String.Equals(_lastPhase, phase, StringComparison.OrdinalIgnoreCase)
-                If Not force AndAlso Not phaseChanged AndAlso elapsed < _minMs Then Return
-                _lastPhase = phase
-                _lastSent = now
-                Dim safeProg As Double = Math.Max(0.0R, Math.Min(1.0R, phaseProgress))
-                _cb.Invoke(phase, safeProg, current, total, message, target)
-            End Sub
-        End Class
-
-        Public Shared Function Run(app As UIApplication,
-                                   request As SharedParamRunRequest,
-                                   Optional progress As Action(Of String, Double, Integer, Integer, String, String) = Nothing) As SharedParamRunResult
+        Public Shared Function Run(app As UIApplication, request As SharedParamRunRequest, Optional progress As Action(Of String, Double, Integer, Integer, String, String) = Nothing) As SharedParamRunResult
             Dim result As New SharedParamRunResult With {
                 .Status = RunStatus.Failed,
                 .Details = New List(Of SharedParamDetailRow)()
             }
+
+            Try
+                If progress IsNot Nothing Then progress("start", 0.0R, 0, 0, "시작", "")
+            Catch
+            End Try
 
             If app Is Nothing Then
                 result.Message = "UIApplication 이 없습니다."
@@ -859,8 +787,6 @@ Namespace Services
                 Return result
             End If
 
-            Dim reporter As New ProgressDispatcher(progress)
-
             Dim sharedPath As String = app.Application.SharedParametersFilename
             If String.IsNullOrEmpty(sharedPath) OrElse Not File.Exists(sharedPath) Then
                 result.Message = "공유 파라미터 파일 먼저 지정해 주세요."
@@ -880,14 +806,14 @@ Namespace Services
                 chosenPG = BuiltInParameterGroup.PG_TEXT
             End Try
 
-            Dim extDefs As List(Of ExternalDefinition) = ResolveDefinitions(app.Application, request.ParamNames)
+            Dim extDefs As List(Of ExternalDefinition) = ResolveDefinitions(app.Application, request.ParamNames, request.ParamGuids)
             If extDefs Is Nothing OrElse extDefs.Count = 0 Then
                 result.Message = "선택한 공유 파라미터를 Shared Parameters 파일에서 찾을 수 없습니다."
                 Return result
             End If
 
             Dim status As RunStatus =
-                ExecuteCore(doc, extDefs, request.ParamNames, request.ExcludeDummy, chosenPG, request.IsInstance, result, reporter)
+                ExecuteCore(doc, extDefs, request.ParamNames, request.ExcludeDummy, chosenPG, request.IsInstance, result, progress)
 
             result.Status = status
             If String.IsNullOrEmpty(result.Message) Then
@@ -896,74 +822,17 @@ Namespace Services
                                     "공유 파라미터 연동에 실패했습니다.")
             End If
 
-            Return result
-        End Function
-
-        Public Shared Function RunOnDocument(app As UIApplication,
-                                             doc As Document,
-                                             request As SharedParamRunRequest,
-                                             Optional progress As Action(Of String, Double, Integer, Integer, String, String) = Nothing) As SharedParamRunResult
-            Dim result As New SharedParamRunResult With {
-                .Status = RunStatus.Failed,
-                .Details = New List(Of SharedParamDetailRow)()
-            }
-
-            If app Is Nothing Then
-                result.Message = "UIApplication 이 없습니다."
-                Return result
-            End If
-            If doc Is Nothing Then
-                result.Message = "문서가 없습니다."
-                Return result
-            End If
-            If doc.IsFamilyDocument Then
-                result.Message = "프로젝트 문서에서 실행하세요."
-                Return result
-            End If
-
-            Dim reporter As New ProgressDispatcher(progress)
-
-            Dim sharedPath As String = app.Application.SharedParametersFilename
-            If String.IsNullOrEmpty(sharedPath) OrElse Not File.Exists(sharedPath) Then
-                result.Message = "공유 파라미터 파일 먼저 지정해 주세요."
-                Return result
-            End If
-
-            If request Is Nothing OrElse request.ParamNames Is Nothing OrElse request.ParamNames.Count = 0 Then
-                result.Message = "선택된 공유 파라미터가 없습니다."
-                result.Status = RunStatus.Cancelled
-                Return result
-            End If
-
-            Dim chosenPG As BuiltInParameterGroup = BuiltInParameterGroup.PG_TEXT
             Try
-                chosenPG = CType(request.TargetGroup, BuiltInParameterGroup)
+                If progress IsNot Nothing Then progress("done", 1.0R, 1, 1, result.Message, "")
             Catch
-                chosenPG = BuiltInParameterGroup.PG_TEXT
             End Try
-
-            Dim extDefs As List(Of ExternalDefinition) = ResolveDefinitions(app.Application, request.ParamNames)
-            If extDefs Is Nothing OrElse extDefs.Count = 0 Then
-                result.Message = "선택한 공유 파라미터를 Shared Parameters 파일에서 찾을 수 없습니다."
-                Return result
-            End If
-
-            Dim status As RunStatus =
-                ExecuteCore(doc, extDefs, request.ParamNames, request.ExcludeDummy, chosenPG, request.IsInstance, result, reporter)
-
-            result.Status = status
-            If String.IsNullOrEmpty(result.Message) Then
-                result.Message = If(status = RunStatus.Succeeded,
-                                    "공유 파라미터 연동을 완료했습니다.",
-                                    "공유 파라미터 연동에 실패했습니다.")
-            End If
 
             Return result
         End Function
 
         '==================== 결과를 엑셀로 ====================
-        Public Shared Function ExportResultToExcel(result As SharedParamRunResult, Optional doAutoFit As Boolean = False) As String
-            If result Is Nothing Then Return String.Empty
+        Public Shared Function ExportResultToExcel(result As SharedParamRunResult, Optional autoFit As Boolean = False) As String
+            If result Is Nothing OrElse result.Details Is Nothing OrElse result.Details.Count = 0 Then Return String.Empty
 
             Dim defaultName As String = $"ParamProp_{Date.Now:yyMMdd_HHmmss}.xlsx"
 
@@ -975,99 +844,20 @@ Namespace Services
                 Dim dt As New DataTable("SharedParamPropagate")
                 dt.Columns.Add("Type")
                 dt.Columns.Add("Family")
-                dt.Columns.Add("NestedParamName")
-                dt.Columns.Add("TargetParamName")
                 dt.Columns.Add("Detail")
 
-                If result.Details IsNot Nothing Then
-                    For Each r In result.Details
-                        Dim nestedName As String = ""
-                        Dim targetName As String = ""
-                        ParseDetailParamNames(r, nestedName, targetName)
+                For Each r In result.Details
+                    Dim row = dt.NewRow()
+                    row("Type") = r.Kind
+                    row("Family") = r.Family
+                    row("Detail") = r.Detail
+                    dt.Rows.Add(row)
+                Next
 
-                        Dim row = dt.NewRow()
-                        row("Type") = If(r.Kind, "")
-                        row("Family") = If(r.Family, "")
-                        row("NestedParamName") = nestedName
-                        row("TargetParamName") = targetName
-                        row("Detail") = If(r.Detail, "")
-                        dt.Rows.Add(row)
-                    Next
-                End If
-
-                Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("paramprop", dt)
-
-                EnsureParamPropExportSchema(dt)
-                Infrastructure.ExcelCore.EnsureNoDataRow(dt, "오류가 없습니다.")
-
-                Infrastructure.ExcelCore.SaveXlsx(sfd.FileName, "Results", dt, doAutoFit, sheetKey:="paramprop", progressKey:="paramprop:progress")
-                Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey("paramprop", sfd.FileName, autoFit:=doAutoFit, excelMode:=If(doAutoFit, "normal", "fast"))
+                Infrastructure.ExcelCore.SaveXlsx(sfd.FileName, "Results", dt, autoFit, sheetKey:="paramprop", exportKind:="paramprop")
                 Return sfd.FileName
             End Using
         End Function
-
-
-        Private Shared Sub EnsureParamPropExportSchema(dt As DataTable)
-            If dt Is Nothing Then Return
-
-            If dt.Columns.Contains("HostParamGuid") Then
-                dt.Columns.Remove("HostParamGuid")
-            End If
-
-            If Not dt.Columns.Contains("NestedParamName") Then
-                dt.Columns.Add("NestedParamName")
-            End If
-            If Not dt.Columns.Contains("TargetParamName") Then
-                dt.Columns.Add("TargetParamName")
-            End If
-
-            Try
-                If dt.Columns.Contains("NestedParamName") AndAlso dt.Columns.Contains("TargetParamName") Then
-                    Dim targetOrdinal As Integer = dt.Columns("TargetParamName").Ordinal
-                    If targetOrdinal > 0 Then
-                        dt.Columns("NestedParamName").SetOrdinal(targetOrdinal - 1)
-                    Else
-                        dt.Columns("NestedParamName").SetOrdinal(0)
-                        dt.Columns("TargetParamName").SetOrdinal(1)
-                    End If
-                End If
-            Catch
-            End Try
-        End Sub
-
-        Private Shared Sub ParseDetailParamNames(detailRow As SharedParamDetailRow,
-                                                 ByRef nestedParamName As String,
-                                                 ByRef targetParamName As String)
-            nestedParamName = ""
-            targetParamName = ""
-            If detailRow Is Nothing Then Return
-
-            Dim familyText As String = If(detailRow.Family, "")
-            Dim detailText As String = If(detailRow.Detail, "")
-
-            Dim candidate As String = ""
-            If Not String.IsNullOrWhiteSpace(detailText) Then
-                Dim p = detailText.IndexOf(":"c)
-                If p >= 0 AndAlso p < detailText.Length - 1 Then
-                    candidate = detailText.Substring(p + 1).Trim()
-                Else
-                    candidate = detailText.Trim()
-                End If
-            End If
-            If String.IsNullOrWhiteSpace(candidate) Then
-                candidate = familyText.Trim()
-            End If
-
-            If Not String.IsNullOrWhiteSpace(candidate) Then
-                Dim spacePos = candidate.IndexOf(" "c)
-                If spacePos > 0 Then
-                    candidate = candidate.Substring(0, spacePos).Trim()
-                End If
-            End If
-
-            targetParamName = candidate
-            nestedParamName = candidate
-        End Sub
 
         '==================== 핵심 실행 (이름 기반 계층 + 역순 처리) ====================
         Private Shared Function ExecuteCore(doc As Document,
@@ -1077,23 +867,59 @@ Namespace Services
                                             chosenPG As BuiltInParameterGroup,
                                             chosenIsInstance As Boolean,
                                             result As SharedParamRunResult,
-                                            reporter As ProgressDispatcher) As RunStatus
+                                            Optional progress As Action(Of String, Double, Integer, Integer, String, String) = Nothing) As RunStatus
+
+            ' ---- progress helper (Hub: paramprop:progress) ----
+            Dim lastTick As Long = 0
+            Dim sw As System.Diagnostics.Stopwatch = Nothing
+            Try
+                If progress IsNot Nothing Then
+                    sw = System.Diagnostics.Stopwatch.StartNew()
+                End If
+            Catch
+                sw = Nothing
+            End Try
+
+            Dim report As Action(Of String, Double, Integer, Integer, String, String) =
+                Sub(phase As String, phaseProgress As Double, current As Integer, total As Integer, message As String, target As String)
+                    If progress Is Nothing Then Return
+                    Try
+                        Dim doSend As Boolean = True
+                        If sw IsNot Nothing Then
+                            Dim nowMs As Long = sw.ElapsedMilliseconds
+                            If (nowMs - lastTick) < 80 AndAlso current <> total Then
+                                doSend = False
+                            Else
+                                lastTick = nowMs
+                            End If
+                        End If
+                        If doSend Then progress(phase, phaseProgress, current, total, message, target)
+                    Catch
+                    End Try
+                End Sub
 
             ' 1. 편집 가능한 모든 패밀리 수집 (프로젝트 문서 기준)
-            Dim allEditableIds As List(Of ElementId) =
-    New FilteredElementCollector(doc).
-        OfClass(GetType(Family)).
-        Cast(Of Family)().
-        Where(Function(x) x IsNot Nothing AndAlso x.IsEditable).
-        Select(Function(x) x.Id).
-        ToList()
+            Dim allEditable As List(Of Family) =
+                New FilteredElementCollector(doc).
+                OfClass(GetType(Family)).
+                Cast(Of Family)().
+                Where(Function(f) f.IsEditable).
+                ToList()
 
-            Dim totalEditableCount As Integer = allEditableIds.Count
-            Dim scanIndex As Integer = 0
-            reporter.Report("COLLECT", 0.0R, 0, totalEditableCount, "패밀리 스캔 준비", String.Empty, True)
+            Dim totalEditableCount As Integer = allEditable.Count
 
-            ' 이름 → ElementId 매핑 (패밀리 객체 캐싱 금지)
-            Dim nameToFamilyId As New Dictionary(Of String, ElementId)(StringComparer.OrdinalIgnoreCase)
+            report("scan", 0.0R, 0, totalEditableCount, "패밀리 스캔", "")
+
+            ' 이름 → Family 매핑 (Id 는 Doc별이라 안씀)
+            Dim nameToFamily As New Dictionary(Of String, Family)(StringComparer.OrdinalIgnoreCase)
+            For Each f In allEditable
+                If f Is Nothing OrElse f.FamilyCategory Is Nothing Then Continue For
+                If IsAnnotationFamily(f) Then Continue For
+
+                If Not nameToFamily.ContainsKey(f.Name) Then
+                    nameToFamily.Add(f.Name, f)
+                End If
+            Next
 
             ' 부모이름 → 자식이름 그래프 (공유 체크된 하위만)
             Dim parentToChildren As New Dictionary(Of String, HashSet(Of String))(StringComparer.OrdinalIgnoreCase)
@@ -1104,19 +930,12 @@ Namespace Services
             Dim scanFails As New List(Of String)()
 
             '----- 1차 스캔: 그래프 구성 -----
-            For Each famId As ElementId In allEditableIds
-                Dim f As Family = Nothing
-                Try
-                    f = TryCast(doc.GetElement(famId), Family)
-                Catch
-                End Try
-                If f Is Nothing OrElse f.FamilyCategory Is Nothing Then Continue For
+            Dim scanIdx As Integer = 0
+            For Each f In allEditable
+                scanIdx += 1
+                report("scan", If(totalEditableCount <= 0, 0.0R, CDbl(scanIdx) / CDbl(totalEditableCount)), scanIdx, totalEditableCount, "스캔 중...", If(f Is Nothing, "", f.Name))
+                If f.FamilyCategory Is Nothing Then Continue For
                 If IsAnnotationFamily(f) Then Continue For
-
-                Dim famName As String = f.Name
-                If Not nameToFamilyId.ContainsKey(famName) Then
-                    nameToFamilyId.Add(famName, f.Id)
-                End If
 
                 Dim hostDoc As Document = Nothing
                 Try
@@ -1168,25 +987,23 @@ Namespace Services
 
                 Catch ex As Exception
                     If Not IsNoTxnNoise(ex.Message) Then
-                        scanFails.Add(famName)
+                        scanFails.Add(f.Name)
                     End If
                 Finally
                     If hostDoc IsNot Nothing Then
                         Try : hostDoc.Close(False) : Catch : End Try
                     End If
                 End Try
-
-                scanIndex += 1
-                reporter.Report("COLLECT",
-                                If(totalEditableCount = 0, 1.0R, CDbl(scanIndex) / CDbl(Math.Max(1, totalEditableCount))),
-                                scanIndex,
-                                totalEditableCount,
-                                "패밀리 스캔 중",
-                                famName)
             Next
 
             ' 복합 패밀리(상위) 목록 (리포트용)
-            Dim compositeFamilyNames As New List(Of String)(parentToChildren.Keys)
+            Dim compositeFamilies As New List(Of Family)()
+            For Each pname In parentToChildren.Keys
+                Dim fam As Family = Nothing
+                If nameToFamily.TryGetValue(pname, fam) Then
+                    compositeFamilies.Add(fam)
+                End If
+            Next
 
             '----- 2. 그래프를 하위 → 상위 순으로 정렬 (DFS, 이름 기준) -----
             Dim order As New List(Of String)()
@@ -1218,9 +1035,6 @@ Namespace Services
                 dfs(name)
             Next
 
-            Dim totalToProcess As Integer = order.Count
-            reporter.Report("ANALYZE", 1.0R, totalToProcess, totalToProcess, "그래프 분석 완료", String.Empty, True)
-
             '----- 3. 계층 역순으로 파라미터 추가 & 연동 -----
             Dim fatalEx As Exception = Nothing
             Dim addedChild As Integer = 0
@@ -1233,59 +1047,44 @@ Namespace Services
             Dim childFails As New List(Of String)()
             Dim skips As New List(Of String)()
             Dim compositeSuccessCount As Integer = 0
-            Dim applyIndex As Integer = 0
-            Dim lastErrorMessage As String = String.Empty
-            reporter.Report("APPLY", 0.0R, 0, totalToProcess, "파라미터 적용 준비", String.Empty, True)
+
+            Dim applyIdx As Integer = 0
+            Dim applyTotal As Integer = order.Count
+            report("apply", 0.0R, 0, applyTotal, "파라미터 적용 준비", "")
 
             Using tgAll As New TransactionGroup(doc, "KKY Shared Param Propagate")
                 tgAll.Start()
                 Try
                     ' order: 하위 → 상위. leaf(A-6) 먼저 처리.
                     For Each famName In order
-                        Dim famId As ElementId = Nothing
-                        If Not nameToFamilyId.TryGetValue(famName, famId) Then
-                            famId = FindFamilyIdByName(doc, famName)
-                            If famId IsNot Nothing Then nameToFamilyId(famName) = famId
-                        End If
+                        applyIdx += 1
+                        report("apply", If(applyTotal <= 0, 0.0R, CDbl(applyIdx) / CDbl(applyTotal)), applyIdx, applyTotal, "적용 중...", famName)
+                        Dim fam As Family = Nothing
+                        If Not nameToFamily.TryGetValue(famName, fam) Then Continue For
 
                         Dim isParent As Boolean = parentToChildren.ContainsKey(famName)
                         Dim isChild As Boolean = childNames.Contains(famName)
 
-                        Try
-                            ProcessFamilyBottomUp(doc,
-                                                  famId,
-                                                  famName,
-                                                  extDefs,
-                                                  paramNames,
-                                                  parentToChildren,
-                                                  excludeDummy,
-                                                  chosenIsInstance,
-                                                  chosenPG,
-                                                  isParent,
-                                                  isChild,
-                                                  addedHost,
-                                                  addedChild,
-                                                  linkCnt,
-                                                  verifyOk,
-                                                  verifyFail,
-                                                  skipTotal,
-                                                  parentFails,
-                                                  childFails,
-                                                  skips,
-                                                  compositeSuccessCount,
-                                                  nameToFamilyId)
-                        Catch ex As Exception
-                            lastErrorMessage = MakePhaseError("APPLY", famName, famId, ex.Message)
-                            Throw
-                        End Try
-
-                        applyIndex += 1
-                        reporter.Report("APPLY",
-                                        If(totalToProcess = 0, 1.0R, CDbl(applyIndex) / CDbl(Math.Max(1, totalToProcess))),
-                                        applyIndex,
-                                        totalToProcess,
-                                        "파라미터 적용 중",
-                                        famName)
+                        ProcessFamilyBottomUp(doc,
+                                              fam,
+                                              extDefs,
+                                              paramNames,
+                                              parentToChildren,
+                                              excludeDummy,
+                                              chosenIsInstance,
+                                              chosenPG,
+                                              isParent,
+                                              isChild,
+                                              addedHost,
+                                              addedChild,
+                                              linkCnt,
+                                              verifyOk,
+                                              verifyFail,
+                                              skipTotal,
+                                              parentFails,
+                                              childFails,
+                                              skips,
+                                              compositeSuccessCount)
                     Next
 
                     tgAll.Assimilate()
@@ -1295,8 +1094,6 @@ Namespace Services
                 End Try
             End Using
 
-            reporter.Report("SAVE", 1.0R, applyIndex, totalToProcess, "결과 저장/정리 중", String.Empty, True)
-
             If fatalEx IsNot Nothing Then
                 result.Message = fatalEx.Message
                 Return RunStatus.Failed
@@ -1304,7 +1101,7 @@ Namespace Services
 
             '----- 4. 리포트 구성 -----
             Dim header As New StringBuilder()
-            header.AppendLine($"패밀리 스캔: {totalEditableCount}개 / 복합 패밀리: {compositeFamilyNames.Count}개 / 성공: {compositeSuccessCount}개")
+            header.AppendLine($"패밀리 스캔: {totalEditableCount}개 / 복합 패밀리: {compositeFamilies.Count}개 / 성공: {compositeSuccessCount}개")
             header.AppendLine($"하위 패밀리 파라미터 추가: {addedChild}")
             header.AppendLine($"복합 패밀리 파라미터 추가/교정: {addedHost}")
             header.AppendLine($"파라미터 연동 성공 카운트: {linkCnt}")
@@ -1342,17 +1139,12 @@ Namespace Services
 
             result.Report = header.ToString()
             result.Details = BuildDetails(scanLines, skipLines, failLines, childFails)
-            reporter.Report("DONE", 1.0R, applyIndex, totalToProcess, "완료", String.Empty, True)
-            If String.IsNullOrWhiteSpace(result.Message) AndAlso Not String.IsNullOrWhiteSpace(lastErrorMessage) Then
-                result.Message = lastErrorMessage
-            End If
             Return RunStatus.Succeeded
         End Function
 
         ' 패밀리 1개 단위 처리 (계층 역순에서 호출)
         Private Shared Sub ProcessFamilyBottomUp(projDoc As Document,
-                                                 famId As ElementId,
-                                                 famName As String,
+                                                 fam As Family,
                                                  extDefs As IEnumerable(Of ExternalDefinition),
                                                  paramNames As List(Of String),
                                                  parentToChildren As Dictionary(Of String, HashSet(Of String)),
@@ -1370,25 +1162,12 @@ Namespace Services
                                                  parentFails As List(Of String),
                                                  childFails As List(Of String),
                                                  skips As List(Of String),
-                                                 ByRef compositeSuccessCount As Integer,
-                                                 nameToFamilyId As Dictionary(Of String, ElementId))
+                                                 ByRef compositeSuccessCount As Integer)
 
-            If projDoc Is Nothing OrElse String.IsNullOrWhiteSpace(famName) Then Return
+            If fam Is Nothing Then Return
+            If IsAnnotationFamily(fam) Then Return
 
-            Dim fam As Family = TryGetFreshFamily(projDoc, famName, famId, nameToFamilyId)
-
-            If fam Is Nothing OrElse IsAnnotationFamily(fam) Then
-                Dim missingMsg = MakePhaseError("APPLY", famName, famId, "패밀리 인스턴스를 찾을 수 없습니다.")
-                If isParent Then
-                    parentFails.Add(missingMsg)
-                End If
-                If isChild Then
-                    childFails.Add(missingMsg)
-                End If
-                Return
-            End If
-
-            Dim safeFamId As ElementId = If(fam IsNot Nothing, fam.Id, famId)
+            Dim famName As String = fam.Name
             Dim hasChildren As Boolean = parentToChildren.ContainsKey(famName)
 
             Dim famDoc As Document = Nothing
@@ -1397,23 +1176,7 @@ Namespace Services
             Dim localSkipAssoc As Integer = 0
 
             Try
-                Try
-                    famDoc = projDoc.EditFamily(fam)
-                Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
-                    ok = False
-                    Dim msg = MakeInvalidObjectMessage("APPLY", famName, safeFamId, "EditFamily", ex)
-                    If isParent Then
-                        parentFails.Add(msg)
-                    ElseIf isChild Then
-                        childFails.Add(msg)
-                    End If
-                    Return
-                End Try
-
-                If famDoc Is Nothing Then
-                    parentFails.Add(MakePhaseError("APPLY", famName, safeFamId, "패밀리 편집에 실패했습니다."))
-                    Return
-                End If
+                famDoc = projDoc.EditFamily(fam)
                 Dim fm As FamilyManager = famDoc.FamilyManager
 
                 ' 1) 이 패밀리에 공유 파라미터 추가/교정
@@ -1467,16 +1230,11 @@ Namespace Services
                                 childF = sym.Family
                             Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
                                 ok = False
-                                Dim msg = MakeInvalidObjectMessage("APPLY", famName, safeFamId, "Associate:ResolveChildSymbol", ex)
-                                If isParent Then
-                                    parentFails.Add(msg)
-                                ElseIf isChild Then
-                                    childFails.Add(msg)
-                                End If
+                                parentFails.Add($"{famName}: [Associate] 오류 - {ex.Message}")
                                 Continue For
                             Catch ex As Exception
                                 ok = False
-                                parentFails.Add(MakePhaseError("APPLY", famName, safeFamId, $"[Associate] 오류 - {ex.Message}"))
+                                parentFails.Add($"{famName}: [Associate] 오류 - {ex.Message}")
                                 Continue For
                             End Try
 
@@ -1517,30 +1275,17 @@ Namespace Services
                                     Try
                                         famDoc.FamilyManager.AssociateElementParameterToFamilyParameter(p, hostParam)
                                         linkCnt += 1
-                                    Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
+                                    Catch
                                         ok = False
-                                        Dim msg = MakeInvalidObjectMessage("APPLY", famName, safeFamId, $"Associate:{name}", ex)
-                                        If isParent Then
-                                            parentFails.Add(msg)
-                                        ElseIf isChild Then
-                                            childFails.Add(msg)
-                                        End If
-                                    Catch ex As Exception
-                                        ok = False
-                                        parentFails.Add(MakePhaseError("APPLY", famName, safeFamId, $"[Associate] 실패 - {name}: {ex.Message}"))
+                                        parentFails.Add($"{famName}: [Associate] 실패 - {name}")
                                     End Try
                                 Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
                                     ok = False
-                                    Dim msg = MakeInvalidObjectMessage("APPLY", famName, safeFamId, $"Associate:{name}", ex)
-                                    If isParent Then
-                                        parentFails.Add(msg)
-                                    ElseIf isChild Then
-                                        childFails.Add(msg)
-                                    End If
+                                    parentFails.Add($"{famName}: [Associate] 오류 - {ex.Message}")
                                     Continue For
                                 Catch ex As Exception
                                     ok = False
-                                    parentFails.Add(MakePhaseError("APPLY", famName, safeFamId, $"[Associate] 오류 - {ex.Message}"))
+                                    parentFails.Add($"{famName}: [Associate] 오류 - {ex.Message}")
                                     Continue For
                                 End Try
                             Next
@@ -1579,22 +1324,13 @@ Namespace Services
                     compositeSuccessCount += 1
                 End If
 
-            Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
-                ok = False
-                Dim failMsg As String = MakeInvalidObjectMessage("APPLY", famName, safeFamId, "ProcessFamilyBottomUp", ex)
-                If isParent Then
-                    parentFails.Add(failMsg)
-                ElseIf isChild Then
-                    childFails.Add(failMsg)
-                End If
             Catch ex As Exception
                 ok = False
                 If Not IsNoTxnNoise(ex.Message) Then
-                    Dim failMsg As String = MakePhaseError("APPLY", famName, safeFamId, ex.Message)
                     If isParent Then
-                        parentFails.Add(failMsg)
+                        parentFails.Add(famName)
                     ElseIf isChild Then
-                        childFails.Add(failMsg)
+                        childFails.Add(famName)
                     End If
                 End If
             Finally
@@ -1605,6 +1341,69 @@ Namespace Services
         End Sub
 
         '==================== 공통 헬퍼들 ====================
+
+#If REVIT2025 Then
+        '==================== Revit 2025: Parameter groupTypeId mapping (FIX) ====================
+        ' 기존 인덱스 기반 매핑(CInt(enum) → list index) 제거
+        Private Shared Function ResolveUserAssignableGroupTypeId(
+            fm As FamilyManager,
+            groupPG As BuiltInParameterGroup,
+            extDef As ExternalDefinition
+        ) As ForgeTypeId
+
+            Dim gtid As ForgeTypeId = Nothing
+
+            ' 1) enum 값을 "직접" GroupTypeId로 매핑 (안정)
+            Try
+                Select Case groupPG
+                    Case BuiltInParameterGroup.PG_TEXT
+                        gtid = GroupTypeId.Text
+                    Case BuiltInParameterGroup.PG_GEOMETRY
+                        gtid = GroupTypeId.Geometry
+                    Case BuiltInParameterGroup.PG_CONSTRAINTS
+                        gtid = GroupTypeId.Constraints
+                    Case BuiltInParameterGroup.PG_MATERIALS
+                        gtid = GroupTypeId.Materials
+                    Case BuiltInParameterGroup.PG_GRAPHICS
+                        gtid = GroupTypeId.Graphics
+                    Case BuiltInParameterGroup.PG_IDENTITY_DATA
+                        gtid = GroupTypeId.IdentityData
+                    Case Else
+                        gtid = GroupTypeId.Data
+                End Select
+            Catch
+                gtid = Nothing
+            End Try
+
+            ' 2) fallback: 정의 자체의 그룹
+            If gtid Is Nothing Then
+                Try : gtid = extDef.GetGroupTypeId() : Catch : gtid = Nothing : End Try
+            End If
+
+            ' 3) 최후 fallback
+            If gtid Is Nothing Then
+                Try : gtid = GroupTypeId.Data : Catch : End Try
+            End If
+            If gtid Is Nothing Then gtid = New ForgeTypeId()
+
+            ' 4) FamilyManager에서 assign 가능한 그룹인지 보정
+            Try
+                If fm IsNot Nothing AndAlso gtid IsNot Nothing Then
+                    If Not fm.IsUserAssignableParameterGroup(gtid) Then
+                        Try : gtid = GroupTypeId.IdentityData : Catch : End Try
+                        If gtid Is Nothing Then
+                            Try : gtid = GroupTypeId.Data : Catch : End Try
+                        End If
+                        If gtid Is Nothing Then gtid = New ForgeTypeId()
+                    End If
+                End If
+            Catch
+            End Try
+
+            Return gtid
+        End Function
+#End If
+
         Private Structure EnsureResult
             Public Added As Boolean
             Public FinalOk As Boolean
@@ -1633,10 +1432,12 @@ Namespace Services
                 Try
                     TxnUtil.WithTxn(famDoc, $"TEMP non-shared add: {extDef.Name}",
                         Sub()
-#If REVIT2019 Or REVIT2021 Then
-                            fm.AddParameter(extDef, groupPG, isInstance) ' ← shared 생성
-#ElseIf REVIT2023 Or REVIT2025 Then
+#If REVIT2019 Or REVIT2021 Or REVIT2023 Then
+                            ' shared parameter directly
                             fm.AddParameter(extDef, groupPG, isInstance)
+#ElseIf REVIT2025 Then
+                            Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, groupPG, extDef)
+                            fm.AddParameter(extDef, gtid, isInstance)
 #End If
                         End Sub)
                     result.Added = True
@@ -1662,7 +1463,12 @@ Namespace Services
             Try
                 TxnUtil.WithTxn(famDoc, $"Replace to shared: {extDef.Name}",
                     Sub()
+#If REVIT2019 Or REVIT2021 Or REVIT2023 Then
                         fm.ReplaceParameter(anyByName, extDef, groupPG, isInstance)
+#ElseIf REVIT2025 Then
+                        Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, groupPG, extDef)
+                        fm.ReplaceParameter(anyByName, extDef, gtid, isInstance)
+#End If
                     End Sub)
             Catch
                 replaceFailed = True
@@ -1672,14 +1478,21 @@ Namespace Services
                 fm.Parameters.Cast(Of FamilyParameter)().
                 FirstOrDefault(Function(x) x.Definition IsNot Nothing AndAlso
                                            String.Equals(x.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
-#If REVIT2025 Then
+#If REVIT2019 Or REVIT2021 Or REVIT2023 Then
             Dim okNow As Boolean =
-                (corrected IsNot Nothing AndAlso corrected.IsShared AndAlso
-                 BuiltInParameterGroupCompat.IsInGroup(corrected.Definition, groupPG))
-#Else
-            Dim okNow As Boolean =
-                (corrected IsNot Nothing AndAlso corrected.IsShared AndAlso
+                (corrected IsNot Nothing AndAlso corrected.IsShared AndAlso corrected.IsInstance = isInstance AndAlso
                  corrected.Definition.ParameterGroup = groupPG)
+#ElseIf REVIT2025 Then
+            Dim groupOk As Boolean = True
+            Try
+                groupOk = (corrected IsNot Nothing AndAlso corrected.Definition IsNot Nothing AndAlso
+                           corrected.Definition.GetGroupTypeId().Equals(ResolveUserAssignableGroupTypeId(fm, groupPG, extDef)))
+            Catch
+                groupOk = True
+            End Try
+
+            Dim okNow As Boolean =
+                (corrected IsNot Nothing AndAlso corrected.IsShared AndAlso corrected.IsInstance = isInstance AndAlso groupOk)
 #End If
 
             If okNow AndAlso Not replaceFailed Then
@@ -1697,10 +1510,11 @@ Namespace Services
                             Throw New InvalidOperationException(
                                 $"Remove 실패(레이블/치수/공식 참조 중일 수 있음): {remEx.Message}")
                         End Try
-#If REVIT2019 Or REVIT2021 Then
-                        fm.AddParameter(extDef.Name, groupPG, extDef.ParameterType, isInstance)
-#ElseIf REVIT2023 Or REVIT2025 Then
+#If REVIT2019 Or REVIT2021 Or REVIT2023 Then
                         fm.AddParameter(extDef, groupPG, isInstance)
+#ElseIf REVIT2025 Then
+                            Dim gtid As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, groupPG, extDef)
+                            fm.AddParameter(extDef, gtid, isInstance)
 #End If
                     End Sub)
                 Try : famDoc.Regenerate() : Catch : End Try
@@ -1714,12 +1528,17 @@ Namespace Services
                 FirstOrDefault(Function(x) x.Definition IsNot Nothing AndAlso
                                            x.IsShared AndAlso
                                            String.Equals(x.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase))
-#If REVIT2025 Then
-            result.FinalOk = (corrected IsNot Nothing AndAlso
-                              BuiltInParameterGroupCompat.IsInGroup(corrected.Definition, groupPG))
-#Else
-            result.FinalOk = (corrected IsNot Nothing AndAlso
-                              corrected.Definition.ParameterGroup = groupPG)
+#If REVIT2019 Or REVIT2021 Or REVIT2023 Then
+            result.FinalOk = (corrected IsNot Nothing AndAlso corrected.Definition.ParameterGroup = groupPG)
+#ElseIf REVIT2025 Then
+            Dim groupOk2 As Boolean = True
+            Try
+                groupOk2 = (corrected IsNot Nothing AndAlso corrected.Definition IsNot Nothing AndAlso
+                            corrected.Definition.GetGroupTypeId().Equals(ResolveUserAssignableGroupTypeId(fm, groupPG, extDef)))
+            Catch
+                groupOk2 = True
+            End Try
+            result.FinalOk = (corrected IsNot Nothing AndAlso groupOk2)
 #End If
             Return result
         End Function
@@ -1881,25 +1700,94 @@ Namespace Services
                    (msg.IndexOf(key3, StringComparison.OrdinalIgnoreCase) >= 0)
         End Function
 
-        Private Shared Function ResolveDefinitions(app As Application,
-                                                   names As IEnumerable(Of String)) As List(Of ExternalDefinition)
-            Dim list As New List(Of ExternalDefinition)()
-            If app Is Nothing OrElse names Is Nothing Then Return list
 
-            Dim setNames As New HashSet(Of String)(
-                names.Where(Function(n) Not String.IsNullOrWhiteSpace(n)),
-                StringComparer.OrdinalIgnoreCase)
-            If setNames.Count = 0 Then Return list
+        Private Shared Function NormalizeParamName(name As String) As String
+            If name Is Nothing Then Return String.Empty
+            Dim s As String = name.Trim()
+
+            ' Remove wrapping quotes if any (e.g. "\"NAME\"")
+            If s.Length >= 2 AndAlso s(0) = """"c AndAlso s(s.Length - 1) = """"c Then
+                s = s.Substring(1, s.Length - 2).Trim()
+            End If
+
+            ' Normalize whitespace (tabs/NBSP -> space, collapse repeats)
+            Dim sb As New StringBuilder(s.Length)
+            Dim prevSpace As Boolean = False
+            For Each ch As Char In s
+                Dim isWs As Boolean = Char.IsWhiteSpace(ch) OrElse ch = ChrW(&HA0) ' NBSP
+                If isWs Then
+                    If Not prevSpace Then
+                        sb.Append(" "c)
+                        prevSpace = True
+                    End If
+                Else
+                    sb.Append(ch)
+                    prevSpace = False
+                End If
+            Next
+
+            Return sb.ToString().Trim()
+        End Function
+        Private Shared Function ResolveDefinitions(app As Application,
+                                                   names As IEnumerable(Of String),
+                                                   guids As IEnumerable(Of String)) As List(Of ExternalDefinition)
+            Dim list As New List(Of ExternalDefinition)()
+            If app Is Nothing Then Return list
+
+            Dim reqNames As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            If names IsNot Nothing Then
+                For Each n In names
+                    Dim nm As String = NormalizeParamName(If(n, String.Empty))
+                    If Not String.IsNullOrWhiteSpace(nm) Then reqNames.Add(nm)
+                Next
+            End If
+
+            Dim reqGuids As New HashSet(Of Guid)()
+            If guids IsNot Nothing Then
+                For Each g In guids
+                    Dim gs As String = NormalizeParamName(If(g, String.Empty))
+                    Dim id As Guid
+                    If Guid.TryParse(gs, id) Then reqGuids.Add(id)
+                Next
+            End If
+
+            If reqNames.Count = 0 AndAlso reqGuids.Count = 0 Then Return list
 
             Dim defFile = app.OpenSharedParameterFile()
             If defFile Is Nothing Then Return list
 
-            For Each g As DefinitionGroup In defFile.Groups
-                For Each d As Definition In g.Definitions
-                    Dim ed = TryCast(d, ExternalDefinition)
+            Dim added As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            For Each grp As DefinitionGroup In defFile.Groups
+                If grp Is Nothing Then Continue For
+                For Each defn As Definition In grp.Definitions
+                    If defn Is Nothing Then Continue For
+                    Dim ed = TryCast(defn, ExternalDefinition)
                     If ed Is Nothing Then Continue For
-                    If setNames.Contains(ed.Name) Then
-                        list.Add(ed)
+
+                    Dim hit As Boolean = False
+
+                    If reqGuids.Count > 0 Then
+                        Try
+                            hit = reqGuids.Contains(ed.GUID)
+                        Catch
+                            hit = False
+                        End Try
+                    End If
+
+                    If Not hit AndAlso reqNames.Count > 0 Then
+                        Dim key As String = NormalizeParamName(ed.Name)
+                        hit = reqNames.Contains(key)
+                    End If
+
+                    If hit Then
+                        ' De-dupe by GUID when possible
+                        Dim keyId As String = ""
+                        Try : keyId = ed.GUID.ToString("D") : Catch : keyId = ed.Name : End Try
+                        If Not added.Contains(keyId) Then
+                            added.Add(keyId)
+                            list.Add(ed)
+                        End If
                     End If
                 Next
             Next
@@ -1908,6 +1796,92 @@ Namespace Services
         End Function
 
         Private Shared Function BuildGroupOptions() As List(Of ParameterGroupOption)
+#If REVIT2025 Then
+            Dim items As New List(Of ParameterGroupOption)()
+            Dim preferred As BuiltInParameterGroup() = {
+                BuiltInParameterGroup.PG_TEXT,
+                BuiltInParameterGroup.PG_IDENTITY_DATA,
+                BuiltInParameterGroup.PG_DATA,
+                BuiltInParameterGroup.PG_CONSTRAINTS
+            }
+
+            Dim added As New HashSet(Of Integer)()
+
+            For Each pg In preferred
+                Dim nm As String = ""
+                Dim gtid As ForgeTypeId = Nothing
+
+                Try
+                    Select Case pg
+                        Case BuiltInParameterGroup.PG_TEXT
+                            gtid = GroupTypeId.Text
+                        Case BuiltInParameterGroup.PG_IDENTITY_DATA
+                            gtid = GroupTypeId.IdentityData
+                        Case BuiltInParameterGroup.PG_CONSTRAINTS
+                            gtid = GroupTypeId.Constraints
+                        Case BuiltInParameterGroup.PG_GEOMETRY
+                            gtid = GroupTypeId.Geometry
+                        Case BuiltInParameterGroup.PG_MATERIALS
+                            gtid = GroupTypeId.Materials
+                        Case BuiltInParameterGroup.PG_GRAPHICS
+                            gtid = GroupTypeId.Graphics
+                        Case Else
+                            gtid = GroupTypeId.Data
+                    End Select
+                Catch
+                    gtid = Nothing
+                End Try
+
+                Try
+                    If gtid IsNot Nothing Then nm = LabelUtils.GetLabelForGroup(gtid)
+                Catch
+                    nm = ""
+                End Try
+                If String.IsNullOrWhiteSpace(nm) Then nm = pg.ToString()
+
+                items.Add(New ParameterGroupOption With {.Id = CInt(pg), .Name = nm})
+                added.Add(CInt(pg))
+            Next
+
+            For Each pg As BuiltInParameterGroup In [Enum].GetValues(GetType(BuiltInParameterGroup))
+                If Not added.Contains(CInt(pg)) Then
+                    Dim nm As String = ""
+                    Dim gtid As ForgeTypeId = Nothing
+
+                    Try
+                        Select Case pg
+                            Case BuiltInParameterGroup.PG_TEXT
+                                gtid = GroupTypeId.Text
+                            Case BuiltInParameterGroup.PG_IDENTITY_DATA
+                                gtid = GroupTypeId.IdentityData
+                            Case BuiltInParameterGroup.PG_CONSTRAINTS
+                                gtid = GroupTypeId.Constraints
+                            Case BuiltInParameterGroup.PG_GEOMETRY
+                                gtid = GroupTypeId.Geometry
+                            Case BuiltInParameterGroup.PG_MATERIALS
+                                gtid = GroupTypeId.Materials
+                            Case BuiltInParameterGroup.PG_GRAPHICS
+                                gtid = GroupTypeId.Graphics
+                            Case Else
+                                gtid = GroupTypeId.Data
+                        End Select
+                    Catch
+                        gtid = Nothing
+                    End Try
+
+                    Try
+                        If gtid IsNot Nothing Then nm = LabelUtils.GetLabelForGroup(gtid)
+                    Catch
+                        nm = ""
+                    End Try
+                    If String.IsNullOrWhiteSpace(nm) Then nm = pg.ToString()
+
+                    items.Add(New ParameterGroupOption With {.Id = CInt(pg), .Name = nm})
+                End If
+            Next
+
+            Return items
+#Else
             Dim items As New List(Of ParameterGroupOption)()
             Dim preferred As BuiltInParameterGroup() = {
                 BuiltInParameterGroup.PG_TEXT,
@@ -1935,6 +1909,7 @@ Namespace Services
             Next
 
             Return items
+#End If
         End Function
 
         Private Shared Function BuildDetails(scanFails As IEnumerable(Of String),

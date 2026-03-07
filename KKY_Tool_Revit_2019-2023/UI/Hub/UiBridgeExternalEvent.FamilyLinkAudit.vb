@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -146,38 +146,9 @@ Namespace UI.Hub
         End Sub
 
         Private Function FilterFamilyLinkIssueRows(rows As List(Of FamilyLinkAuditRow)) As List(Of FamilyLinkAuditRow)
-            If rows Is Nothing Then Return New List(Of FamilyLinkAuditRow)()
-
-            Dim table As DataTable = FamilyLinkAuditExport.ToDataTable(rows)
-            Dim filteredTable As DataTable = FilterIssueRowsCopy("familylink", table)
-
-            Dim result As New List(Of FamilyLinkAuditRow)()
-            If filteredTable Is Nothing Then Return result
-
-            For Each dr As DataRow In filteredTable.Rows
-                result.Add(New FamilyLinkAuditRow With {
-                    .FileName = SafeStr(Convert.ToString(dr("FileName"))),
-                    .HostFamilyName = SafeStr(Convert.ToString(dr("HostFamilyName"))),
-                    .HostFamilyCategory = SafeStr(Convert.ToString(dr("HostFamilyCategory"))),
-                    .NestedFamilyName = SafeStr(Convert.ToString(dr("NestedFamilyName"))),
-                    .NestedTypeName = SafeStr(Convert.ToString(dr("NestedTypeName"))),
-                    .NestedCategory = SafeStr(Convert.ToString(dr("NestedCategory"))),
-                    .NestedParamName = SafeStr(Convert.ToString(dr("NestedParamName"))),
-                    .TargetParamName = SafeStr(Convert.ToString(dr("TargetParamName"))),
-                    .ExpectedGuid = SafeStr(Convert.ToString(dr("ExpectedGuid"))),
-                    .FoundScope = SafeStr(Convert.ToString(dr("FoundScope"))),
-                    .NestedParamGuid = SafeStr(Convert.ToString(dr("NestedParamGuid"))),
-                    .NestedParamDataType = SafeStr(Convert.ToString(dr("NestedParamDataType"))),
-                    .AssocHostParamName = SafeStr(Convert.ToString(dr("AssocHostParamName"))),
-                    .HostParamGuid = SafeStr(Convert.ToString(dr("HostParamGuid"))),
-                    .HostParamIsShared = SafeStr(Convert.ToString(dr("HostParamIsShared"))),
-                    .Issue = SafeStr(Convert.ToString(dr("Issue"))),
-                    .Notes = SafeStr(Convert.ToString(dr("Notes")))
-                })
-            Next
-
-            Return result
-        End Function
+    ' ✅ 전체 결과 출력(커넥터 기능만 이슈 필터링)
+    Return If(rows, New List(Of FamilyLinkAuditRow)())
+End Function
 
         Private Sub HandleFamilyLinkExport(payload As Object)
             If _familyLinkLastRows Is Nothing Then
@@ -316,7 +287,7 @@ Namespace UI.Hub
         Private Shared Function SafeDefTypeToken(defn As Definition) As String
             If defn Is Nothing Then Return ""
             Try
-#If REVIT2023 = 1 Then
+#If REVIT2023 = 1 Or REVIT2025 = 1 Then
                 Dim dt As ForgeTypeId = defn.GetDataType()
                 If dt IsNot Nothing Then Return SafeStr(dt.TypeId)
                 Return ""

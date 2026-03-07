@@ -47,7 +47,7 @@ Namespace UI.Hub
             Dim options As New HubCommonOptionsStorageService.HubCommonOptions() With {
                 .ExtraParamsText = If(extraText, String.Empty),
                 .TargetFilterText = If(filterText, String.Empty),
-                .excludeEndDummy = excludeEndDummy
+                .ExcludeEndDummy = excludeEndDummy
             }
 
             Dim ok = HubCommonOptionsStorageService.Save(options)
@@ -91,6 +91,7 @@ Namespace UI.Hub
             Public Property Guid As MultiGuidOptions = New MultiGuidOptions()
             Public Property FamilyLink As MultiFamilyLinkOptions = New MultiFamilyLinkOptions()
             Public Property Points As MultiPointsOptions = New MultiPointsOptions()
+            Public Property UseActiveDocument As Boolean = False
             Public Property RvtPaths As List(Of String) = New List(Of String)()
         End Class
 
@@ -176,12 +177,76 @@ Namespace UI.Hub
         '  hub:multi-done { summary:{key:{rows}} }
         Private Sub HandleMultiRun(app As UIApplication, payload As Object)
             Dim req As MultiRunRequest = ParseMultiRequest(payload)
-            If req Is Nothing OrElse req.RvtPaths.Count = 0 Then
-                SendToWeb("hub:multi-error", New With {.message = "검토할 RVT 파일이 없습니다."})
+            If req Is Nothing Then
+                SendToWeb("hub:multi-error", New With {.message = "요청 정보가 올바르지 않습니다."})
                 Return
             End If
             If Not AnyFeatureEnabled(req) Then
                 SendToWeb("hub:multi-error", New With {.message = "선택된 기능이 없습니다."})
+                Return
+            End If
+
+            ' 현재 활성 문서(열려있는 파일)로 즉시 검토
+            If req.UseActiveDocument Then
+                Dim uidoc = app.ActiveUIDocument
+                Dim doc As Document = Nothing
+                Try
+                    If uidoc IsNot Nothing Then doc = uidoc.Document
+                Catch
+                    doc = Nothing
+                End Try
+                If doc Is Nothing Then
+                    SendToWeb("hub:multi-error", New With {.message = "현재 활성 문서를 찾을 수 없습니다."})
+                    Return
+                End If
+
+                Dim safeName As String = ""
+                Dim docPath As String = ""
+                Try
+                    safeName = doc.Title
+                Catch
+                    safeName = ""
+                End Try
+                Try
+                    docPath = doc.PathName
+                Catch
+                    docPath = ""
+                End Try
+                If String.IsNullOrWhiteSpace(docPath) Then docPath = safeName
+
+                req.RvtPaths = New List(Of String) From {docPath}
+
+                SyncLock _multiLock
+                    _multiRequest = req
+                    _multiQueue = Nothing
+                    _multiTotal = 1
+                    _multiIndex = 1
+                    _multiActive = False
+                    _multiPending = False
+                    _multiBusy = False
+                    _multiApp = app
+                    _multiRunItems = New List(Of MultiRunItem)()
+                    ResetMultiCaches()
+                End SyncLock
+
+                Dim started = Date.Now
+                ReportMultiProgress(0.0R, "현재 파일 검토 시작", safeName)
+                Try
+                    RunMultiForDocument(app, doc, docPath, safeName, 0.0R)
+                    AppendMultiRunItem(safeName, "success", "", "DONE", started)
+                Catch ex As Exception
+                    AppendMultiConnectorError(safeName, $"파일 처리 실패: {ex.Message}")
+                    AppendMultiRunItem(safeName, "failed", ex.Message, "RUN", started)
+                    SendToWeb("hub:multi-error", New With {.message = ex.Message})
+                    Return
+                End Try
+
+                FinishMultiRun()
+                Return
+            End If
+
+            If req.RvtPaths.Count = 0 Then
+                SendToWeb("hub:multi-error", New With {.message = "검토할 RVT 파일이 없습니다."})
                 Return
             End If
 
@@ -249,7 +314,15 @@ Namespace UI.Hub
                 End If
 
                 Dim mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(filePath)
-                doc = app.Application.OpenDocumentFile(mp, BuildOpenOptions())
+
+                Dim preferConnectorWorksets As Boolean = False
+                Try
+                    preferConnectorWorksets = (_multiRequest IsNot Nothing AndAlso _multiRequest.Connector IsNot Nothing AndAlso _multiRequest.Connector.Enabled)
+                Catch
+                    preferConnectorWorksets = False
+                End Try
+
+                doc = app.Application.OpenDocumentFile(mp, BuildOpenOptions(mp, preferConnectorWorksets))
                 ReportMultiProgress(basePct * 100.0R, "파일 열기 완료", safeName)
                 phase = "RUN"
 
@@ -388,8 +461,10 @@ NextItem:
         ' === hub:multi-export ===
         ' payload: { key, excelMode }
         Private Sub HandleMultiExport(payload As Object)
-            Dim key As String = TryCast(GetProp(payload, "key"), String)
-            Dim excelMode As String = TryCast(GetProp(payload, "excelMode"), String)
+            Dim keyObj As Object = GetProp(payload, "key")
+            Dim key As String = NormalizeEventName(Convert.ToString(keyObj))
+            Dim excelModeObj As Object = GetProp(payload, "excelMode")
+            Dim excelMode As String = NormalizeEventName(Convert.ToString(excelModeObj))
             Dim doAutoFit As Boolean = ParseExcelMode(payload)
 
             Try
@@ -426,35 +501,49 @@ NextItem:
         End Sub
 
         Private Sub ExportConnector(doAutoFit As Boolean, excelMode As String)
-            Dim rows = If(_multiConnectorRows, New List(Of Dictionary(Of String, Object))())
-            Dim allFiles As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            Dim allRows = If(_multiConnectorRows, New List(Of Dictionary(Of String, Object))())
+
+            ' 파일 목록(선택 순서 유지)
+            Dim fileList As New List(Of String)()
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
             If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing Then
-                For Each path In _multiRequest.RvtPaths
-                    Dim name = System.IO.Path.GetFileName(TryCast(path, String))
-                    If Not String.IsNullOrWhiteSpace(name) Then allFiles.Add(name)
+                For Each p In _multiRequest.RvtPaths
+                    Dim path As String = TryCast(p, String)
+                    Dim name As String = ""
+                    Try
+                        name = System.IO.Path.GetFileName(path)
+                    Catch
+                        name = ""
+                    End Try
+                    If String.IsNullOrWhiteSpace(name) Then Continue For
+                    If seen.Add(name) Then fileList.Add(name)
                 Next
             End If
-            If rows.Count = 0 AndAlso allFiles.Count = 0 Then
+
+            ' 선택 파일 목록이 없다면, rows의 File 컬럼에서 추정(순서 보존)
+            If fileList.Count = 0 Then
+                For Each r In allRows
+                    Dim f As String = ""
+                    Try
+                        If r IsNot Nothing AndAlso r.ContainsKey("File") AndAlso r("File") IsNot Nothing Then
+                            f = r("File").ToString()
+                        End If
+                    Catch
+                        f = ""
+                    End Try
+                    If String.IsNullOrWhiteSpace(f) Then Continue For
+                    If seen.Add(f) Then fileList.Add(f)
+                Next
+            End If
+
+            If allRows.Count = 0 AndAlso fileList.Count = 0 Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "커넥터 결과가 없습니다."})
                 Return
             End If
 
-            Dim existingFiles As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
-            For Each row In rows
-                If row IsNot Nothing AndAlso row.ContainsKey("File") AndAlso row("File") IsNot Nothing Then
-                    existingFiles.Add(row("File").ToString())
-                End If
-            Next
-            For Each fileName In allFiles
-                If Not existingFiles.Contains(fileName) Then
-                    rows.Add(New Dictionary(Of String, Object) From {
-                        {"File", fileName},
-                        {"Status", "오류 없음"}
-                    })
-                End If
-            Next
-
             Dim extras = If(_multiConnectorExtras, New List(Of String)())
+
             Dim rawUnit As String = Nothing
             If _multiRequest IsNot Nothing AndAlso _multiRequest.Connector IsNot Nothing Then
                 rawUnit = _multiRequest.Connector.Unit
@@ -467,19 +556,33 @@ NextItem:
                 excludeEndDummy = _multiRequest.Common.ExcludeEndDummy
             End If
 
-            Dim exportRows As List(Of Dictionary(Of String, Object)) = rows.Where(Function(r) ShouldExportIssueRow(r)).ToList()
+            ' ✅ 멀티 파라미터 목록 파싱(검토했으나 이슈 0건인 파라미터 안내행 출력용)
+            Dim reviewParams As List(Of String) = Nothing
+            Try
+                Dim rawParamCsv As String = Nothing
+                If _multiRequest IsNot Nothing AndAlso _multiRequest.Connector IsNot Nothing Then
+                    rawParamCsv = _multiRequest.Connector.Param
+                End If
+                If String.IsNullOrWhiteSpace(rawParamCsv) Then rawParamCsv = _lastConnectorParam
+                reviewParams = ParseReviewParamsCsv(rawParamCsv)
+            Catch
+                reviewParams = Nothing
+            End Try
+            If reviewParams Is Nothing Then reviewParams = New List(Of String)()
+
+            ' ✅ 커넥터는 "이슈 항목만" 내보내는 정책 유지
+            Dim issueRows As List(Of Dictionary(Of String, Object)) = allRows.Where(Function(r) ShouldExportIssueRow(r)).ToList()
             If excludeEndDummy Then
-                exportRows = exportRows.Where(Function(r) Not ShouldExcludeEndDummyRow(r)).ToList()
+                issueRows = issueRows.Where(Function(r) Not ShouldExcludeEndDummyRow(r)).ToList()
             End If
+
             Dim headers As List(Of String) = BuildConnectorHeaders(extras, uiUnit)
             HostLog("debug", "[multi][connector] export headers => " & String.Join(" | ", headers))
             SendToWeb("host:info", New With {.message = "[multi][connector] export headers => " & String.Join(" | ", headers)})
-            Dim table = BuildConnectorTableFromRows(headers, exportRows)
-            ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
-            If Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: 커넥터")
-            Dim exportCount As Integer = 0
-            If exportRows IsNot Nothing Then exportCount = exportRows.Count
 
+            Dim exportCount As Integer = If(issueRows Is Nothing, 0, issueRows.Count)
+
+            ' 기본 파일명(기존 규칙 유지 + 멀티파일이면 Selected n Files 규칙 반영)
             Dim baseRvtName As String = ""
             Try
                 If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing AndAlso _multiRequest.RvtPaths.Count > 0 Then
@@ -488,36 +591,131 @@ NextItem:
                         baseRvtName = System.IO.Path.GetFileNameWithoutExtension(firstPath)
                     End If
                 End If
-                If String.IsNullOrWhiteSpace(baseRvtName) Then
-                    Dim firstFile As String = Nothing
-                    If allFiles IsNot Nothing AndAlso allFiles.Count > 0 Then
-                        For Each fn As String In allFiles
-                            firstFile = fn
-                            Exit For
-                        Next
-                    End If
-                    If Not String.IsNullOrWhiteSpace(firstFile) Then
-                        baseRvtName = System.IO.Path.GetFileNameWithoutExtension(firstFile)
-                    End If
-                End If
             Catch
                 baseRvtName = ""
             End Try
 
             Dim defaultFileName As String = BuildTradeReviewDefaultExcelName(baseRvtName, exportCount)
+
+            ' ✅ 2개 이상 선택 시: [첫번째 파일 규칙 prefix]+nFile_공종검토 / 규칙 불일치: Parameter 연속성검토_Selected n Files
+            Try
+                If fileList IsNot Nothing AndAlso fileList.Count >= 2 Then
+                    Dim firstBase As String = System.IO.Path.GetFileNameWithoutExtension(fileList(0))
+                    Dim prefix As String = ExtractTradePrefix(firstBase)
+                    If Not String.IsNullOrWhiteSpace(prefix) Then
+                        Dim addN As Integer = Math.Max(0, fileList.Count - 1)
+                        defaultFileName = $"{prefix}+{addN}File_공종검토.xlsx"
+                    Else
+                        defaultFileName = $"Parameter 연속성검토_Selected {fileList.Count} Files.xlsx"
+                    End If
+                    defaultFileName = SanitizeFileName(defaultFileName)
+                    If Not defaultFileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) Then defaultFileName &= ".xlsx"
+                End If
+            Catch
+                ' ignore
+            End Try
+
             If String.IsNullOrWhiteSpace(defaultFileName) Then
                 defaultFileName = $"Connector_{Date.Now:yyyyMMdd_HHmm}.xlsx"
             End If
 
-            Dim saved = ExcelCore.PickAndSaveXlsx("Connector Diagnostics", table, defaultFileName, doAutoFit, "hub:multi-progress", "connector")
+            Dim saved As String = ""
+
+            If fileList IsNot Nothing AndAlso fileList.Count >= 2 Then
+                ' ✅ 파일별 시트 분리 저장
+                Dim sheetList As New List(Of KeyValuePair(Of String, DataTable))()
+
+                For Each fileName In fileList
+                    Dim baseName As String = ""
+                    Try
+                        baseName = System.IO.Path.GetFileNameWithoutExtension(fileName)
+                    Catch
+                        baseName = fileName
+                    End Try
+                    If String.IsNullOrWhiteSpace(baseName) Then baseName = fileName
+
+                    Dim rowsForFile As List(Of Dictionary(Of String, Object)) =
+                        issueRows.Where(Function(r)
+                                            If r Is Nothing Then Return False
+                                            Dim rf As String = ""
+                                            Try
+                                                If r.ContainsKey("File") AndAlso r("File") IsNot Nothing Then rf = r("File").ToString()
+                                            Catch
+                                                rf = ""
+                                            End Try
+                                            If String.IsNullOrWhiteSpace(rf) Then Return False
+
+                                            Dim rfBase As String = rf
+                                            Try
+                                                rfBase = System.IO.Path.GetFileNameWithoutExtension(rf)
+                                            Catch
+                                                rfBase = rf
+                                            End Try
+
+                                            Return String.Equals(rf, fileName, StringComparison.OrdinalIgnoreCase) _
+                                                OrElse String.Equals(rf, baseName, StringComparison.OrdinalIgnoreCase) _
+                                                OrElse String.Equals(rfBase, baseName, StringComparison.OrdinalIgnoreCase)
+                                        End Function).ToList()
+
+                    ' ✅ 선택한 파라미터 중 이슈 0건인 항목도 검토 여부를 알 수 있도록 안내행 추가
+                    If reviewParams IsNot Nothing AndAlso reviewParams.Count > 0 Then
+                        Dim msgRows = BuildNoIssueMessageRows(rowsForFile, reviewParams)
+                        If msgRows IsNot Nothing AndAlso msgRows.Count > 0 Then
+                            For Each mr In msgRows
+                                If mr IsNot Nothing Then mr("File") = fileName
+                            Next
+                            rowsForFile = msgRows.Concat(rowsForFile).ToList()
+                        End If
+                    End If
+
+                    Dim table = BuildConnectorTableFromRows(headers, rowsForFile)
+                    ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
+                    If table.Rows.Count > 0 AndAlso Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: 커넥터")
+                    sheetList.Add(New KeyValuePair(Of String, DataTable)(baseName, table))
+                Next
+
+                saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, defaultFileName, doAutoFit, "hub:multi-progress", sheetKeyOverride:="connector", exportKind:="connector")
+            Else
+                ' 단일 파일
+                Dim rowsForSingle As List(Of Dictionary(Of String, Object)) = issueRows
+
+                ' ✅ 선택한 파라미터 중 이슈 0건인 항목도 안내행 추가(멀티와 동일)
+                If reviewParams IsNot Nothing AndAlso reviewParams.Count > 0 Then
+                    Dim msgRows = BuildNoIssueMessageRows(rowsForSingle, reviewParams)
+                    If msgRows IsNot Nothing AndAlso msgRows.Count > 0 Then
+                        Dim singleName As String = ""
+                        Try
+                            If fileList IsNot Nothing AndAlso fileList.Count = 1 Then singleName = fileList(0)
+                        Catch
+                            singleName = ""
+                        End Try
+                        For Each mr In msgRows
+                            If mr Is Nothing Then Continue For
+                            Try
+                                If (Not mr.ContainsKey("File")) OrElse mr("File") Is Nothing OrElse String.IsNullOrWhiteSpace(mr("File").ToString()) Then
+                                    mr("File") = singleName
+                                End If
+                            Catch
+                            End Try
+                        Next
+                        rowsForSingle = msgRows.Concat(rowsForSingle).ToList()
+                    End If
+                End If
+
+                Dim table = BuildConnectorTableFromRows(headers, rowsForSingle)
+                ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
+                If Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: 커넥터")
+                saved = ExcelCore.PickAndSaveXlsx("Connector Diagnostics", table, defaultFileName, doAutoFit, "hub:multi-progress", "connector")
+            End If
+
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
             Else
-                ' [추가] 저장 직후 스타일 적용
                 TryApplyExportStyles("connector", saved, doAutoFit, If(excelMode, "normal"))
                 SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
             End If
         End Sub
+
 
         Private Sub ExportSegmentPms(doAutoFit As Boolean, excelMode As String)
             Dim classRows = If(_multiPmsClassRows, New List(Of Dictionary(Of String, Object))())
@@ -645,6 +843,10 @@ NextItem:
             Dim req As New MultiRunRequest()
             Dim pd = ToDict(payload)
             req.RvtPaths = ExtractStringList(pd, "rvtPaths")
+            req.UseActiveDocument = ToBool(GetDictValue(pd, "useActiveDocument"))
+            If Not req.UseActiveDocument Then
+                req.UseActiveDocument = ToBool(GetDictValue(pd, "useActiveDoc"))
+            End If
 
             Dim commonObj As Object = Nothing
             If pd.TryGetValue("commonOptions", commonObj) Then
@@ -715,7 +917,7 @@ NextItem:
                     Dim guidStr = SafeStr(GetDictValue(td, "guid"))
                     Dim g As Guid
                     If Guid.TryParse(guidStr, g) Then
-                        targets.Add(New FamilyLinkTargetParam With {.name = name, .Guid = g})
+                        targets.Add(New FamilyLinkTargetParam With {.Name = name, .Guid = g})
                     End If
                 Next
             End If
@@ -801,17 +1003,20 @@ NextItem:
             Return Math.Min(stepPct, 99.9R)
         End Function
 
-        Private Shared Function BuildOpenOptions() As OpenOptions
+        Private Shared Function BuildOpenOptions(projectPath As ModelPath, preferConnectorWorksets As Boolean) As OpenOptions
             Dim opt As New OpenOptions()
             Try
                 opt.DetachFromCentralOption = DetachFromCentralOption.DetachAndPreserveWorksets
             Catch
             End Try
+
+            ' 속도 우선: 멀티 RVT는 항상 Workset을 닫고 열기
             Try
                 Dim ws = New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
                 opt.SetOpenWorksetsConfiguration(ws)
             Catch
             End Try
+
             Return opt
         End Function
 
@@ -880,7 +1085,15 @@ NextItem:
                             dr(i) = DBNull.Value
                         End If
                     Else
-                        dr(i) = If(r IsNot Nothing AndAlso r.ContainsKey(key) AndAlso r(key) IsNot Nothing, r(key).ToString(), String.Empty)
+                        If String.Equals(key, "검토내용", StringComparison.Ordinal) Then
+                            dr(i) = BuildConnectorReviewTextForExport(r)
+                        ElseIf String.Equals(key, "ParamCompare", StringComparison.Ordinal) Then
+                            dr(i) = NormalizeConnectorParamCompareForExport(r)
+                        ElseIf String.Equals(key, "비고(답변)", StringComparison.Ordinal) Then
+                            dr(i) = ""
+                        Else
+                            dr(i) = If(r IsNot Nothing AndAlso r.ContainsKey(key) AndAlso r(key) IsNot Nothing, r(key).ToString(), String.Empty)
+                        End If
                     End If
                 Next
                 dt.Rows.Add(dr)
@@ -940,16 +1153,16 @@ NextItem:
             If _multiPmsClassRows Is Nothing Then _multiPmsClassRows = New List(Of Dictionary(Of String, Object))()
             If _multiPmsSizeRows Is Nothing Then _multiPmsSizeRows = New List(Of Dictionary(Of String, Object))()
             If _multiPmsRoutingRows Is Nothing Then _multiPmsRoutingRows = New List(Of Dictionary(Of String, Object))()
-            _multiPmsClassRows.AddRange(FilterIssueRowsFromDict("pms", classRows))
-            _multiPmsSizeRows.AddRange(FilterIssueRowsFromDict("pms", sizeRows))
-            _multiPmsRoutingRows.AddRange(FilterIssueRowsFromDict("pms", routingRows))
+            _multiPmsClassRows.AddRange(If(classRows, New List(Of Dictionary(Of String, Object))()))
+            _multiPmsSizeRows.AddRange(If(sizeRows, New List(Of Dictionary(Of String, Object))()))
+            _multiPmsRoutingRows.AddRange(If(routingRows, New List(Of Dictionary(Of String, Object))()))
         End Sub
 
         Private Sub MergeGuidResult(res As GuidAuditService.RunResult)
             If res Is Nothing Then Return
-            _multiGuidProject = MergeTable(_multiGuidProject, FilterIssueRowsCopy("guid", res.Project))
+            _multiGuidProject = MergeTable(_multiGuidProject, res.Project)
             If res.IncludeFamily Then
-                _multiGuidFamilyDetail = MergeTable(_multiGuidFamilyDetail, FilterIssueRowsCopy("guid", res.FamilyDetail))
+                _multiGuidFamilyDetail = MergeTable(_multiGuidFamilyDetail, res.FamilyDetail)
                 _multiGuidFamilyIndex = MergeTable(_multiGuidFamilyIndex, res.FamilyIndex)
             End If
         End Sub

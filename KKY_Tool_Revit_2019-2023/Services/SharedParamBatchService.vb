@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -528,7 +528,7 @@ Namespace Services
                     row("파라미터명") = If(p.ParamName, String.Empty)
                     row("GUID") = p.GuidString
                     row("바인딩") = If(p.Settings IsNot Nothing AndAlso p.Settings.IsInstanceBinding, "Instance", "Type")
-                    row("파라미터 그룹") = GetParamGroupLabel(If(p.Settings IsNot Nothing, p.Settings.ParamGroup, BuiltInParameterGroup.INVALID))
+                    row("파라미터 그룹") = GetParamGroupLabel(If(p.Settings IsNot Nothing, p.Settings.ParamGroup, GetDefaultParamGroup()))
                     row("BoundCategories") = FormatCategoryRefs(If(p.Settings IsNot Nothing, p.Settings.Categories, Nothing))
                     row("성공여부") = status
                     row("메시지") = message
@@ -670,13 +670,30 @@ Namespace Services
             End Select
         End Function
 
+        Private Shared Function GetDefaultParamGroup() As BuiltInParameterGroup
+#If REVIT2025 = 1 Then
+            Return BuiltInParameterGroup.PG_DATA
+#Else
+            Return BuiltInParameterGroup.INVALID
+#End If
+        End Function
+
         Private Shared Function GetParamGroupLabel(groupValue As BuiltInParameterGroup) As String
+#If REVIT2025 = 1 Then
+            Try
+                Dim gId As ForgeTypeId = BuiltInParameterGroupCompat.ToGroupTypeId(groupValue)
+                Return LabelUtils.GetLabelForGroup(gId)
+            Catch
+                Return groupValue.ToString()
+            End Try
+#Else
             If groupValue = BuiltInParameterGroup.INVALID Then Return ""
             Try
                 Return LabelUtils.GetLabelFor(groupValue)
             Catch
                 Return groupValue.ToString()
             End Try
+#End If
         End Function
 
         Private Shared Function ValidateExportSchema(dt As DataTable, headers As String()) As Boolean
@@ -757,6 +774,25 @@ Namespace Services
             Dim opts As New List(Of ParamGroupOption)()
             Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
 
+#If REVIT2025 = 1 Then
+            For Each v As BuiltInParameterGroup In [Enum].GetValues(GetType(BuiltInParameterGroup))
+                Dim key As String = v.ToString()
+                If seen.Contains(key) Then Continue For
+                seen.Add(key)
+
+                Dim label As String = key
+                Try
+                    Dim gId As ForgeTypeId = BuiltInParameterGroupCompat.ToGroupTypeId(v)
+                    label = LabelUtils.GetLabelForGroup(gId)
+                Catch
+                    label = key
+                End Try
+
+                opts.Add(New ParamGroupOption With {.Key = key, .Id = key, .Label = label})
+            Next
+
+            Return opts.OrderBy(Function(o) o.Label).ToList()
+#Else
             For Each v As BuiltInParameterGroup In [Enum].GetValues(GetType(BuiltInParameterGroup))
                 If v = BuiltInParameterGroup.INVALID Then Continue For
                 Dim key As String = v.ToString()
@@ -790,6 +826,7 @@ Namespace Services
             End If
 
             Return opts.OrderBy(Function(o) o.Label).ToList()
+#End If
         End Function
 
         Private Shared Sub AddLog(logs As List(Of LogEntry), lines As List(Of String), level As String, filePath As String, message As String)
@@ -967,7 +1004,7 @@ Namespace Services
                 payload.TryGetValue(key, raw)
             End If
 
-            If raw Is Nothing Then Return BuiltInParameterGroup.INVALID
+            If raw Is Nothing Then Return GetDefaultParamGroup()
 
             Try
                 Dim s As String = raw.ToString()
@@ -988,7 +1025,7 @@ Namespace Services
             Catch
             End Try
 
-            Return BuiltInParameterGroup.INVALID
+            Return GetDefaultParamGroup()
         End Function
 
         Private Shared Function ValidateBatchSettings(s As BatchSettings, spFilePath As String) As String
@@ -1138,11 +1175,11 @@ Namespace Services
                 End Try
                 If Not bindable Then
                     warn.Add("CAT_NOT_BINDABLE(AllowsBoundParameters=False): " & DescribeCategoryRef(cref) &
-                             " (ResolvedBy=" & resolveBy & ", ResolvedId=" & cat.Id.IntegerValue & ")")
+                             " (ResolvedBy=" & resolveBy & ", ResolvedId=" & EIdInt(cat.Id) & ")")
                     Continue For
                 End If
 
-                Dim rid As Integer = cat.Id.IntegerValue
+                Dim rid As Integer = EIdInt(cat.Id)
                 If Not inserted.ContainsKey(rid) Then
                     catSet.Insert(cat)
                     inserted.Add(rid, cref)
@@ -1172,10 +1209,18 @@ Namespace Services
 
                     Dim map As BindingMap = doc.ParameterBindings
 
+                    #If REVIT2025 = 1 Then
+                    Dim groupTypeId As ForgeTypeId = BuiltInParameterGroupCompat.ToGroupTypeId(p.Settings.ParamGroup)
+                    Dim insertedOk As Boolean = map.Insert(extDef, binding, groupTypeId)
+                    If Not insertedOk Then
+                        insertedOk = map.ReInsert(extDef, binding, groupTypeId)
+                    End If
+#Else
                     Dim insertedOk As Boolean = map.Insert(extDef, binding, p.Settings.ParamGroup)
                     If Not insertedOk Then
                         insertedOk = map.ReInsert(extDef, binding, p.Settings.ParamGroup)
                     End If
+#End If
 
                     If Not insertedOk Then
                         t.RollBack()
@@ -1252,7 +1297,7 @@ Namespace Services
             End Try
 
             Try
-                If cat.Id.IntegerValue = CInt(BuiltInCategory.OST_StairsSupports) Then
+                If EIdInt(cat.Id) = CInt(BuiltInCategory.OST_StairsSupports) Then
                     bindable = True
                 End If
             Catch
@@ -1306,7 +1351,7 @@ Namespace Services
             If path <> "" Then
                 If maps.ByPath.TryGetValue(path, cat) AndAlso cat IsNot Nothing Then
                     Dim supportsId As Integer = CInt(BuiltInCategory.OST_StairsSupports)
-                    If cat.Id.IntegerValue = supportsId Then
+                    If EIdInt(cat.Id) = supportsId Then
                         Dim rep As Category = Nothing
                         If maps.ById.TryGetValue(supportsId, rep) AndAlso rep IsNot Nothing Then
                             resolvedBy = "path->supportsfix"
@@ -1347,7 +1392,7 @@ Namespace Services
                             If cs IsNot Nothing Then
                                 For Each c As Category In cs
                                     If c IsNot Nothing Then
-                                        hs.Add(c.Id.IntegerValue)
+                                        hs.Add(EIdInt(c.Id))
                                     End If
                                 Next
                             End If
@@ -1473,33 +1518,83 @@ Namespace Services
             Dim roots As New List(Of CategoryTreeItem)()
             If doc Is Nothing Then Return roots
 
-            For Each c As Category In doc.Settings.Categories
-                If c Is Nothing Then Continue For
+            Dim visitedPaths As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
 
-                Dim parent As Category = Nothing
-                Try
-                    parent = c.Parent
-                Catch
-                    parent = Nothing
-                End Try
-                If parent IsNot Nothing Then Continue For
-
-                Dim name As String = SafeCategoryName(c)
-                If String.IsNullOrWhiteSpace(name) Then Continue For
-
-                If Not IsRepresentativeBindableCategory(c) Then Continue For
-
-                Dim node As New CategoryTreeItem() With {
-                    .IdInt = c.Id.IntegerValue,
-                    .Name = name,
-                    .Path = name,
-                    .CatType = c.CategoryType,
-                    .IsBindable = True
-                }
-                roots.Add(node)
-            Next
+            Try
+                For Each c As Category In doc.Settings.Categories
+                    Dim node As CategoryTreeItem = BuildCategoryTreeItemRecursive(c, Nothing, visitedPaths)
+                    If node IsNot Nothing Then roots.Add(node)
+                Next
+            Catch
+                ' ignore
+            End Try
 
             Return roots.OrderBy(Function(x) x.Name, StringComparer.OrdinalIgnoreCase).ToList()
+        End Function
+
+        Private Shared Function BuildCategoryTreeItemRecursive(cat As Category,
+                                                             parentPath As String,
+                                                             visitedPaths As HashSet(Of String)) As CategoryTreeItem
+            If cat Is Nothing Then Return Nothing
+
+            Dim name As String = SafeCategoryName(cat)
+            If String.IsNullOrWhiteSpace(name) Then Return Nothing
+
+            ' Skip special/internal groups that should not be user-selectable
+            If name.StartsWith("<", StringComparison.OrdinalIgnoreCase) Then Return Nothing
+            If name.IndexOf("line style", StringComparison.OrdinalIgnoreCase) >= 0 Then Return Nothing
+
+            Dim path As String = If(String.IsNullOrEmpty(parentPath), name, parentPath & "\" & name)
+
+            If visitedPaths IsNot Nothing Then
+                If visitedPaths.Contains(path) Then Return Nothing
+                visitedPaths.Add(path)
+            End If
+
+            Dim bindable As Boolean = False
+            Try
+                bindable = cat.AllowsBoundParameters
+            Catch
+                bindable = False
+            End Try
+
+            ' Special-case: allow selection of Stairs: Supports in UI (actual binding is substituted later)
+            Try
+                If EIdInt(cat.Id) = CInt(BuiltInCategory.OST_StairsSupports) Then
+                    bindable = True
+                End If
+            Catch
+            End Try
+
+            Dim node As New CategoryTreeItem() With {
+                .IdInt = EIdInt(cat.Id),
+                .Name = name,
+                .Path = path,
+                .CatType = cat.CategoryType,
+                .IsBindable = bindable
+            }
+
+            ' Recurse into sub-categories (supported across Revit 2019/2021/2023/2025)
+            Try
+                Dim subs As CategoryNameMap = cat.SubCategories
+                If subs IsNot Nothing Then
+                    For Each sc As Category In subs
+                        Dim child As CategoryTreeItem = BuildCategoryTreeItemRecursive(sc, path, visitedPaths)
+                        If child IsNot Nothing Then
+                            node.Children.Add(child)
+                        End If
+                    Next
+                End If
+            Catch
+                ' ignore
+            End Try
+
+            ' Keep non-bindable nodes only if they have children (so user can drill down)
+            If Not node.IsBindable AndAlso (node.Children Is Nothing OrElse node.Children.Count = 0) Then
+                Return Nothing
+            End If
+
+            Return node
         End Function
 
         Private Shared Function BuildAvailableCategoryMaps(doc As Document) As CategoryMaps
@@ -1534,7 +1629,7 @@ Namespace Services
                 visitedPaths.Add(path)
             End If
 
-            Dim idInt As Integer = cat.Id.IntegerValue
+            Dim idInt As Integer = EIdInt(cat.Id)
 
             If Not maps.ById.ContainsKey(idInt) Then
                 maps.ById.Add(idInt, cat)
@@ -1571,22 +1666,90 @@ Namespace Services
             End Try
         End Function
 
+                Private Shared Function EIdInt(eid As Autodesk.Revit.DB.ElementId) As Integer
+            If eid Is Nothing Then Return -1
+
+            ' Revit 2024+ : ElementId.Value(Int64)
+            Try
+                Dim pi = eid.GetType().GetProperty("Value")
+                If pi IsNot Nothing Then
+                    Dim vObj As Object = pi.GetValue(eid, Nothing)
+                    If vObj IsNot Nothing Then
+                        Dim v64 As Long = CLng(vObj)
+                        If v64 > Integer.MaxValue Then Return Integer.MaxValue
+                        If v64 < Integer.MinValue Then Return Integer.MinValue
+                        Return CInt(v64)
+                    End If
+                End If
+            Catch
+                ' ignore
+            End Try
+
+            ' Revit 2019~2023 : IntegerValue(Int32)
+            Try
+                Dim pi2 = eid.GetType().GetProperty("IntegerValue")
+                If pi2 IsNot Nothing Then
+                    Dim vObj As Object = pi2.GetValue(eid, Nothing)
+                    If vObj IsNot Nothing Then Return CInt(vObj)
+                End If
+            Catch
+                ' ignore
+            End Try
+
+            Return -1
+        End Function
+
         Private Shared Sub InjectStairsSupportsBindingFix(doc As Document, maps As CategoryMaps)
             If doc Is Nothing OrElse maps Is Nothing Then Return
 
+            Dim supportsId As Integer = CInt(BuiltInCategory.OST_StairsSupports)
+
+            ' (0) Capture original Supports Category before replacement
+            Dim supportsCat As Category = Nothing
+            Try
+                maps.ById.TryGetValue(supportsId, supportsCat)
+            Catch
+                supportsCat = Nothing
+            End Try
+
+            ' (1) Get replacement category from Stringer/Carriage ElementType
             Dim replacement As Category = TryGetCategoryFromElementType(doc, BuiltInCategory.OST_StairsStringerCarriage)
             If replacement Is Nothing Then Return
 
-            Dim supportsId As Integer = CInt(BuiltInCategory.OST_StairsSupports)
-
+            ' (2) Supports root -> replacement
             Try
                 maps.ById(supportsId) = replacement
             Catch
             End Try
 
+            ' (3) Supports sub-categories -> replacement (critical)
+            Dim subIds As New HashSet(Of Integer)()
+            If supportsCat IsNot Nothing Then
+                Try
+                    Dim subs As CategoryNameMap = supportsCat.SubCategories
+                    If subs IsNot Nothing Then
+                        For Each sc As Category In subs
+                            If sc Is Nothing Then Continue For
+                            Dim sid As Integer = EIdInt(sc.Id)
+                            If sid <> -1 Then
+                                subIds.Add(sid)
+                                maps.ById(sid) = replacement
+                            End If
+                        Next
+                    End If
+                Catch
+                    ' ignore
+                End Try
+            End If
+
+            ' (4) Redirect any path entries pointing to Supports or its sub-categories
             Try
                 Dim keys As List(Of String) = maps.ByPath _
-                    .Where(Function(kv) kv.Value IsNot Nothing AndAlso kv.Value.Id.IntegerValue = supportsId) _
+                    .Where(Function(kv)
+                               If kv.Value Is Nothing Then Return False
+                               Dim vid As Integer = EIdInt(kv.Value.Id)
+                               Return (vid = supportsId) OrElse subIds.Contains(vid)
+                           End Function) _
                     .Select(Function(kv) kv.Key) _
                     .ToList()
 
@@ -1594,8 +1757,10 @@ Namespace Services
                     maps.ByPath(k) = replacement
                 Next
             Catch
+                ' ignore
             End Try
         End Sub
+
 
         Private Shared Function ToCategoryDto(item As CategoryTreeItem) As Object
             If item Is Nothing Then Return Nothing

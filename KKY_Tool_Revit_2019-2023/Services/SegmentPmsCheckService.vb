@@ -364,15 +364,15 @@ Namespace Services
             If ds Is Nothing Then Return
 
             If ds.Tables.Contains(TableRules) Then
-                Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("pms", ds.Tables(TableRules))
+                ' Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("pms", ds.Tables(TableRules))
                 ExcelCore.EnsureNoDataRow(ds.Tables(TableRules), "오류가 없습니다.")
             End If
             If ds.Tables.Contains(TableSizes) Then
-                Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("pms", ds.Tables(TableSizes))
+                ' Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("pms", ds.Tables(TableSizes))
                 ExcelCore.EnsureNoDataRow(ds.Tables(TableSizes), "오류가 없습니다.")
             End If
             If ds.Tables.Contains(TableRouting) Then
-                Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("pms", ds.Tables(TableRouting))
+                ' Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("pms", ds.Tables(TableRouting))
                 ExcelCore.EnsureNoDataRow(ds.Tables(TableRouting), "오류가 없습니다.")
             End If
 
