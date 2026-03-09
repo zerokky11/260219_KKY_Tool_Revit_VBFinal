@@ -285,10 +285,20 @@ export function renderDup(root){
     }catch(e){}
   });
 
-  onHost(function(msg){
-    var ev = msg && msg.ev ? msg.ev : '';
-    var payload = msg ? msg.payload : null;
-
+  onHost(function(evOrMsg, payloadMaybe){
+    var ev = '';
+    var payload = null;
+    if (typeof evOrMsg === 'string') {
+      ev = evOrMsg;
+      payload = payloadMaybe;
+    } else if (evOrMsg && typeof evOrMsg === 'object') {
+      ev = evOrMsg.ev || evOrMsg.event || '';
+      if (evOrMsg.payload !== undefined) payload = evOrMsg.payload;
+      else payload = payloadMaybe;
+    } else {
+      ev = '';
+      payload = payloadMaybe;
+    }
     if (RESP_ROWS_EVENTS.indexOf(ev) >= 0){
       setLoading(false);
       var list = (payload && Array.isArray(payload.rows)) ? payload.rows :
@@ -376,8 +386,11 @@ export function renderDup(root){
       toast('응답이 없습니다. Add-in 이벤트/런타임을 확인하세요.','err',3200);
     }, 12000);
 
-    var off = onHost(function(m){
-      var e = m && m.ev ? m.ev : '';
+    var off = onHost(function(evOrMsg2, payloadMaybe2){
+      var e = '';
+      if (typeof evOrMsg2 === 'string') e = evOrMsg2;
+      else if (evOrMsg2 && typeof evOrMsg2 === 'object') e = evOrMsg2.ev || evOrMsg2.event || '';
+      else e = '';
       if(RESP_ROWS_EVENTS.indexOf(e)>=0 || e==='dup:result' || e==='dup:pairs' || e==='host:error' || e==='revit:error'){
         try{clearTimeout(t);}catch(err){}
         try{off();}catch(err2){}
