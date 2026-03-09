@@ -1,5 +1,6 @@
 import { initTheme } from './core/theme.js';
 import { onHost, post } from './core/bridge.js';
+import { EVENT_NAMES } from './core/event-names.js';
 import { updateTopMost, setActiveDocument, setDocList, renderTopbar } from './core/topbar.js';
 import { initLogConsole, toggleLogConsole, log } from './core/dom.js';
 import { renderHome } from './views/home.js';
@@ -49,7 +50,7 @@ function boot() {
     });
 
     // 초기 TopMost 상태 동기화(이제 여기서만 전송)
-    try { post('ui:query-topmost'); } catch { }
+    try { post(EVENT_NAMES.UI.QUERY_TOPMOST); } catch { }
 
     route();
     window.addEventListener('hashchange', route);
@@ -63,7 +64,7 @@ function boot() {
             try { console.log('[host] ←', msg.ev, msg.payload); } catch { }
 
             switch (msg.ev) {
-                case 'host:topmost': {
+                case EVENT_NAMES.HOST.TOPMOST: {
                     const on = (msg && typeof msg.payload === 'object') ? !!msg.payload.on : !!msg.payload;
                     // ★ 디듀프: 이전 값과 같으면 무시
                     if (_lastTop === on) return;
@@ -71,11 +72,11 @@ function boot() {
                     updateTopMost(on);
                     break;
                 }
-                case 'host:doc-changed': {
+                case EVENT_NAMES.HOST.DOC_CHANGED: {
                     setActiveDocument(msg.payload || {});
                     break;
                 }
-                case 'host:doc-list': {
+                case EVENT_NAMES.HOST.DOC_LIST: {
                     setDocList(msg.payload);
                     break;
                 }

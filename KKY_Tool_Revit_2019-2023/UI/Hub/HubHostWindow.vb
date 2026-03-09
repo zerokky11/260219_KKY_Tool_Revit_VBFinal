@@ -211,7 +211,7 @@ Namespace UI.Hub
                 _web.Source = New Uri("https://hub.local/index.html")
 
                 ' 초기 상태 알림
-                SendToWeb("host:topmost", New With {.on = Me.Topmost})
+                SendToWeb(EventNames.Host.Topmost, New With {.on = Me.Topmost})
                 SendActiveDocument()
                 BroadcastDocumentList()
 
@@ -255,22 +255,22 @@ Namespace UI.Hub
                 If root IsNot Nothing AndAlso root.ContainsKey("payload") Then payload = root("payload")
 
                 Select Case name
-                    Case "ui:ping"
-                        SendToWeb("host:pong", New With {.t = Date.Now.Ticks})
+                    Case EventNames.Ui.Ping
+                        SendToWeb(EventNames.Host.Pong, New With {.t = Date.Now.Ticks})
 
-                    Case "ui:toggle-topmost"
+                    Case EventNames.Ui.ToggleTopmost
                         Me.Topmost = Not Me.Topmost
-                        SendToWeb("host:topmost", New With {.on = Me.Topmost})
+                        SendToWeb(EventNames.Host.Topmost, New With {.on = Me.Topmost})
 
-                    Case "ui:query-topmost"
-                        SendToWeb("host:topmost", New With {.on = Me.Topmost})
+                    Case EventNames.Ui.QueryTopmost
+                        SendToWeb(EventNames.Host.Topmost, New With {.on = Me.Topmost})
 
                     Case Else
                         UiBridgeExternalEvent.Raise(name, payload)
                 End Select
 
             Catch ex As Exception
-                SendToWeb("host:error", New With {ex.Message})
+                SendToWeb(EventNames.Host.ErrorEvent, New With {ex.Message})
             End Try
         End Sub
 
@@ -292,11 +292,11 @@ Namespace UI.Hub
             Catch
             End Try
 
-            SendToWeb("host:doc-list", docs)
+            SendToWeb(EventNames.Host.DocList, docs)
         End Sub
 
         Private Sub SendActiveDocument()
-            SendToWeb("host:doc-changed", New With {.name = _currentDocName, .path = _currentDocPath})
+            SendToWeb(EventNames.Host.DocChanged, New With {.name = _currentDocName, .path = _currentDocPath})
         End Sub
 
         ' .NET → JS (양쪽 호환: ev & name 둘 다 포함해서 송신)

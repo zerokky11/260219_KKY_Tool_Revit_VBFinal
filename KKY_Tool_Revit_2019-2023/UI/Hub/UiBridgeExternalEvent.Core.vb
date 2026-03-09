@@ -41,7 +41,7 @@ Namespace UI.Hub
 
             ' 초기 상태 브로드캐스트(항상 위, 연결)
             BroadcastTopmost()
-            SendToWeb("host:connected", New With {.ok = True})
+            SendToWeb(EventNames.Host.Connected, New With {.ok = True})
         End Sub
 
         ''' <summary>
@@ -77,7 +77,7 @@ Namespace UI.Hub
                 Try
                     todo(app)
                 Catch ex As Exception
-                    SendToWeb("host:error", New With {.message = ex.Message})
+                    SendToWeb(EventNames.Host.ErrorEvent, New With {.message = ex.Message})
                 End Try
             Loop
         End Sub
@@ -89,11 +89,11 @@ Namespace UI.Hub
             name = NormalizeEventName(name)
             ' 공통(웹 UI 쪽 요청)
             Select Case name
-                Case "ui:query-topmost"
+                Case EventNames.Ui.QueryTopmost
                     BroadcastTopmost()
                     Return
 
-                Case "ui:set-topmost"
+                Case EventNames.Ui.SetTopmost
                     Dim turnOn As Boolean = False
                     Try
                         Dim raw = GetProp(payload, "on")
@@ -107,7 +107,7 @@ Namespace UI.Hub
                     BroadcastTopmost()
                     Return
 
-                Case "ui:toggle-topmost"
+                Case EventNames.Ui.ToggleTopmost
                     Try
                         If _host IsNot Nothing Then _host.Topmost = Not _host.Topmost
                     Catch
@@ -119,73 +119,73 @@ Namespace UI.Hub
             ' 기능 디스패치: 이벤트명 → 내부 핸들러명
             Dim map As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
             ' Duplicate Inspector
-            map.Add("dup:run", "HandleDupRun")
-            map.Add("duplicate:export", "HandleDuplicateExport")
-            map.Add("duplicate:delete", "HandleDuplicateDelete")
-            map.Add("duplicate:restore", "HandleDuplicateRestore")
-            map.Add("duplicate:select", "HandleDuplicateSelect")
+            map.Add(EventNames.Feature.Ui.DupRun, "HandleDupRun")
+            map.Add(EventNames.Feature.Ui.DuplicateExport, "HandleDuplicateExport")
+            map.Add(EventNames.Feature.Ui.DuplicateDelete, "HandleDuplicateDelete")
+            map.Add(EventNames.Feature.Ui.DuplicateRestore, "HandleDuplicateRestore")
+            map.Add(EventNames.Feature.Ui.DuplicateSelect, "HandleDuplicateSelect")
             ' Connector Diagnostics
-            map.Add("connector:run", "HandleConnectorRun")
-            map.Add("connector:save-excel", "HandleConnectorSaveExcel")
+            map.Add(EventNames.Feature.Ui.ConnectorRun, "HandleConnectorRun")
+            map.Add(EventNames.Feature.Ui.ConnectorSaveExcel, "HandleConnectorSaveExcel")
             ' Export Points with Angle
-            map.Add("export:browse-folder", "HandleExportBrowse")
-            map.Add("export:add-rvt-files", "HandleExportAddRvtFiles")
-            map.Add("export:preview", "HandleExportPreview")
-            map.Add("export:save-excel", "HandleExportSaveExcel")
+            map.Add(EventNames.Feature.Ui.ExportBrowseFolder, "HandleExportBrowse")
+            map.Add(EventNames.Feature.Ui.ExportAddRvtFiles, "HandleExportAddRvtFiles")
+            map.Add(EventNames.Feature.Ui.ExportPreview, "HandleExportPreview")
+            map.Add(EventNames.Feature.Ui.ExportSaveExcel, "HandleExportSaveExcel")
             ' Shared Parameter Propagator
-            map.Add("paramprop:run", "HandleSharedParamRun")
-            map.Add("sharedparam:run", "HandleSharedParamRun")
-            map.Add("sharedparam:list", "HandleSharedParamList")
-            map.Add("sharedparam:status", "HandleSharedParamStatus")
-            map.Add("sharedparam:export-excel", "HandleSharedParamExport")
+            map.Add(EventNames.Feature.Ui.ParamPropRun, "HandleSharedParamRun")
+            map.Add(EventNames.Feature.Ui.SharedParamRun, "HandleSharedParamRun")
+            map.Add(EventNames.Feature.Ui.SharedParamList, "HandleSharedParamList")
+            map.Add(EventNames.Feature.Ui.SharedParamStatus, "HandleSharedParamStatus")
+            map.Add(EventNames.Feature.Ui.SharedParamExportExcel, "HandleSharedParamExport")
             ' (호환) 일부 번들/구버전 UI에서 paramprop:* 로 호출하는 경우를 허용
-            map.Add("paramprop:list", "HandleSharedParamList")
-            map.Add("paramprop:status", "HandleSharedParamStatus")
-            map.Add("paramprop:export-excel", "HandleSharedParamExport")
-            map.Add("sharedparam:export", "HandleSharedParamExport")
+            map.Add(EventNames.Feature.Ui.ParamPropList, "HandleSharedParamList")
+            map.Add(EventNames.Feature.Ui.ParamPropStatus, "HandleSharedParamStatus")
+            map.Add(EventNames.Feature.Ui.ParamPropExportExcel, "HandleSharedParamExport")
+            map.Add(EventNames.Feature.Ui.SharedParamExport, "HandleSharedParamExport")
             ' Shared Parameter Batch
-            map.Add("sharedparambatch:init", "HandleSharedParamBatchInit")
-            map.Add("sharedparambatch:browse-rvts", "HandleSharedParamBatchBrowseRvts")
-            map.Add("sharedparambatch:browse-folder", "HandleSharedParamBatchBrowseFolder")
-            map.Add("sharedparambatch:run", "HandleSharedParamBatchRun")
-            map.Add("sharedparambatch:export-excel", "HandleSharedParamBatchExportExcel")
-            map.Add("sharedparambatch:open-folder", "HandleSharedParamBatchOpenFolder")
+            map.Add(EventNames.Feature.Ui.SharedParamBatchInit, "HandleSharedParamBatchInit")
+            map.Add(EventNames.Feature.Ui.SharedParamBatchBrowseRvts, "HandleSharedParamBatchBrowseRvts")
+            map.Add(EventNames.Feature.Ui.SharedParamBatchBrowseFolder, "HandleSharedParamBatchBrowseFolder")
+            map.Add(EventNames.Feature.Ui.SharedParamBatchRun, "HandleSharedParamBatchRun")
+            map.Add(EventNames.Feature.Ui.SharedParamBatchExportExcel, "HandleSharedParamBatchExportExcel")
+            map.Add(EventNames.Feature.Ui.SharedParamBatchOpenFolder, "HandleSharedParamBatchOpenFolder")
             ' 공통 Excel 동작
-            map.Add("excel:open", "HandleExcelOpen")
+            map.Add(EventNames.Feature.Ui.ExcelOpen, "HandleExcelOpen")
             ' Segment ↔ PMS Check
-            map.Add("segmentpms:rvt-pick-files", "HandleSegmentPmsRvtPickFiles")
-            map.Add("segmentpms:rvt-pick-folder", "HandleSegmentPmsRvtPickFolder")
-            map.Add("segmentpms:extract", "HandleSegmentPmsExtractStart")
-            map.Add("segmentpms:load-extract", "HandleSegmentPmsLoadExtract")
-            map.Add("segmentpms:save-extract", "HandleSegmentPmsSaveExtract")
-            map.Add("segmentpms:register-pms", "HandleSegmentPmsRegisterPms")
-            map.Add("segmentpms:pms-template", "HandleSegmentPmsExportTemplate")
-            map.Add("segmentpms:prepare-mapping", "HandleSegmentPmsPrepareMapping")
-            map.Add("segmentpms:run", "HandleSegmentPmsRun")
-            map.Add("segmentpms:save-result", "HandleSegmentPmsSaveResult")
+            map.Add(EventNames.Feature.Ui.SegmentPmsRvtPickFiles, "HandleSegmentPmsRvtPickFiles")
+            map.Add(EventNames.Feature.Ui.SegmentPmsRvtPickFolder, "HandleSegmentPmsRvtPickFolder")
+            map.Add(EventNames.Feature.Ui.SegmentPmsExtract, "HandleSegmentPmsExtractStart")
+            map.Add(EventNames.Feature.Ui.SegmentPmsLoadExtract, "HandleSegmentPmsLoadExtract")
+            map.Add(EventNames.Feature.Ui.SegmentPmsSaveExtract, "HandleSegmentPmsSaveExtract")
+            map.Add(EventNames.Feature.Ui.SegmentPmsRegisterPms, "HandleSegmentPmsRegisterPms")
+            map.Add(EventNames.Feature.Ui.SegmentPmsPmsTemplate, "HandleSegmentPmsExportTemplate")
+            map.Add(EventNames.Feature.Ui.SegmentPmsPrepareMapping, "HandleSegmentPmsPrepareMapping")
+            map.Add(EventNames.Feature.Ui.SegmentPmsRun, "HandleSegmentPmsRun")
+            map.Add(EventNames.Feature.Ui.SegmentPmsSaveResult, "HandleSegmentPmsSaveResult")
             ' GUID Audit
-            map.Add("guid:add-files", "HandleGuidAddFiles")
-            map.Add("guid:run", "HandleGuidRun")
-            map.Add("guid:export", "HandleGuidExport")
-            map.Add("guid:request-family-detail", "HandleGuidRequestFamilyDetail")
+            map.Add(EventNames.Feature.Ui.GuidAddFiles, "HandleGuidAddFiles")
+            map.Add(EventNames.Feature.Ui.GuidRun, "HandleGuidRun")
+            map.Add(EventNames.Feature.Ui.GuidExport, "HandleGuidExport")
+            map.Add(EventNames.Feature.Ui.GuidRequestFamilyDetail, "HandleGuidRequestFamilyDetail")
             ' Family Link Audit
-            map.Add("familylink:init", "HandleFamilyLinkInit")
-            map.Add("familylink:pick-rvts", "HandleFamilyLinkPickRvts")
-            map.Add("familylink:run", "HandleFamilyLinkRun")
-            map.Add("familylink:export", "HandleFamilyLinkExport")
+            map.Add(EventNames.Feature.Ui.FamilyLinkInit, "HandleFamilyLinkInit")
+            map.Add(EventNames.Feature.Ui.FamilyLinkPickRvts, "HandleFamilyLinkPickRvts")
+            map.Add(EventNames.Feature.Ui.FamilyLinkRun, "HandleFamilyLinkRun")
+            map.Add(EventNames.Feature.Ui.FamilyLinkExport, "HandleFamilyLinkExport")
             ' Multi RVT Hub
-            map.Add("hub:pick-rvt", "HandleMultiPickRvt")
-            map.Add("hub:multi-run", "HandleMultiRun")
-            map.Add("hub:multi-export", "HandleMultiExport")
-            map.Add("hub:multi-clear", "HandleMultiClear")
-            map.Add("commonoptions:get", "HandleCommonOptionsGet")
-            map.Add("commonoptions:save", "HandleCommonOptionsSave")
+            map.Add(EventNames.Feature.Ui.HubPickRvt, "HandleMultiPickRvt")
+            map.Add(EventNames.Feature.Ui.HubMultiRun, "HandleMultiRun")
+            map.Add(EventNames.Feature.Ui.HubMultiExport, "HandleMultiExport")
+            map.Add(EventNames.Feature.Ui.HubMultiClear, "HandleMultiClear")
+            map.Add(EventNames.Feature.Ui.CommonOptionsGet, "HandleCommonOptionsGet")
+            map.Add(EventNames.Feature.Ui.CommonOptionsSave, "HandleCommonOptionsSave")
 
             Dim methodName As String = Nothing
             If Not map.TryGetValue(name, methodName) Then
                 ' warn만 남기면(특히 Busy 상태) UI가 복귀하지 못하는 경우가 있어 error도 함께 전송
-                SendToWeb("host:warn", New With {.message = String.Format("알 수 없는 이벤트 '{0}'", name)})
-                SendToWeb("host:error", New With {.message = String.Format("알 수 없는 이벤트 '{0}'", name)})
+                SendToWeb(EventNames.Host.Warn, New With {.message = String.Format("알 수 없는 이벤트 '{0}'", name)})
+                SendToWeb(EventNames.Host.ErrorEvent, New With {.message = String.Format("알 수 없는 이벤트 '{0}'", name)})
                 Return
             End If
 
@@ -196,8 +196,8 @@ Namespace UI.Hub
 
             If m Is Nothing Then
                 ' 핸들러 누락은 실제로 기능이 동작하지 않는 치명 오류이므로, warn + error 둘 다 전송
-                SendToWeb("host:warn", New With {.message = String.Format("핸들러 '{0}' 가 구현되어 있지 않습니다.", methodName)})
-                SendToWeb("host:error", New With {.message = String.Format("핸들러 '{0}' 가 구현되어 있지 않습니다.", methodName)})
+                SendToWeb(EventNames.Host.Warn, New With {.message = String.Format("핸들러 '{0}' 가 구현되어 있지 않습니다.", methodName)})
+                SendToWeb(EventNames.Host.ErrorEvent, New With {.message = String.Format("핸들러 '{0}' 가 구현되어 있지 않습니다.", methodName)})
                 Return
             End If
 
@@ -226,9 +226,9 @@ Namespace UI.Hub
                 Else
                     msg = ex.Message
                 End If
-                SendToWeb("host:error", New With {.message = String.Format("핸들러 실행 오류({0}): {1}", methodName, msg)})
+                SendToWeb(EventNames.Host.ErrorEvent, New With {.message = String.Format("핸들러 실행 오류({0}): {1}", methodName, msg)})
             Catch ex As Exception
-                SendToWeb("host:error", New With {.message = String.Format("핸들러 실행 오류({0}): {1}", methodName, ex.Message)})
+                SendToWeb(EventNames.Host.ErrorEvent, New With {.message = String.Format("핸들러 실행 오류({0}): {1}", methodName, ex.Message)})
             End Try
         End Sub
 
@@ -250,7 +250,7 @@ Namespace UI.Hub
             Try
                 Dim onTop As Boolean = False
                 If _host IsNot Nothing Then onTop = _host.Topmost
-                SendToWeb("host:topmost", New With {.on = onTop})
+                SendToWeb(EventNames.Host.Topmost, New With {.on = onTop})
             Catch
             End Try
         End Sub
@@ -341,7 +341,7 @@ Private Shared Function NormalizeEventName(name As String) As String
 
         ' (필요시) 외부에서 직접 로그를 남길 때 사용
         Public Shared Sub HostLog(kind As String, text As String)
-            SendToWeb("host:log", New With {.kind = kind, .text = text})
+            SendToWeb(EventNames.Host.Log, New With {.kind = kind, .text = text})
         End Sub
 
         Friend Shared Sub LogAutoFitDecision(doAutoFit As Boolean, context As String)
@@ -352,7 +352,7 @@ Private Shared Function NormalizeEventName(name As String) As String
         Private Sub HandleExcelOpen(payload As Object)
             Dim inputPath As String = TryCast(GetProp(payload, "path"), String)
             If String.IsNullOrWhiteSpace(inputPath) Then
-                SendToWeb("host:warn", New With {.message = "엑셀 경로가 비어 있습니다."})
+                SendToWeb(EventNames.Host.Warn, New With {.message = "엑셀 경로가 비어 있습니다."})
                 Return
             End If
 
@@ -390,7 +390,7 @@ Private Shared Function NormalizeEventName(name As String) As String
             End Try
 
             If Not fileExists Then
-                SendToWeb("host:warn", New With {.message = "엑셀 파일을 찾을 수 없습니다: " & fullPath, .path = fullPath})
+                SendToWeb(EventNames.Host.Warn, New With {.message = "엑셀 파일을 찾을 수 없습니다: " & fullPath, .path = fullPath})
                 Return
             End If
 
@@ -406,10 +406,10 @@ Private Shared Function NormalizeEventName(name As String) As String
                     System.Threading.Thread.Sleep(200)
                 Next
                 If Not lengthOk Then
-                    SendToWeb("host:warn", New With {.message = "파일 크기가 0입니다. 열기를 시도합니다: " & fullPath, .path = fullPath})
+                    SendToWeb(EventNames.Host.Warn, New With {.message = "파일 크기가 0입니다. 열기를 시도합니다: " & fullPath, .path = fullPath})
                 End If
             Catch ex As Exception
-                SendToWeb("host:warn", New With {.message = "파일 상태 확인에 실패했습니다: " & ex.Message, .path = fullPath})
+                SendToWeb(EventNames.Host.Warn, New With {.message = "파일 상태 확인에 실패했습니다: " & ex.Message, .path = fullPath})
             End Try
 
             Dim opened As Boolean = False
@@ -431,7 +431,7 @@ Private Shared Function NormalizeEventName(name As String) As String
 
                 System.Diagnostics.Process.Start(psi)
                 opened = True
-                SendToWeb("host:info", New With {.message = "엑셀 열기를 시도했습니다: " & fullPath, .path = fullPath})
+                SendToWeb(EventNames.Host.Info, New With {.message = "엑셀 열기를 시도했습니다: " & fullPath, .path = fullPath})
             Catch ex As Exception
                 firstError = ex
             End Try
@@ -447,13 +447,13 @@ Private Shared Function NormalizeEventName(name As String) As String
                     If firstError IsNot Nothing Then
                         warnMsg &= " (" & firstError.Message & ")"
                     End If
-                    SendToWeb("host:warn", New With {.message = warnMsg, .path = fullPath})
+                    SendToWeb(EventNames.Host.Warn, New With {.message = warnMsg, .path = fullPath})
                 Catch ex As Exception
                     Dim msg As String = "엑셀 열기 실패: " & ex.Message
                     If firstError IsNot Nothing Then
                         msg &= " / 최초 오류: " & firstError.Message
                     End If
-                    SendToWeb("host:warn", New With {.message = msg, .path = fullPath})
+                    SendToWeb(EventNames.Host.Warn, New With {.message = msg, .path = fullPath})
                 End Try
             End If
         End Sub
@@ -466,7 +466,7 @@ Private Shared Function NormalizeEventName(name As String) As String
                 name = TryCast(GetProp(payload, "path"), String)
             End If
 
-            SendToWeb("host:info", New With {
+            SendToWeb(EventNames.Host.Info, New With {
                 .message = "문서 전환은 Revit 창에서 직접 선택해 주세요.",
                 .target = name
             })

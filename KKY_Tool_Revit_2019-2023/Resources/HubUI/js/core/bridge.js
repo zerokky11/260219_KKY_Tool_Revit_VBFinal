@@ -10,6 +10,7 @@
 // 4) 왕복 시간(ms) 표기: 호스트가 __seq를 되돌려주면 측정됨
 
 import { log } from './dom.js';
+import { EVENT_NAMES } from './event-names.js';
 
 export let DEV = false;
 
@@ -132,24 +133,24 @@ export function post(ev, payload = {}) {
 
     // === DEV 목업 ===
     switch (ev) {
-        case "ui:toggle-topmost": {
+        case EVENT_NAMES.UI.TOGGLE_TOPMOST: {
             __devTopMost = !__devTopMost;
-            _emitHost("host:topmost", { on: __devTopMost }, { __seq: seq });
+            _emitHost(EVENT_NAMES.HOST.TOPMOST, { on: __devTopMost }, { __seq: seq });
             break;
         }
-        case "dup:run": {
+        case EVENT_NAMES.FEATURE.UI.DUP_RUN: {
             const rows = [
                 { id: "12345", category: "Pipes", family: "Pipe Fitting", type: "Elbow - 90deg", groupId: 1, connectedCount: 2, connectedIds: "12346,12347", candidate: true },
                 { id: "20011", category: "Pipes", family: "Pipe", type: "DN50", groupId: 1, connectedCount: 1, connectedIds: "20012", candidate: false },
             ];
-            _emitHost("dup:list", { data: rows }, { __seq: seq });
+            _emitHost(EVENT_NAMES.FEATURE.HOST.DUP_LIST, { data: rows }, { __seq: seq });
             break;
         }
-        case "duplicate:export": {
-            _emitHost("dup:exported", { path: "C:\\Temp\\duplicate.xlsx" }, { __seq: seq });
+        case EVENT_NAMES.FEATURE.UI.DUPLICATE_EXPORT: {
+            _emitHost(EVENT_NAMES.FEATURE.HOST.DUP_EXPORTED, { path: "C:\\Temp\\duplicate.xlsx" }, { __seq: seq });
             break;
         }
-        case "connector:run": {
+        case EVENT_NAMES.FEATURE.UI.CONNECTOR_RUN: {
             const rows = [
                 {
                     Id1: 101, Id2: 102, Category1: "Pipe", Category2: "Pipe", Family1: "Pipe", Family2: "Pipe",
@@ -157,30 +158,30 @@ export function post(ev, payload = {}) {
                     Value1: "Domestic Cold Water", Value2: "Domestic Cold Water", Status: "OK"
                 },
             ];
-            _emitHost("connector:done", { rows }, { __seq: seq });
+            _emitHost(EVENT_NAMES.FEATURE.HOST.CONNECTOR_DONE, { rows }, { __seq: seq });
             break;
         }
-        case "export:preview": {
+        case EVENT_NAMES.FEATURE.UI.EXPORT_PREVIEW: {
             const rows = [
                 {
                     File: "Sample_A.rvt", "ProjectPoint_E(mm)": 100.0, "ProjectPoint_N(mm)": 200.0, "ProjectPoint_Z(mm)": 0.0,
                     "SurveyPoint_E(mm)": 110.0, "SurveyPoint_N(mm)": 210.0, "SurveyPoint_Z(mm)": 5.0, "TrueNorthAngle(deg)": 23.5
                 },
             ];
-            _emitHost("export:previewed", { rows }, { __seq: seq });
+            _emitHost(EVENT_NAMES.FEATURE.HOST.EXPORT_PREVIEWED, { rows }, { __seq: seq });
             break;
         }
-        case "export:save-excel": {
-            _emitHost("export:saved", { path: "C:\\Temp\\points.xlsx" }, { __seq: seq });
+        case EVENT_NAMES.FEATURE.UI.EXPORT_SAVE_EXCEL: {
+            _emitHost(EVENT_NAMES.FEATURE.HOST.EXPORT_SAVED, { path: "C:\\Temp\\points.xlsx" }, { __seq: seq });
             break;
         }
-        case "paramprop:run": {
-            _emitHost("paramprop:done", { ok: true, status: "succeeded", message: "(DEV) 완료" }, { __seq: seq });
-            _emitHost("paramprop:report", { report: "(DEV) 완료" }, { __seq: seq });
+        case EVENT_NAMES.FEATURE.UI.PARAMPROP_RUN: {
+            _emitHost(EVENT_NAMES.FEATURE.HOST.PARAMPROP_DONE, { ok: true, status: "succeeded", message: "(DEV) 완료" }, { __seq: seq });
+            _emitHost(EVENT_NAMES.FEATURE.HOST.PARAMPROP_REPORT, { report: "(DEV) 완료" }, { __seq: seq });
             break;
         }
-        case "familylink:init": {
-            _emitHost("familylink:sharedparams", {
+        case EVENT_NAMES.FEATURE.UI.FAMILYLINK_INIT: {
+            _emitHost(EVENT_NAMES.FEATURE.HOST.FAMILYLINK_SHAREDPARAMS, {
                 sourcePath: "C:\\Sample\\SharedParameters.txt",
                 items: [
                     { name: "PARAM_A", guid: "11111111-1111-1111-1111-111111111111", groupName: "GroupA", dataTypeToken: "Text" },
@@ -189,13 +190,13 @@ export function post(ev, payload = {}) {
             }, { __seq: seq });
             break;
         }
-        case "familylink:pick-rvts": {
-            _emitHost("familylink:rvts-picked", { paths: ["C:\\Sample\\ProjectA.rvt", "C:\\Sample\\ProjectB.rvt"] }, { __seq: seq });
+        case EVENT_NAMES.FEATURE.UI.FAMILYLINK_PICK_RVTS: {
+            _emitHost(EVENT_NAMES.FEATURE.HOST.FAMILYLINK_RVTS_PICKED, { paths: ["C:\\Sample\\ProjectA.rvt", "C:\\Sample\\ProjectB.rvt"] }, { __seq: seq });
             break;
         }
-        case "familylink:run": {
-            _emitHost("familylink:progress", { percent: 25, message: "(DEV) 스캔 중..." }, { __seq: seq });
-            _emitHost("familylink:result", {
+        case EVENT_NAMES.FEATURE.UI.FAMILYLINK_RUN: {
+            _emitHost(EVENT_NAMES.FEATURE.HOST.FAMILYLINK_PROGRESS, { percent: 25, message: "(DEV) 스캔 중..." }, { __seq: seq });
+            _emitHost(EVENT_NAMES.FEATURE.HOST.FAMILYLINK_RESULT, {
                 schema: ["ProjectPath", "HostFamilyName", "HostFamilyCategory", "NestedFamilyName", "NestedTypeName", "NestedCategory", "TargetParamName", "ExpectedGuid", "FoundScope", "NestedParamGuid", "NestedParamDataType", "AssocHostParamName", "HostParamGuid", "HostParamIsShared", "Issue", "Notes"],
                 rows: [
                     {
@@ -220,8 +221,8 @@ export function post(ev, payload = {}) {
             }, { __seq: seq });
             break;
         }
-        case "familylink:export": {
-            _emitHost("familylink:exported", { ok: true, path: "C:\\Temp\\FamilyLinkAudit.xlsx" }, { __seq: seq });
+        case EVENT_NAMES.FEATURE.UI.FAMILYLINK_EXPORT: {
+            _emitHost(EVENT_NAMES.FEATURE.HOST.FAMILYLINK_EXPORTED, { ok: true, path: "C:\\Temp\\FamilyLinkAudit.xlsx" }, { __seq: seq });
             break;
         }
         default: {

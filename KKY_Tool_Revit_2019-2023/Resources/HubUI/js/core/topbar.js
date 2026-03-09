@@ -2,6 +2,7 @@
 import { div, toast } from './dom.js';
 import { toggleTheme } from './theme.js';
 import { setConn, ping, post } from './bridge.js';
+import { EVENT_NAMES } from './event-names.js';
 
 export const APP_VERSION = 'v1.02';
 
@@ -178,7 +179,7 @@ export function renderTopbarChips() {
     });
     pin.setAttribute('aria-pressed', 'false');
     pin.classList.add('is-off');
-    pin.onclick = () => { try { post('ui:toggle-topmost'); } catch (e) { console.error(e); } };
+    pin.onclick = () => { try { post(EVENT_NAMES.UI.TOGGLE_TOPMOST); } catch (e) { console.error(e); } };
     chipRow.append(pin);
 
     const themeBtn = createControlButton({
