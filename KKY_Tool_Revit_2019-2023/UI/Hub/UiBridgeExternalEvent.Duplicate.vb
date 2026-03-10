@@ -112,24 +112,23 @@ End Function
 
         ' 상위호환: mode
         Public Property Mode As String
-    
+    End Class
 
-Private Class PairRowDto
-    Public Property FileName As String
-    Public Property GroupKey As String
+    Private Class PairRowDto
+        Public Property FileName As String
+        Public Property GroupKey As String
 
-    Public Property AId As String
-    Public Property ACategory As String
-    Public Property AFamily As String
-    Public Property AType As String
+        Public Property AId As String
+        Public Property ACategory As String
+        Public Property AFamily As String
+        Public Property AType As String
 
-    Public Property BId As String
-    Public Property BCategory As String
-    Public Property BFamily As String
-    Public Property BType As String
-End Class
-
-End Class
+        Public Property BId As String
+        Public Property BCategory As String
+        Public Property BFamily As String
+        Public Property BType As String
+        Public Property Comment As String
+    End Class
 
 #End Region
 
@@ -210,7 +209,56 @@ Try
     Next
 Catch
 End Try
-SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList, .parameters = parms.OrderBy(Function(x) x).ToList()})
+Dim systemTypes As New List(Of Object)()
+Dim sysTypeKeys As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+Try
+    Dim ecol As New FilteredElementCollector(doc)
+    ecol.WhereElementIsNotElementType()
+    For Each ee As Element In ecol
+        If ee Is Nothing Then Continue For
+
+        Dim cat As Category = Nothing
+        Try
+            cat = ee.Category
+        Catch
+        End Try
+        If cat Is Nothing Then Continue For
+
+        Try
+            If cat.CategoryType <> CategoryType.Model Then Continue For
+        Catch
+            ' ignore
+        End Try
+
+        Dim tid As ElementId = ElementId.InvalidElementId
+        Try
+            tid = ee.GetTypeId()
+        Catch
+            Continue For
+        End Try
+        If tid Is Nothing OrElse tid = ElementId.InvalidElementId Then Continue For
+
+        Dim te As ElementType = TryCast(doc.GetElement(tid), ElementType)
+        If te Is Nothing Then Continue For
+        If TypeOf te Is FamilySymbol Then Continue For ' 시스템 패밀리 타입만
+
+        Dim tname As String = ""
+        Try
+            tname = te.Name
+        Catch
+        End Try
+        If String.IsNullOrWhiteSpace(tname) Then Continue For
+
+        Dim key As String = cat.Name & " : " & tname
+        If sysTypeKeys.Add(key) Then
+            systemTypes.Add(New With {.category = cat.Name, .type = tname})
+        End If
+    Next
+Catch
+End Try
+
+SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList, .systemTypes = systemTypes, .parameters = parms.OrderBy(Function(x) x).ToList()})
         Return
     End If
 
@@ -849,6 +897,8 @@ Try
             If Not infos.TryGetValue(aId, aInfo) Then Continue For
             If Not infos.TryGetValue(bId, bInfo) Then Continue For
 
+            Dim pairComment As String = BuildClashComment(doc, aId, bId)
+
             pairs.Add(New PairRowDto With {
                 .FileName = doc.Title,
                 .GroupKey = gk,
@@ -859,7 +909,8 @@ Try
                 .BId = bId.ToString(),
                 .BCategory = bInfo.Category,
                 .BFamily = bInfo.Family,
-                .BType = bInfo.TypeName
+                .BType = bInfo.TypeName,
+                .Comment = pairComment
             })
         Next
     Next
@@ -876,7 +927,8 @@ Try
         .bId = p.BId,
         .bCategory = p.BCategory,
         .bFamily = p.BFamily,
-        .bType = p.BType
+        .bType = p.BType,
+        .comment = p.Comment
     }).ToList()
 
     SendToWeb("dup:pairs", wirePairs)
@@ -928,40 +980,159 @@ End Try
     ' ====== 선택/줌 ======
     Private Sub HandleDuplicateSelect(app As UIApplication, payload As Object)
         Dim uiDoc As UIDocument = app.ActiveUIDocument
-        If uiDoc Is Nothing Then Return
+        If uiDoc Is Nothing OrElse uiDoc.Document Is Nothing Then Return
 
-        Dim idVal As Integer = SafeInt(GetProp(payload, "id"))
-        If idVal <= 0 Then Return
+        Dim rawIds As List(Of Integer) = CollectSelectIds(payload)
+        If rawIds Is Nothing OrElse rawIds.Count = 0 Then Return
 
-        Dim elId As New ElementId(idVal)
-        Dim el As Element = uiDoc.Document.GetElement(elId)
-        If el Is Nothing Then
-            SendToWeb("host:warn", New With {.message = $"요소 {idVal} 을(를) 찾을 수 없습니다."})
+        Dim validIds As New List(Of ElementId)()
+        Dim missingIds As New List(Of Integer)()
+
+        For Each idVal As Integer In rawIds
+            If idVal <= 0 Then Continue For
+
+            Dim elId As New ElementId(idVal)
+            Dim el As Element = Nothing
+            Try
+                el = uiDoc.Document.GetElement(elId)
+            Catch
+            End Try
+
+            If el Is Nothing Then
+                missingIds.Add(idVal)
+                Continue For
+            End If
+
+            validIds.Add(elId)
+        Next
+
+        If validIds.Count = 0 Then
+            Dim missTxt As String = If(missingIds.Count > 0, String.Join(", ", missingIds), "선택 대상")
+            SendToWeb("host:warn", New With {.message = $"요소를 찾을 수 없습니다: {missTxt}"})
             Return
         End If
 
         Try
-            uiDoc.Selection.SetElementIds(New List(Of ElementId) From {elId})
+            uiDoc.Selection.SetElementIds(validIds)
         Catch
         End Try
 
-        Dim bb As BoundingBoxXYZ = GetBoundingBox(el)
+        ZoomToElements(uiDoc, validIds)
+
+        If missingIds.Count > 0 Then
+            Try
+                SendToWeb("host:warn", New With {.message = $"일부 요소를 찾지 못했습니다: {String.Join(", ", missingIds)}"})
+            Catch
+            End Try
+        End If
+    End Sub
+
+    Private Shared Function CollectSelectIds(payload As Object) As List(Of Integer)
+        Dim out As New List(Of Integer)()
+        Dim seen As New HashSet(Of Integer)()
+
         Try
-            If bb IsNot Nothing Then
+            Dim idsObj = GetProp(payload, "ids")
+            If idsObj IsNot Nothing Then
+                If TypeOf idsObj Is String Then
+                    AddSelectIdsFromString(out, seen, Convert.ToString(idsObj))
+                Else
+                    Dim en = TryCast(idsObj, System.Collections.IEnumerable)
+                    If en IsNot Nothing Then
+                        For Each it In en
+                            AddSelectId(out, seen, SafeInt(it))
+                        Next
+                    Else
+                        AddSelectId(out, seen, SafeInt(idsObj))
+                    End If
+                End If
+            End If
+        Catch
+        End Try
+
+        If out.Count = 0 Then
+            Try
+                AddSelectId(out, seen, SafeInt(GetProp(payload, "id")))
+            Catch
+            End Try
+        End If
+
+        Return out
+    End Function
+
+    Private Shared Sub AddSelectIdsFromString(out As List(Of Integer), seen As HashSet(Of Integer), raw As String)
+        If out Is Nothing OrElse seen Is Nothing Then Return
+        If String.IsNullOrWhiteSpace(raw) Then Return
+
+        Dim parts = raw.Split(New Char() {","c, ";"c, "|"c, " "c, ControlChars.Tab}, StringSplitOptions.RemoveEmptyEntries)
+        For Each part As String In parts
+            AddSelectId(out, seen, SafeInt(part))
+        Next
+    End Sub
+
+    Private Shared Sub AddSelectId(out As List(Of Integer), seen As HashSet(Of Integer), idVal As Integer)
+        If out Is Nothing OrElse seen Is Nothing Then Return
+        If idVal <= 0 Then Return
+        If seen.Add(idVal) Then out.Add(idVal)
+    End Sub
+
+    Private Shared Sub ZoomToElements(uiDoc As UIDocument, ids As IList(Of ElementId))
+        If uiDoc Is Nothing OrElse ids Is Nothing OrElse ids.Count = 0 Then Return
+
+        Dim minX As Double = 0R, minY As Double = 0R, minZ As Double = 0R
+        Dim maxX As Double = 0R, maxY As Double = 0R, maxZ As Double = 0R
+        Dim hasBox As Boolean = False
+
+        For Each elId As ElementId In ids
+            If elId Is Nothing Then Continue For
+
+            Dim el As Element = Nothing
+            Try
+                el = uiDoc.Document.GetElement(elId)
+            Catch
+            End Try
+            If el Is Nothing Then Continue For
+
+            Dim bb As BoundingBoxXYZ = GetBoundingBox(el)
+            If bb Is Nothing OrElse bb.Min Is Nothing OrElse bb.Max Is Nothing Then Continue For
+
+            If Not hasBox Then
+                minX = bb.Min.X : minY = bb.Min.Y : minZ = bb.Min.Z
+                maxX = bb.Max.X : maxY = bb.Max.Y : maxZ = bb.Max.Z
+                hasBox = True
+            Else
+                minX = Math.Min(minX, bb.Min.X)
+                minY = Math.Min(minY, bb.Min.Y)
+                minZ = Math.Min(minZ, bb.Min.Z)
+                maxX = Math.Max(maxX, bb.Max.X)
+                maxY = Math.Max(maxY, bb.Max.Y)
+                maxZ = Math.Max(maxZ, bb.Max.Z)
+            End If
+        Next
+
+        Try
+            If hasBox Then
                 Dim views = uiDoc.GetOpenUIViews()
                 Dim target = views.FirstOrDefault(Function(v) v.ViewId.IntegerValue = uiDoc.ActiveView.Id.IntegerValue)
                 If target IsNot Nothing Then
-                    target.ZoomAndCenterRectangle(bb.Min, bb.Max)
-                Else
-                    uiDoc.ShowElements(elId)
+                    target.ZoomAndCenterRectangle(New XYZ(minX, minY, minZ), New XYZ(maxX, maxY, maxZ))
+                    Return
                 End If
+            End If
+        Catch
+        End Try
+
+        Try
+            If ids.Count = 1 Then
+                uiDoc.ShowElements(ids(0))
             Else
-                uiDoc.ShowElements(elId)
+                uiDoc.ShowElements(ids)
             End If
         Catch
         End Try
     End Sub
 
+    ' ====== 삭제(트랜잭션 1회 커밋) ======
     ' ====== 삭제(트랜잭션 1회 커밋) ======
     Private Sub HandleDuplicateDelete(app As UIApplication, payload As Object)
         Dim uiDoc As UIDocument = app.ActiveUIDocument
@@ -1189,7 +1360,20 @@ Catch
 End Try
 
 If String.Equals(_lastMode, "clash", StringComparison.OrdinalIgnoreCase) AndAlso _lastPairs IsNot Nothing AndAlso _lastPairs.Count > 0 Then
-    Exports.DuplicateExport.ExportPairs(outPath, _lastPairs.Cast(Of Object)(), doAutoFit, "dup:progress", sheetTitle)
+    Dim exportPairs = _lastPairs.Select(Function(p) New With {
+        .FileName = p.FileName,
+        .GroupKey = p.GroupKey,
+        .AId = p.AId,
+        .ACategory = p.ACategory,
+        .AFamily = p.AFamily,
+        .AType = p.AType,
+        .BId = p.BId,
+        .BCategory = p.BCategory,
+        .BFamily = p.BFamily,
+        .BType = p.BType,
+        .Comment = p.Comment
+    }).Cast(Of Object)().ToList()
+    Exports.DuplicateExport.ExportPairs(outPath, exportPairs, doAutoFit, "dup:progress", sheetTitle)
 Else
     ' FileName 컬럼(A열) 채움
     For Each r In _lastRows
@@ -1527,6 +1711,9 @@ End Function
 Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashInfo, tolFeet As Double, opt As Options, solidCache As Dictionary(Of Integer, List(Of Solid)), connCache As Dictionary(Of Integer, HashSet(Of Integer))) As Boolean
         ' ✅ 완전 중복은 간섭에서 제외
         If IsExactBBoxDuplicate(a, b, tolFeet) Then Return False
+
+        ' ✅ 탭/피팅/조인트 등 의도된 MEP 연결은 간섭에서 제외
+        If IsIntentionallyConnectedOrJoined(doc, a.Id, b.Id, connCache) Then Return False
 
         ' 1) curve-curve: centerline distance + overlap for near-parallel
         If a.HasCurve AndAlso b.HasCurve Then
@@ -2030,6 +2217,40 @@ Private Shared Function ShouldExcludeByKeywords(e As Element, kws As List(Of Str
     Catch
     End Try
 
+Try
+        Dim d As Document = Nothing
+        Try
+            d = e.Document
+        Catch
+        End Try
+        If d IsNot Nothing Then
+            Dim tid As ElementId = ElementId.InvalidElementId
+            Try
+                tid = e.GetTypeId()
+            Catch
+            End Try
+
+            If tid IsNot Nothing AndAlso tid <> ElementId.InvalidElementId Then
+                Dim te As ElementType = TryCast(d.GetElement(tid), ElementType)
+                If te IsNot Nothing Then
+                    Try
+                        If Not String.IsNullOrWhiteSpace(te.Name) Then
+                            parts.Add(te.Name)
+                            Try
+                                If e.Category IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(e.Category.Name) Then
+                                    parts.Add(e.Category.Name & " : " & te.Name)
+                                End If
+                            Catch
+                            End Try
+                        End If
+                    Catch
+                    End Try
+                End If
+            End If
+        End If
+    Catch
+    End Try
+
     Try
         Dim fi As FamilyInstance = TryCast(e, FamilyInstance)
         If fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing Then
@@ -2063,6 +2284,56 @@ End Function
 
 
 ' ===== 의도된 연결/조인 간섭 제외 =====
+Private Shared Function BuildClashComment(doc As Document, aId As Integer, bId As Integer) As String
+    If doc Is Nothing Then Return ""
+
+    Dim ea As Element = Nothing
+    Dim eb As Element = Nothing
+    Try
+        ea = doc.GetElement(New ElementId(aId))
+        eb = doc.GetElement(New ElementId(bId))
+    Catch
+    End Try
+
+    If ea Is Nothing OrElse eb Is Nothing Then Return ""
+
+    If IsJoinInfoCandidate(ea) AndAlso IsJoinInfoCandidate(eb) Then
+        Try
+            If Not JoinGeometryUtils.AreElementsJoined(doc, ea, eb) Then
+                Return "결합/Join 되지 않음."
+            End If
+        Catch
+            Return "결합/Join 되지 않음."
+        End Try
+    End If
+
+    Return ""
+End Function
+
+Private Shared Function IsJoinInfoCandidate(e As Element) As Boolean
+    If e Is Nothing OrElse e.Category Is Nothing Then Return False
+
+    Dim catId As Integer = Integer.MinValue
+    Try
+        catId = e.Category.Id.IntegerValue
+    Catch
+        Return False
+    End Try
+
+    Select Case catId
+        Case CInt(BuiltInCategory.OST_Walls),
+             CInt(BuiltInCategory.OST_Floors),
+             CInt(BuiltInCategory.OST_Roofs),
+             CInt(BuiltInCategory.OST_Ceilings),
+             CInt(BuiltInCategory.OST_StructuralFraming),
+             CInt(BuiltInCategory.OST_StructuralColumns),
+             CInt(BuiltInCategory.OST_Columns)
+            Return True
+    End Select
+
+    Return False
+End Function
+
 Private Shared Function IsIntentionallyConnectedOrJoined(doc As Document,
                                                         aId As Integer,
                                                         bId As Integer,
