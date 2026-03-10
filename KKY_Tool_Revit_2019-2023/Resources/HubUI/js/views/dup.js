@@ -1311,6 +1311,51 @@ export function renderDup(root){
   
   }
 
+
+  function renderIntro(){
+    body.innerHTML = '';
+    var hero = div('dup-hero');
+    hero.innerHTML = '<h3 class="hero-title">' + (mode === 'clash' ? '자체간섭 검토를 시작해 보세요' : '중복검토를 시작해 보세요') + '</h3>' +
+                     '<p class="hero-sub">' + (mode === 'clash' ? '같은 파일 내 자체간섭 후보를 쌍(A↔B)으로 보여줍니다.' : '모델의 중복 요소를 그룹으로 묶어 보여줍니다.') + '</p>';
+    body.appendChild(hero);
+  }
+
+  function getExcludeKeywords(){
+    try{
+      var raw = String(localStorage.getItem(LS_EXCL_KW) || '').trim();
+      if (!raw) return [];
+      return raw.split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+    } catch(e){ return []; }
+  }
+
+  function readTolMm(){
+    try{
+      var raw = localStorage.getItem(LS_TOL_MM);
+      var n = Number(String(raw || '').trim());
+      if (isFinite(n) && !isNaN(n) && n > 0) return clamp(n, 0.01, 1000);
+    } catch(e){}
+    return DEFAULT_TOL_MM;
+  }
+  function readTolFeet(){
+    var mm = readTolMm();
+    return Math.max(0.000001, mmToFeet(mm));
+  }
+
+  function readMode(){
+    try{
+      var m = String(localStorage.getItem(LS_MODE) || '').trim();
+      if (m === 'duplicate' || m === 'clash') return m;
+    } catch(e){}
+    return 'duplicate';
+  }
+  function readScopeMode(){
+    try{
+      var m = String(localStorage.getItem(LS_SCOPE) || '').trim();
+      if (m === 'all' || m === 'scope' || m === 'exclude') return m;
+    } catch(e){}
+    return 'all';
+  }
+
   function renderAppliedBar(){
     if (!appliedBar) return;
     var cfg = loadRuleConfig();
