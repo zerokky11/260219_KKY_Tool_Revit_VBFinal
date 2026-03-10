@@ -95,6 +95,27 @@ Private Shared Function TryGetCollectorCount(col As FilteredElementCollector) As
     Return 0
 End Function
 
+Private Shared Function ShouldIgnoreMetaCategoryName(name As String) As Boolean
+    Dim s As String = If(name, "").Trim().ToLowerInvariant()
+    If String.IsNullOrWhiteSpace(s) Then Return True
+    If s = "views" Then Return True
+    If s.Contains("rvt link") OrElse s.Contains("revit link") Then Return True
+    If s.Contains("cad link") OrElse s.Contains("dwg link") Then Return True
+    If s.Contains("import") Then Return True
+    If s.Contains("camera") Then Return True
+    If s.Contains("view") Then Return True
+    Return False
+End Function
+
+Private Shared Function ShouldIgnoreMetaSystemType(categoryName As String, typeName As String) As Boolean
+    If ShouldIgnoreMetaCategoryName(categoryName) Then Return True
+
+    Dim t As String = If(typeName, "").Trim().ToLowerInvariant()
+    If String.IsNullOrWhiteSpace(t) Then Return False
+    If t.Contains("dwg") OrElse t.Contains("camera") OrElse t.Contains("revit link") OrElse t.Contains("cad link") OrElse t.Contains("dwg link") Then Return True
+    Return False
+End Function
+
 
     Private Class DupRowDto
         Public Property FileName As String
@@ -173,7 +194,7 @@ Try
                 ' 카테고리(시스템 분류)
                 Try
                     If e.Category IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(e.Category.Name) Then
-                        cats.Add(e.Category.Name)
+                        If Not ShouldIgnoreMetaCategoryName(e.Category.Name) Then cats.Add(e.Category.Name)
                     End If
                 Catch
                 End Try
@@ -249,6 +270,7 @@ Try
         Catch
         End Try
         If String.IsNullOrWhiteSpace(tname) Then Continue For
+        If ShouldIgnoreMetaSystemType(cat.Name, tname) Then Continue For
 
         Dim key As String = cat.Name & " : " & tname
         If sysTypeKeys.Add(key) Then
@@ -1172,7 +1194,7 @@ Try
                 ' 카테고리(시스템 분류)
                 Try
                     If e.Category IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(e.Category.Name) Then
-                        cats.Add(e.Category.Name)
+                        If Not ShouldIgnoreMetaCategoryName(e.Category.Name) Then cats.Add(e.Category.Name)
                     End If
                 Catch
                 End Try
@@ -1208,7 +1230,55 @@ Try
     Next
 Catch
 End Try
-SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList, .parameters = parms.OrderBy(Function(x) x).ToList()})
+Dim systemTypes As New List(Of Object)()
+Dim sysTypeKeys As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+Try
+    Dim ecol As New FilteredElementCollector(doc)
+    ecol.WhereElementIsNotElementType()
+    For Each ee As Element In ecol
+        If ee Is Nothing Then Continue For
+
+        Dim cat As Category = Nothing
+        Try
+            cat = ee.Category
+        Catch
+        End Try
+        If cat Is Nothing Then Continue For
+
+        Try
+            If cat.CategoryType <> CategoryType.Model Then Continue For
+        Catch
+        End Try
+
+        Dim tid As ElementId = ElementId.InvalidElementId
+        Try
+            tid = ee.GetTypeId()
+        Catch
+            Continue For
+        End Try
+        If tid Is Nothing OrElse tid = ElementId.InvalidElementId Then Continue For
+
+        Dim te As ElementType = TryCast(doc.GetElement(tid), ElementType)
+        If te Is Nothing Then Continue For
+        If TypeOf te Is FamilySymbol Then Continue For
+
+        Dim tname As String = ""
+        Try
+            tname = te.Name
+        Catch
+        End Try
+        If String.IsNullOrWhiteSpace(tname) Then Continue For
+        If ShouldIgnoreMetaSystemType(cat.Name, tname) Then Continue For
+
+        Dim key As String = cat.Name & " : " & tname
+        If sysTypeKeys.Add(key) Then
+            systemTypes.Add(New With {.category = cat.Name, .type = tname})
+        End If
+    Next
+Catch
+End Try
+SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = catList, .systemTypes = systemTypes, .parameters = parms.OrderBy(Function(x) x).ToList()})
         Return
     End If
 

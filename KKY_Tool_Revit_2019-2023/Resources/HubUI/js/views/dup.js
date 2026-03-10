@@ -229,8 +229,23 @@ function sanitizeRuleFileName(name){
   if (!/\.xml$/i.test(base)) base += '.xml';
   return base;
 }
+var dupUiHooks = { renderRulePanel:null, renderAppliedBar:null, serializeRuleFile:null };
+function callDupUiHook(name){
+  try{
+    var fn = dupUiHooks && dupUiHooks[name];
+    if (typeof fn === 'function') return fn();
+  }catch(e){}
+  return undefined;
+}
 async function exportRuleFileInteractive(){
-  var xml = serializeRuleFile();
+  var xml = callDupUiHook('serializeRuleFile');
+  if (!xml){
+    try{
+      if (typeof serializeRuleFile === 'function') xml = serializeRuleFile();
+      else if (typeof SerializeRuleFile === 'function') xml = SerializeRuleFile();
+    }catch(e0){}
+  }
+  if (!xml){ toast('설정 XML 직렬화 함수를 찾지 못했습니다.', 'err', 2200); return; }
   var sel = getSelectedRuleLibraryItem();
   var suggested = sanitizeRuleFileName(sel && sel.name ? sel.name : 'DuplicateInspector_RuleSet.xml');
   if (window.showSaveFilePicker){
@@ -241,18 +256,24 @@ async function exportRuleFileInteractive(){
       await writable.close();
       toast('설정 XML 파일을 저장했습니다.', 'ok', 1400);
       return;
-    } catch(ex){ if (ex && ex.name === 'AbortError') return; }
+    } catch(ex){
+      if (ex && ex.name === 'AbortError') return;
+    }
   }
   try{
     var fileName = sanitizeRuleFileName(window.prompt('저장할 파일 이름을 입력하세요.', suggested) || suggested);
+    if (!fileName) return;
     var blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = fileName;
-    document.body.appendChild(a); a.click();
+    document.body.appendChild(a);
+    a.click();
     setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} try{ document.body.removeChild(a); }catch(e2){} }, 0);
-    toast('저장 대화상자를 지원하지 않아 브라우저 다운로드로 저장했습니다.', 'warn', 2000);
-  } catch(ex2){ toast('설정 XML 파일 저장에 실패했습니다.', 'err', 2400); }
+    toast('저장 위치 선택 API가 없어서 브라우저 다운로드로 저장했습니다.', 'warn', 2200);
+  } catch(ex2){
+    toast('설정 XML 파일 저장에 실패했습니다.', 'err', 2400);
+  }
 }
 function loadMeta(){
   try{
@@ -273,6 +294,123 @@ function loadMeta(){
 // ---- Exclude Picker (패밀리/시스템) ----
 var exPickerEl = null;
 var exPickerOpen = false;
+var exPickerDraft = { fam: {}, cat: {} };
+var exPickerMetaPollTimer = 0;
+
+function resetExcludePickerDraftFromConfig(){
+  var cfg = loadRuleConfig();
+  var famSel = {};
+  var catSel = {};
+  (cfg.excludeFamilies || []).forEach(function(x){ var s = String(x || '').trim(); if (s) famSel[s] = 1; });
+  (cfg.excludeCategories || []).forEach(function(x){ var s = String(x || '').trim(); if (s) catSel[s] = 1; });
+  exPickerDraft = { fam: famSel, cat: catSel };
+}
+
+function syncExcludePickerDraftFromDom(){
+  if (!exPickerEl) return;
+  var famSel = Object.assign({}, (exPickerDraft && exPickerDraft.fam) ? exPickerDraft.fam : {});
+  var catSel = Object.assign({}, (exPickerDraft && exPickerDraft.cat) ? exPickerDraft.cat : {});
+  var cbs = exPickerEl.querySelectorAll('input[type="checkbox"]');
+  for (var i=0;i<cbs.length;i++) {
+    var cb = cbs[i];
+    if (!cb) continue;
+    var kind = cb.dataset ? cb.dataset.kind : '';
+    var key = String(cb.value || '').trim();
+    if (!key) continue;
+    if (kind === 'fam') {
+      if (cb.checked) famSel[key] = 1; else delete famSel[key];
+    } else if (kind === 'cat') {
+      if (cb.checked) catSel[key] = 1; else delete catSel[key];
+    }
+  }
+  exPickerDraft = { fam: famSel, cat: catSel };
+}
+
+function shouldHideSystemTypeItem(cat, typ, label){
+  var catLc = String(cat || '').trim().toLowerCase();
+  var typLc = String(typ || '').trim().toLowerCase();
+  var labelLc = String(label || '').trim().toLowerCase();
+  function hasAny(s, arr){
+    for (var i=0;i<arr.length;i++){ if (s.indexOf(arr[i]) >= 0) return true; }
+    return false;
+  }
+  if (hasAny(catLc, ['rvt link','revit link','cad link','dwg link','import', 'camera', 'view']) || catLc === 'views') return true;
+  if (hasAny(labelLc, ['dwg','camera','revit link','cad link','dwg link']) || hasAny(typLc, ['dwg','camera','revit link','cad link','dwg link'])) return true;
+  return false;
+}
+
+function hasExcludePickerMeta(metaData){
+  return !!(metaData && ((metaData.fams && metaData.fams.length) || (metaData.sysItems && metaData.sysItems.length) || (metaData.cats && metaData.cats.length)));
+}
+
+function stopExcludePickerMetaPoll(){
+  if (exPickerMetaPollTimer){
+    try{ clearInterval(exPickerMetaPollTimer); }catch(e){}
+    exPickerMetaPollTimer = 0;
+  }
+}
+
+function startExcludePickerMetaPoll(){
+  stopExcludePickerMetaPoll();
+  var tries = 0;
+  exPickerMetaPollTimer = setInterval(function(){
+    tries++;
+    if (!exPickerOpen){
+      stopExcludePickerMetaPoll();
+      return;
+    }
+    try{ renderExcludePicker(); }catch(e){}
+    var md = getExcludePickerMeta();
+    if (hasExcludePickerMeta(md) || tries >= 40){
+      stopExcludePickerMetaPoll();
+    }
+  }, 150);
+}
+
+function getExcludePickerMeta(){
+  var meta = loadMeta() || {};
+  var fams = uniq((Array.isArray(meta.modelFamilies) ? meta.modelFamilies : []).map(function(x){ return String(x || '').trim(); }).filter(Boolean));
+
+  var sysRaw = Array.isArray(meta.systemTypes) ? meta.systemTypes : (Array.isArray(meta.systemFamilyTypes) ? meta.systemFamilyTypes : (Array.isArray(meta.systemTypeNames) ? meta.systemTypeNames : null));
+  var sysItems = [];
+  var seen = {};
+  var cats = [];
+
+  if (sysRaw && sysRaw.length){
+    for (var si=0; si<sysRaw.length; si++) {
+      var it = sysRaw[si];
+      if (!it) continue;
+      var cat = '';
+      var typ = '';
+      var label = '';
+      var key = '';
+      if (typeof it === 'string') {
+        label = String(it || '').trim();
+        key = label;
+      } else if (typeof it === 'object') {
+        cat = String(it.category || it.cat || '').trim();
+        typ = String(it.type || it.name || it.typeName || '').trim();
+        label = (cat && typ) ? (cat + ' : ' + typ) : (cat || typ);
+        key = (cat && typ) ? label : (typ || cat || label);
+      }
+      label = String(label || '').trim();
+      key = String(key || label).trim();
+      if (!label || !key) continue;
+      if (shouldHideSystemTypeItem(cat, typ, label)) continue;
+      if (seen[key]) continue;
+      seen[key] = 1;
+      sysItems.push({ key:key, label:label });
+    }
+    sysItems.sort(function(a,b){ return String(a.label).localeCompare(String(b.label)); });
+  } else {
+    cats = uniq((Array.isArray(meta.systemCategories) ? meta.systemCategories : []).map(function(x){ return String(x || '').trim(); }).filter(Boolean));
+    cats = cats.filter(function(c){ return !shouldHideSystemTypeItem(c, '', c); });
+    cats.sort(function(a,b){ return String(a).localeCompare(String(b)); });
+  }
+
+  fams.sort(function(a,b){ return String(a).localeCompare(String(b)); });
+  return { fams:fams, sysItems:sysItems, cats:cats };
+}
 
 function ensureExcludePicker(){
   var el = document.getElementById('dup-expicker');
@@ -424,11 +562,15 @@ function ensureExcludePicker(){
       if (act === 'all'){
         var cbs = el.querySelectorAll('input[type="checkbox"]');
         for (var i=0;i<cbs.length;i++) cbs[i].checked = true;
+        syncExcludePickerDraftFromDom();
+        renderExcludePicker();
         return;
       }
       if (act === 'none'){
         var cbs2 = el.querySelectorAll('input[type="checkbox"]');
         for (var j=0;j<cbs2.length;j++) cbs2[j].checked = false;
+        syncExcludePickerDraftFromDom();
+        renderExcludePicker();
         return;
       }
       if (act === 'apply'){
@@ -443,74 +585,60 @@ function ensureExcludePicker(){
         renderExcludePicker();
       }
     });
+
+    el.addEventListener('change', function(e){
+      var t4 = e.target;
+      if (t4 && t4.type === 'checkbox'){
+        syncExcludePickerDraftFromDom();
+        renderExcludePicker();
+      }
+    });
   }
   exPickerEl = el;
 }
 function openExcludePicker(){
   ensureExcludePicker();
+  resetExcludePickerDraftFromConfig();
   exPickerOpen = true;
   exPickerEl.style.display = 'block';
   exPickerEl.classList.add('is-open');
 
-  // reset search so lists don't appear empty due to a previous filter
   try{
     var qEl = exPickerEl.querySelector('[data-bind="q"]');
     if (qEl) qEl.value = '';
   }catch(e){}
 
-  var meta = loadMeta();
-  var fams = Array.isArray(meta.modelFamilies) ? meta.modelFamilies : [];
-  var sys = Array.isArray(meta.systemTypes) ? meta.systemTypes : (Array.isArray(meta.systemFamilyTypes) ? meta.systemFamilyTypes : (Array.isArray(meta.systemTypeNames) ? meta.systemTypeNames : []));
-  var cats = Array.isArray(meta.systemCategories) ? meta.systemCategories : [];
+  var metaData = getExcludePickerMeta();
+  renderExcludePicker();
+
+  if (!hasExcludePickerMeta(metaData)) {
+    startExcludePickerMetaPoll();
+  } else {
+    stopExcludePickerMetaPoll();
+  }
+
   if (!metaRefreshPending){
     metaRefreshPending = true;
     try{ post(EV_RUN_REQ, { mode: readMode(), metaOnly: true }); }catch(e2){}
+    startExcludePickerMetaPoll();
   }
-  renderExcludePicker();
 }
 function closeExcludePicker(){
   if (!exPickerEl) return;
   exPickerOpen = false;
+  stopExcludePickerMetaPoll();
   exPickerEl.classList.remove('is-open');
   exPickerEl.style.display = 'none';
 }
 function renderExcludePicker(){
   if (!exPickerEl) return;
-  var cfg = loadRuleConfig();
-  var famSel = {};
-  var catSel = {};
-  (cfg.excludeFamilies || []).forEach(function(x){ famSel[String(x)] = 1; });
-  (cfg.excludeCategories || []).forEach(function(x){ catSel[String(x)] = 1; });
+  var famSel = exPickerDraft && exPickerDraft.fam ? exPickerDraft.fam : {};
+  var catSel = exPickerDraft && exPickerDraft.cat ? exPickerDraft.cat : {};
 
-  var meta = loadMeta();
-  var fams = uniq(Array.isArray(meta.modelFamilies) ? meta.modelFamilies : []);
-  // system list: prefer used system family TYPES if provided by host
-  var sysRaw = Array.isArray(meta.systemTypes) ? meta.systemTypes : (Array.isArray(meta.systemFamilyTypes) ? meta.systemFamilyTypes : (Array.isArray(meta.systemTypeNames) ? meta.systemTypeNames : null));
-  var sysItems = [];
-  var cats = [];
-  if (sysRaw && sysRaw.length){
-    for (var si=0; si<sysRaw.length; si++){
-      var it = sysRaw[si];
-      if (!it) continue;
-      if (typeof it === 'string'){
-        var s = String(it).trim();
-        if (!s) continue;
-        sysItems.push({ key:s, label:s });
-      } else if (typeof it === 'object'){
-        var cat = String(it.category || it.cat || '').trim();
-        var typ = String(it.type || it.name || it.typeName || '').trim();
-        if (!cat && !typ) continue;
-        var label2 = (cat && typ) ? (cat + ' : ' + typ) : (cat || typ);
-        var key2 = (cat && typ) ? label2 : (typ || cat || label2);
-        sysItems.push({ key:key2, label:label2 });
-      }
-    }
-    sysItems.sort(function(a,b){ return String(a.label).localeCompare(String(b.label)); });
-  } else {
-    cats = uniq(Array.isArray(meta.systemCategories) ? meta.systemCategories : []);
-    cats.sort(function(a,b){ return String(a).localeCompare(String(b)); });
-  }
-  fams.sort(function(a,b){ return String(a).localeCompare(String(b)); });
+  var metaData = getExcludePickerMeta();
+  var fams = metaData.fams;
+  var sysItems = metaData.sysItems;
+  var cats = metaData.cats;
 
   var qEl = exPickerEl.querySelector('[data-bind="q"]');
   var q = qEl ? String(qEl.value || '').trim().toLowerCase() : '';
@@ -596,25 +724,18 @@ function renderExcludePicker(){
 }
 function applyExcludePicker(){
   if (!exPickerEl) return;
+  syncExcludePickerDraftFromDom();
   var cfg = loadRuleConfig();
-  var fam = [];
-  var cat = [];
+  var fam = Object.keys((exPickerDraft && exPickerDraft.fam) ? exPickerDraft.fam : {}).sort(function(a,b){ return String(a).localeCompare(String(b)); });
+  var cat = Object.keys((exPickerDraft && exPickerDraft.cat) ? exPickerDraft.cat : {}).sort(function(a,b){ return String(a).localeCompare(String(b)); });
 
-  var cbs = exPickerEl.querySelectorAll('input[type="checkbox"]');
-  for (var i=0;i<cbs.length;i++){
-    var cb = cbs[i];
-    if (!cb.checked) continue;
-    var kind = cb.dataset ? cb.dataset.kind : '';
-    if (kind === 'fam') fam.push(String(cb.value || ''));
-    else if (kind === 'cat') cat.push(String(cb.value || ''));
-  }
   cfg.excludeFamilies = fam;
   cfg.excludeCategories = cat;
   saveRuleConfig(cfg);
   toast('Exclude 목록이 적용되었습니다.', 'ok', 1200);
   closeExcludePicker();
-  try{ renderRulePanel(); }catch(e){}
-  try{ renderAppliedBar(); }catch(e2){}
+  callDupUiHook('renderRulePanel');
+  callDupUiHook('renderAppliedBar');
 }
 
 // ---- Host 이벤트 수신 “강제 호환” ----
@@ -718,6 +839,10 @@ export function renderDup(root){
   var rulePanel = buildRulePanel();
   page.appendChild(rulePanel);
 
+  dupUiHooks.renderRulePanel = function(){ renderRulePanel(); };
+  dupUiHooks.renderAppliedBar = function(){ renderAppliedBar(); };
+  dupUiHooks.serializeRuleFile = function(){ return serializeRuleFile(); };
+
   syncModeButtons();
   syncHeading();
   renderIntro();
@@ -804,7 +929,10 @@ export function renderDup(root){
           if (!meta || typeof meta !== 'object') meta = {};
           try{ localStorage.setItem(LS_META, JSON.stringify(meta)); } catch(e){}
           metaRefreshPending = false;
-          if (exPickerOpen) renderExcludePicker();
+          if (exPickerOpen){
+            renderExcludePicker();
+            stopExcludePickerMetaPoll();
+          }
           renderRulePanel();
         } catch(e2){}
         return;
@@ -1881,6 +2009,14 @@ export function renderDup(root){
       return (v === undefined || v === null) ? (d || '') : String(v);
     }catch(e){ return d || ''; }
   }
+
+  function SerializeRuleFile(){
+    return serializeRuleFile();
+  }
+  function ParseRuleFileText(textRaw){
+    return parseRuleFileText(textRaw);
+  }
+
   function parseRuleFileText(textRaw){
     var text = String(textRaw || '').trim();
     if (!text) throw new Error('파일 내용이 비어 있습니다.');
