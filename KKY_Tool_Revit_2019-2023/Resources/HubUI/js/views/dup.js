@@ -1312,6 +1312,72 @@ export function renderDup(root){
   }
 
 
+  function buildGroupMeta(g){
+    var cats = uniq((g.rows||[]).map(function(r){ return r.category || '—'; }));
+    var fams = uniq((g.rows||[]).map(function(r){ return r.family || (r.category ? (r.category + ' Type') : '—'); }));
+    var types = uniq((g.rows||[]).map(function(r){ return r.type || '—'; }));
+
+    var catOut = (cats.length === 1) ? cats[0] : ('혼합(' + cats.length + ')');
+    var famOut = (fams.length === 1) ? fams[0] : ('혼합(' + fams.length + ')');
+    var typOut = (types.length === 1) ? types[0] : ('혼합(' + types.length + ')');
+    return catOut + ' · ' + famOut + ' · ' + typOut;
+  }
+
+  function normalizeRow(r){
+    var id = safeId(co(r.elementId, co(r.ElementId, co(r.id, r.Id))));
+    var category = asStr(co(r.category, r.Category), '');
+    var family = asStr(co(r.family, r.Family), '');
+    var type = asStr(co(r.type, r.Type), '');
+    var groupKey = asStr(co(r.groupKey, r.GroupKey), '');
+    var connRaw = co(r.connectedIds, co(r.ConnectedIds, []));
+    var connectedIds = Array.isArray(connRaw) ? connRaw.map(String) : [];
+    return { id: id, category: category, family: family, type: type, groupKey: groupKey, connectedIds: connectedIds };
+  }
+
+  function buildGroups(rs){
+    var list = Array.isArray(rs) ? rs : [];
+    var hasKey = false;
+    for (var i=0;i<list.length;i++){ if (list[i] && list[i].groupKey){ hasKey = true; break; } }
+    if (hasKey){
+      var map = {};
+      for (var j=0;j<list.length;j++){
+        var r = list[j];
+        var k = r.groupKey || '_';
+        if (!map[k]) map[k] = { key: k, rows: [] };
+        map[k].rows.push(r);
+      }
+      return Object.keys(map).map(function(k){ return map[k]; });
+    }
+    var map2 = {};
+    for (var k2=0;k2<list.length;k2++){
+      var rr = list[k2];
+      var sig = [String(rr.id)].concat((rr.connectedIds||[]).map(String)).filter(Boolean).sort().join(',');
+      var key = [rr.category||'', rr.family||'', rr.type||'', sig].join('|');
+      if (!map2[key]) map2[key] = { key: key, rows: [] };
+      map2[key].rows.push(rr);
+    }
+    return Object.keys(map2).map(function(k){ return map2[k]; });
+  }
+
+  function dedupPairs(pairs){
+    var out = [];
+    var seen = {};
+    for (var i=0;i<(pairs||[]).length;i++){
+      var p = pairs[i] || {};
+      var gk = asStr(p.groupKey,'');
+      var aId = safeId(p.aId);
+      var bId = safeId(p.bId);
+      var na = asNum(aId, NaN), nb = asNum(bId, NaN);
+      var x = (isFinite(na) && !isNaN(na) && isFinite(nb) && !isNaN(nb)) ? Math.min(na,nb) : aId;
+      var y = (isFinite(na) && !isNaN(na) && isFinite(nb) && !isNaN(nb)) ? Math.max(na,nb) : bId;
+      var key = gk + ':' + String(x) + '-' + String(y);
+      if (seen[key]) continue;
+      seen[key] = 1;
+      out.push(p);
+    }
+    return out;
+  }
+
   function renderIntro(){
     body.innerHTML = '';
     var hero = div('dup-hero');
@@ -1356,6 +1422,18 @@ export function renderDup(root){
     return 'all';
   }
 
+  function handleExcelProgress(p){
+    if (!p){ ProgressDialog.hide(); return; }
+    var phase = asStr(p.phase,'').toUpperCase();
+    var total = asNum(p.total,0);
+    var current = asNum(p.current,0);
+    var pct = total > 0 ? Math.floor((current/total)*100) : asNum(p.percent,0);
+    ProgressDialog.show('엑셀 내보내기', asStr(p.message,''));
+    ProgressDialog.update(clamp(pct,0,100), asStr(p.message,''), asStr(p.detail,''));
+    if (phase === 'DONE' || phase === 'ERROR'){
+      setTimeout(function(){ ProgressDialog.hide(); }, 200);
+    }
+  }
   function renderAppliedBar(){
     if (!appliedBar) return;
     var cfg = loadRuleConfig();
