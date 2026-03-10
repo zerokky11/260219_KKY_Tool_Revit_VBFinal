@@ -2127,17 +2127,10 @@ export function renderDup(root){
     reader.onload = function(){
       try{
         var parsed = parseRuleFileText(reader.result || '');
-        saveRuleConfig(parsed.ruleConfig);
-        try{ localStorage.setItem(LS_TOL_MM, String(parsed.tolMm)); } catch(e0){}
-        scopeMode = asStr(parsed.scopeMode, 'all');
-        try{ localStorage.setItem(LS_SCOPE, scopeMode); } catch(e1){}
-        try{ localStorage.setItem(LS_EXCL_KW, asStr(parsed.excludeKeywords, '')); } catch(e2){}
+        var item = upsertRuleLibraryItem(asStr(file && file.name, 'DuplicateInspector_RuleSet.xml'), parsed);
         renderRulePanel();
-        toast('설정 파일을 불러왔습니다.', 'ok', 1400);
-        if (!metaRefreshPending){
-          metaRefreshPending = true;
-          try{ post(EV_RUN_REQ, { mode: readMode(), metaOnly: true }); }catch(e3){}
-        }
+        try{ renderAppliedBar(); }catch(e0){}
+        toast('XML을 목록에 불러왔습니다. 목록에서 선택 후 적용하세요.', 'ok', 1600);
       } catch(ex){
         toast(asStr(ex && ex.message, '설정 파일을 읽지 못했습니다.'), 'err', 2600);
       }
