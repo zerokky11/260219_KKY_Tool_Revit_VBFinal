@@ -1794,8 +1794,7 @@ export function renderDup(root){
     }
     lines.push('  </ExcludeCategories>');
     lines.push('</DuplicateInspectorRuleSet>');
-    return lines.join('
-');
+    return lines.join('\n');
   }
   function readAttr(node, name, d){
     if (!node) return d || '';
@@ -2627,8 +2626,7 @@ function ensureStyles(){
     '@media (max-width:1100px){.grp-body .dup-subhead,.grp-body .dup-row{grid-template-columns:44px 92px 1fr 1fr 1fr 66px 176px;gap:8px;}}',
     '@media (max-width:980px){.dup-rulemodal .rm-head,.dup-expicker .rm-head{align-items:flex-start;}.dup-rulemodal .rm-actions,.dup-expicker .rm-actions{width:100%;justify-content:flex-start;}.dup-rulemodal .rp-grid{grid-template-columns:1fr;}.dup-rulemodal .rp-clause{grid-template-columns:1fr;}.dup-rulemodal .rp-pair,.dup-rulemodal .rp-exrow{flex-direction:column;align-items:stretch;}.dup-rulemodal .rp-pair-main{grid-template-columns:1fr;}.dup-rulemodal .rp-vs{width:100%;}.dup-toolbar{align-items:stretch;}.feature-actions{align-items:stretch;}}',
     '@media (max-width:860px){.grp-body .dup-subhead,.grp-body .dup-row{grid-template-columns:44px 92px 1fr 1fr 0.9fr 0.7fr 160px;}}'
-  ].join('
-');
+  ].join('\n');
 
   st.textContent = css;
   document.head.appendChild(st);
