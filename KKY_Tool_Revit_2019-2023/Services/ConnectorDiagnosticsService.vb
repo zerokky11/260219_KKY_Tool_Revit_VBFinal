@@ -170,10 +170,12 @@ Namespace Services
 
             Try
                 normalizedExtras = NormalizeExtraParams(extraParams)
+                Dim reviewParams = ParseReviewParams(param)
                 Dim extraCache As New Dictionary(Of Integer, Dictionary(Of String, String))()
+                Dim paramInfoCache As New Dictionary(Of Integer, Dictionary(Of String, ParamInfo))()
                 Dim filter = ParseTargetFilter(targetFilter)
 
-                Log($"DOC={fileLabel}, tolFt={tolFt:0.###}, param='{param}', extra={String.Join(",", normalizedExtras)}, targetFilter='{targetFilter}', excludeEndDummy={excludeEndDummy}, includeOkRows={includeOkRows}")
+                Log($"DOC={fileLabel}, tolFt={tolFt:0.###}, param='{param}', reviewParams={String.Join(",", reviewParams)}, extra={String.Join(",", normalizedExtras)}, targetFilter='{targetFilter}', excludeEndDummy={excludeEndDummy}, includeOkRows={includeOkRows}")
 
                 Dim allElems = CollectElementsWithConnectors(doc, Nothing, excludeEndDummy)
                 Log($"수집 요소(전체): {allElems.Count}")
@@ -311,96 +313,99 @@ Namespace Services
                                 distInch = Math.Round(distFt * 12.0, 2)
                             End If
 
-                            Dim info1 = GetParamInfo(el, param)
-                            Dim info2 As ParamInfo = If(found IsNot Nothing,
-                                                        GetParamInfo(found, param),
-                                                        New ParamInfo() With {.Exists = False, .HasValue = False, .Text = "", .CompareKey = ""})
-
-                            Dim paramCompare As String = "N/A"
-                            Dim issueStatus As String = Nothing
-
-                            If found Is Nothing Then
-                                issueStatus = "연결 대상 객체 없음"
-                            Else
-                                If Not info1.Exists OrElse Not info2.Exists Then
-                                    issueStatus = "Shared Parameter 등록 필요"
-                                Else
-                                    If Not info1.HasValue AndAlso Not info2.HasValue Then
-                                        paramCompare = "BothEmpty"
-                                    ElseIf String.Equals(If(info1.CompareKey, ""), If(info2.CompareKey, ""), StringComparison.Ordinal) Then
-                                        paramCompare = "Match"
-                                    Else
-                                        paramCompare = "Mismatch"
-                                    End If
-                                End If
-
-                                If issueStatus Is Nothing Then
-                                    If connType.IndexOf("Proximity", StringComparison.OrdinalIgnoreCase) >= 0 Then
-                                        issueStatus = "연결 필요(Proximity)"
-                                    ElseIf String.Equals(paramCompare, "Mismatch", StringComparison.OrdinalIgnoreCase) Then
-                                        issueStatus = "Mismatch"
-                                    Else
-                                        issueStatus = "OK"
-                                    End If
-                                End If
-                            End If
-
-                            Dim v1 As String = If(info1.Exists, info1.Text, "(미등록)")
-                            Dim v2 As String = If(info2.Exists, info2.Text, "(미등록)")
-                            If found Is Nothing Then v2 = ""
-
                             Dim extras1 = GetExtraValues(el, normalizedExtras, extraCache)
                             Dim extras2 = GetExtraValues(found, normalizedExtras, extraCache)
 
-                            Dim shouldAdd As Boolean =
-                                String.Equals(issueStatus, "Mismatch", StringComparison.OrdinalIgnoreCase) OrElse
-                                String.Equals(issueStatus, "Shared Parameter 등록 필요", StringComparison.OrdinalIgnoreCase) OrElse
-                                String.Equals(issueStatus, "연결 대상 객체 없음", StringComparison.OrdinalIgnoreCase) OrElse
-                                String.Equals(issueStatus, "연결 필요(Proximity)", StringComparison.OrdinalIgnoreCase) OrElse
-                                (includeOkRows AndAlso String.Equals(issueStatus, "OK", StringComparison.OrdinalIgnoreCase))
+                            Dim originPairKey As String = ""
+                            Try
+                                originPairKey = MakeOriginPairKey(c.Origin, otherOriginForKey)
+                            Catch
+                            End Try
 
-                            If shouldAdd Then
-                                Dim originPairKey As String = ""
-                                Try
-                                    originPairKey = MakeOriginPairKey(c.Origin, otherOriginForKey)
-                                Catch
-                                End Try
+                            For Each reviewParam In reviewParams
+                                Dim info1 = GetParamInfoWithCache(el, reviewParam, paramInfoCache)
+                                Dim info2 As ParamInfo = If(found IsNot Nothing,
+                                                            GetParamInfoWithCache(found, reviewParam, paramInfoCache),
+                                                            New ParamInfo() With {.Exists = False, .HasValue = False, .Text = "", .CompareKey = ""})
 
-                                ' ---- Id1/Id2 순서 고정(min/max) + 출력 필드도 같이 swap ----
-                                Dim outE1 As Element = el
-                                Dim outE2 As Element = found
-                                Dim outV1 As String = v1
-                                Dim outV2 As String = v2
-                                Dim outExtras1 = extras1
-                                Dim outExtras2 = extras2
+                                Dim paramCompare As String = "N/A"
+                                Dim issueStatus As String = Nothing
 
-                                Dim pairKey As String
-                                If found IsNot Nothing Then
-                                    Dim rawId1 = baseId
-                                    Dim rawId2 = found.Id.IntegerValue
-
-                                    Dim minId = Math.Min(rawId1, rawId2)
-                                    Dim maxId = Math.Max(rawId1, rawId2)
-
-                                    ' 출력도 minId가 Id1이 되도록 swap
-                                    If rawId2 < rawId1 Then
-                                        Dim tmpE = outE1 : outE1 = outE2 : outE2 = tmpE
-                                        Dim tmpV = outV1 : outV1 = outV2 : outV2 = tmpV
-                                        Dim tmpX = outExtras1 : outExtras1 = outExtras2 : outExtras2 = tmpX
+                                If found Is Nothing Then
+                                    issueStatus = "연결 대상 객체 없음"
+                                Else
+                                    If Not info1.Exists OrElse Not info2.Exists Then
+                                        issueStatus = "Shared Parameter 등록 필요"
+                                    Else
+                                        If Not info1.HasValue AndAlso Not info2.HasValue Then
+                                            paramCompare = "BothEmpty"
+                                        ElseIf String.Equals(If(info1.CompareKey, ""), If(info2.CompareKey, ""), StringComparison.Ordinal) Then
+                                            paramCompare = "Match"
+                                        Else
+                                            paramCompare = "Mismatch"
+                                        End If
                                     End If
 
-                                    pairKey = $"{minId}-{maxId}-{connType}-{originPairKey}"
-                                Else
-                                    pairKey = $"{baseId}-none-{connType}-{originPairKey}"
+                                    If issueStatus Is Nothing Then
+                                        If connType.IndexOf("Proximity", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                                            issueStatus = "연결 필요(Proximity)"
+                                        ElseIf String.Equals(paramCompare, "Mismatch", StringComparison.OrdinalIgnoreCase) Then
+                                            issueStatus = "Mismatch"
+                                        Else
+                                            issueStatus = "OK"
+                                        End If
+                                    End If
                                 End If
 
-                                If seenPairs.Add(pairKey) Then
-                                    Dim row = BuildRow(outE1, outE2, distInch, connType, param, outV1, outV2,
-                                                       issueStatus, paramCompare,
-                                                       normalizedExtras, outExtras1, outExtras2, fileLabel)
-                                    rows.Add(row)
+                                Dim v1 As String = If(info1.Exists, info1.Text, "(미등록)")
+                                Dim v2 As String = If(info2.Exists, info2.Text, "(미등록)")
+                                If found Is Nothing Then v2 = ""
+
+                                Dim shouldAdd As Boolean =
+                                    String.Equals(issueStatus, "Mismatch", StringComparison.OrdinalIgnoreCase) OrElse
+                                    String.Equals(issueStatus, "Shared Parameter 등록 필요", StringComparison.OrdinalIgnoreCase) OrElse
+                                    String.Equals(issueStatus, "연결 대상 객체 없음", StringComparison.OrdinalIgnoreCase) OrElse
+                                    String.Equals(issueStatus, "연결 필요(Proximity)", StringComparison.OrdinalIgnoreCase) OrElse
+                                    (includeOkRows AndAlso String.Equals(issueStatus, "OK", StringComparison.OrdinalIgnoreCase))
+
+                                If shouldAdd Then
+                                    ' ---- Id1/Id2 순서 고정(min/max) + 출력 필드도 같이 swap ----
+                                    Dim outE1 As Element = el
+                                    Dim outE2 As Element = found
+                                    Dim outV1 As String = v1
+                                    Dim outV2 As String = v2
+                                    Dim outExtras1 = extras1
+                                    Dim outExtras2 = extras2
+
+                                    Dim pairKey As String
+                                    If found IsNot Nothing Then
+                                        Dim rawId1 = baseId
+                                        Dim rawId2 = found.Id.IntegerValue
+
+                                        Dim minId = Math.Min(rawId1, rawId2)
+                                        Dim maxId = Math.Max(rawId1, rawId2)
+
+                                        ' 출력도 minId가 Id1이 되도록 swap
+                                        If rawId2 < rawId1 Then
+                                            Dim tmpE = outE1 : outE1 = outE2 : outE2 = tmpE
+                                            Dim tmpV = outV1 : outV1 = outV2 : outV2 = tmpV
+                                            Dim tmpX = outExtras1 : outExtras1 = outExtras2 : outExtras2 = tmpX
+                                        End If
+
+                                        pairKey = $"{minId}-{maxId}-{connType}-{originPairKey}"
+                                    Else
+                                        pairKey = $"{baseId}-none-{connType}-{originPairKey}"
+                                    End If
+
+                                    Dim pairParamKey = $"{pairKey}|{reviewParam.ToLowerInvariant()}"
+                                    If seenPairs.Add(pairParamKey) Then
+                                        Dim row = BuildRow(outE1, outE2, distInch, connType, reviewParam, outV1, outV2,
+                                                           issueStatus, paramCompare,
+                                                           normalizedExtras, outExtras1, outExtras2, fileLabel)
+                                        rows.Add(row)
+                                    End If
                                 End If
-                            End If
+                            Next
 
                             ' progress
                             If progress IsNot Nothing Then
@@ -959,6 +964,47 @@ Namespace Services
                 Return Path.GetFileName(doc.PathName)
             End If
             Return doc.Title
+        End Function
+
+        Private Shared Function ParseReviewParams(paramCsv As String) As List(Of String)
+            Dim result As New List(Of String)()
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            Dim fallback = If(paramCsv, String.Empty).Trim()
+            For Each raw In If(paramCsv, String.Empty).Split(","c)
+                Dim name = If(raw, String.Empty).Trim()
+                If String.IsNullOrEmpty(name) Then Continue For
+                If seen.Add(name) Then result.Add(name)
+            Next
+
+            If result.Count = 0 AndAlso fallback <> "" Then
+                result.Add(fallback)
+            End If
+
+            Return result
+        End Function
+
+        Private Shared Function GetParamInfoWithCache(el As Element,
+                                                      name As String,
+                                                      cache As Dictionary(Of Integer, Dictionary(Of String, ParamInfo))) As ParamInfo
+            If el Is Nothing Then
+                Return New ParamInfo() With {.Exists = False, .HasValue = False, .Text = "", .CompareKey = ""}
+            End If
+
+            Dim byName As Dictionary(Of String, ParamInfo) = Nothing
+            If Not cache.TryGetValue(el.Id.IntegerValue, byName) Then
+                byName = New Dictionary(Of String, ParamInfo)(StringComparer.OrdinalIgnoreCase)
+                cache(el.Id.IntegerValue) = byName
+            End If
+
+            Dim info As ParamInfo = Nothing
+            If byName.TryGetValue(name, info) Then
+                Return info
+            End If
+
+            info = GetParamInfo(el, name)
+            byName(name) = info
+            Return info
         End Function
 
         Private Shared Function NormalizeExtraParams(extraParams As IEnumerable(Of String)) As List(Of String)

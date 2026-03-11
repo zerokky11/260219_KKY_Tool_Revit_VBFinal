@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
 
 	<PropertyGroup>
 		<TargetFramework>net48</TargetFramework>
@@ -18,7 +18,11 @@
 		<!-- ✅ 빌드 기준(컴파일 참조): 기본은 2019 API로 컴파일 -->
 		<AddinYear Condition="'$(AddinYear)'==''">2019</AddinYear>
 
-		<!-- ✅ 산출물: 프로젝트 bin 하위로 고정 -->
+				<!-- Conditional compile symbols for version-specific code paths -->
+		<DefineConstants Condition="'$(DefineConstants)'==''">REVIT$(AddinYear)=1</DefineConstants>
+		<DefineConstants Condition="'$(DefineConstants)'!=''">$(DefineConstants),REVIT$(AddinYear)=1</DefineConstants>
+
+<!-- ✅ 산출물: 프로젝트 bin 하위로 고정 -->
 		<OutputPath>bin\Rvt$(AddinYear)\net48\</OutputPath>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 
@@ -52,8 +56,7 @@
 	</PropertyGroup>
 
 	<Target Name="CheckRevitApiDir" BeforeTargets="ResolveReferences">
-		<Error Condition="'$(RevitApiDir)' == ''"
-			   Text="Local Revit API folder not found. Set env REVIT_API_DIR_$(AddinYear) or put RevitAPI.dll/RevitAPIUI.dll under ..\Compile\$(AddinYear)addin or ensure Revit $(AddinYear) is installed in Program Files." />
+		<Error Condition="'$(RevitApiDir)' == ''" Text="Local Revit API folder not found. Set env REVIT_API_DIR_$(AddinYear) or put RevitAPI.dll/RevitAPIUI.dll under ..\Compile\$(AddinYear)addin or ensure Revit $(AddinYear) is installed in Program Files." />
 	</Target>
 
 	<!-- Revit API References -->
@@ -85,18 +88,23 @@
 			<TargetPath>Resources\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
 		</Content>
 	</ItemGroup>
+	<ItemGroup>
+	  <Content Remove="Resources\icons\hub_32.png" />
+	  <Content Remove="Resources\icons\KKY_Tool_32.png" />
+	</ItemGroup>
+	<ItemGroup>
+	  <EmbeddedResource Include="Resources\icons\hub_32.png" />
+	  <EmbeddedResource Include="Resources\icons\KKY_Tool_32.png" />
+	</ItemGroup>
 
 	<!-- ✅ 1회 빌드로 2019/2021/2023 출력 폴더 + ProgramData addin 파일 생성 -->
-	<Target Name="DeployAllYears" AfterTargets="Build">
+	<Target Name="DeployAllYears" AfterTargets="Build" Condition="'$(SkipDeployAllYears)'!='true'">
 		<ItemGroup>
 			<!-- MSBuild는 Include에 세미콜론을 자동 분리 -->
 			<_DeployYear Include="$(DeployYears)" />
 		</ItemGroup>
 
-		<MSBuild Projects="$(MSBuildProjectFullPath)"
-				 Targets="DeployOneYear"
-				 Properties="DeployYear=%(_DeployYear.Identity);BuildYear=$(AddinYear)"
-				 BuildInParallel="false" />
+		<MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Build;DeployOneYear" Properties="SkipDeployAllYears=true;AddinYear=%(_DeployYear.Identity);DeployYear=%(_DeployYear.Identity);BuildYear=%(_DeployYear.Identity)" BuildInParallel="false" />
 	</Target>
 
 	<Target Name="DeployOneYear">
@@ -114,8 +122,7 @@
 		</PropertyGroup>
 
 		<!-- 산출물 존재 체크 -->
-		<Error Condition="!Exists('$(SourceDir)$(AssemblyName).dll')"
-			   Text="Build output not found: $(SourceDir)$(AssemblyName).dll" />
+		<Error Condition="!Exists('$(SourceDir)$(AssemblyName).dll')" Text="Build output not found: $(SourceDir)$(AssemblyName).dll" />
 
 		<!-- 다른 연도 폴더로 복사 (2019 -> 2021/2023) -->
 		<ItemGroup Condition="'$(DeployYear)' != '$(BuildYear)'">
@@ -125,10 +132,7 @@
 		<MakeDir Directories="$(DeployDir)" Condition="'$(DeployYear)' != '$(BuildYear)'" />
 		<MakeDir Directories="@(_DeployFiles->'$(DeployDir)%(RecursiveDir)')" Condition="'$(DeployYear)' != '$(BuildYear)'" />
 
-		<Copy SourceFiles="@(_DeployFiles)"
-			  DestinationFiles="@(_DeployFiles->'$(DeployDir)%(RecursiveDir)%(Filename)%(Extension)')"
-			  SkipUnchangedFiles="true"
-			  Condition="'$(DeployYear)' != '$(BuildYear)'" />
+		<Copy SourceFiles="@(_DeployFiles)" DestinationFiles="@(_DeployFiles->'$(DeployDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'$(DeployYear)' != '$(BuildYear)'" />
 
 		<!-- addin 파일 생성 (ProgramData) -->
 		<MakeDir Directories="$(AddinOutDir)" />
@@ -147,10 +151,7 @@
 			<_AddinXml Include="&lt;/RevitAddIns&gt;" />
 		</ItemGroup>
 
-		<WriteLinesToFile File="$(AddinOutPath)"
-						  Lines="@(_AddinXml)"
-						  Overwrite="true"
-						  Encoding="UTF-8" />
-		<Message Importance="high" Text="Created Revit addin file: $(AddinOutPath) -> $(DeployDll)" />
+		<WriteLinesToFile File="$(AddinOutPath)" Lines="@(_AddinXml)" Overwrite="true" Encoding="UTF-8" />
+		<Message Importance="high" Text="Created Revit addin file: $(AddinOutPath) -&gt; $(DeployDll)" />
 	</Target>
 </Project>

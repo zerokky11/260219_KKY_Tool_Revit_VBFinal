@@ -35,7 +35,7 @@ Namespace Exports
         Public Function Export(rows As IEnumerable(Of FamilyLinkAuditRow), Optional fastExport As Boolean = True, Optional autoFit As Boolean = False) As String
             If rows Is Nothing Then Return String.Empty
             Dim table As DataTable = ToDataTable(rows)
-            Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("familylink", table)
+            ' Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("familylink", table)
             ExcelCore.EnsureMessageRow(table, "오류가 없습니다.")
             If Not ValidateSchema(table) Then
                 Throw New InvalidOperationException("스키마 검증 실패: 컬럼 순서/헤더가 규격과 다릅니다.")

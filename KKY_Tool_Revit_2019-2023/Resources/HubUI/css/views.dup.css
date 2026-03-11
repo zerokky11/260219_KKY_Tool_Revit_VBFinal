@@ -214,3 +214,12 @@
     0% { background-position: 100% 0; }
     100% { background-position: -100% 0; }
 }
+
+/* --- scroll fix (dup results) ---
+   목적: view-root가 overflow:hidden 이라서 결과가 잘릴 수 있으므로,
+   dup 뷰 내부에서만 스크롤을 제공.
+   카드(dup-grp)가 flex-shrink로 줄어드는 현상 방지.
+*/
+.dup-page{height:100%;min-height:0;overflow:hidden;}
+.dup-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+.dup-body>*{flex:0 0 auto;}

@@ -213,6 +213,7 @@ export function renderParamProp(root) {
             state.defs = payload.items.map((item) => ({
                 groupName: item.groupName || '',
                 name: item.name || '',
+                guid: item.guid || '',
                 paramType: item.dataTypeToken || '',
                 visible: true
             }));
@@ -268,6 +269,7 @@ export function renderParamProp(root) {
         exportBtn.disabled = true;
         const payload = {
             paramNames: selected,
+            paramGuids: Array.from(new Set((state.defs || []).filter(d => selected.includes(d.name) && d.guid).map(d => d.guid))),
             group: state.targetGroupId,
             isInstance: !!state.isInstance,
             excludeDummy: !!state.excludeDummy

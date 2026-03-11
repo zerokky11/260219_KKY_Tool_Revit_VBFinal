@@ -97,33 +97,33 @@ Namespace Services
                         Continue For
                     End If
 
-                Dim rvtName As String = GetRvtName(doc, target.Path)
-                Dim captureIndex As Integer = i
-                Dim captureName As String = rvtName
+                    Dim rvtName As String = GetRvtName(doc, target.Path)
+                    Dim captureIndex As Integer = i
+                    Dim captureName As String = rvtName
 
-                Dim proj = Auditors.RunProjectParameterAudit(doc, defMap, rvtName, target.Path,
-                                                             Function(cur, tot) As Object
-                                                                 Dim frac As Double = 0.1R + 0.8R * SafeRatio(cur, tot)
-                                                                 ReportProgress(progress, total, captureIndex + 1, frac, $"[{captureName}] 프로젝트 파라미터 ({cur}/{tot})")
-                                                                 Return Nothing
-                                                             End Function)
-                projectTable = MergeTable(projectTable, proj)
+                    Dim proj = Auditors.RunProjectParameterAudit(doc, defMap, rvtName, target.Path,
+                                                                 Function(cur, tot) As Object
+                                                                     Dim frac As Double = 0.1R + 0.8R * SafeRatio(cur, tot)
+                                                                     ReportProgress(progress, total, captureIndex + 1, frac, $"[{captureName}] 프로젝트 파라미터 ({cur}/{tot})")
+                                                                     Return Nothing
+                                                                 End Function)
+                    projectTable = MergeTable(projectTable, proj)
 
-                If includeFamily Then
-                    Dim famPack = Auditors.RunFamilyAudit(doc, defMap, rvtName, target.Path,
-                                                          Function(cur, tot, famName) As Object
-                                                              Dim frac As Double = 0.1R + 0.8R * SafeRatio(cur, tot)
-                                                              ReportProgress(progress, total, captureIndex + 1, frac, $"[{captureName}] 패밀리 처리 중 ({cur}/{tot}) {famName}")
-                                                              Return Nothing
-                                                          End Function,
-                                                          includeAnnotation)
-                    familyDetail = MergeTable(familyDetail, famPack.Detail)
-                    famIndex = MergeTable(famIndex, famPack.Index)
-                End If
+                    If includeFamily Then
+                        Dim famPack = Auditors.RunFamilyAudit(doc, defMap, rvtName, target.Path,
+                                                              Function(cur, tot, famName) As Object
+                                                                  Dim frac As Double = 0.1R + 0.8R * SafeRatio(cur, tot)
+                                                                  ReportProgress(progress, total, captureIndex + 1, frac, $"[{captureName}] 패밀리 처리 중 ({cur}/{tot}) {famName}")
+                                                                  Return Nothing
+                                                              End Function,
+                                                              includeAnnotation)
+                        familyDetail = MergeTable(familyDetail, famPack.Detail)
+                        famIndex = MergeTable(famIndex, famPack.Index)
+                    End If
 
-                ReportProgress(progress, total, captureIndex + 1, 1.0R, $"완료: {captureIndex + 1}/{total} {captureName}")
+                    ReportProgress(progress, total, captureIndex + 1, 1.0R, $"완료: {captureIndex + 1}/{total} {captureName}")
 
-            Catch ex As Exception
+                Catch ex As Exception
                     Dim fail = Auditors.MakeFailureSummaryTable(1)
                     Dim note = BuildExceptionNotes(ex, target.Path)
                     ReportProgress(progress, total, i + 1, 0.08R, $"문서 처리 실패: {target.Name} - {ShortenReason(note)}")
@@ -135,9 +135,9 @@ Namespace Services
                         familyDetail = MergeTable(familyDetail, failFam)
                     End If
 
-            Finally
-                If openedByMe AndAlso doc IsNot Nothing Then
-                    Try
+                Finally
+                    If openedByMe AndAlso doc IsNot Nothing Then
+                        Try
                             doc.Close(False)
                         Catch
                         End Try
@@ -145,9 +145,9 @@ Namespace Services
                 End Try
             Next
 
-            ResultTableFilter.KeepOnlyIssues("guid", projectTable)
+            ' ResultTableFilter.KeepOnlyIssues("guid", projectTable)
             If includeFamily Then
-                ResultTableFilter.KeepOnlyIssues("guid", familyDetail)
+                ' ResultTableFilter.KeepOnlyIssues("guid", familyDetail)
 
                 Dim famSet As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
                 If familyDetail IsNot Nothing AndAlso familyDetail.Columns.Contains("FamilyName") Then
@@ -184,7 +184,7 @@ Namespace Services
             Catch
                 doAutoFit = False
             End Try
-            ResultTableFilter.KeepOnlyIssues("guid", table)
+            ' ResultTableFilter.KeepOnlyIssues("guid", table)
             ExcelCore.EnsureMessageRow(table, "오류가 없습니다.")
 
             Using sfd As New SaveFileDialog()
@@ -210,7 +210,7 @@ Namespace Services
                 doAutoFit = False
             End Try
             For Each kv In sheets
-                ResultTableFilter.KeepOnlyIssues("guid", kv.Value)
+                ' ResultTableFilter.KeepOnlyIssues("guid", kv.Value)
                 ExcelCore.EnsureMessageRow(kv.Value, "오류가 없습니다.")
             Next
 
@@ -233,7 +233,7 @@ Namespace Services
                 Next
             End If
 
-            ResultTableFilter.KeepOnlyIssues("guid", exportTable)
+            ' ResultTableFilter.KeepOnlyIssues("guid", exportTable)
 
             If exportTable.Columns.Contains("RvtPath") Then
                 exportTable.Columns.Remove("RvtPath")
@@ -806,19 +806,64 @@ Namespace Services
             End Function
 
             Private Shared Function SafeParameterGroupName(def As Definition) As String
+                If def Is Nothing Then Return ""
+
+                ' Revit 2019~2023: InternalDefinition.ParameterGroup + LabelUtils.GetLabelFor(BuiltInParameterGroup)
                 Try
-                    Dim idef = TryCast(def, InternalDefinition)
+                    Dim idef As InternalDefinition = TryCast(def, InternalDefinition)
                     If idef IsNot Nothing Then
-                        Dim pg As BuiltInParameterGroup = idef.ParameterGroup
-                        Try
-                            Dim label As String = LabelUtils.GetLabelFor(pg)
-                            If Not String.IsNullOrWhiteSpace(label) Then Return label
-                        Catch
-                        End Try
-                        Return pg.ToString()
+                        Dim pi As PropertyInfo = idef.GetType().GetProperty("ParameterGroup", BindingFlags.Public Or BindingFlags.Instance)
+                        If pi IsNot Nothing Then
+                            Dim pgObj As Object = pi.GetValue(idef, Nothing)
+                            If pgObj IsNot Nothing Then
+                                Dim miLabelFor As MethodInfo =
+                                    GetType(LabelUtils).GetMethod("GetLabelFor",
+                                                                  BindingFlags.Public Or BindingFlags.Static,
+                                                                  Nothing,
+                                                                  New Type() {pgObj.GetType()},
+                                                                  Nothing)
+                                If miLabelFor IsNot Nothing Then
+                                    Dim labelObj As Object = miLabelFor.Invoke(Nothing, New Object() {pgObj})
+                                    Dim label As String = TryCast(labelObj, String)
+                                    If Not String.IsNullOrWhiteSpace(label) Then Return label
+                                End If
+
+                                Dim fallback As String = pgObj.ToString()
+                                If Not String.IsNullOrWhiteSpace(fallback) Then Return fallback
+                            End If
+                        End If
                     End If
                 Catch
                 End Try
+
+                ' Revit 2025: Definition.GetGroupTypeId + LabelUtils.GetLabelForGroup(ForgeTypeId)
+                Try
+                    Dim miGetGroupTypeId As MethodInfo =
+                        def.GetType().GetMethod("GetGroupTypeId", BindingFlags.Public Or BindingFlags.Instance)
+
+                    If miGetGroupTypeId IsNot Nothing Then
+                        Dim groupIdObj As Object = miGetGroupTypeId.Invoke(def, Nothing)
+                        If groupIdObj IsNot Nothing Then
+                            Dim miLabelForGroup As MethodInfo =
+                                GetType(LabelUtils).GetMethod("GetLabelForGroup",
+                                                              BindingFlags.Public Or BindingFlags.Static,
+                                                              Nothing,
+                                                              New Type() {groupIdObj.GetType()},
+                                                              Nothing)
+
+                            If miLabelForGroup IsNot Nothing Then
+                                Dim labelObj As Object = miLabelForGroup.Invoke(Nothing, New Object() {groupIdObj})
+                                Dim label As String = TryCast(labelObj, String)
+                                If Not String.IsNullOrWhiteSpace(label) Then Return label
+                            End If
+
+                            Dim fallback As String = groupIdObj.ToString()
+                            If Not String.IsNullOrWhiteSpace(fallback) Then Return fallback
+                        End If
+                    End If
+                Catch
+                End Try
+
                 Return ""
             End Function
 
@@ -1075,54 +1120,54 @@ Namespace Services
                             Dim res As String = ""
                             Dim notes As String = ""
 
-                    If isSharedBool Then
-                        Dim gFam As Guid = Guid.Empty
-                        If TryGetFamilyParameterGuid(fp, gFam) Then
-                            famGuid = gFam.ToString()
+                            If isSharedBool Then
+                                Dim gFam As Guid = Guid.Empty
+                                If TryGetFamilyParameterGuid(fp, gFam) Then
+                                    famGuid = gFam.ToString()
 
-                            Dim fileGuids As List(Of Guid) = Nothing
-                            If fileMap.TryGetValue(normParamName, fileGuids) Then
-                                fileGuid = String.Join("; ", fileGuids.Select(Function(x) x.ToString()).Distinct().ToArray())
+                                    Dim fileGuids As List(Of Guid) = Nothing
+                                    If fileMap.TryGetValue(normParamName, fileGuids) Then
+                                        fileGuid = String.Join("; ", fileGuids.Select(Function(x) x.ToString()).Distinct().ToArray())
 
-                                If fileGuids.Any(Function(x) x = gFam) Then
-                                    res = If(fileGuids.Count > 1, "OK(MULTI_IN_FILE)", "OK")
+                                        If fileGuids.Any(Function(x) x = gFam) Then
+                                            res = If(fileGuids.Count > 1, "OK(MULTI_IN_FILE)", "OK")
+                                        Else
+                                            res = "MISMATCH"
+                                        End If
+                                    Else
+                                        res = "NOT_FOUND_IN_FILE"
+                                    End If
                                 Else
-                                    res = "MISMATCH"
+                                    res = "GUID_FAIL"
+                                    notes = "FamilyParameter GUID 추출 실패"
                                 End If
+                            ElseIf String.Equals(paramKind, "BuiltIn", StringComparison.OrdinalIgnoreCase) Then
+                                res = "BUILTIN"
+                            ElseIf String.Equals(paramKind, "Family", StringComparison.OrdinalIgnoreCase) Then
+                                res = "FAMILY_PARAM"
                             Else
-                                res = "NOT_FOUND_IN_FILE"
+                                res = "FAMILY_PARAM"
                             End If
-                        Else
-                            res = "GUID_FAIL"
-                            notes = "FamilyParameter GUID 추출 실패"
-                        End If
-                    ElseIf String.Equals(paramKind, "BuiltIn", StringComparison.OrdinalIgnoreCase) Then
-                        res = "BUILTIN"
-                    ElseIf String.Equals(paramKind, "Family", StringComparison.OrdinalIgnoreCase) Then
-                        res = "FAMILY_PARAM"
-                    Else
-                        res = "FAMILY_PARAM"
-                    End If
 
-                    If isSharedBool Then
-                        If res = "NOT_FOUND_IN_FILE" Then
-                            notes = "Shared Parameter 파일에서 동일 이름을 찾지 못함"
-                        ElseIf res = "MISMATCH" Then
-                            notes = "RVT의 GUID와 Shared Parameter 파일 GUID 불일치"
-                        End If
+                            If isSharedBool Then
+                                If res = "NOT_FOUND_IN_FILE" Then
+                                    notes = "Shared Parameter 파일에서 동일 이름을 찾지 못함"
+                                ElseIf res = "MISMATCH" Then
+                                    notes = "RVT의 GUID와 Shared Parameter 파일 GUID 불일치"
+                                End If
 
-                        If res = "OK" OrElse res = "OK(MULTI_IN_FILE)" OrElse res = "MISMATCH" Then
-                            Dim fileGuids As List(Of Guid) = Nothing
-                            If fileMap.TryGetValue(normParamName, fileGuids) AndAlso fileGuids IsNot Nothing AndAlso fileGuids.Count > 1 Then
-                                notes = AppendNote(notes, "파일 내 동일 이름 GUID 여러 개")
+                                If res = "OK" OrElse res = "OK(MULTI_IN_FILE)" OrElse res = "MISMATCH" Then
+                                    Dim fileGuids As List(Of Guid) = Nothing
+                                    If fileMap.TryGetValue(normParamName, fileGuids) AndAlso fileGuids IsNot Nothing AndAlso fileGuids.Count > 1 Then
+                                        notes = AppendNote(notes, "파일 내 동일 이름 GUID 여러 개")
+                                    End If
+                                End If
                             End If
-                        End If
-                    End If
 
-                    AddDetailRow(dtDet, rvtName, rvtPath, famName, famCat, pName,
-                                 paramKind,
-                                 If(isSharedBool, "Y", "N"),
-                                 famGuid, fileGuid, res, notes)
+                            AddDetailRow(dtDet, rvtName, rvtPath, famName, famCat, pName,
+                                         paramKind,
+                                         If(isSharedBool, "Y", "N"),
+                                         famGuid, fileGuid, res, notes)
                         Next
 
                         Dim rIdx = dtIdx.NewRow()
@@ -1199,7 +1244,7 @@ Namespace Services
                 End Try
             End Function
 
-            
+
             Private Shared Function TryGetFamilyParameterGuid(fp As FamilyParameter, ByRef g As Guid) As Boolean
                 g = Guid.Empty
                 If fp Is Nothing Then Return False

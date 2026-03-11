@@ -58,7 +58,9 @@ export function renderConn(root) {
     hasRun: false,
     tab: 'mismatch',
     totalCount: 0,
-    extraParams: []
+    extraParams: [],
+    reviewParams: parseCsvParams(opts.param || 'Comments'),
+    paramList: []
   };
   let exporting = false;
   state.extraParams = parseExtraParams(opts.extraParams);
@@ -101,6 +103,48 @@ export function renderConn(root) {
     kv('End_ + Dummy 패밀리 제외', excludeEndDummy)
   );
   cardSettings.append(h1('설정'), grid);
+
+  const paramInput = grid.querySelectorAll('input[type="text"]')[0];
+  const paramTools = div('conn-param-tools');
+  const paramActionRow = div('conn-param-actions');
+  const paramSuggest = document.createElement('input');
+  paramSuggest.type = 'text';
+  paramSuggest.setAttribute('list', 'conn-param-datalist');
+  paramSuggest.placeholder = '프로젝트 파라미터 검색/선택';
+  paramSuggest.style.width = '100%';
+  const paramDataList = document.createElement('datalist');
+  paramDataList.id = 'conn-param-datalist';
+
+  const addParamsBtn = cardBtn('추가', () => {
+    const source = `${paramInput.value || ''}${paramSuggest.value ? ',' + paramSuggest.value : ''}`;
+    state.reviewParams = mergeReviewParams(state.reviewParams, source);
+    renderReviewParamChips();
+    paramSuggest.value = '';
+    commit();
+  });
+  addParamsBtn.classList.add('btn-outline');
+
+  const clearParamsBtn = cardBtn('전체 비우기', () => {
+    state.reviewParams = [];
+    renderReviewParamChips();
+    commit();
+  });
+  clearParamsBtn.classList.add('btn-outline');
+
+  const chipsWrap = div('conn-param-chips');
+  chipsWrap.style.display = 'flex';
+  chipsWrap.style.flexWrap = 'wrap';
+  chipsWrap.style.gap = '6px';
+  chipsWrap.style.marginTop = '6px';
+
+  paramActionRow.style.display = 'grid';
+  paramActionRow.style.gridTemplateColumns = '1fr auto auto';
+  paramActionRow.style.gap = '6px';
+  paramActionRow.append(paramSuggest, addParamsBtn, clearParamsBtn);
+  paramTools.append(paramActionRow, chipsWrap, paramDataList);
+
+  const paramKv = paramInput.closest('.conn-kv');
+  if (paramKv) paramKv.append(paramTools);
 
   const cardActions = div('conn-card section section-actions');
   cardActions.innerHTML = '<div class="conn-title">결과 검토</div>';
@@ -178,7 +222,7 @@ export function renderConn(root) {
   const tol = grid.querySelector('input[type="number"]');
   const unit = grid.querySelector('select');
   const textInputs = grid.querySelectorAll('input[type="text"]');
-  const param = textInputs[0];
+  const param = paramInput;
   const extra = textInputs[1];
   const targetFilter = textInputs[2];
 
@@ -361,6 +405,67 @@ export function renderConn(root) {
   }
 
 
+
+  function renderReviewParamChips() {
+    chipsWrap.innerHTML = '';
+    const items = Array.isArray(state.reviewParams) ? state.reviewParams : [];
+    if (!items.length) {
+      const empty = document.createElement('span');
+      empty.className = 'conn-chip';
+      empty.textContent = '선택된 파라미터 없음';
+      chipsWrap.append(empty);
+      return;
+    }
+    items.forEach((name, idx) => {
+      const chipEl = document.createElement('span');
+      chipEl.className = 'conn-chip';
+      chipEl.style.display = 'inline-flex';
+      chipEl.style.alignItems = 'center';
+      chipEl.style.gap = '6px';
+
+      const t = document.createElement('span');
+      t.textContent = name;
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.textContent = '×';
+      del.className = 'conn-tab';
+      del.style.padding = '0 6px';
+      del.style.lineHeight = '1';
+      del.addEventListener('click', () => {
+        state.reviewParams = state.reviewParams.filter((_, i) => i !== idx);
+        renderReviewParamChips();
+        commit();
+      });
+      chipEl.append(t, del);
+      chipsWrap.append(chipEl);
+    });
+  }
+
+  function getFinalReviewParams() {
+    const merged = mergeReviewParams(state.reviewParams, param.value || '');
+    if (merged.length > 0) return merged;
+    const fallback = String(param.value || 'Comments').trim();
+    return fallback ? [fallback] : ['Comments'];
+  }
+
+  param.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
+    e.preventDefault();
+    state.reviewParams = mergeReviewParams(state.reviewParams, param.value || '');
+    renderReviewParamChips();
+    commit();
+  });
+  paramSuggest.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const source = `${param.value || ''}${paramSuggest.value ? ',' + paramSuggest.value : ''}`;
+    state.reviewParams = mergeReviewParams(state.reviewParams, source);
+    renderReviewParamChips();
+    paramSuggest.value = '';
+    commit();
+  });
+
   function onRun(){
     commit(); setBusy(true);
     state.hasRun = true;
@@ -373,10 +478,13 @@ export function renderConn(root) {
     let sendTol = parseFloat(tol.value || '1');
     let sendUnit = String(unit.value || 'inch');
     if (sendUnit === 'mm') { if (!isFinite(sendTol)) sendTol = 1; sendTol = sendTol / INCH_TO_MM; sendUnit = 'inch'; }
+    const finalParams = getFinalReviewParams();
+    const paramsCsv = finalParams.join(',');
     post('connector:run', {
       tol: sendTol,
       unit: sendUnit,
-      param: String(param.value || 'Comments'),
+      param: paramsCsv || String(param.value || 'Comments'),
+      paramsCsv,
       extraParams: String(extra.value || ''),
       targetFilter: String(targetFilter.value || ''),
       excludeEndDummy: Boolean(excludeCheckbox.checked)
@@ -391,11 +499,14 @@ export function renderConn(root) {
     chooseExcelMode((mode) => {
       const tab = state.tab || 'mismatch';
       const uiUnit = String(unit.value || 'inch');
+      const finalParams = getFinalReviewParams();
+      const paramsCsv = finalParams.join(',');
       post('connector:save-excel', {
         excelMode: mode || 'fast',
         tab,
         uiUnit,
-        param: String(param.value || 'Comments'),
+        param: paramsCsv || String(param.value || 'Comments'),
+        paramsCsv,
         extraParams: String(extra.value || ''),
         targetFilter: String(targetFilter.value || ''),
         excludeEndDummy: !!excludeCheckbox.checked
@@ -416,6 +527,17 @@ export function renderConn(root) {
       case 'connector:progress':
         handleConnectorProgress(payload);
         break;
+      case 'connector:param-list:done': {
+        const list = Array.isArray(payload && payload.params) ? payload.params : [];
+        state.paramList = parseCsvParams(list.join(','));
+        paramDataList.innerHTML = '';
+        state.paramList.forEach((name) => {
+          const opt = document.createElement('option');
+          opt.value = name;
+          paramDataList.append(opt);
+        });
+        break;
+      }
       case 'connector:saved': {
         lastExcelPct = 0;
         exporting = false;
@@ -609,6 +731,8 @@ export function renderConn(root) {
   }
 
   setTab('mismatch', { silent: true });
+  renderReviewParamChips();
+  try { post('connector:param-list', {}); } catch (_) {}
 
   function h1(t){ const e=document.createElement('div'); e.className='conn-title'; e.textContent=t; return e; }
   function kv(label, inputEl){ const wrap=document.createElement('div'); wrap.className='conn-kv'; const cap=document.createElement('label'); cap.textContent=label; wrap.append(cap,inputEl); return wrap; }
@@ -624,6 +748,36 @@ export function renderConn(root) {
   function makeUnit(v){ const s=document.createElement('select'); s.className='kkyt-select'; s.innerHTML='<option value="inch">inch</option><option value="mm">mm</option>'; s.value=String(v); return s; }
   function makeText(v, placeholder=''){ const i=document.createElement('input'); i.type='text'; i.value=String(v); if(placeholder) i.placeholder=placeholder; i.style.width='100%'; i.title=i.value||placeholder||''; i.addEventListener('input',()=>{ i.title=i.value||placeholder||'';}); return i; }
   function makeCheckbox(v){ const i=document.createElement('input'); i.type='checkbox'; i.checked=!!v; return i; }
+  function parseCsvParams(raw){
+    const txt = Array.isArray(raw) ? raw.join(',') : String(raw || '');
+    const parts = txt.split(',').map(s => String(s || '').trim()).filter(Boolean);
+    const seen = new Set();
+    const out = [];
+    for (const p of parts) {
+      const key = p.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(p);
+    }
+    return out;
+  }
+
+  function mergeReviewParams(baseList, incomingRaw){
+    const merged = [];
+    const seen = new Set();
+    const push = (v) => {
+      const t = String(v || '').trim();
+      if (!t) return;
+      const key = t.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.push(t);
+    };
+    (Array.isArray(baseList) ? baseList : []).forEach(push);
+    parseCsvParams(incomingRaw).forEach(push);
+    return merged;
+  }
+
   function parseExtraParams(raw){
     const txt = Array.isArray(raw) ? raw.join(',') : String(raw || '');
     const parts = txt.split(',').map(s => String(s||'').trim()).filter(Boolean);

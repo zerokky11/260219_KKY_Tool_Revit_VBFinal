@@ -1,15 +1,22 @@
+﻿Option Explicit On
+Option Strict On
+
 Imports System
 Imports System.Collections.Generic
+Imports System.Diagnostics
 Imports System.IO
+Imports System.Reflection
+Imports System.Web.Script.Serialization
 Imports System.Windows
+
+Imports Autodesk.Revit.DB
+Imports Autodesk.Revit.UI
+
 Imports Microsoft.Web.WebView2.Core
 Imports Microsoft.Web.WebView2.Wpf
-Imports System.Web.Script.Serialization
-Imports System.Reflection
-Imports Autodesk.Revit.UI
-Imports Autodesk.Revit.DB
 
 Namespace UI.Hub
+
     Public Class HubHostWindow
         Inherits Window
 
@@ -46,9 +53,11 @@ Namespace UI.Hub
                 If _instance IsNot Nothing AndAlso Not _instance.IsClosing Then
                     _instance.AttachTo(uiApp)
                     UiBridgeExternalEvent.Initialize(_instance)
+
                     If _instance.WindowState = WindowState.Minimized Then
                         _instance.WindowState = WindowState.Normal
                     End If
+
                     _instance.Activate()
                     _instance.Focus()
                     Return
@@ -75,17 +84,21 @@ Namespace UI.Hub
 
         Public Sub New(uiApp As UIApplication)
             _uiApp = uiApp
+
             Title = BaseTitle
-            Dim workArea = System.Windows.SystemParameters.WorkArea
+
+            Dim workArea = SystemParameters.WorkArea
             Dim desiredWidth As Double = 1400
             Dim desiredHeight As Double = 900
+
             Width = Math.Min(desiredWidth, workArea.Width * 0.93)
             Height = Math.Min(desiredHeight, workArea.Height * 0.93)
             MinWidth = Math.Min(1100, Width)
             MinHeight = Math.Min(720, Height)
-            WindowStartupLocation = WindowStartupLocation.CenterScreen
-            Content = _web
 
+            WindowStartupLocation = WindowStartupLocation.CenterScreen
+
+            Content = _web
             AddHandler Loaded, AddressOf OnLoaded
             AddHandler Closing, AddressOf OnWindowClosing
             AddHandler Closed, AddressOf OnWindowClosed
@@ -115,20 +128,11 @@ Namespace UI.Hub
             Dim path As String = String.Empty
 
             If doc IsNot Nothing Then
-                Try
-                    name = doc.Title
-                Catch
-                End Try
-
-                Try
-                    path = doc.PathName
-                Catch
-                End Try
+                Try : name = doc.Title : Catch : End Try
+                Try : path = doc.PathName : Catch : End Try
             End If
 
-            If String.IsNullOrWhiteSpace(path) Then
-                path = name
-            End If
+            If String.IsNullOrWhiteSpace(path) Then path = name
 
             _currentDocName = name
             _currentDocPath = path
@@ -156,21 +160,36 @@ Namespace UI.Hub
             Return Nothing
         End Function
 
+        Private Shared Function BuildWebView2UserDataFolder() As String
+            ' ✅ 여러 Revit 프로세스(두 개의 Revit 실행) 동시 사용 시,
+            '    WebView2 UserDataFolder를 공유하면 잠금 때문에 다른 Revit가 로딩에서 멈출 수 있음.
+            '    프로세스별(UserDataFolder/pid_xxxx)로 분리해서 서로 독립적으로 동작하게 한다.
+            Dim baseFolder As String =
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                             "KKY_Tool_Revit",
+                             "WebView2UserData")
+
+            Dim pid As Integer = 0
+            Try : pid = Process.GetCurrentProcess().Id : Catch : pid = 0 : End Try
+
+            Dim folder As String = If(pid > 0, Path.Combine(baseFolder, "pid_" & pid.ToString()), baseFolder)
+            Try : Directory.CreateDirectory(folder) : Catch : End Try
+            Return folder
+        End Function
+
         Private Async Sub OnLoaded(sender As Object, e As RoutedEventArgs)
             If _initStarted Then Return
             _initStarted = True
-            Try
-                Dim userData = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "KKY_Tool_Revit", "WebView2UserData")
-                Directory.CreateDirectory(userData)
 
+            Try
+                Dim userData = BuildWebView2UserDataFolder()
                 Dim env = Await CoreWebView2Environment.CreateAsync(Nothing, userData, Nothing)
                 Await _web.EnsureCoreWebView2Async(env)
-                Dim core = _web.CoreWebView2
 
+                Dim core = _web.CoreWebView2
                 core.Settings.AreDefaultContextMenusEnabled = False
                 core.Settings.IsStatusBarEnabled = False
+
 #If DEBUG Then
                 core.Settings.AreDevToolsEnabled = True
 #Else
@@ -182,8 +201,8 @@ Namespace UI.Hub
                 If String.IsNullOrEmpty(uiFolder) Then
                     Throw New DirectoryNotFoundException("Resources\HubUI 폴더를 찾을 수 없습니다.")
                 End If
-                core.SetVirtualHostNameToFolderMapping(
-                    "hub.local", uiFolder, CoreWebView2HostResourceAccessKind.Allow)
+
+                core.SetVirtualHostNameToFolderMapping("hub.local", uiFolder, CoreWebView2HostResourceAccessKind.Allow)
 
                 ' 메시지 브리지
                 AddHandler core.WebMessageReceived, AddressOf OnWebMessage
@@ -199,7 +218,9 @@ Namespace UI.Hub
             Catch ex As Exception
                 Dim hr As Integer = Runtime.InteropServices.Marshal.GetHRForException(ex)
                 MessageBox.Show($"WebView 초기화 실패 (0x{hr:X8}) : {ex.Message}",
-                                "KKY Tool", MessageBoxButton.OK, MessageBoxImage.Error)
+                                "KKY Tool",
+                                MessageBoxButton.OK,
+                                MessageBoxImage.Error)
             End Try
         End Sub
 
@@ -209,9 +230,7 @@ Namespace UI.Hub
 
         Private Sub OnWindowClosed(sender As Object, e As EventArgs)
             SyncLock _gate
-                If _instance Is Me Then
-                    _instance = Nothing
-                End If
+                If _instance Is Me Then _instance = Nothing
             End SyncLock
         End Sub
 
@@ -221,6 +240,7 @@ Namespace UI.Hub
                     _serializer.Deserialize(Of Dictionary(Of String, Object))(e.WebMessageAsJson)
 
                 Dim name As String = Nothing
+
                 If root IsNot Nothing Then
                     If root.ContainsKey("ev") AndAlso root("ev") IsNot Nothing Then
                         name = Convert.ToString(root("ev"))
@@ -228,12 +248,11 @@ Namespace UI.Hub
                         name = Convert.ToString(root("name"))
                     End If
                 End If
+
                 If String.IsNullOrEmpty(name) Then Return
 
                 Dim payload As Object = Nothing
-                If root IsNot Nothing AndAlso root.ContainsKey("payload") Then
-                    payload = root("payload")
-                End If
+                If root IsNot Nothing AndAlso root.ContainsKey("payload") Then payload = root("payload")
 
                 Select Case name
                     Case "ui:ping"
@@ -247,7 +266,6 @@ Namespace UI.Hub
                         SendToWeb("host:topmost", New With {.on = Me.Topmost})
 
                     Case Else
-                        ' 나머지는 ExternalEvent로 위임
                         UiBridgeExternalEvent.Raise(name, payload)
                 End Select
 
@@ -258,16 +276,15 @@ Namespace UI.Hub
 
         Private Sub BroadcastDocumentList()
             Dim docs As New List(Of Object)()
+
             Try
                 If _uiApp IsNot Nothing AndAlso _uiApp.Application IsNot Nothing Then
                     For Each d As Document In _uiApp.Application.Documents
                         Try
                             Dim name = d.Title
                             Dim path = d.PathName
-                            If String.IsNullOrWhiteSpace(path) Then
-                                path = name
-                            End If
-                            docs.Add(New With {.name = name, path})
+                            If String.IsNullOrWhiteSpace(path) Then path = name
+                            docs.Add(New With {.name = name, .path = path})
                         Catch
                         End Try
                     Next
@@ -286,11 +303,17 @@ Namespace UI.Hub
         Public Sub SendToWeb(ev As String, payload As Object)
             Dim core = _web.CoreWebView2
             If core Is Nothing Then Return
+
             Dim msg As New Dictionary(Of String, Object) From {
-                {"ev", ev}, {"name", ev}, {"payload", payload}
+                {"ev", ev},
+                {"name", ev},
+                {"payload", payload}
             }
+
             Dim json = _serializer.Serialize(msg)
             core.PostWebMessageAsJson(json)
         End Sub
+
     End Class
+
 End Namespace

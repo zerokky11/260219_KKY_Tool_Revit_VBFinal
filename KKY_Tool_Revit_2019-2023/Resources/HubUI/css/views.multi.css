@@ -915,6 +915,18 @@
     gap: 8px;
 }
 
+.selected-panel__actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.selected-current-btn {
+    white-space: nowrap;
+}
+
 .selected-panel__header h3 {
     margin: 0;
     white-space: nowrap;
