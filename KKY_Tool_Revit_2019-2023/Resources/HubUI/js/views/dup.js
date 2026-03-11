@@ -866,9 +866,15 @@ export function renderDup(root){
         var list = extractList(payload);
         if (list.length){
           handleRows(list);
+        } else if (!rows.length && !lastPairs.length && lastRun){
+          exportBtn.disabled = true;
+          showNoResultsState();
+          refreshSummary();
+          renderAppliedBar();
         } else {
           paint();
           refreshSummary();
+          renderAppliedBar();
         }
         return;
       }
@@ -877,7 +883,12 @@ export function renderDup(root){
         setLoading(false);
         lastPairs = Array.isArray(payload) ? payload : extractList(payload);
         lastPairs = dedupPairs(lastPairs);
-        paint();
+        exportBtn.disabled = (busy || (!rows.length && !lastPairs.length));
+        if (!lastPairs.length && !rows.length && lastRun){
+          showNoResultsState();
+        } else {
+          paint();
+        }
         refreshSummary();
         renderAppliedBar();
         return;
@@ -1158,6 +1169,15 @@ export function renderDup(root){
     runBtn.textContent = busy ? '검토 중…' : '검토 시작';
   }
 
+  function showNoResultsState(){
+    body.innerHTML = '';
+    var empty = div('dup-emptycard');
+    empty.innerHTML = '<div class="empty-emoji">✅</div><h3 class="empty-title">' +
+      ((mode === 'clash') ? '간섭이 없습니다' : '중복이 없습니다') +
+      '</h3><p class="empty-sub">검토 결과가 0건입니다. 오류가 아니라, 현재 조건에서 검토 대상이 발견되지 않은 상태입니다.</p>';
+    body.appendChild(empty);
+  }
+
   function handleRows(list){
     rows = (Array.isArray(list) ? list : []).map(normalizeRow);
     groups = buildGroups(rows);
@@ -1166,18 +1186,13 @@ export function renderDup(root){
     for (var i=0;i<groups.length;i++) expanded[groups[i].key] = 1;
 
     exportBtn.disabled = (busy || (!rows.length && !lastPairs.length));
-    paint();
-    refreshSummary();
-
-    renderAppliedBar();
-    if (!rows.length){
-      body.innerHTML = '';
-      var empty = div('dup-emptycard');
-      empty.innerHTML = '<div class="empty-emoji">✅</div><h3 class="empty-title">' +
-        ((mode === 'clash') ? '간섭이 없습니다' : '중복이 없습니다') +
-        '</h3><p class="empty-sub">검토 결과가 0건입니다.</p>';
-      body.appendChild(empty);
+    if (!rows.length && !lastPairs.length){
+      showNoResultsState();
+    } else {
+      paint();
     }
+    refreshSummary();
+    renderAppliedBar();
   }
 
   function paint(){
