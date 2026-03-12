@@ -126,6 +126,7 @@ Namespace UI.Hub
             map.Add("duplicate:select", "HandleDuplicateSelect")
             ' Connector Diagnostics
             map.Add("connector:run", "HandleConnectorRun")
+            map.Add("connector:param-list", "HandleConnectorParamList")
             map.Add("connector:save-excel", "HandleConnectorSaveExcel")
             ' Export Points with Angle
             map.Add("export:browse-folder", "HandleExportBrowse")

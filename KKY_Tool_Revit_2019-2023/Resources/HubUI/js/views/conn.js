@@ -1,4 +1,4 @@
-// Resources/HubUI/js/views/conn.js
+﻿// Resources/HubUI/js/views/conn.js
 // Connector Diagnostics view (fix2 규약 준수)
 // - 버튼/이벤트: connector:run / connector:save-excel
 // - 단위: 서버는 inch 고정, UI가 mm 선택 시 전송 전에 inch로 변환 / 표시 시 mm 변환
@@ -19,7 +19,7 @@ let lastExcelPct = 0;
 
 /* ---------- 옵션 ---------- */
 function loadOpts() {
-  const defaults = { tol: 1.0, unit: 'inch', param: 'Comments', extraParams: '', targetFilter: '', excludeEndDummy: false };
+  const defaults = { tol: 1.0, unit: 'inch', param: 'Comments', reviewParams: ['Comments'], extraParams: '', targetFilter: '', excludeEndDummy: false };
   try {
     return Object.assign({}, defaults, JSON.parse(localStorage.getItem(SKEY) || '{}'));
   } catch { return defaults; }
@@ -59,8 +59,9 @@ export function renderConn(root) {
     tab: 'mismatch',
     totalCount: 0,
     extraParams: [],
-    reviewParams: parseCsvParams(opts.param || 'Comments'),
-    paramList: []
+    reviewParams: normalizeReviewParams(opts.reviewParams && opts.reviewParams.length ? opts.reviewParams : parseCsvParams(opts.param || 'Comments')),
+    paramList: [],
+    paramItems: []
   };
   let exporting = false;
   state.extraParams = parseExtraParams(opts.extraParams);
@@ -70,8 +71,8 @@ export function renderConn(root) {
   const heading = div('feature-heading');
   heading.innerHTML = `
     <span class="feature-kicker">Connector Diagnostics</span>
-    <h2 class="feature-title">커넥터 진단</h2>
-    <p class="feature-sub">허용범위, 단위, 파라미터명을 입력하고 파이프/덕트 커넥터 매칭을 진단합니다.</p>`;
+    <h2 class="feature-title">커넥터 파라미터 연속성 검토</h2>
+    <p class="feature-sub">공유 파라미터 txt 목록에서 검토 대상을 선택하고 파이프/덕트 연결 객체의 값 연속성을 확인합니다.</p>`;
 
   const run = cardBtn('검토 시작', onRun);
   const save = cardBtn('엑셀 내보내기', onExport);
@@ -97,7 +98,7 @@ export function renderConn(root) {
   grid.append(
     kv('허용범위', makeNumber(opts.tol ?? 1.0)),
     kv('단위', makeUnit(opts.unit || 'inch')),
-    kv('파라미터', makeText(opts.param || 'Comments')),
+    kv('선택된 검토 파라미터', makeText((normalizeReviewParams(opts.reviewParams && opts.reviewParams.length ? opts.reviewParams : parseCsvParams(opts.param || 'Comments'))).join(', '), '목록에서 파라미터를 추가하세요')),
     kv('추가 추출 파라미터', makeText(opts.extraParams || '', 'PM1, PM2, ... 복수 입력 가능')),
     kv('검토 대상 필터', targetFilterInput),
     kv('End_ + Dummy 패밀리 제외', excludeEndDummy)
@@ -110,14 +111,16 @@ export function renderConn(root) {
   const paramSuggest = document.createElement('input');
   paramSuggest.type = 'text';
   paramSuggest.setAttribute('list', 'conn-param-datalist');
-  paramSuggest.placeholder = '프로젝트 파라미터 검색/선택';
+  paramSuggest.placeholder = '공유 파라미터 검색/선택';
   paramSuggest.style.width = '100%';
+  paramSuggest.style.padding = '10px 12px';
+  paramSuggest.style.borderRadius = '12px';
+  paramSuggest.style.border = '1px solid rgba(148,163,184,.28)';
   const paramDataList = document.createElement('datalist');
   paramDataList.id = 'conn-param-datalist';
 
   const addParamsBtn = cardBtn('추가', () => {
-    const source = `${paramInput.value || ''}${paramSuggest.value ? ',' + paramSuggest.value : ''}`;
-    state.reviewParams = mergeReviewParams(state.reviewParams, source);
+    state.reviewParams = mergeReviewParams(state.reviewParams, paramSuggest.value || '');
     renderReviewParamChips();
     paramSuggest.value = '';
     commit();
@@ -127,6 +130,7 @@ export function renderConn(root) {
   const clearParamsBtn = cardBtn('전체 비우기', () => {
     state.reviewParams = [];
     renderReviewParamChips();
+    renderParamSearchResults();
     commit();
   });
   clearParamsBtn.classList.add('btn-outline');
@@ -136,15 +140,27 @@ export function renderConn(root) {
   chipsWrap.style.flexWrap = 'wrap';
   chipsWrap.style.gap = '6px';
   chipsWrap.style.marginTop = '6px';
+  const paramResultMeta = document.createElement('div');
+  paramResultMeta.className = 'conn-param-result-meta';
+  paramResultMeta.style.color = 'var(--muted,#64748b)';
+  paramResultMeta.style.fontSize = '12px';
+  const paramResultWrap = div('familylink-target-list');
+  paramResultWrap.style.maxHeight = '240px';
+  paramResultWrap.style.overflow = 'auto';
+  paramResultWrap.style.border = '1px solid rgba(148,163,184,.18)';
+  paramResultWrap.style.borderRadius = '12px';
+  paramResultWrap.style.padding = '6px';
 
   paramActionRow.style.display = 'grid';
   paramActionRow.style.gridTemplateColumns = '1fr auto auto';
   paramActionRow.style.gap = '6px';
   paramActionRow.append(paramSuggest, addParamsBtn, clearParamsBtn);
-  paramTools.append(paramActionRow, chipsWrap, paramDataList);
+  paramTools.append(paramActionRow, paramResultMeta, paramResultWrap, chipsWrap, paramDataList);
 
   const paramKv = paramInput.closest('.conn-kv');
   if (paramKv) paramKv.append(paramTools);
+  paramInput.readOnly = true;
+  paramInput.style.background = 'rgba(15,23,42,.04)';
 
   const cardActions = div('conn-card section section-actions');
   cardActions.innerHTML = '<div class="conn-title">결과 검토</div>';
@@ -229,14 +245,19 @@ export function renderConn(root) {
   const checkInputs = grid.querySelectorAll('input[type="checkbox"]');
   const excludeCheckbox = checkInputs[0];
 
-  const commit = () => saveOpts({
-    tol: parseFloat(tol.value || '1') || 1,
-    unit: String(unit.value),
-    param: String(param.value || 'Comments'),
-    extraParams: String(extra.value || ''),
-    targetFilter: String(targetFilter.value || ''),
-    excludeEndDummy: Boolean(excludeCheckbox.checked)
-  });
+  const commit = () => {
+    const finalParams = getFinalReviewParams();
+    param.value = finalParams.join(', ');
+    saveOpts({
+      tol: parseFloat(tol.value || '1') || 1,
+      unit: String(unit.value),
+      param: finalParams.join(',') || 'Comments',
+      reviewParams: finalParams,
+      extraParams: String(extra.value || ''),
+      targetFilter: String(targetFilter.value || ''),
+      excludeEndDummy: Boolean(excludeCheckbox.checked)
+    });
+  };
   tol.addEventListener('change', () => { commit(); if(state.hasRun) paint(); });
   unit.addEventListener('change', () => { commit(); if(state.hasRun) paint(); });
   param.addEventListener('change', commit);
@@ -408,7 +429,9 @@ export function renderConn(root) {
 
   function renderReviewParamChips() {
     chipsWrap.innerHTML = '';
-    const items = Array.isArray(state.reviewParams) ? state.reviewParams : [];
+    const items = normalizeReviewParams(state.reviewParams);
+    state.reviewParams = items;
+    param.value = items.join(', ');
     if (!items.length) {
       const empty = document.createElement('span');
       empty.className = 'conn-chip';
@@ -434,6 +457,7 @@ export function renderConn(root) {
       del.addEventListener('click', () => {
         state.reviewParams = state.reviewParams.filter((_, i) => i !== idx);
         renderReviewParamChips();
+        renderParamSearchResults();
         commit();
       });
       chipEl.append(t, del);
@@ -441,28 +465,84 @@ export function renderConn(root) {
     });
   }
 
-  function getFinalReviewParams() {
-    const merged = mergeReviewParams(state.reviewParams, param.value || '');
-    if (merged.length > 0) return merged;
-    const fallback = String(param.value || 'Comments').trim();
-    return fallback ? [fallback] : ['Comments'];
+  function renderParamSearchResults() {
+    const query = String(paramSuggest.value || '').trim().toLowerCase();
+    const selected = new Set(normalizeReviewParams(state.reviewParams).map((x) => x.toLowerCase()));
+    const items = Array.isArray(state.paramItems) ? state.paramItems : [];
+    const filtered = items.filter((item) => {
+      if (!query) return true;
+      const hay = `${item.name || ''} ${item.groupName || ''}`.toLowerCase();
+      return hay.includes(query);
+    });
+    paramResultMeta.textContent = items.length ? `공유 파라미터 ${filtered.length}/${items.length}개` : '공유 파라미터 목록이 없습니다.';
+    paramResultWrap.innerHTML = '';
+    if (!items.length) {
+      const empty = div('familylink-target-empty');
+      empty.textContent = '공유 파라미터 목록을 불러오는 중이거나, 현재 사용할 수 없습니다.';
+      paramResultWrap.append(empty);
+      return;
+    }
+    if (!filtered.length) {
+      const empty = div('familylink-target-empty');
+      empty.textContent = '검색 결과가 없습니다.';
+      paramResultWrap.append(empty);
+      return;
+    }
+    filtered.slice(0, 120).forEach((item) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'familylink-target-row';
+      row.style.display = 'grid';
+      row.style.gridTemplateColumns = '1fr auto';
+      row.style.alignItems = 'center';
+      row.style.width = '100%';
+      row.style.textAlign = 'left';
+      row.style.border = '0';
+      row.style.background = selected.has(String(item.name || '').toLowerCase()) ? 'rgba(59,130,246,.12)' : 'transparent';
+      row.style.borderRadius = '10px';
+      row.style.padding = '8px 10px';
+      row.style.cursor = 'pointer';
+
+      const info = document.createElement('span');
+      info.style.display = 'grid';
+      const main = document.createElement('strong');
+      main.textContent = item.name || '';
+      const sub = document.createElement('small');
+      sub.textContent = item.groupName ? `${item.groupName}${item.guid ? ' · ' + item.guid.slice(0, 8) : ''}` : (item.guid ? item.guid.slice(0, 8) : '');
+      info.append(main, sub);
+
+      const badge = document.createElement('span');
+      badge.className = selected.has(String(item.name || '').toLowerCase()) ? 'chip chip--ok' : 'chip chip--info';
+      badge.textContent = selected.has(String(item.name || '').toLowerCase()) ? '선택됨' : '추가';
+
+      row.append(info, badge);
+      row.addEventListener('click', () => {
+        const next = normalizeReviewParams(state.reviewParams);
+        const idx = next.findIndex((x) => x.toLowerCase() === String(item.name || '').toLowerCase());
+        if (idx >= 0) next.splice(idx, 1); else next.push(item.name);
+        state.reviewParams = next;
+        renderReviewParamChips();
+        renderParamSearchResults();
+        commit();
+      });
+      paramResultWrap.append(row);
+    });
   }
 
-  param.addEventListener('keydown', (e) => {
-    if (e.key !== 'Enter') return;
-    if (e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return;
-    e.preventDefault();
-    state.reviewParams = mergeReviewParams(state.reviewParams, param.value || '');
-    renderReviewParamChips();
-    commit();
-  });
+  function getFinalReviewParams() {
+    const merged = normalizeReviewParams(state.reviewParams);
+    if (merged.length > 0) return merged;
+    const fallback = String(param.value || 'Comments').trim();
+    return fallback ? parseCsvParams(fallback) : ['Comments'];
+  }
+
   paramSuggest.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    const source = `${param.value || ''}${paramSuggest.value ? ',' + paramSuggest.value : ''}`;
-    state.reviewParams = mergeReviewParams(state.reviewParams, source);
+    state.reviewParams = mergeReviewParams(state.reviewParams, paramSuggest.value || '');
     renderReviewParamChips();
     paramSuggest.value = '';
+    renderParamSearchResults();
     commit();
   });
 
@@ -529,13 +609,16 @@ export function renderConn(root) {
         break;
       case 'connector:param-list:done': {
         const list = Array.isArray(payload && payload.params) ? payload.params : [];
+        const items = Array.isArray(payload && payload.items) ? payload.items : [];
         state.paramList = parseCsvParams(list.join(','));
+        state.paramItems = normalizeParamItems(items.length ? items : state.paramList.map((name) => ({ name })));
         paramDataList.innerHTML = '';
         state.paramList.forEach((name) => {
           const opt = document.createElement('option');
           opt.value = name;
           paramDataList.append(opt);
         });
+        renderParamSearchResults();
         break;
       }
       case 'connector:saved': {
@@ -732,6 +815,7 @@ export function renderConn(root) {
 
   setTab('mismatch', { silent: true });
   renderReviewParamChips();
+  renderParamSearchResults();
   try { post('connector:param-list', {}); } catch (_) {}
 
   function h1(t){ const e=document.createElement('div'); e.className='conn-title'; e.textContent=t; return e; }
@@ -759,6 +843,30 @@ export function renderConn(root) {
       seen.add(key);
       out.push(p);
     }
+    return out;
+  }
+
+  function normalizeReviewParams(raw) {
+    return parseCsvParams(Array.isArray(raw) ? raw.join(',') : raw);
+  }
+
+  function normalizeParamItems(items) {
+    const seen = new Set();
+    const out = [];
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      const name = String(item && item.name ? item.name : item || '').trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({
+        name,
+        groupName: String(item && item.groupName ? item.groupName : '').trim(),
+        guid: String(item && item.guid ? item.guid : '').trim(),
+        source: String(item && item.source ? item.source : '').trim()
+      });
+    });
+    out.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     return out;
   }
 

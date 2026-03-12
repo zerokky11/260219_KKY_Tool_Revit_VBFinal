@@ -309,36 +309,118 @@ Namespace UI.Hub
             Try
                 Dim uidoc = app.ActiveUIDocument
                 Dim doc = If(uidoc Is Nothing, Nothing, uidoc.Document)
-                If doc Is Nothing Then
-                    SendToWeb("connector:param-list:done", New With {.ok = False, .message = "활성 문서가 없습니다.", .params = New List(Of String)()})
-                    Return
-                End If
-
+                Dim items As New List(Of Dictionary(Of String, Object))()
                 Dim names As New List(Of String)()
                 Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+                Dim message As String = String.Empty
+                Dim source As String = String.Empty
 
+                Dim sharedPath As String = String.Empty
                 Try
-                    Dim bindings = doc.ParameterBindings
-                    If bindings IsNot Nothing Then
-                        Dim it = bindings.ForwardIterator()
-                        If it IsNot Nothing Then
-                            it.Reset()
-                            While it.MoveNext()
-                                Dim def = TryCast(it.Key, Definition)
-                                If def Is Nothing Then Continue While
-                                Dim name As String = If(def.Name, String.Empty).Trim()
-                                If name = "" Then Continue While
-                                If seen.Add(name) Then names.Add(name)
-                            End While
-                        End If
-                    End If
+                    sharedPath = If(app Is Nothing OrElse app.Application Is Nothing, String.Empty, app.Application.SharedParametersFilename)
                 Catch
+                    sharedPath = String.Empty
                 End Try
 
-                names.Sort(StringComparer.OrdinalIgnoreCase)
-                SendToWeb("connector:param-list:done", New With {.ok = True, .params = names})
+                If Not String.IsNullOrWhiteSpace(sharedPath) AndAlso File.Exists(sharedPath) Then
+                    Try
+                        Dim defFile = app.Application.OpenSharedParameterFile()
+                        If defFile IsNot Nothing AndAlso defFile.Groups IsNot Nothing Then
+                            For Each grp As DefinitionGroup In defFile.Groups
+                                If grp Is Nothing Then Continue For
+                                Dim groupName As String = String.Empty
+                                Try
+                                    groupName = If(grp.Name, String.Empty)
+                                Catch
+                                    groupName = String.Empty
+                                End Try
+                                Dim defs = grp.Definitions
+                                If defs Is Nothing Then Continue For
+                                For Each def As Definition In defs
+                                    If def Is Nothing Then Continue For
+                                    Dim name As String = If(def.Name, String.Empty).Trim()
+                                    If String.IsNullOrWhiteSpace(name) Then Continue For
+                                    If Not seen.Add(name) Then Continue For
+                                    names.Add(name)
+                                    Dim guidText As String = String.Empty
+                                    Try
+                                        Dim ext = TryCast(def, ExternalDefinition)
+                                        If ext IsNot Nothing Then guidText = ext.GUID.ToString()
+                                    Catch
+                                        guidText = String.Empty
+                                    End Try
+                                    items.Add(New Dictionary(Of String, Object) From {
+                                        {"name", name},
+                                        {"groupName", groupName},
+                                        {"guid", guidText},
+                                        {"source", "shared-parameter-file"}
+                                    })
+                                Next
+                            Next
+                        End If
+                        If names.Count > 0 Then
+                            source = "shared-parameter-file"
+                        Else
+                            message = "공유 파라미터 파일에 표시할 정의가 없습니다."
+                        End If
+                    Catch ex As Exception
+                        message = "공유 파라미터 파일을 읽지 못했습니다: " & ex.Message
+                    End Try
+                Else
+                    message = "공유 파라미터 파일 경로가 설정되지 않았거나 파일을 찾을 수 없습니다."
+                End If
+
+                If names.Count = 0 AndAlso doc IsNot Nothing Then
+                    Try
+                        Dim bindings = doc.ParameterBindings
+                        If bindings IsNot Nothing Then
+                            Dim it = bindings.ForwardIterator()
+                            If it IsNot Nothing Then
+                                it.Reset()
+                                While it.MoveNext()
+                                    Dim def = TryCast(it.Key, Definition)
+                                    If def Is Nothing Then Continue While
+                                    Dim name As String = If(def.Name, String.Empty).Trim()
+                                    If String.IsNullOrWhiteSpace(name) Then Continue While
+                                    If Not seen.Add(name) Then Continue While
+                                    names.Add(name)
+                                    items.Add(New Dictionary(Of String, Object) From {
+                                        {"name", name},
+                                        {"groupName", "Project Binding"},
+                                        {"guid", String.Empty},
+                                        {"source", "project-binding"}
+                                    })
+                                End While
+                            End If
+                        End If
+                        If names.Count > 0 Then
+                            If String.IsNullOrWhiteSpace(message) Then
+                                message = "공유 파라미터 파일 대신 현재 문서의 파라미터 바인딩 목록을 표시합니다."
+                            End If
+                            source = If(String.IsNullOrWhiteSpace(source), "project-binding", source)
+                        End If
+                    Catch ex As Exception
+                        If String.IsNullOrWhiteSpace(message) Then
+                            message = ex.Message
+                        End If
+                    End Try
+                ElseIf names.Count = 0 AndAlso doc Is Nothing AndAlso String.IsNullOrWhiteSpace(message) Then
+                    message = "활성 문서가 없습니다."
+                End If
+
+                names = names.OrderBy(Function(x) If(x, String.Empty).ToUpperInvariant()).ToList()
+                items = items.OrderBy(Function(d) Convert.ToString(If(d.ContainsKey("name"), d("name"), String.Empty)).ToUpperInvariant()).ToList()
+
+                SendToWeb("connector:param-list:done", New With {
+                    .ok = names.Count > 0,
+                    .message = message,
+                    .params = names,
+                    .items = items,
+                    .source = source,
+                    .sharedParamPath = sharedPath
+                })
             Catch ex As Exception
-                SendToWeb("connector:param-list:done", New With {.ok = False, .message = ex.Message, .params = New List(Of String)()})
+                SendToWeb("connector:param-list:done", New With {.ok = False, .message = ex.Message, .params = New List(Of String)(), .items = New List(Of Dictionary(Of String, Object))()})
             End Try
         End Sub
 

@@ -1,10 +1,10 @@
-import { clear, div, toast, setBusy, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
+﻿import { clear, div, toast, setBusy, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 
 const FEATURE_META = {
-    connector: { label: '파라미터 값 연속성 검토', desc: '연결된 객체들의 파라미터 값 연속성 검토', requiresSharedParams: false },
+    connector: { label: '커넥터 파라미터 연속성 검토', desc: 'BQC 핵심 검토 · 연결 객체들의 파라미터 값 연속성을 확인합니다.', requiresSharedParams: false },
     guid: {
         label: '공유파라미터 GUID 검토', desc: '프로젝트/패밀리 내 공유 파라미터 GUID 검토', requiresSharedParams: true },
   familylink: { label: '패밀리 공유파라미터 연동 검토', desc: '복합 패밀리의 하위 패밀리 파라미터 연동 상태를 검토합니다.', requiresSharedParams: true },
@@ -38,7 +38,7 @@ export function renderMulti(root) {
       excludeEndDummy: false
     }),
     features: {
-      connector: createFeatureState({ tol: 1.0, unit: 'inch', param: 'Comments' }),
+      connector: createFeatureState({ tol: 1.0, unit: 'inch', param: 'Comments', paramItems: ['Comments'] }),
       guid: createFeatureState({ includeFamily: false, includeAnnotation: false }),
       familylink: createFeatureState({ targetsText: '', selectedTargets: [], targets: [] }),
       points: createFeatureState({ unit: 'ft' })
@@ -46,6 +46,7 @@ export function renderMulti(root) {
     results: {},
     sharedParamStatus: null,
     sharedParamItems: [],
+    connectorParamItems: [],
     ui: {
       modalOpen: false,
       activeFeatureKey: '',
@@ -82,7 +83,7 @@ export function renderMulti(root) {
   const leftCol = div('multi-left HubLeft');
   const rightCol = div('multi-right HubRight');
 
-  const group1 = buildGroupSection('납품 시 BQC 검토', '커넥터 진단 (BQC용)', 'bqc');
+  const group1 = buildGroupSection('납품 시 BQC 검토', '가장 많이 사용하는 핵심 검토를 먼저 선택하세요.', 'bqc');
   const group3 = buildGroupSection('유틸리티', 'PMS / GUID / 패밀리 연동 / Point 추출 / Project Parameter', 'utility');
   group3.section.id = 'utilities';
 
@@ -108,8 +109,28 @@ export function renderMulti(root) {
   const leftSelected = div('HubLeftSelected');
   leftSelected.append(buildSelectedFeaturesSection());
   leftCol.append(leftTop, leftSelected, buildRvtSection());
+  rightCol.style.order = '1';
+  leftCol.style.order = '2';
+
   if (state.ui.multiMode === 'bqc') {
+    rightCol.style.flex = '1.08 1 0';
+    leftCol.style.flex = '.92 1 0';
+    group1.wrap.style.border = '1px solid rgba(14,165,233,.34)';
+    group1.wrap.style.borderRadius = '20px';
+    group1.wrap.style.padding = '14px';
+    group1.wrap.style.background = 'linear-gradient(180deg, rgba(14,165,233,.14), rgba(37,99,235,.10) 42%, rgba(255,255,255,.03))';
+    group1.wrap.style.boxShadow = '0 18px 34px rgba(14,165,233,.12), inset 0 1px 0 rgba(255,255,255,.18)';
+    group1.wrap.style.position = 'relative';
     rightCol.append(rightFilter, group1.wrap);
+    const group1Head = group1.wrap.querySelector('.multi-section-title');
+    if (group1Head) {
+      group1Head.style.padding = '10px 12px';
+      group1Head.style.marginBottom = '10px';
+      group1Head.style.borderRadius = '14px';
+      group1Head.style.border = '1px solid rgba(14,165,233,.22)';
+      group1Head.style.background = 'rgba(255,255,255,.18)';
+      group1Head.style.backdropFilter = 'blur(4px)';
+    }
   } else {
     rightCol.append(rightFilter, group3.wrap);
   }
@@ -177,6 +198,12 @@ export function renderMulti(root) {
     if (buildFamilyLinkConfig.renderList) buildFamilyLinkConfig.renderList(payload);
   });
 
+  onHost('connector:param-list:done', (payload) => {
+    const ok = payload?.ok !== false;
+    state.connectorParamItems = ok ? normalizeConnectorParamItems(payload) : [];
+    if (buildConnectorConfig.renderList) buildConnectorConfig.renderList(payload);
+  });
+
   onHost('hub:multi-error', (payload) => {
     setBusyState(false);
     ProgressDialog.hide();
@@ -205,6 +232,8 @@ export function renderMulti(root) {
     updateSharedParamBanner();
     updateRunSummary();
   });
+
+  requestConnectorParamList('render');
 
   window.addEventListener('keydown', (ev) => {
     if (ev.key === 'Escape' && state.ui.isRvtListExpanded) {
@@ -239,6 +268,10 @@ export function renderMulti(root) {
     post('sharedparam:list', { source: 'multi', context: context || '' });
   }
 
+  function requestConnectorParamList(context) {
+    post('connector:param-list', { source: 'multi', context: context || '' });
+  }
+
   function normalizeMultiMode(value) {
     if (value === 'utility') return 'utility';
     return 'bqc';
@@ -265,17 +298,48 @@ export function renderMulti(root) {
     <div class="feature-heading">
       <span class="feature-kicker">Multi RVT Hub</span>
       <h2 class="feature-title">납품시 BQC 검토</h2>
-      <p class="feature-sub">납품 검토를 위한 유틸리티 기능을 모아 실행합니다.</p>
+      <p class="feature-sub">실행할 기능을 체크한 뒤 검토 시작을 눌러주세요. 여러 기능을 한 번에 선택해 같은 RVT 목록으로 순차 검토할 수 있습니다.</p>
     </div>`;
   }
 
   function buildGroupSection(title, desc, groupId) {
     const wrap = div('multi-section');
     if (groupId) wrap.dataset.group = groupId;
+    wrap.style.borderRadius = '20px';
+    wrap.style.border = '1px solid rgba(96,165,250,.18)';
+    wrap.style.background = 'linear-gradient(180deg, rgba(37,99,235,.06), rgba(15,23,42,.03))';
+    wrap.style.padding = '14px';
     const head = div('multi-section-title');
     head.innerHTML = `<h3>${title}</h3><span class="feature-note">${desc}</span>`;
+    head.style.marginBottom = '12px';
+    head.style.padding = '10px 12px';
+    head.style.borderRadius = '14px';
+    head.style.border = '1px solid rgba(148,163,184,.18)';
+    head.style.background = 'rgba(255,255,255,.22)';
     wrap.append(head);
     return { wrap, section: wrap };
+  }
+
+  function buildFeatureChecklistGuide() {
+    const guide = div('feature-row__summary');
+    guide.style.display = 'grid';
+    guide.style.gap = '8px';
+    guide.style.marginBottom = '12px';
+    guide.style.padding = '16px 18px';
+    guide.style.borderRadius = '18px';
+    guide.style.border = '1px solid rgba(37,99,235,.28)';
+    guide.style.background = 'linear-gradient(180deg, rgba(37,99,235,.16), rgba(59,130,246,.06))';
+    guide.style.boxShadow = '0 14px 28px rgba(37,99,235,.10)';
+    const kicker = document.createElement('span');
+    kicker.className = 'chip chip--info';
+    kicker.textContent = '체크해서 실행';
+    kicker.style.width = 'fit-content';
+    const title = document.createElement('strong');
+    title.textContent = '아래 기능 목록에서 실행할 검토를 체크하세요.';
+    const sub = document.createElement('span');
+    sub.textContent = '여러 기능을 한 번에 선택해 같은 RVT 목록으로 순차 검토할 수 있습니다. 체크하면 각 기능의 옵션 설정 창이 열립니다.';
+    guide.append(kicker, title, sub);
+    return guide;
   }
 
   function buildGroupFilter() {
@@ -313,19 +377,33 @@ export function renderMulti(root) {
 
   function buildGroup1Options() {
     const panel = div('group-common-mini');
+    panel.style.padding = '4px 8px';
+    panel.style.borderRadius = '12px';
+    panel.style.border = '1px solid rgba(148,163,184,.12)';
+    panel.style.background = 'rgba(15,23,42,.015)';
+    panel.style.marginBottom = '6px';
     const header = div('group-common-mini__header');
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
+    header.style.justifyContent = 'space-between';
+    header.style.gap = '10px';
     const title = document.createElement('h4');
-    title.textContent = '그룹 공통 옵션';
+    title.textContent = '공통 옵션';
+    title.style.margin = '0';
+    title.style.fontSize = '12px';
     const settingsBtn = document.createElement('button');
     settingsBtn.type = 'button';
     settingsBtn.className = 'btn btn--secondary';
-    settingsBtn.textContent = '공통 옵션 설정';
+    settingsBtn.textContent = '설정';
     settingsBtn.addEventListener('click', () => openSettings('common', '그룹 공통 옵션'));
     header.append(title, settingsBtn);
 
     const summary = div('group-common-mini__summary');
     state.ui.commonSummaryEl = summary;
     summary.textContent = buildCommonSummary();
+    summary.style.fontSize = '11px';
+    summary.style.lineHeight = '1.35';
+    summary.style.color = 'var(--muted,#64748b)';
     panel.append(header, summary);
 
     const fields = div('multi-config is-open');
@@ -367,6 +445,10 @@ export function renderMulti(root) {
     const meta = FEATURE_META[key] || {};
     const row = div('feature-row');
     row.dataset.key = key;
+    row.style.borderRadius = '16px';
+    row.style.border = '1px solid rgba(148,163,184,.22)';
+    row.style.background = 'rgba(255,255,255,.82)';
+    row.style.boxShadow = '0 10px 20px rgba(15,23,42,.04)';
     const header = div('feature-row__header');
     const toggle = document.createElement('input');
     toggle.type = 'checkbox';
@@ -386,6 +468,7 @@ export function renderMulti(root) {
       row.classList.toggle('is-active', toggle.checked);
       markStale(key);
       updateRunSummary();
+      refreshConnectorFeatureSummary();
     });
 
     const metaWrap = div('feature-row__left');
@@ -395,8 +478,39 @@ export function renderMulti(root) {
     metaDesc.textContent = meta.desc || '';
     metaWrap.append(toggle, metaTitle, metaDesc);
 
-    header.append(metaWrap);
+    const right = div('feature-row__right');
+    if (key === 'connector') {
+      const badge = document.createElement('span');
+      badge.className = 'chip chip--info';
+      badge.textContent = 'BQC 핵심';
+      right.append(badge);
+      row.classList.add('feature-row--workflow', 'feature-row--connector-hero');
+      row.style.border = '1px solid rgba(14,165,233,.34)';
+      row.style.boxShadow = '0 16px 30px rgba(14,165,233,.10)';
+      row.style.background = 'linear-gradient(180deg, rgba(14,165,233,.18), rgba(37,99,235,.10) 48%, rgba(255,255,255,.02))';
+    }
+
+    header.append(metaWrap, right);
     row.append(header);
+
+    if (key === 'connector') {
+      const summary = div('feature-row__summary');
+      summary.style.display = 'grid';
+      summary.style.gap = '6px';
+      summary.style.padding = '12px 14px';
+      summary.style.borderRadius = '14px';
+      summary.style.border = '1px solid rgba(14,165,233,.24)';
+      summary.style.background = 'rgba(255,255,255,.18)';
+      const top = document.createElement('strong');
+      const sub = document.createElement('span');
+      top.textContent = '체크 후 옵션을 열어 공유 파라미터 목록에서 검토 대상을 선택하세요.';
+      sub.textContent = '아직 검토 파라미터가 지정되지 않았습니다.';
+      summary.append(top, sub);
+      row.append(summary);
+      state.ui.connectorHeroSummary = { row, top, sub };
+      refreshConnectorFeatureSummary();
+    }
+
     config.title = meta.label || key;
     config.key = key;
     config.panel.classList.add('settings-panel', 'is-open');
@@ -467,11 +581,26 @@ export function renderMulti(root) {
 
   function buildConnectorConfig() {
     const panel = div('multi-config');
+    panel.style.display = 'flex';
+    panel.style.flexDirection = 'column';
+    panel.style.alignItems = 'stretch';
+    panel.style.justifyContent = 'flex-start';
+    panel.style.alignContent = 'stretch';
+    panel.style.gap = '14px';
+    panel.style.width = '100%';
+    panel.style.maxWidth = 'none';
+    panel.style.minWidth = '0';
+    panel.style.boxSizing = 'border-box';
+
     const tol = makeField('허용범위', 'tol', '', 'number');
     tol.input.value = state.features.connector.configDraft.tol;
+    tol.input.min = '0';
+    tol.input.step = '0.01';
+    tol.input.style.fontWeight = '600';
     tol.input.addEventListener('change', () => {
       state.features.connector.configDraft.tol = parseFloat(tol.input.value || '1') || 1;
       markFeatureDirty('connector');
+      refreshConnectorFeatureSummary();
     });
 
     const unit = makeSelectField('단위', [
@@ -479,23 +608,321 @@ export function renderMulti(root) {
       { value: 'mm', label: 'mm' }
     ]);
     unit.select.value = state.features.connector.configDraft.unit;
+    unit.select.style.fontWeight = '600';
     unit.select.addEventListener('change', () => {
       state.features.connector.configDraft.unit = unit.select.value;
       markFeatureDirty('connector');
+      refreshConnectorFeatureSummary();
     });
 
-    const param = makeField('파라미터', 'param', 'Comments', 'text');
-    param.input.value = state.features.connector.configDraft.param;
-    param.input.addEventListener('change', () => {
-      state.features.connector.configDraft.param = param.input.value || 'Comments';
+    const basicsCard = div('feature-row__summary');
+    basicsCard.style.display = 'grid';
+    basicsCard.style.gap = '12px';
+    basicsCard.style.padding = '16px';
+    basicsCard.style.borderRadius = '18px';
+    basicsCard.style.border = '1px solid rgba(37,99,235,.24)';
+    basicsCard.style.background = 'linear-gradient(180deg, rgba(248,250,252,.98), rgba(239,246,255,.98))';
+    basicsCard.style.boxShadow = '0 12px 24px rgba(37,99,235,.06)';
+    basicsCard.style.width = '100%';
+    basicsCard.style.boxSizing = 'border-box';
+
+    const basicsTitle = document.createElement('strong');
+    basicsTitle.textContent = '기본 설정';
+    basicsTitle.style.fontSize = '13px';
+    basicsTitle.style.lineHeight = '1.3';
+
+    const basics = div('multi-config');
+    basics.style.display = 'grid';
+    basics.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
+    basics.style.gap = '12px';
+    basics.style.alignItems = 'stretch';
+
+    const tolCard = div('feature-row__summary');
+    tolCard.style.display = 'grid';
+    tolCard.style.gap = '8px';
+    tolCard.style.padding = '12px';
+    tolCard.style.borderRadius = '14px';
+    tolCard.style.border = '1px solid rgba(96,165,250,.24)';
+    tolCard.style.background = 'rgba(255,255,255,.98)';
+
+    const unitCard = div('feature-row__summary');
+    unitCard.style.display = 'grid';
+    unitCard.style.gap = '8px';
+    unitCard.style.padding = '12px';
+    unitCard.style.borderRadius = '14px';
+    unitCard.style.border = '1px solid rgba(96,165,250,.24)';
+    unitCard.style.background = 'rgba(255,255,255,.98)';
+
+    tol.field.style.margin = '0';
+    unit.field.style.margin = '0';
+    tol.field.style.padding = '0';
+    unit.field.style.padding = '0';
+    tol.field.style.border = '0';
+    unit.field.style.border = '0';
+    tol.field.style.background = 'transparent';
+    unit.field.style.background = 'transparent';
+    tol.field.style.display = 'grid';
+    unit.field.style.display = 'grid';
+    tol.field.style.gap = '6px';
+    unit.field.style.gap = '6px';
+
+    tol.input.style.width = '100%';
+    unit.select.style.width = '100%';
+    tol.input.style.boxSizing = 'border-box';
+    unit.select.style.boxSizing = 'border-box';
+    tol.input.style.padding = '10px 12px';
+    unit.select.style.padding = '10px 12px';
+    tol.input.style.borderRadius = '12px';
+    unit.select.style.borderRadius = '12px';
+    tol.input.style.border = '1px solid rgba(148,163,184,.28)';
+    unit.select.style.border = '1px solid rgba(148,163,184,.28)';
+    tol.input.style.background = 'rgba(255,255,255,.98)';
+    unit.select.style.background = 'rgba(255,255,255,.98)';
+
+    tolCard.append(tol.field);
+    unitCard.append(unit.field);
+    basics.append(tolCard, unitCard);
+    basicsCard.append(basicsTitle, basics);
+
+    const selectedWrap = div('feature-row__summary');
+    selectedWrap.style.display = 'grid';
+    selectedWrap.style.gap = '10px';
+    selectedWrap.style.marginTop = '0';
+    selectedWrap.style.padding = '14px';
+    selectedWrap.style.borderRadius = '16px';
+    selectedWrap.style.border = '1px solid rgba(14,165,233,.24)';
+    selectedWrap.style.background = 'linear-gradient(180deg, rgba(240,249,255,.98), rgba(224,242,254,.82))';
+    selectedWrap.style.width = '100%';
+    selectedWrap.style.boxSizing = 'border-box';
+
+    const selectedHead = document.createElement('div');
+    selectedHead.style.display = 'flex';
+    selectedHead.style.justifyContent = 'space-between';
+    selectedHead.style.alignItems = 'center';
+    selectedHead.style.gap = '8px';
+    const selectedTitle = document.createElement('strong');
+    selectedTitle.textContent = '검토 파라미터';
+    const selectedCount = document.createElement('span');
+    selectedCount.className = 'chip chip--info';
+    selectedHead.append(selectedTitle, selectedCount);
+
+    const selectedChips = div('familylink-selected-chips');
+    selectedChips.style.display = 'flex';
+    selectedChips.style.flexWrap = 'wrap';
+    selectedChips.style.gap = '8px';
+    selectedChips.style.minHeight = '42px';
+    selectedChips.style.alignItems = 'center';
+    selectedChips.style.padding = '8px 0 0';
+    selectedWrap.append(selectedHead, selectedChips);
+
+    const picker = div('feature-row__summary');
+    picker.style.display = 'grid';
+    picker.style.gap = '10px';
+    picker.style.padding = '14px';
+    picker.style.border = '1px solid rgba(148,163,184,.22)';
+    picker.style.borderRadius = '16px';
+    picker.style.background = 'rgba(255,255,255,.82)';
+    picker.style.boxShadow = '0 10px 24px rgba(15,23,42,.04)';
+    picker.style.width = '100%';
+    picker.style.boxSizing = 'border-box';
+
+    const pickerHead = document.createElement('div');
+    pickerHead.style.display = 'flex';
+    pickerHead.style.justifyContent = 'space-between';
+    pickerHead.style.alignItems = 'center';
+    pickerHead.style.gap = '8px';
+    const pickerTitle = document.createElement('strong');
+    pickerTitle.textContent = '검토 파라미터 선택';
+    const pickerBadge = document.createElement('span');
+    pickerBadge.className = 'chip chip--info';
+    pickerBadge.textContent = '선택 필요';
+    pickerHead.append(pickerTitle, pickerBadge);
+
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = '공유 파라미터 이름 / 그룹 검색';
+    searchInput.style.width = '100%';
+    searchInput.style.padding = '10px 12px';
+    searchInput.style.borderRadius = '12px';
+    searchInput.style.border = '1px solid rgba(96,165,250,.32)';
+    searchInput.style.background = 'rgba(255,255,255,.96)';
+    searchInput.style.boxSizing = 'border-box';
+    searchInput.style.outline = 'none';
+
+    const searchMeta = document.createElement('div');
+    searchMeta.style.display = 'flex';
+    searchMeta.style.justifyContent = 'space-between';
+    searchMeta.style.alignItems = 'center';
+    searchMeta.style.gap = '10px';
+    const searchInfo = document.createElement('span');
+    searchInfo.style.color = 'var(--muted,#64748b)';
+    searchInfo.style.fontSize = '12px';
+    const refreshBtn = document.createElement('button');
+    refreshBtn.type = 'button';
+    refreshBtn.className = 'btn btn--secondary';
+    refreshBtn.textContent = '목록 새로고침';
+    refreshBtn.addEventListener('click', () => requestConnectorParamList('settings-refresh'));
+    searchMeta.append(searchInfo, refreshBtn);
+
+    const listWrap = div('familylink-target-list');
+    listWrap.style.height = '260px';
+    listWrap.style.minHeight = '260px';
+    listWrap.style.overflow = 'auto';
+    listWrap.style.border = '1px solid rgba(148,163,184,.18)';
+    listWrap.style.borderRadius = '12px';
+    listWrap.style.padding = '6px';
+    listWrap.style.background = 'rgba(255,255,255,.94)';
+    const empty = div('familylink-target-empty');
+    empty.style.display = 'grid';
+    empty.style.placeItems = 'center';
+    empty.style.minHeight = '100%';
+    empty.textContent = '목록을 불러오는 중입니다.';
+
+    searchInput.addEventListener('input', () => renderConnectorList());
+
+    picker.append(pickerHead, searchInput, searchMeta, listWrap);
+    panel.append(basicsCard, selectedWrap, picker);
+
+    function normalizeDraftParamsForDisplay(raw) {
+      let next = normalizeConnectorParamNames(raw);
+      if (next.length > 1) {
+        next = next.filter((name) => String(name).toLowerCase() !== 'comments');
+      }
+      return next;
+    }
+
+    function getDraftParams() {
+      const draft = state.features.connector.configDraft;
+      const raw = draft.paramItems && draft.paramItems.length ? draft.paramItems : draft.param;
+      draft.paramItems = normalizeDraftParamsForDisplay(raw);
+      draft.param = draft.paramItems.join(',') || 'Comments';
+      return draft.paramItems;
+    }
+
+    function commitParamSelection(next) {
+      const draft = state.features.connector.configDraft;
+      draft.paramItems = normalizeDraftParamsForDisplay(next);
+      draft.param = draft.paramItems.join(',') || 'Comments';
       markFeatureDirty('connector');
-    });
+      renderConnectorSelected();
+      renderConnectorList();
+      refreshConnectorFeatureSummary();
+    }
 
-    panel.append(tol.field, unit.field, param.field);
-    return { panel, controls: { tol, unit, param } };
+    function renderConnectorSelected() {
+      const selected = getDraftParams();
+      selectedCount.textContent = selected.length ? `${selected.length}개 선택` : '미선택';
+      pickerBadge.textContent = selected.length > 0 ? `선택 ${selected.length}` : '선택 필요';
+      selectedChips.innerHTML = '';
+      if (!selected.length) {
+        const emptyState = document.createElement('div');
+        emptyState.style.width = '100%';
+        emptyState.style.padding = '12px 14px';
+        emptyState.style.borderRadius = '12px';
+        emptyState.style.border = '1px dashed rgba(14,165,233,.28)';
+        emptyState.style.background = 'rgba(255,255,255,.74)';
+        emptyState.style.color = 'var(--muted,#64748b)';
+        emptyState.textContent = '선택된 파라미터가 없습니다.';
+        selectedChips.append(emptyState);
+        return;
+      }
+      selected.forEach((name) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'chip chip--info';
+        chip.textContent = `${name} ×`;
+        chip.style.padding = '8px 12px';
+        chip.style.borderRadius = '999px';
+        chip.style.border = '1px solid rgba(14,165,233,.24)';
+        chip.style.background = 'rgba(255,255,255,.96)';
+        chip.addEventListener('click', () => {
+          commitParamSelection(getDraftParams().filter((x) => x.toLowerCase() !== String(name).toLowerCase()));
+        });
+        selectedChips.append(chip);
+      });
+    }
+
+    function renderConnectorList(payload) {
+      if (payload) {
+        state.connectorParamItems = payload?.ok !== false ? normalizeConnectorParamItems(payload) : [];
+      }
+      const query = String(searchInput.value || '').trim().toLowerCase();
+      const items = Array.isArray(state.connectorParamItems) ? state.connectorParamItems : [];
+      const selected = new Set(getDraftParams().map((x) => String(x).toLowerCase()));
+      const filtered = items.filter((item) => {
+        if (!query) return true;
+        const hay = `${item.name || ''} ${item.groupName || ''}`.toLowerCase();
+        return hay.includes(query);
+      });
+      searchInfo.textContent = items.length ? `공유 파라미터 ${filtered.length}/${items.length}개` : '공유 파라미터 목록이 없습니다.';
+      listWrap.innerHTML = '';
+      if (payload?.ok === false) {
+        const err = div('familylink-target-empty');
+        err.textContent = payload?.message || '공유 파라미터 목록을 불러오지 못했습니다.';
+        listWrap.append(err);
+        renderConnectorSelected();
+        return;
+      }
+      if (!items.length) {
+        listWrap.append(empty);
+        renderConnectorSelected();
+        return;
+      }
+      if (!filtered.length) {
+        const nohit = div('familylink-target-empty');
+        nohit.textContent = '검색 결과가 없습니다.';
+        listWrap.append(nohit);
+        renderConnectorSelected();
+        return;
+      }
+      filtered.forEach((item) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'familylink-target-row';
+        row.style.display = 'grid';
+        row.style.gridTemplateColumns = '1fr auto';
+        row.style.alignItems = 'center';
+        row.style.width = '100%';
+        row.style.textAlign = 'left';
+        row.style.border = '0';
+        row.style.background = selected.has(String(item.name || '').toLowerCase()) ? 'rgba(59,130,246,.12)' : 'transparent';
+        row.style.borderRadius = '10px';
+        row.style.padding = '8px 10px';
+        row.style.cursor = 'pointer';
+
+        const info = document.createElement('span');
+        info.style.display = 'grid';
+        info.style.gap = '2px';
+        const name = document.createElement('strong');
+        name.textContent = item.name || '';
+        const sub = document.createElement('small');
+        sub.textContent = item.groupName ? `${item.groupName}${item.guid ? ' · ' + item.guid.slice(0, 8) : ''}` : (item.guid ? item.guid.slice(0, 8) : '');
+        info.append(name, sub);
+
+        const action = document.createElement('span');
+        action.className = selected.has(String(item.name || '').toLowerCase()) ? 'chip chip--ok' : 'chip chip--info';
+        action.textContent = selected.has(String(item.name || '').toLowerCase()) ? '선택됨' : '추가';
+
+        row.append(info, action);
+        row.addEventListener('click', () => {
+          const next = getDraftParams();
+          const idx = next.findIndex((x) => String(x).toLowerCase() === String(item.name || '').toLowerCase());
+          if (idx >= 0) next.splice(idx, 1);
+          else next.push(item.name);
+          commitParamSelection(next);
+        });
+        listWrap.append(row);
+      });
+      renderConnectorSelected();
+    }
+
+    buildConnectorConfig.renderList = renderConnectorList;
+    renderConnectorList();
+    return { panel, controls: { tol, unit, searchInput, listWrap, selectedWrap, renderConnectorList, renderConnectorSelected } };
   }
 
   function buildGuidConfig() {
+
     const panel = div('multi-config');
     const includeFamily = makeCheckboxField('패밀리 포함');
     includeFamily.input.checked = state.features.guid.configDraft.includeFamily;
@@ -1019,6 +1446,8 @@ export function renderMulti(root) {
   function buildSettingsModal() {
     const overlay = div('modal-overlay');
     const modal = div('modal');
+    modal.style.width = 'min(1420px, 96vw)';
+    modal.style.maxWidth = '1420px';
     const header = div('modal__header');
     const title = document.createElement('div');
     title.className = 'modal__title';
@@ -1028,8 +1457,26 @@ export function renderMulti(root) {
     header.append(title, badge);
 
     const body = div('modal__body');
+    body.style.display = 'grid';
+    body.style.gridTemplateColumns = 'minmax(0, 2.35fr) minmax(300px, 1fr)';
+    body.style.gap = '14px';
+    body.style.alignItems = 'start';
+    body.style.width = '100%';
+    body.style.justifyContent = 'stretch';
     const form = div('modal__form');
+    form.style.display = 'grid';
+    form.style.gridTemplateColumns = 'minmax(0, 1fr)';
+    form.style.gridAutoFlow = 'row';
+    form.style.gap = '14px';
+    form.style.alignContent = 'start';
+    form.style.justifyItems = 'stretch';
+    form.style.minWidth = '0';
+    form.style.width = '100%';
+    form.style.maxWidth = 'none';
     const help = div('modal__help');
+    help.style.minWidth = '0';
+    help.style.width = '100%';
+    help.style.maxWidth = 'none';
     const sharedBanner = buildSharedParamStatusBanner();
     sharedBanner.style.display = 'none';
     form.append(sharedBanner);
@@ -1057,6 +1504,7 @@ export function renderMulti(root) {
     buildSettingsModal.title = title;
     buildSettingsModal.badge = badge;
     buildSettingsModal.form = form;
+    buildSettingsModal.body = body;
     buildSettingsModal.help = help;
     buildSettingsModal.sharedBanner = sharedBanner;
     return overlay;
@@ -1159,6 +1607,7 @@ export function renderMulti(root) {
 
   function syncFeatureRow(key) {
     updateSelectedFeatureRow(key);
+    if (key === 'connector') refreshConnectorFeatureSummary();
   }
 
   function updateResultSummary(summary) {
@@ -1300,6 +1749,59 @@ export function renderMulti(root) {
     state.ui.modalOpen = true;
     state.ui.activeFeatureKey = key;
     state.ui.activeFeatureTitle = title || '';
+    if (buildSettingsModal.modal && buildSettingsModal.body && buildSettingsModal.help && buildSettingsModal.form) {
+      if (key === 'connector') {
+        buildSettingsModal.modal.style.width = 'min(1560px, 98vw)';
+        buildSettingsModal.modal.style.maxWidth = '1560px';
+        buildSettingsModal.body.style.display = 'grid';
+        buildSettingsModal.body.style.gridTemplateColumns = 'minmax(0, 2fr) minmax(0, 1fr)';
+        buildSettingsModal.body.style.alignItems = 'start';
+        buildSettingsModal.body.style.gap = '16px';
+        buildSettingsModal.body.style.columnGap = '16px';
+        buildSettingsModal.form.style.display = 'block';
+        buildSettingsModal.form.style.gridTemplateColumns = '';
+        buildSettingsModal.form.style.gridAutoFlow = '';
+        buildSettingsModal.form.style.gap = '';
+        buildSettingsModal.form.style.alignContent = 'start';
+        buildSettingsModal.form.style.justifyItems = 'stretch';
+        buildSettingsModal.form.style.flex = '';
+        buildSettingsModal.form.style.minWidth = '0';
+        buildSettingsModal.form.style.width = '100%';
+        buildSettingsModal.form.style.maxWidth = 'none';
+        buildSettingsModal.form.style.margin = '0';
+        buildSettingsModal.form.style.justifySelf = 'stretch';
+        buildSettingsModal.help.style.display = 'grid';
+        buildSettingsModal.help.style.gap = '12px';
+        buildSettingsModal.help.style.alignContent = 'start';
+        buildSettingsModal.help.style.flex = '';
+        buildSettingsModal.help.style.minWidth = '0';
+        buildSettingsModal.help.style.width = '100%';
+        buildSettingsModal.help.style.maxWidth = 'none';
+        buildSettingsModal.help.style.margin = '0';
+        buildSettingsModal.help.style.justifySelf = 'stretch';
+        buildSettingsModal.help.style.alignSelf = 'stretch';
+      } else {
+        buildSettingsModal.modal.style.width = 'min(1220px, 96vw)';
+        buildSettingsModal.modal.style.maxWidth = '1220px';
+        buildSettingsModal.body.style.display = 'grid';
+        buildSettingsModal.body.style.gridTemplateColumns = 'minmax(0, 2.35fr) minmax(300px, 1fr)';
+        buildSettingsModal.body.style.alignItems = 'start';
+        buildSettingsModal.body.style.gap = '14px';
+        buildSettingsModal.form.style.flex = '';
+        buildSettingsModal.form.style.minWidth = '0';
+        buildSettingsModal.form.style.width = '100%';
+        buildSettingsModal.form.style.maxWidth = 'none';
+        buildSettingsModal.form.style.justifySelf = 'stretch';
+        buildSettingsModal.help.style.flex = '';
+        buildSettingsModal.help.style.minWidth = '0';
+        buildSettingsModal.help.style.width = '100%';
+        buildSettingsModal.help.style.maxWidth = 'none';
+        buildSettingsModal.help.style.justifySelf = 'stretch';
+        buildSettingsModal.help.style.alignSelf = 'start';
+      }
+      buildSettingsModal.body.style.width = '100%';
+      buildSettingsModal.body.style.justifyContent = 'stretch';
+    }
     buildSettingsModal.title.textContent = `${title || ''} 설정`;
     const readiness = key === 'common' ? { label: '설정', className: 'chip--ok' } : getFeatureReadiness(config);
     if (buildSettingsModal.badge) {
@@ -1312,9 +1814,37 @@ export function renderMulti(root) {
     resetDraftFromCommitted(key);
     syncControlsFromDraft(key);
     renderSharedParamBanner(key);
+    if (key === 'connector') requestConnectorParamList('settings-open');
     const panel = getFeaturePanel(key);
-    if (panel) buildSettingsModal.form.append(panel);
+    if (panel) {
+      if (key === 'connector') {
+        panel.style.display = 'flex';
+        panel.style.flexDirection = 'column';
+        panel.style.alignItems = 'stretch';
+        panel.style.justifyContent = 'flex-start';
+        panel.style.width = '100%';
+        panel.style.maxWidth = 'none';
+        panel.style.minWidth = '0';
+        panel.style.margin = '0';
+        panel.style.boxSizing = 'border-box';
+        Array.from(panel.children || []).forEach((child) => {
+          if (!child || !child.style) return;
+          child.style.width = '100%';
+          child.style.maxWidth = 'none';
+          child.style.minWidth = '0';
+          child.style.margin = '0';
+          child.style.boxSizing = 'border-box';
+        });
+      }
+      buildSettingsModal.form.append(panel);
+    }
     renderHelp(key, title);
+    if (key === 'connector' && buildSettingsModal.help) {
+      buildSettingsModal.help.style.width = '100%';
+      buildSettingsModal.help.style.maxWidth = 'none';
+      buildSettingsModal.help.style.minWidth = '0';
+      buildSettingsModal.help.style.margin = '0';
+    }
     buildSettingsModal.overlay.classList.add('is-open');
   }
 
@@ -1428,6 +1958,7 @@ export function renderMulti(root) {
   function updateFeatureSummary(key) {
     updateSelectedFeatureRow(key);
     updateDrawerBadge(key);
+    if (key === 'connector') refreshConnectorFeatureSummary();
   }
 
   function buildCommonSummary() {
@@ -1449,13 +1980,36 @@ export function renderMulti(root) {
   function renderHelp(key, title) {
     const help = buildSettingsModal.help;
     if (!help) return;
+    help.style.display = 'grid';
+    help.style.gap = '10px';
+    help.style.alignContent = 'start';
+    help.style.alignItems = 'stretch';
+    help.style.minWidth = '0';
+    help.style.width = '100%';
+    help.style.maxWidth = 'none';
     const helpTitle = document.createElement('strong');
     helpTitle.textContent = title || '설정 안내';
+    helpTitle.style.display = 'block';
+    helpTitle.style.width = '100%';
     const list = document.createElement('ul');
     list.className = 'help-list';
+    list.style.margin = '0';
+    list.style.padding = '0';
+    list.style.listStyle = 'none';
+    list.style.display = 'grid';
+    list.style.gap = '10px';
+    list.style.width = '100%';
+    list.style.boxSizing = 'border-box';
     getHelpItems(key).forEach((text) => {
       const item = document.createElement('li');
       item.textContent = text;
+      item.style.width = '100%';
+      item.style.boxSizing = 'border-box';
+      item.style.margin = '0';
+      item.style.padding = '12px 14px';
+      item.style.borderRadius = '14px';
+      item.style.border = '1px solid rgba(148,163,184,.20)';
+      item.style.background = 'rgba(255,255,255,.92)';
       list.append(item);
     });
     help.append(helpTitle, list);
@@ -1471,9 +2025,9 @@ export function renderMulti(root) {
     }
     if (key === 'connector') {
       return [
-        '허용범위는 연결 판단 기준 거리입니다.',
-        '단위는 inch/mm 중 선택 가능합니다.',
-        '파라미터는 Comments 등 대상 값을 지정합니다.'
+        '공유 파라미터 txt 목록에서 검토 대상을 검색해 선택합니다.',
+        '여러 파라미터를 선택하면 같은 논리로 연속성 검토를 진행합니다.',
+        '허용범위와 단위는 기존 커넥터 검토 로직 그대로 적용됩니다.'
       ];
     }
     if (key === 'guid') {
@@ -1549,6 +2103,61 @@ export function renderMulti(root) {
       .filter((item) => item && item.name && item.guid)
       .map((item) => `${item.name}|${item.guid}`)
       .join('\n');
+  }
+
+  function normalizeConnectorParamNames(raw) {
+    const arr = Array.isArray(raw) ? raw : String(raw || '').split(',');
+    const seen = new Set();
+    const out = [];
+    arr.forEach((value) => {
+      const name = String(value && value.name ? value.name : value || '').trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(name);
+    });
+    return out;
+  }
+
+  function normalizeConnectorParamItems(payload) {
+    const seen = new Set();
+    const items = [];
+    const push = (name, groupName, guid, source) => {
+      const clean = String(name || '').trim();
+      if (!clean) return;
+      const key = clean.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      items.push({ name: clean, groupName: String(groupName || '').trim(), guid: String(guid || '').trim(), source: String(source || '').trim() });
+    };
+    const rawItems = Array.isArray(payload?.items) ? payload.items : [];
+    rawItems.forEach((item) => push(item?.name, item?.groupName, item?.guid, item?.source));
+    const rawParams = Array.isArray(payload?.params) ? payload.params : [];
+    rawParams.forEach((name) => push(name, '', '', 'fallback'));
+    items.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    return items;
+  }
+
+  function refreshConnectorFeatureSummary() {
+    const target = state.ui.connectorHeroSummary;
+    if (!target) return;
+    const feature = state.features.connector;
+    const selected = normalizeConnectorParamNames(
+      feature.configDraft?.paramItems && feature.configDraft.paramItems.length
+        ? feature.configDraft.paramItems
+        : feature.configCommitted?.paramItems && feature.configCommitted.paramItems.length
+          ? feature.configCommitted.paramItems
+          : feature.configCommitted?.param
+    );
+    const unit = feature.configDraft?.unit || feature.configCommitted?.unit || 'inch';
+    const tol = feature.configDraft?.tol || feature.configCommitted?.tol || 1;
+    const selectedText = selected.length ? selected.join(', ') : '선택 없음';
+    target.top.textContent = feature.enabled
+      ? '체크됨 · 설정창에서 검토 파라미터를 선택하거나 수정할 수 있습니다.'
+      : '체크 후 옵션을 열어 공유 파라미터 목록에서 검토 대상을 선택하세요.';
+    target.sub.textContent = `선택 파라미터 ${selected.length}개 · ${selectedText} · 허용범위 ${tol} ${unit}`;
+    target.row.classList.toggle('is-active', !!feature.enabled);
   }
 
   function renderSelectedFeatures() {
@@ -1833,6 +2442,15 @@ export function renderMulti(root) {
         targets: feature.configCommitted.selectedTargets || []
       };
     }
+    if (key === 'connector') {
+      const committed = deepCopy(feature.configCommitted || {});
+      committed.paramItems = normalizeConnectorParamNames(committed.paramItems && committed.paramItems.length ? committed.paramItems : committed.param);
+      committed.param = committed.paramItems.join(',') || 'Comments';
+      return {
+        enabled: feature.enabled,
+        ...committed
+      };
+    }
     return {
       enabled: feature.enabled,
       ...feature.configCommitted
@@ -1845,6 +2463,10 @@ export function renderMulti(root) {
       target.configDraft.selectedTargets = dedupeTargets([...target.configDraft.selectedTargets, ...parsed]);
       target.configDraft.targets = target.configDraft.selectedTargets;
       target.configDraft.targetsText = buildTargetsText(target.configDraft.selectedTargets);
+    }
+    if (state.ui.activeFeatureKey === 'connector') {
+      target.configDraft.paramItems = normalizeConnectorParamNames(target.configDraft.paramItems && target.configDraft.paramItems.length ? target.configDraft.paramItems : target.configDraft.param);
+      target.configDraft.param = target.configDraft.paramItems.join(',') || 'Comments';
     }
     target.configCommitted = deepCopy(target.configDraft);
     target.applied = true;
@@ -1863,6 +2485,10 @@ export function renderMulti(root) {
     const feature = state.features[key];
     if (!feature) return;
     feature.configDraft = deepCopy(feature.configCommitted);
+    if (key === 'connector') {
+      feature.configDraft.paramItems = normalizeConnectorParamNames(feature.configDraft.paramItems && feature.configDraft.paramItems.length ? feature.configDraft.paramItems : feature.configDraft.param);
+      feature.configDraft.param = feature.configDraft.paramItems.join(',') || 'Comments';
+    }
     if (key === 'familylink') {
       feature.configDraft.targetsText = buildTargetsText(feature.configDraft.selectedTargets);
     }
@@ -1888,9 +2514,13 @@ export function renderMulti(root) {
     if (!controls) return;
     if (key === 'connector') {
       const draft = state.features.connector.configDraft;
+      draft.paramItems = normalizeConnectorParamNames(draft.paramItems && draft.paramItems.length ? draft.paramItems : draft.param);
+      draft.param = draft.paramItems.join(',') || 'Comments';
       controls.tol.input.value = draft.tol;
       controls.unit.select.value = draft.unit;
-      controls.param.input.value = draft.param;
+      if (controls.searchInput) controls.searchInput.value = '';
+      if (controls.renderConnectorList) controls.renderConnectorList();
+      if (controls.renderConnectorSelected) controls.renderConnectorSelected();
     } else if (key === 'guid') {
       const draft = state.features.guid.configDraft;
       controls.includeFamily.input.checked = draft.includeFamily;
