@@ -11,6 +11,8 @@ const FEATURE_META = {
   points: { label: 'Point 추출', desc: 'Project/Survey Point 좌표 추출', requiresSharedParams: false }
 };
 const FEATURE_KEYS = Object.keys(FEATURE_META);
+const BQC_FEATURE_KEYS = ['connector'];
+const UTILITY_FEATURE_KEYS = FEATURE_KEYS.filter((key) => !BQC_FEATURE_KEYS.includes(key));
 const COMMON_OPTIONS_KEY = 'kky.hub.commonOptions';
 const GROUP_FILTER_KEY = 'kky.hub.multiGroupFilter';
 const MULTI_MODE_KEY = 'kky.hub.multiMode';
@@ -60,12 +62,35 @@ export function renderMulti(root) {
       runSummaryTitle: null,
       runSummaryDetail: null,
       runSharedParamHint: null,
+      runProgressText: null,
+      runProgressDetail: null,
+      runProgressFill: null,
+      actionCommonSummaryEl: null,
       selectedTableBody: null,
       selectedRows: new Map(),
       groupFilter: 'all',
       multiMode: multiMode,
       isRvtListExpanded: false,
-      reviewSummaryData: null
+      reviewSummaryData: null,
+      currentDocButtons: [],
+      openMultiButtons: [],
+      modalRunButtons: [],
+      resultResetButtons: [],
+      reviewSummaryByMode: { bqc: null, utility: null },
+      lastRunAtByMode: { bqc: null, utility: null },
+      bqcRecentCaption: null,
+      bqcRecentHint: null,
+      bqcRecentTableBody: null,
+      bqcRecentEmpty: null,
+      bqcRecentOpenBtn: null,
+      bqcRecentExportBtn: null,
+      modalFeatureList: null,
+      modalFeatureCount: null,
+      modalRecentCaption: null,
+      modalRecentHint: null,
+      modalRecentTableBody: null,
+      modalRecentEmpty: null,
+      lastRunAt: null
     }
   };
 
@@ -79,16 +104,15 @@ export function renderMulti(root) {
   header.innerHTML = buildHeaderHtml(state.ui.multiMode);
   page.append(header);
 
-  const layout = div('multi-layout HubBody');
-  const leftCol = div('multi-left HubLeft');
-  const rightCol = div('multi-right HubRight');
+  const layout = div(`multi-layout HubBody ${state.ui.multiMode === 'utility' ? 'multi-layout--utility' : 'multi-layout--bqc'}`);
+  const mainCol = div('multi-workspace multi-workspace--main');
+  const sideCol = div('multi-workspace multi-workspace--sidebar');
 
   const group1 = buildGroupSection('납품 시 BQC 검토', '가장 많이 사용하는 핵심 검토를 먼저 선택하세요.', 'bqc');
   const group3 = buildGroupSection('유틸리티', 'PMS / GUID / 패밀리 연동 / Point 추출 / Project Parameter', 'utility');
   group3.section.id = 'utilities';
 
-  const group1Options = buildGroup1Options();
-  group1.section.append(group1Options);
+  buildGroup1Options();
   group1.section.append(buildToggleRow('connector', buildConnectorConfig()));
   group3.section.append(buildPmsWorkflowRow());
   group3.section.append(buildToggleRow('guid', buildGuidConfig()));
@@ -103,45 +127,50 @@ export function renderMulti(root) {
 
   state.ui.groupFilter = state.ui.multiMode;
   saveGroupFilter(state.ui.multiMode);
-  const rightFilter = buildGroupFilter();
-  const leftTop = div('left-sticky HubLeftTop');
-  leftTop.append(buildRunBar());
-  const leftSelected = div('HubLeftSelected');
-  leftSelected.append(buildSelectedFeaturesSection());
-  leftCol.append(leftTop, leftSelected, buildRvtSection());
-  rightCol.style.order = '1';
-  leftCol.style.order = '2';
-
   if (state.ui.multiMode === 'bqc') {
-    rightCol.style.flex = '1.08 1 0';
-    leftCol.style.flex = '.92 1 0';
-    group1.wrap.style.border = '1px solid rgba(14,165,233,.34)';
-    group1.wrap.style.borderRadius = '20px';
-    group1.wrap.style.padding = '14px';
-    group1.wrap.style.background = 'linear-gradient(180deg, rgba(14,165,233,.14), rgba(37,99,235,.10) 42%, rgba(255,255,255,.03))';
-    group1.wrap.style.boxShadow = '0 18px 34px rgba(14,165,233,.12), inset 0 1px 0 rgba(255,255,255,.18)';
-    group1.wrap.style.position = 'relative';
-    rightCol.append(rightFilter, group1.wrap);
+    group1.wrap.classList.add('multi-section--bqc-hero');
     const group1Head = group1.wrap.querySelector('.multi-section-title');
     if (group1Head) {
-      group1Head.style.padding = '10px 12px';
-      group1Head.style.marginBottom = '10px';
-      group1Head.style.borderRadius = '14px';
-      group1Head.style.border = '1px solid rgba(14,165,233,.22)';
-      group1Head.style.background = 'rgba(255,255,255,.18)';
-      group1Head.style.backdropFilter = 'blur(4px)';
+      group1Head.remove();
+      group1.wrap.classList.add('multi-section--headerless');
     }
+    const bqcSidebar = div('multi-sidebar-stack multi-sidebar-stack--sticky');
+    mainCol.append(group1.wrap);
+    bqcSidebar.append(
+      buildExecutionActionPanel({ mode: 'bqc' }),
+      buildSelectedFeaturesSection({
+        title: '선택된 기능',
+        showCurrentButton: false,
+        sectionClass: 'selected-panel--sidebar'
+      })
+    );
+    sideCol.append(bqcSidebar);
+    layout.append(mainCol, sideCol);
   } else {
-    rightCol.append(rightFilter, group3.wrap);
+    group3.wrap.classList.add('multi-section--utility');
+    const group3Head = group3.wrap.querySelector('.multi-section-title');
+    if (group3Head) {
+      group3Head.remove();
+      group3.wrap.classList.add('multi-section--headerless');
+    }
+    const utilitySidebar = div('multi-sidebar-stack multi-sidebar-stack--sticky');
+    utilitySidebar.append(
+      buildExecutionActionPanel({ mode: 'utility' }),
+      buildSelectedFeaturesSection({
+        title: '선택된 기능',
+        showCurrentButton: false,
+        sectionClass: 'selected-panel--sidebar'
+      })
+    );
+    mainCol.append(group3.wrap);
+    sideCol.append(utilitySidebar);
+    layout.append(mainCol, sideCol);
   }
-  layout.append(leftCol, rightCol);
   page.append(layout);
   page.append(buildSettingsModal());
   page.append(buildReviewSummaryModal());
   page.append(buildRvtExpandedModal());
   target.append(page);
-
-  renderGroupVisibility();
 
   onHost('hub:rvt-picked', (payload) => {
     const paths = Array.isArray(payload?.paths) ? payload.paths : [];
@@ -298,7 +327,7 @@ export function renderMulti(root) {
     <div class="feature-heading">
       <span class="feature-kicker">Multi RVT Hub</span>
       <h2 class="feature-title">납품시 BQC 검토</h2>
-      <p class="feature-sub">실행할 기능을 체크한 뒤 검토 시작을 눌러주세요. 여러 기능을 한 번에 선택해 같은 RVT 목록으로 순차 검토할 수 있습니다.</p>
+      <p class="feature-sub">기능 영역을 눌러 선택한 뒤 검토 시작을 눌러주세요. 여러 기능을 한 번에 선택해 같은 RVT 목록으로 순차 검토할 수 있습니다.</p>
     </div>`;
   }
 
@@ -306,16 +335,16 @@ export function renderMulti(root) {
     const wrap = div('multi-section');
     if (groupId) wrap.dataset.group = groupId;
     wrap.style.borderRadius = '20px';
-    wrap.style.border = '1px solid rgba(96,165,250,.18)';
-    wrap.style.background = 'linear-gradient(180deg, rgba(37,99,235,.06), rgba(15,23,42,.03))';
+    wrap.style.border = '1px solid var(--border-accent-soft)';
+    wrap.style.background = 'var(--surface-note)';
     wrap.style.padding = '14px';
     const head = div('multi-section-title');
     head.innerHTML = `<h3>${title}</h3><span class="feature-note">${desc}</span>`;
     head.style.marginBottom = '12px';
     head.style.padding = '10px 12px';
     head.style.borderRadius = '14px';
-    head.style.border = '1px solid rgba(148,163,184,.18)';
-    head.style.background = 'rgba(255,255,255,.22)';
+    head.style.border = '1px solid var(--border-soft)';
+    head.style.background = 'var(--surface-help)';
     wrap.append(head);
     return { wrap, section: wrap };
   }
@@ -327,17 +356,17 @@ export function renderMulti(root) {
     guide.style.marginBottom = '12px';
     guide.style.padding = '16px 18px';
     guide.style.borderRadius = '18px';
-    guide.style.border = '1px solid rgba(37,99,235,.28)';
-    guide.style.background = 'linear-gradient(180deg, rgba(37,99,235,.16), rgba(59,130,246,.06))';
-    guide.style.boxShadow = '0 14px 28px rgba(37,99,235,.10)';
+    guide.style.border = '1px solid var(--border-accent-soft)';
+    guide.style.background = 'var(--surface-help)';
+    guide.style.boxShadow = 'var(--shadow-accent-soft)';
     const kicker = document.createElement('span');
     kicker.className = 'chip chip--info';
-    kicker.textContent = '체크해서 실행';
+    kicker.textContent = '선택 후 실행';
     kicker.style.width = 'fit-content';
     const title = document.createElement('strong');
-    title.textContent = '아래 기능 목록에서 실행할 검토를 체크하세요.';
+    title.textContent = '아래 기능 영역을 눌러 실행할 검토를 선택하세요.';
     const sub = document.createElement('span');
-    sub.textContent = '여러 기능을 한 번에 선택해 같은 RVT 목록으로 순차 검토할 수 있습니다. 체크하면 각 기능의 옵션 설정 창이 열립니다.';
+    sub.textContent = '여러 기능을 한 번에 선택해 같은 RVT 목록으로 순차 검토할 수 있습니다. 별도 워크플로우 기능은 카드를 누르면 해당 화면으로 바로 전환됩니다.';
     guide.append(kicker, title, sub);
     return guide;
   }
@@ -379,8 +408,8 @@ export function renderMulti(root) {
     const panel = div('group-common-mini');
     panel.style.padding = '4px 8px';
     panel.style.borderRadius = '12px';
-    panel.style.border = '1px solid rgba(148,163,184,.12)';
-    panel.style.background = 'rgba(15,23,42,.015)';
+    panel.style.border = '1px solid var(--border-soft)';
+    panel.style.background = 'var(--surface-subtle)';
     panel.style.marginBottom = '6px';
     const header = div('group-common-mini__header');
     header.style.display = 'flex';
@@ -446,37 +475,45 @@ export function renderMulti(root) {
     const row = div('feature-row');
     row.dataset.key = key;
     row.style.borderRadius = '16px';
-    row.style.border = '1px solid rgba(148,163,184,.22)';
-    row.style.background = 'rgba(255,255,255,.82)';
-    row.style.boxShadow = '0 10px 20px rgba(15,23,42,.04)';
+    row.style.border = '1px solid var(--border-soft)';
+    row.style.background = 'var(--surface-elevated)';
+    row.style.boxShadow = 'var(--shadow-soft)';
     const header = div('feature-row__header');
     const toggle = document.createElement('input');
     toggle.type = 'checkbox';
     toggle.className = 'feature-toggle';
-    toggle.addEventListener('change', () => {
+    const setFeatureEnabled = (enabled, shouldOpenSettings) => {
       const feature = state.features[key];
-      feature.enabled = toggle.checked;
-      if (!toggle.checked) {
+      const nextEnabled = !!enabled;
+      feature.enabled = nextEnabled;
+      toggle.checked = nextEnabled;
+      if (!nextEnabled) {
         feature.applied = false;
         feature.dirty = false;
         resetDraftFromCommitted(key);
-      } else {
+      } else if (!feature.enabled || shouldOpenSettings) {
         feature.applied = false;
         feature.dirty = false;
-        openSettings(key, meta.label);
+        if (shouldOpenSettings) openSettings(key, meta.label);
       }
-      row.classList.toggle('is-active', toggle.checked);
+      row.classList.toggle('is-active', nextEnabled);
       markStale(key);
       updateRunSummary();
       refreshConnectorFeatureSummary();
+      renderSelectedFeatures();
+    };
+    toggle.addEventListener('change', () => {
+      setFeatureEnabled(toggle.checked, toggle.checked);
     });
 
     const metaWrap = div('feature-row__left');
+    const textWrap = div('feature-row__text');
     const metaTitle = document.createElement('strong');
     metaTitle.textContent = meta.label || key;
     const metaDesc = document.createElement('span');
     metaDesc.textContent = meta.desc || '';
-    metaWrap.append(toggle, metaTitle, metaDesc);
+    textWrap.append(metaTitle, metaDesc);
+    metaWrap.append(toggle, textWrap);
 
     const right = div('feature-row__right');
     if (key === 'connector') {
@@ -485,13 +522,18 @@ export function renderMulti(root) {
       badge.textContent = 'BQC 핵심';
       right.append(badge);
       row.classList.add('feature-row--workflow', 'feature-row--connector-hero');
-      row.style.border = '1px solid rgba(14,165,233,.34)';
-      row.style.boxShadow = '0 16px 30px rgba(14,165,233,.10)';
-      row.style.background = 'linear-gradient(180deg, rgba(14,165,233,.18), rgba(37,99,235,.10) 48%, rgba(255,255,255,.02))';
+      row.style.border = '1px solid var(--border-accent-soft)';
+      row.style.boxShadow = 'var(--shadow-accent-soft)';
+      row.style.background = 'var(--surface-note)';
     }
 
     header.append(metaWrap, right);
     row.append(header);
+    row.classList.add('is-clickable');
+    row.addEventListener('click', (ev) => {
+      if (ev.target.closest('button, input, select, textarea, a, label')) return;
+      setFeatureEnabled(!state.features[key].enabled, !state.features[key].enabled);
+    });
 
     if (key === 'connector') {
       const summary = div('feature-row__summary');
@@ -499,8 +541,8 @@ export function renderMulti(root) {
       summary.style.gap = '6px';
       summary.style.padding = '12px 14px';
       summary.style.borderRadius = '14px';
-      summary.style.border = '1px solid rgba(14,165,233,.24)';
-      summary.style.background = 'rgba(255,255,255,.18)';
+      summary.style.border = '1px solid var(--border-accent-soft)';
+      summary.style.background = 'var(--surface-help)';
       const top = document.createElement('strong');
       const sub = document.createElement('span');
       top.textContent = '체크 후 옵션을 열어 공유 파라미터 목록에서 검토 대상을 선택하세요.';
@@ -516,67 +558,91 @@ export function renderMulti(root) {
     config.panel.classList.add('settings-panel', 'is-open');
     state.ui.panels[key] = config.panel;
     state.ui.controls[key] = config.controls || {};
+    row.classList.toggle('is-active', !!state.features[key]?.enabled);
     return row;
   }
 
   function buildPmsWorkflowRow() {
-    const row = div('feature-row feature-row--workflow');
-    const header = div('feature-row__header');
-    const left = div('feature-row__left');
-    const icon = document.createElement('span');
-    icon.className = 'feature-row__icon';
-    icon.textContent = 'PMS';
-    const title = document.createElement('strong');
-    title.textContent = 'PMS 검토';
-    const desc = document.createElement('span');
-    desc.textContent = 'Segment ↔ PMS 매핑 및 사이즈 검토 (워크플로우)';
-    left.append(icon, title, desc);
-
-    const right = div('feature-row__right');
-    const chip = document.createElement('span');
-    chip.className = 'chip chip--info';
-    chip.textContent = '별도 워크플로우';
-    right.append(chip);
-
-    const summary = div('feature-row__summary');
-    summary.textContent = '추출 → PMS 등록 → 매핑 준비 → 비교 실행 → 결과 내보내기';
-    header.append(left, right);
-    row.append(header, summary);
-    row.addEventListener('click', () => {
-      location.hash = '#segmentpms';
+    return buildWorkflowLaunchRow({
+      iconLabel: 'PMS',
+      title: 'PMS 검토',
+      desc: 'Segment ↔ PMS 매핑 및 사이즈 검토',
+      summary: '추출 → PMS 등록 → 매핑 준비 → 비교 실행 → 결과 내보내기',
+      route: 'segmentpms'
     });
-    row.classList.add('is-clickable');
-    return row;
   }
 
   function buildSharedParamBatchRow() {
+    return buildWorkflowLaunchRow({
+      iconLabel: 'SP',
+      title: 'Project Parameter 추가 (Project/Shared)',
+      desc: 'Project/Shared 파라미터를 여러 RVT에 일괄 추가/바인딩합니다.',
+      summary: '파라미터 선택 → 바인딩 설정 → RVT 실행 → 로그/엑셀',
+      route: 'sharedparambatch'
+    });
+  }
+
+  function buildWorkflowLaunchRow(options = {}) {
     const row = div('feature-row feature-row--workflow');
+    row.dataset.route = options.route || '';
     const header = div('feature-row__header');
     const left = div('feature-row__left');
     const icon = document.createElement('span');
     icon.className = 'feature-row__icon';
-    icon.textContent = 'SP';
+    icon.textContent = options.iconLabel || 'WF';
+    const text = div('feature-row__text');
     const title = document.createElement('strong');
-    title.textContent = 'Project Parameter 추가 (Project/Shared)';
+    title.textContent = options.title || '';
     const desc = document.createElement('span');
-    desc.textContent = 'Project/Shared 파라미터를 여러 RVT에 일괄 추가/바인딩합니다.';
-    left.append(icon, title, desc);
+    desc.textContent = options.desc || '';
+    text.append(title, desc);
+    left.append(icon, text);
 
     const right = div('feature-row__right');
     const chip = document.createElement('span');
     chip.className = 'chip chip--info';
     chip.textContent = '별도 워크플로우';
+    chip.title = '클릭하면 별도 워크플로우 화면으로 이동합니다.';
     right.append(chip);
 
     const summary = div('feature-row__summary');
-    summary.textContent = '파라미터 선택 → 바인딩 설정 → RVT 실행 → 로그/엑셀';
+    summary.textContent = options.summary || '';
     header.append(left, right);
     row.append(header, summary);
-    row.addEventListener('click', () => {
-      location.hash = '#sharedparambatch';
-    });
     row.classList.add('is-clickable');
+    row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', `${options.title || '워크플로우'} 열기`);
+    row.tabIndex = 0;
+    const navigate = () => navigateToFeatureRoute(options.route || '');
+    row.addEventListener('click', () => {
+      navigate();
+    });
+    chip.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      navigate();
+    });
+    row.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      ev.preventDefault();
+      navigate();
+    });
     return row;
+  }
+
+  function navigateToFeatureRoute(route) {
+    const target = String(route || '').replace(/^#/, '');
+    if (!target) return;
+    const current = (location.hash || '').replace('#', '');
+    if (current === target) {
+      window.dispatchEvent(new Event('hashchange'));
+      return;
+    }
+    location.hash = `#${target}`;
+    window.setTimeout(() => {
+      if ((location.hash || '').replace('#', '') === target) {
+        window.dispatchEvent(new Event('hashchange'));
+      }
+    }, 0);
   }
 
   function buildConnectorConfig() {
@@ -586,7 +652,7 @@ export function renderMulti(root) {
     panel.style.alignItems = 'stretch';
     panel.style.justifyContent = 'flex-start';
     panel.style.alignContent = 'stretch';
-    panel.style.gap = '14px';
+    panel.style.gap = '10px';
     panel.style.width = '100%';
     panel.style.maxWidth = 'none';
     panel.style.minWidth = '0';
@@ -617,12 +683,12 @@ export function renderMulti(root) {
 
     const basicsCard = div('feature-row__summary');
     basicsCard.style.display = 'grid';
-    basicsCard.style.gap = '12px';
-    basicsCard.style.padding = '16px';
+    basicsCard.style.gap = '10px';
+    basicsCard.style.padding = '12px';
     basicsCard.style.borderRadius = '18px';
-    basicsCard.style.border = '1px solid rgba(37,99,235,.24)';
-    basicsCard.style.background = 'linear-gradient(180deg, rgba(248,250,252,.98), rgba(239,246,255,.98))';
-    basicsCard.style.boxShadow = '0 12px 24px rgba(37,99,235,.06)';
+    basicsCard.style.border = '1px solid var(--border-accent-soft)';
+    basicsCard.style.background = 'var(--surface-elevated)';
+    basicsCard.style.boxShadow = 'var(--shadow-soft)';
     basicsCard.style.width = '100%';
     basicsCard.style.boxSizing = 'border-box';
 
@@ -634,24 +700,24 @@ export function renderMulti(root) {
     const basics = div('multi-config');
     basics.style.display = 'grid';
     basics.style.gridTemplateColumns = 'repeat(2, minmax(0, 1fr))';
-    basics.style.gap = '12px';
+    basics.style.gap = '10px';
     basics.style.alignItems = 'stretch';
 
     const tolCard = div('feature-row__summary');
     tolCard.style.display = 'grid';
     tolCard.style.gap = '8px';
-    tolCard.style.padding = '12px';
+    tolCard.style.padding = '10px';
     tolCard.style.borderRadius = '14px';
-    tolCard.style.border = '1px solid rgba(96,165,250,.24)';
-    tolCard.style.background = 'rgba(255,255,255,.98)';
+    tolCard.style.border = '1px solid var(--border-accent-soft)';
+    tolCard.style.background = 'var(--surface-control)';
 
     const unitCard = div('feature-row__summary');
     unitCard.style.display = 'grid';
     unitCard.style.gap = '8px';
-    unitCard.style.padding = '12px';
+    unitCard.style.padding = '10px';
     unitCard.style.borderRadius = '14px';
-    unitCard.style.border = '1px solid rgba(96,165,250,.24)';
-    unitCard.style.background = 'rgba(255,255,255,.98)';
+    unitCard.style.border = '1px solid var(--border-accent-soft)';
+    unitCard.style.background = 'var(--surface-control)';
 
     tol.field.style.margin = '0';
     unit.field.style.margin = '0';
@@ -670,14 +736,14 @@ export function renderMulti(root) {
     unit.select.style.width = '100%';
     tol.input.style.boxSizing = 'border-box';
     unit.select.style.boxSizing = 'border-box';
-    tol.input.style.padding = '10px 12px';
-    unit.select.style.padding = '10px 12px';
+    tol.input.style.padding = '8px 10px';
+    unit.select.style.padding = '8px 10px';
     tol.input.style.borderRadius = '12px';
     unit.select.style.borderRadius = '12px';
-    tol.input.style.border = '1px solid rgba(148,163,184,.28)';
-    unit.select.style.border = '1px solid rgba(148,163,184,.28)';
-    tol.input.style.background = 'rgba(255,255,255,.98)';
-    unit.select.style.background = 'rgba(255,255,255,.98)';
+    tol.input.style.border = '1px solid var(--border-soft)';
+    unit.select.style.border = '1px solid var(--border-soft)';
+    tol.input.style.background = 'var(--surface-control)';
+    unit.select.style.background = 'var(--surface-control)';
 
     tolCard.append(tol.field);
     unitCard.append(unit.field);
@@ -686,14 +752,18 @@ export function renderMulti(root) {
 
     const selectedWrap = div('feature-row__summary');
     selectedWrap.style.display = 'grid';
-    selectedWrap.style.gap = '10px';
+    selectedWrap.style.gridTemplateRows = 'auto minmax(0, 1fr)';
+    selectedWrap.style.gap = '8px';
     selectedWrap.style.marginTop = '0';
-    selectedWrap.style.padding = '14px';
+    selectedWrap.style.padding = '10px 12px';
     selectedWrap.style.borderRadius = '16px';
-    selectedWrap.style.border = '1px solid rgba(14,165,233,.24)';
-    selectedWrap.style.background = 'linear-gradient(180deg, rgba(240,249,255,.98), rgba(224,242,254,.82))';
+    selectedWrap.style.border = '1px solid var(--border-accent-soft)';
+    selectedWrap.style.background = 'var(--surface-help)';
     selectedWrap.style.width = '100%';
     selectedWrap.style.boxSizing = 'border-box';
+    selectedWrap.style.height = '92px';
+    selectedWrap.style.minHeight = '92px';
+    selectedWrap.style.overflow = 'hidden';
 
     const selectedHead = document.createElement('div');
     selectedHead.style.display = 'flex';
@@ -710,19 +780,22 @@ export function renderMulti(root) {
     selectedChips.style.display = 'flex';
     selectedChips.style.flexWrap = 'wrap';
     selectedChips.style.gap = '8px';
+    selectedChips.style.height = '42px';
     selectedChips.style.minHeight = '42px';
-    selectedChips.style.alignItems = 'center';
-    selectedChips.style.padding = '8px 0 0';
+    selectedChips.style.alignContent = 'flex-start';
+    selectedChips.style.alignItems = 'flex-start';
+    selectedChips.style.padding = '2px 0 0';
+    selectedChips.style.overflow = 'auto';
     selectedWrap.append(selectedHead, selectedChips);
 
     const picker = div('feature-row__summary');
     picker.style.display = 'grid';
-    picker.style.gap = '10px';
-    picker.style.padding = '14px';
-    picker.style.border = '1px solid rgba(148,163,184,.22)';
+    picker.style.gap = '8px';
+    picker.style.padding = '10px 12px';
+    picker.style.border = '1px solid var(--border-soft)';
     picker.style.borderRadius = '16px';
-    picker.style.background = 'rgba(255,255,255,.82)';
-    picker.style.boxShadow = '0 10px 24px rgba(15,23,42,.04)';
+    picker.style.background = 'var(--surface-elevated)';
+    picker.style.boxShadow = 'var(--shadow-soft)';
     picker.style.width = '100%';
     picker.style.boxSizing = 'border-box';
 
@@ -742,10 +815,10 @@ export function renderMulti(root) {
     searchInput.type = 'text';
     searchInput.placeholder = '공유 파라미터 이름 / 그룹 검색';
     searchInput.style.width = '100%';
-    searchInput.style.padding = '10px 12px';
+    searchInput.style.padding = '8px 10px';
     searchInput.style.borderRadius = '12px';
-    searchInput.style.border = '1px solid rgba(96,165,250,.32)';
-    searchInput.style.background = 'rgba(255,255,255,.96)';
+    searchInput.style.border = '1px solid var(--border-accent-soft)';
+    searchInput.style.background = 'var(--surface-control)';
     searchInput.style.boxSizing = 'border-box';
     searchInput.style.outline = 'none';
 
@@ -765,13 +838,13 @@ export function renderMulti(root) {
     searchMeta.append(searchInfo, refreshBtn);
 
     const listWrap = div('familylink-target-list');
-    listWrap.style.height = '260px';
-    listWrap.style.minHeight = '260px';
+    listWrap.style.height = '132px';
+    listWrap.style.minHeight = '132px';
     listWrap.style.overflow = 'auto';
-    listWrap.style.border = '1px solid rgba(148,163,184,.18)';
+    listWrap.style.border = '1px solid var(--border-soft)';
     listWrap.style.borderRadius = '12px';
     listWrap.style.padding = '6px';
-    listWrap.style.background = 'rgba(255,255,255,.94)';
+    listWrap.style.background = 'var(--surface-control)';
     const empty = div('familylink-target-empty');
     empty.style.display = 'grid';
     empty.style.placeItems = 'center';
@@ -817,11 +890,14 @@ export function renderMulti(root) {
       if (!selected.length) {
         const emptyState = document.createElement('div');
         emptyState.style.width = '100%';
-        emptyState.style.padding = '12px 14px';
+        emptyState.style.padding = '8px 12px';
         emptyState.style.borderRadius = '12px';
-        emptyState.style.border = '1px dashed rgba(14,165,233,.28)';
-        emptyState.style.background = 'rgba(255,255,255,.74)';
+        emptyState.style.border = '1px dashed var(--border-accent-soft)';
+        emptyState.style.background = 'var(--surface-empty)';
         emptyState.style.color = 'var(--muted,#64748b)';
+        emptyState.style.display = 'grid';
+        emptyState.style.placeItems = 'center';
+        emptyState.style.minHeight = '100%';
         emptyState.textContent = '선택된 파라미터가 없습니다.';
         selectedChips.append(emptyState);
         return;
@@ -831,10 +907,10 @@ export function renderMulti(root) {
         chip.type = 'button';
         chip.className = 'chip chip--info';
         chip.textContent = `${name} ×`;
-        chip.style.padding = '8px 12px';
+        chip.style.padding = '6px 10px';
         chip.style.borderRadius = '999px';
-        chip.style.border = '1px solid rgba(14,165,233,.24)';
-        chip.style.background = 'rgba(255,255,255,.96)';
+        chip.style.border = '1px solid var(--border-accent-soft)';
+        chip.style.background = 'var(--surface-control)';
         chip.addEventListener('click', () => {
           commitParamSelection(getDraftParams().filter((x) => x.toLowerCase() !== String(name).toLowerCase()));
         });
@@ -885,7 +961,7 @@ export function renderMulti(root) {
         row.style.width = '100%';
         row.style.textAlign = 'left';
         row.style.border = '0';
-        row.style.background = selected.has(String(item.name || '').toLowerCase()) ? 'rgba(59,130,246,.12)' : 'transparent';
+        row.style.background = selected.has(String(item.name || '').toLowerCase()) ? 'var(--surface-note)' : 'transparent';
         row.style.borderRadius = '10px';
         row.style.padding = '8px 10px';
         row.style.cursor = 'pointer';
@@ -1109,6 +1185,7 @@ export function renderMulti(root) {
       } else {
         state.rvtChecked.clear();
       }
+      renderExpandedList();
       renderRvtList();
     });
 
@@ -1146,6 +1223,131 @@ export function renderMulti(root) {
     return section;
   }
 
+  function buildExecutionActionPanel(options = {}) {
+    const mode = options.mode || state.ui.multiMode || 'bqc';
+    state.ui.currentDocButtons = [];
+    state.ui.openMultiButtons = [];
+
+    const section = div('multi-section multi-action-card');
+    const head = div('multi-action-card__head');
+    const headTitle = document.createElement('strong');
+    headTitle.textContent = '검토 실행';
+    const headText = document.createElement('span');
+    headText.textContent = '왼쪽 기능 영역을 눌러 선택한 뒤 검토를 시작하세요.';
+    head.append(headTitle, headText);
+
+    const summary = div('multi-action-card__summary');
+    const sharedHint = div('run-summary__hint');
+    sharedHint.style.display = 'none';
+    summary.append(sharedHint);
+    state.ui.actionCommonSummaryEl = null;
+
+    const progress = div('multi-action-card__progress');
+    const progressText = document.createElement('span');
+    const progressDetail = document.createElement('small');
+    const progressBar = document.createElement('div');
+    progressBar.className = 'run-progress';
+    const progressFill = document.createElement('div');
+    progressFill.className = 'run-progress-fill';
+    progressBar.append(progressFill);
+    progress.append(progressText, progressDetail, progressBar);
+
+    const actions = div('multi-action-card__actions');
+    const actionRow = div('multi-action-card__buttons');
+    const currentBtn = cardBtn('현재 파일 검토', handleRunCurrentFile, 'btn--primary');
+    const recentBtn = cardBtn('최근 결과 보기', openRecentResultView, 'btn--primary');
+    recentBtn.classList.add('btn--recent');
+    currentBtn.classList.add('btn--action-main');
+    recentBtn.classList.add('btn--action-main');
+    actionRow.append(currentBtn, recentBtn);
+
+    const multiBtn = cardBtn('RVT 여러개 검토', openExpandedRvtModal, 'btn--secondary');
+    multiBtn.classList.add('btn--multi', 'btn--action-main');
+    actionRow.append(multiBtn);
+
+    actions.append(actionRow);
+    if (mode === 'bqc') {
+      const actionExtras = div('multi-action-card__extras');
+      const commonBtn = cardBtn('공통 설정', () => openSettings('common', '그룹 공통 옵션'), 'btn--secondary');
+      commonBtn.classList.add('btn--settings-inline');
+      const commonSummary = document.createElement('div');
+      commonSummary.className = 'multi-action-stack__note';
+      commonSummary.textContent = `공통 설정: ${buildCommonSummary()}`;
+      actionExtras.append(commonBtn, commonSummary);
+      actions.append(actionExtras);
+      state.ui.actionCommonSummaryEl = commonSummary;
+    } else {
+      state.ui.actionCommonSummaryEl = null;
+    }
+    state.ui.currentDocButtons.push(currentBtn);
+    state.ui.openMultiButtons.push(multiBtn);
+    state.ui.bqcRecentOpenBtn = recentBtn;
+
+    section.append(head, progress, actions, summary);
+
+    buildRunBar.summary = summary;
+    buildRunBar.summaryTitle = null;
+    buildRunBar.summaryDetail = null;
+    buildRunBar.runSharedParamHint = sharedHint;
+    buildRunBar.progressText = progressText;
+    buildRunBar.progressDetail = progressDetail;
+    buildRunBar.progressFill = progressFill;
+    buildRunBar.startBtn = null;
+    updateRunSummary();
+    updateRunProgress(0, '대기 중', '');
+    updateRunActionLabel();
+    return section;
+  }
+
+  function buildBqcRecentResultPanel() {
+    const section = div('multi-section multi-side-card multi-side-card--launcher');
+    const top = div('multi-side-card__top');
+    const head = div('multi-side-card__head');
+    const title = document.createElement('h3');
+    title.textContent = '최근 결과 보기';
+    const caption = document.createElement('div');
+    caption.className = 'multi-recent-caption';
+    caption.textContent = '아직 실행 결과가 없습니다.';
+    const hint = document.createElement('div');
+    hint.className = 'multi-recent-hint';
+    hint.textContent = '영역을 눌러 최근 결과 상세 창을 열고, 검토별 엑셀을 각각 내보낼 수 있습니다.';
+    head.append(title, caption, hint);
+
+    const preview = div('multi-recent-launcher');
+    const previewTitle = document.createElement('strong');
+    previewTitle.textContent = '상세 결과 창 열기';
+    const previewText = document.createElement('span');
+    previewText.textContent = '파일별 결과 표와 기능별 엑셀 내보내기를 별도 창에서 확인합니다.';
+    preview.append(previewTitle, previewText);
+
+    const actions = div('multi-side-card__actions');
+    const openBtn = cardBtn('최근 결과 보기', openRecentResultView, 'btn--primary');
+    const resetBtn = cardBtn('결과 초기화', resetRunResults, 'btn--secondary');
+    actions.append(openBtn, resetBtn);
+    top.append(head, preview, actions);
+    section.append(top);
+    section.classList.add('is-clickable');
+    section.setAttribute('role', 'button');
+    section.tabIndex = 0;
+    section.addEventListener('click', (ev) => {
+      if (ev.target.closest('button')) return;
+      openRecentResultView();
+    });
+    section.addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      if (ev.target.closest('button')) return;
+      ev.preventDefault();
+      openRecentResultView();
+    });
+
+    state.ui.bqcRecentCaption = caption;
+    state.ui.bqcRecentHint = hint;
+    state.ui.bqcRecentOpenBtn = openBtn;
+    state.ui.resultResetButtons = [resetBtn];
+    updateBqcSidebar();
+    return section;
+  }
+
   function buildRvtExpandedModal() {
     const overlay = div('rvt-expand-overlay');
     overlay.classList.add('is-hidden');
@@ -1153,31 +1355,100 @@ export function renderMulti(root) {
     const toolbar = div('rvt-expand-toolbar');
     const titleWrap = div('rvt-expand-title');
     const title = document.createElement('h3');
-    title.textContent = 'RVT 리스트 (확대 보기)';
+    title.textContent = 'RVT 여러개 검토';
     const badge = document.createElement('span');
     badge.className = 'chip chip--info';
     titleWrap.append(title, badge);
     const toolbarActions = div('rvt-expand-actions');
     const btnAdd = cardBtn('RVT 추가', handleAddRvt, 'btn--primary');
     const btnRemove = cardBtn('선택 제거', handleRemoveSelected, 'btn--secondary');
-    const btnClear = cardBtn('목록 지우기', handleClearList, 'btn--danger');
+    const btnClear = cardBtn('목록 지우기', handleClearList, 'btn--secondary');
     const btnClose = cardBtn('닫기', closeExpandedRvtModal, 'btn--secondary');
     toolbarActions.append(btnAdd, btnRemove, btnClear, btnClose);
     toolbar.append(titleWrap, toolbarActions);
 
     const body = div('rvt-expand-body');
+    const panel = div('rvt-expand-panel');
+
+    const listSection = div('rvt-expand-section rvt-expand-section--list');
+    const listHead = div('rvt-expand-section__head');
+    const listTitle = document.createElement('h4');
+    listTitle.textContent = '선택한 RVT 목록';
+    const listSub = document.createElement('span');
+    listSub.textContent = '목록에서 체크된 파일만 제거할 수 있고, 검토는 전체 등록 목록 기준으로 실행됩니다.';
+    listHead.append(listTitle, listSub);
     const tableWrap = div('rvt-expand-table');
     const { table, tbody, master } = createRvtTable();
     table.classList.add('rvt-expand-table__grid');
-    tableWrap.append(table);
-    body.append(tableWrap);
+    const listEmpty = div('rvt-expand-list-empty');
+    const listEmptyTitle = document.createElement('strong');
+    listEmptyTitle.textContent = '등록된 RVT가 없습니다.';
+    const listEmptyText = document.createElement('span');
+    listEmptyText.textContent = 'RVT 추가 버튼으로 파일을 등록하면 여기에서 바로 목록을 확인할 수 있습니다.';
+    const listEmptyBtn = cardBtn('RVT 추가', handleAddRvt, 'btn--primary');
+    listEmpty.append(listEmptyTitle, listEmptyText, listEmptyBtn);
+    tableWrap.append(table, listEmpty);
+    listSection.append(listHead, tableWrap);
+
+    const sideSection = div('rvt-expand-section rvt-expand-section--side');
+    const featureSection = div('rvt-expand-subsection');
+    const featureHead = div('rvt-expand-subsection__head');
+    const featureTitle = document.createElement('h4');
+    featureTitle.textContent = '선택된 기능';
+    const featureCount = document.createElement('span');
+    featureCount.className = 'chip chip--info';
+    const featureList = div('rvt-expand-feature-list');
+    featureHead.append(featureTitle, featureCount);
+    featureSection.append(featureHead, featureList);
+
+    const recentSection = div('rvt-expand-subsection rvt-expand-subsection--recent');
+    const recentHead = div('rvt-expand-subsection__head');
+    const recentTitle = document.createElement('h4');
+    recentTitle.textContent = '최근 결과';
+    const recentCaption = document.createElement('div');
+    recentCaption.className = 'multi-recent-caption';
+    const recentHint = document.createElement('div');
+    recentHint.className = 'multi-recent-hint';
+    recentHead.append(recentTitle, recentCaption, recentHint);
+    const recentTable = div('multi-recent-table multi-recent-table--modal');
+    const recentTableEl = document.createElement('table');
+    recentTableEl.innerHTML = `
+      <colgroup>
+        <col style="width:52%">
+        <col style="width:16%">
+        <col style="width:16%">
+        <col style="width:16%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>파일</th>
+          <th>전체</th>
+          <th>오류</th>
+          <th>near</th>
+        </tr>
+      </thead>
+      <tbody></tbody>`;
+    const recentTbody = recentTableEl.querySelector('tbody');
+    const recentEmpty = div('multi-recent-table__empty');
+    recentEmpty.textContent = '최근 실행 결과가 없습니다.';
+    recentTable.append(recentTableEl, recentEmpty);
+    recentSection.append(recentHead, recentTable);
+
+    sideSection.append(featureSection, recentSection);
+    panel.append(listSection, sideSection);
+    body.append(panel);
 
     const footer = div('rvt-expand-footer');
-    const footerBtn = document.createElement('button');
-    footerBtn.type = 'button';
-    footerBtn.className = 'btn btn--secondary';
-    footerBtn.textContent = '닫기';
-    footer.append(footerBtn);
+    const footerSummary = div('rvt-expand-footer__summary');
+    const footerTitle = document.createElement('strong');
+    footerTitle.textContent = '선택한 RVT 검토 준비';
+    const footerSub = document.createElement('span');
+    footerSummary.append(footerTitle, footerSub);
+    const footerActions = div('rvt-expand-footer__actions');
+    const runBtn = cardBtn('선택한 RVT 검토 시작', onRun, 'btn--primary');
+    const closeBtn = cardBtn('닫기', closeExpandedRvtModal, 'btn--secondary');
+    footerActions.append(runBtn, closeBtn);
+    footer.append(footerSummary, footerActions);
 
     modal.append(toolbar, body, footer);
     overlay.append(modal);
@@ -1188,7 +1459,6 @@ export function renderMulti(root) {
     modal.addEventListener('click', (ev) => {
       ev.stopPropagation();
     });
-    footerBtn.addEventListener('click', closeExpandedRvtModal);
 
     master.addEventListener('change', () => {
       if (master.checked) {
@@ -1196,6 +1466,7 @@ export function renderMulti(root) {
       } else {
         state.rvtChecked.clear();
       }
+      renderExpandedList();
       renderRvtList();
     });
 
@@ -1208,20 +1479,37 @@ export function renderMulti(root) {
         onToggle: (checked) => {
           if (checked) state.rvtChecked.add(path);
           else state.rvtChecked.delete(path);
+          renderExpandedList();
           renderRvtList();
         }
       }));
       const count = state.rvtList.length;
       tbody.innerHTML = '';
-      if (count > 0) {
-        renderRvtRows(tbody, rows);
-      }
+      if (count > 0) renderRvtRows(tbody, rows);
       badge.textContent = `${count}개`;
+      footerSub.textContent = count ? `${count}개 RVT가 등록되어 있습니다.` : 'RVT를 추가하면 다중 검토를 시작할 수 있습니다.';
+      listEmpty.style.display = count ? 'none' : 'flex';
+      table.style.display = count ? 'table' : 'none';
       master.checked = count > 0 && state.rvtList.every((p) => state.rvtChecked.has(p));
       btnRemove.disabled = state.rvtChecked.size === 0;
       btnClear.disabled = state.rvtList.length === 0;
+      renderModalFeatureSummary();
+      renderRecentResultTable([{
+        caption: recentCaption,
+        hint: recentHint,
+        tbody: recentTbody,
+        empty: recentEmpty
+      }]);
+      updateMultiRunBtnState();
     }
 
+    state.ui.modalFeatureList = featureList;
+    state.ui.modalFeatureCount = featureCount;
+    state.ui.modalRecentCaption = recentCaption;
+    state.ui.modalRecentHint = recentHint;
+    state.ui.modalRecentTableBody = recentTbody;
+    state.ui.modalRecentEmpty = recentEmpty;
+    state.ui.modalRunButtons = [runBtn];
     buildRvtExpandedModal.overlay = overlay;
     buildRvtExpandedModal.badge = badge;
     buildRvtExpandedModal.render = renderExpandedList;
@@ -1233,37 +1521,50 @@ export function renderMulti(root) {
     const modal = div('review-summary-modal');
     const header = div('review-summary-header');
     const title = document.createElement('h3');
-    title.textContent = '검토 완료';
+    title.textContent = '최근 결과 보기';
     header.append(title);
 
     const body = div('review-summary-body');
-    const message = document.createElement('p');
-    message.className = 'review-summary-message';
-    message.textContent = '검토가 완료되었습니다.';
     const stats = div('review-summary-stats');
+
+    const caption = document.createElement('div');
+    caption.className = 'review-summary-caption';
+    caption.textContent = '파일별 검토 결과';
 
     const tableWrap = div('review-summary-table');
     const table = document.createElement('table');
     table.innerHTML = `
       <thead>
         <tr>
-          <th>상태</th>
           <th>파일명</th>
-          <th>사유</th>
+          <th>상태</th>
+          <th>전체</th>
+          <th>오류</th>
+          <th>near</th>
+          <th>비고</th>
         </tr>
       </thead>
       <tbody></tbody>`;
     const tbody = table.querySelector('tbody');
     tableWrap.append(table);
 
-    body.append(message, stats, tableWrap);
+    const exportGuide = div('review-export-guide');
+    exportGuide.textContent = '기능별 엑셀 버튼은 기존 저장 방식과 동일한 이벤트를 재사용합니다. 여러 기능을 실행한 경우 필요한 결과만 기능별로 각각 저장할 수 있습니다.';
+
+    const featureList = div('review-feature-list');
+
+    body.append(stats, caption, tableWrap, exportGuide, featureList);
 
     const footer = div('review-summary-footer');
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.className = 'btn btn--secondary';
+    resetBtn.textContent = '결과 초기화';
     const confirmBtn = document.createElement('button');
     confirmBtn.type = 'button';
     confirmBtn.className = 'btn btn--primary';
-    confirmBtn.textContent = '확인';
-    footer.append(confirmBtn);
+    confirmBtn.textContent = '닫기';
+    footer.append(resetBtn, confirmBtn);
 
     modal.append(header, body, footer);
     overlay.append(modal);
@@ -1273,26 +1574,59 @@ export function renderMulti(root) {
     confirmBtn.addEventListener('click', () => {
       overlay.classList.add('is-hidden');
     });
+    resetBtn.addEventListener('click', () => {
+      resetRunResults();
+      overlay.classList.add('is-hidden');
+    });
 
     buildReviewSummaryModal.overlay = overlay;
+    buildReviewSummaryModal.title = title;
     buildReviewSummaryModal.stats = stats;
     buildReviewSummaryModal.tbody = tbody;
+    buildReviewSummaryModal.featureList = featureList;
+    buildReviewSummaryModal.resetBtn = resetBtn;
     return overlay;
   }
 
   function showReviewSummary(payload) {
     if (!buildReviewSummaryModal.overlay) return;
-    state.ui.reviewSummaryData = payload;
+    const mode = normalizeMultiMode(state.ui.multiMode || 'bqc');
+    const featureSummaries = payload?.featureSummaries && typeof payload.featureSummaries === 'object'
+      ? payload.featureSummaries
+      : {};
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    const hasPayloadData = !!(
+      items.length ||
+      Object.keys(featureSummaries).length ||
+      Number(payload?.total) ||
+      Number(payload?.success) ||
+      Number(payload?.skipped) ||
+      Number(payload?.failed)
+    );
+    if (hasPayloadData) {
+      state.ui.reviewSummaryData = payload;
+      state.ui.reviewSummaryByMode[mode] = payload;
+    }
+    if (payload?.finishedAt) {
+      state.ui.lastRunAt = payload.finishedAt;
+      state.ui.lastRunAtByMode[mode] = payload.finishedAt;
+    } else if (hasPayloadData && !state.ui.lastRunAt) {
+      state.ui.lastRunAt = new Date().toISOString();
+      state.ui.lastRunAtByMode[mode] = state.ui.lastRunAt;
+    }
     const stats = buildReviewSummaryModal.stats;
     const tbody = buildReviewSummaryModal.tbody;
-    if (!stats || !tbody) return;
+    const featureList = buildReviewSummaryModal.featureList;
+    if (!stats || !tbody || !featureList) return;
 
     const total = Number(payload?.total) || 0;
     const success = Number(payload?.success) || 0;
     const skipped = Number(payload?.skipped) || 0;
     const failed = Number(payload?.failed) || 0;
-    const items = Array.isArray(payload?.items) ? payload.items : [];
-    const detailItems = items.filter((item) => item.status !== 'success');
+    const rows = getReviewTableRows(payload);
+    if (buildReviewSummaryModal.title) {
+      buildReviewSummaryModal.title.textContent = '최근 결과 보기';
+    }
 
     stats.innerHTML = '';
     stats.append(
@@ -1303,39 +1637,96 @@ export function renderMulti(root) {
     );
 
     tbody.innerHTML = '';
-    if (!detailItems.length) {
+    if (!rows.length) {
       const row = document.createElement('tr');
       const cell = document.createElement('td');
-      cell.colSpan = 3;
+      cell.colSpan = 6;
       cell.className = 'review-summary-empty';
-      cell.textContent = '스킵/실패 항목이 없습니다.';
+      cell.textContent = '표시할 결과가 없습니다.';
       row.append(cell);
       tbody.append(row);
     } else {
-      detailItems.forEach((item) => {
+      rows.forEach((item) => {
         const row = document.createElement('tr');
+        const fileCell = document.createElement('td');
+        fileCell.className = 'review-summary-file';
+        fileCell.textContent = item.file || '-';
+
         const statusCell = document.createElement('td');
         const statusChip = document.createElement('span');
-        const status = item.status || 'unknown';
-        statusChip.className = `summary-status summary-status--${status}`;
-        statusChip.textContent = status === 'skipped'
-          ? '스킵'
-          : status === 'failed'
-            ? '실패'
-            : status === 'success'
-              ? '완료'
-              : '검토가 완료되었습니다.';
+        statusChip.className = `summary-status summary-status--${item.status}`;
+        statusChip.textContent = normalizeReviewStatus(item.status);
         statusCell.append(statusChip);
 
-        const fileCell = document.createElement('td');
-        fileCell.textContent = item.file || '';
-        const reasonCell = document.createElement('td');
-        reasonCell.textContent = item.reason || '';
-        row.append(statusCell, fileCell, reasonCell);
+        const totalCell = document.createElement('td');
+        totalCell.textContent = formatReviewMetric(item.total);
+        const issueCell = document.createElement('td');
+        issueCell.textContent = formatReviewMetric(item.issues);
+        const nearCell = document.createElement('td');
+        nearCell.textContent = formatReviewMetric(item.near);
+        const noteCell = document.createElement('td');
+        noteCell.textContent = item.reason || '';
+        row.append(fileCell, statusCell, totalCell, issueCell, nearCell, noteCell);
         tbody.append(row);
       });
     }
 
+    featureList.innerHTML = '';
+    const featureEntryMap = new Map();
+    const modeKeys = new Set(getModeFeatureKeys(mode));
+    Object.entries(featureSummaries).forEach(([key, summary]) => {
+      if (!modeKeys.has(key)) return;
+      featureEntryMap.set(key, summary || {});
+    });
+    Array.from(modeKeys)
+      .filter((key) => state.results[key]?.hasRun && !featureEntryMap.has(key))
+      .forEach((key) => {
+        featureEntryMap.set(key, {
+          label: FEATURE_META[key]?.label || key,
+          lines: state.results[key]?.count
+            ? [`결과 건수: ${state.results[key].count}건`]
+            : ['최근 실행 결과가 저장되어 있습니다.']
+        });
+      });
+    const featureEntries = Array.from(featureEntryMap.entries());
+    featureList.classList.toggle('is-empty', false);
+    if (!featureEntries.length) {
+      const emptyCard = div('review-feature-card review-feature-card--empty');
+      const emptyTitle = document.createElement('strong');
+      emptyTitle.textContent = '내보낼 최근 결과가 없습니다.';
+      const emptyText = document.createElement('div');
+      emptyText.className = 'review-feature-card__empty';
+      emptyText.textContent = '검토를 실행하면 이 창에서 기능별 결과 확인과 엑셀 내보내기를 바로 진행할 수 있습니다.';
+      emptyCard.append(emptyTitle, emptyText);
+      featureList.append(emptyCard);
+    }
+    featureEntries.forEach(([key, summary]) => {
+      const card = div('review-feature-card');
+      const head = div('review-feature-card__head');
+      const label = document.createElement('strong');
+      label.textContent = summary?.label || FEATURE_META[key]?.label || key;
+      const badge = document.createElement('span');
+      badge.className = 'review-feature-card__badge';
+      badge.textContent = state.results[key]?.hasRun ? '내보내기 가능' : '결과 요약';
+      head.append(label, badge);
+
+      const list = document.createElement('ul');
+      list.className = 'review-feature-card__list';
+      const lines = Array.isArray(summary?.lines) ? summary.lines : [];
+      (lines.length ? lines : ['표시할 기능 요약이 없습니다.']).forEach((line) => {
+        const item = document.createElement('li');
+        item.textContent = line;
+        list.append(item);
+      });
+
+      const action = cardBtn(getFeatureExportActionLabel(key), () => onExport(key), 'btn--primary');
+      action.classList.add('review-feature-card__action');
+      action.disabled = state.busy || !(state.results[key]?.hasRun);
+      card.append(head, list, action);
+      featureList.append(card);
+    });
+
+    updateBqcSidebar();
     buildReviewSummaryModal.overlay.classList.remove('is-hidden');
   }
 
@@ -1346,7 +1737,30 @@ export function renderMulti(root) {
     return chip;
   }
 
+  function openRecentResultView() {
+    showReviewSummary(getCurrentModeReviewSummary());
+  }
+
+  function getModeFeatureKeys(mode = state.ui.multiMode || 'bqc') {
+    return normalizeMultiMode(mode) === 'utility' ? UTILITY_FEATURE_KEYS.slice() : BQC_FEATURE_KEYS.slice();
+  }
+
+  function getCurrentModeReviewSummary() {
+    const mode = normalizeMultiMode(state.ui.multiMode || 'bqc');
+    return state.ui.reviewSummaryByMode?.[mode] || {};
+  }
+
+  function getCurrentModeLastRunAt() {
+    const mode = normalizeMultiMode(state.ui.multiMode || 'bqc');
+    return state.ui.lastRunAtByMode?.[mode] || null;
+  }
+
   function openExpandedRvtModal() {
+    const blockReason = getOpenMultiBlockingReason();
+    if (blockReason) {
+      toast(blockReason, 'warn');
+      return;
+    }
     if (!buildRvtExpandedModal.overlay) return;
     state.ui.isRvtListExpanded = true;
     buildRvtExpandedModal.overlay.classList.remove('is-hidden');
@@ -1359,40 +1773,41 @@ export function renderMulti(root) {
     buildRvtExpandedModal.overlay.classList.add('is-hidden');
   }
 
-  function buildSelectedFeaturesSection() {
-    const section = div('multi-section selected-panel');
+  function buildSelectedFeaturesSection(options = {}) {
+    state.ui.currentDocButtons = state.ui.currentDocButtons || [];
+    const section = div(`multi-section selected-panel ${options.sectionClass || ''}`.trim());
     const head = div('selected-panel__header');
     const title = document.createElement('h3');
-    title.textContent = '선택된 기능 목록';
+    title.textContent = options.title || '선택된 기능 목록';
     const count = document.createElement('span');
     count.className = 'chip chip--info';
     const actions = div('selected-panel__actions');
-    const currentBtn = document.createElement('button');
-    currentBtn.type = 'button';
-    currentBtn.className = 'btn btn--secondary selected-current-btn';
-    currentBtn.textContent = '현재 파일 검토';
-    currentBtn.addEventListener('click', handleRunCurrentFile);
-    actions.append(count, currentBtn);
+    actions.append(count);
+    if (options.showCurrentButton) {
+      const currentBtn = document.createElement('button');
+      currentBtn.type = 'button';
+      currentBtn.className = 'btn btn--secondary selected-current-btn';
+      currentBtn.textContent = '현재 파일 검토';
+      currentBtn.addEventListener('click', handleRunCurrentFile);
+      actions.append(currentBtn);
+      state.ui.currentDocButtons.push(currentBtn);
+    }
     head.append(title, actions);
-
-    state.ui.currentDocBtn = currentBtn;
 
 
     const table = document.createElement('table');
     table.className = 'selected-table';
     table.innerHTML = `
       <colgroup>
-        <col>
-        <col style="width:110px">
-        <col style="width:76px">
-        <col style="width:120px">
+        <col style="width:auto">
+        <col style="width:104px">
+        <col style="width:84px">
       </colgroup>
       <thead>
         <tr>
           <th>기능</th>
           <th class="selected-status-col selected-action-col">상태</th>
           <th class="selected-action-col">설정</th>
-          <th class="selected-action-col">엑셀</th>
         </tr>
       </thead>
       <tbody></tbody>`;
@@ -1401,46 +1816,175 @@ export function renderMulti(root) {
 
     state.ui.selectedTableBody = tbody;
     state.ui.selectedCount = count;
+    state.ui.selectedSection = section;
     renderSelectedFeatures();
     return section;
   }
 
   function buildRunBar() {
-    const bar = div('run-bar');
-    const summary = div('run-summary');
-    const summaryTitle = document.createElement('strong');
-    summaryTitle.className = 'run-summary__title';
-    const summaryDetail = document.createElement('span');
-    summaryDetail.className = 'run-summary__detail';
-    const sharedHint = div('run-summary__hint');
-    sharedHint.style.display = 'none';
-    summary.append(summaryTitle, summaryDetail, sharedHint);
-    const status = div('run-status');
-    const progressText = document.createElement('span');
-    const progressDetail = document.createElement('small');
-    const progressBar = document.createElement('div');
-    progressBar.className = 'run-progress';
-    const progressFill = document.createElement('div');
-    progressFill.className = 'run-progress-fill';
-    progressBar.append(progressFill);
-    status.append(progressText, progressDetail, progressBar);
+    return buildExecutionActionPanel({ mode: state.ui.multiMode || 'bqc' });
+  }
 
-    const startBtn = cardBtn('검토 시작', handleRunAction, 'btn--primary');
-    startBtn.classList.add('multi-start-btn');
-    bar.append(summary, status, startBtn);
+  function renderModalFeatureSummary() {
+    const list = state.ui.modalFeatureList;
+    const countEl = state.ui.modalFeatureCount;
+    if (!list || !countEl) return;
+    const enabledKeys = FEATURE_KEYS.filter((key) => state.features[key].enabled);
+    countEl.textContent = `${enabledKeys.length}개`;
+    list.innerHTML = '';
 
-    buildRunBar.startBtn = startBtn;
-    buildRunBar.summary = summary;
-    buildRunBar.summaryTitle = summaryTitle;
-    buildRunBar.summaryDetail = summaryDetail;
-    buildRunBar.runSharedParamHint = sharedHint;
-    buildRunBar.progressText = progressText;
-    buildRunBar.progressDetail = progressDetail;
-    buildRunBar.progressFill = progressFill;
-    updateRunSummary();
-    updateRunProgress(0, '대기 중', '');
-    updateRunActionLabel();
-    return bar;
+    if (!enabledKeys.length) {
+      const empty = div('rvt-expand-feature-empty');
+      empty.textContent = '선택된 기능이 없습니다.';
+      list.append(empty);
+      return;
+    }
+
+    enabledKeys.forEach((key) => {
+      const item = div('rvt-expand-feature-item');
+      const text = div('rvt-expand-feature-item__text');
+      const meta = div('rvt-expand-feature-item__meta');
+      const name = document.createElement('strong');
+      name.textContent = FEATURE_META[key]?.label || key;
+      const desc = document.createElement('span');
+      const status = getSelectedFeatureStatus(key);
+      desc.textContent = `${FEATURE_META[key]?.desc || ''} · ${status.label}`;
+      const badge = document.createElement('span');
+      badge.className = `chip status-chip ${status.className}`;
+      badge.textContent = status.label;
+      meta.append(name, badge);
+      text.append(meta, desc);
+      item.append(text);
+      list.append(item);
+    });
+  }
+
+  function getRecentResultRows() {
+    const payload = getCurrentModeReviewSummary();
+    const connectorRows = Array.isArray(payload?.featureSummaries?.connector?.fileSummaries)
+      ? payload.featureSummaries.connector.fileSummaries
+      : [];
+    if (connectorRows.length) {
+      return connectorRows.map((row) => ({
+        file: row?.file || '',
+        total: Number(row?.total) || 0,
+        issues: Number(row?.issues) || 0,
+        near: Number(row?.near) || 0,
+        status: String(row?.status || 'pending'),
+        reason: ''
+      }));
+    }
+
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    return items.map((item) => ({
+      file: item?.file || '',
+      total: '',
+      issues: '',
+      near: '',
+      status: String(item?.status || 'pending'),
+      reason: item?.reason || ''
+    }));
+  }
+
+  function renderRecentResultTable(targets = []) {
+    const rows = getRecentResultRows();
+    const runAt = state.ui.lastRunAt ? new Date(state.ui.lastRunAt) : null;
+    const captionText = runAt && !Number.isNaN(runAt.getTime())
+      ? `마지막 실행 ${runAt.toLocaleString('ko-KR')}`
+      : '아직 실행 결과가 없습니다.';
+    const hintText = rows.length
+      ? '파일별 건수를 빠르게 확인하고 결과 팝업을 다시 열 수 있습니다.'
+      : '검토 실행 후 파일별 결과가 여기에 표시됩니다.';
+
+    targets.forEach((target) => {
+      if (!target) return;
+      if (target.caption) target.caption.textContent = captionText;
+      if (target.hint) target.hint.textContent = hintText;
+      if (target.tbody) target.tbody.innerHTML = '';
+      if (target.empty) target.empty.style.display = rows.length ? 'none' : 'block';
+      if (!target.tbody) return;
+      rows.forEach((item) => {
+        const row = document.createElement('tr');
+        const fileCell = document.createElement('td');
+        fileCell.className = 'multi-recent-table__file';
+        fileCell.textContent = item.file || '-';
+        fileCell.title = item.file || '-';
+        const totalCell = document.createElement('td');
+        totalCell.textContent = formatReviewMetric(item.total);
+        const issueCell = document.createElement('td');
+        issueCell.textContent = formatReviewMetric(item.issues);
+        const nearCell = document.createElement('td');
+        nearCell.textContent = formatReviewMetric(item.near);
+        row.append(fileCell, totalCell, issueCell, nearCell);
+        target.tbody.append(row);
+      });
+    });
+  }
+
+  function getReviewTableRows(payload) {
+    const result = [];
+    const byFile = new Map();
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    items.forEach((item) => {
+      const file = item?.file || '';
+      if (!file) return;
+      byFile.set(file, {
+        file,
+        status: String(item?.status || 'pending'),
+        total: '',
+        issues: '',
+        near: '',
+        reason: item?.reason || ''
+      });
+    });
+
+    const connectorRows = Array.isArray(payload?.featureSummaries?.connector?.fileSummaries)
+      ? payload.featureSummaries.connector.fileSummaries
+      : [];
+    connectorRows.forEach((item) => {
+      const file = item?.file || '';
+      if (!file) return;
+      const existing = byFile.get(file) || {
+        file,
+        status: String(item?.status || 'pending'),
+        total: '',
+        issues: '',
+        near: '',
+        reason: ''
+      };
+      existing.total = Number(item?.total) || 0;
+      existing.issues = Number(item?.issues) || 0;
+      existing.near = Number(item?.near) || 0;
+      existing.status = existing.status || String(item?.status || 'pending');
+      byFile.set(file, existing);
+    });
+
+    byFile.forEach((value) => result.push(value));
+    return result;
+  }
+
+  function normalizeReviewStatus(status) {
+    if (status === 'success') return '완료';
+    if (status === 'skipped') return '스킵';
+    if (status === 'failed') return '실패';
+    return '대기';
+  }
+
+  function formatReviewMetric(value) {
+    return value === '' || value === null || value === undefined ? '-' : String(value);
+  }
+
+  function getFeatureExportActionLabel(key) {
+    if (key === 'connector') return '커넥터 결과 엑셀';
+    if (key === 'guid') return 'GUID 결과 엑셀';
+    if (key === 'familylink') return '패밀리 연동 결과 엑셀';
+    if (key === 'points') return 'Point 결과 엑셀';
+    return '엑셀 내보내기';
+  }
+
+  function getDefaultRecentExportKey() {
+    const keys = FEATURE_KEYS.filter((key) => state.results[key]?.hasRun);
+    return keys.length === 1 ? keys[0] : '';
   }
 
   function buildSettingsModal() {
@@ -1618,6 +2162,8 @@ export function renderMulti(root) {
       state.results[key].hasRun = true;
       syncFeatureRow(key);
     });
+    state.ui.lastRunAt = new Date().toISOString();
+    updateBqcSidebar();
   }
 
   function handleRunAction() {
@@ -1639,20 +2185,10 @@ export function renderMulti(root) {
   function onRunCurrentFile() {
     state.ui.runCompleted = false;
     updateRunActionLabel();
-    const selected = FEATURE_KEYS.filter((k) => state.features[k].enabled);
-    if (!selected.length) {
-      toast('선택된 기능이 없습니다.', 'warn');
+    const blockReason = getRunBlockingReason({ requireRvt: false });
+    if (blockReason) {
+      toast(blockReason, 'warn');
       return;
-    }
-    if (!canRunWithSharedParams()) {
-      return;
-    }
-    if (state.features.familylink.enabled) {
-      const targets = state.features.familylink.configCommitted.selectedTargets || [];
-      if (!targets.length) {
-        toast('패밀리 공유파라미터 연동 검토 대상이 없습니다.', 'warn');
-        return;
-      }
     }
     setBusyState(true);
     ProgressDialog.show('현재 파일 검토', '준비 중...');
@@ -1664,40 +2200,51 @@ export function renderMulti(root) {
   }
 
   function updateCurrentDocBtnState() {
-    const btn = state.ui.currentDocBtn;
-    if (!btn) return;
-    const enabledCount = FEATURE_KEYS.filter((k) => state.features[k].enabled).length;
-    btn.disabled = state.busy || enabledCount === 0;
-    btn.title = btn.disabled ? (enabledCount === 0 ? '선택된 기능이 없습니다.' : '') : '';
+    const blockReason = getRunBlockingReason({ requireRvt: false });
+    (state.ui.currentDocButtons || []).forEach((btn) => {
+      if (!btn) return;
+      btn.disabled = state.busy || !!blockReason;
+      btn.title = btn.disabled ? blockReason : '';
+    });
   }
 
 
   function onRun() {
     state.ui.runCompleted = false;
     updateRunActionLabel();
-    const selected = FEATURE_KEYS.filter((k) => state.features[k].enabled);
-    if (!selected.length) {
-      toast('선택된 기능이 없습니다.', 'warn');
+    const blockReason = getRunBlockingReason({ requireRvt: true });
+    if (blockReason) {
+      toast(blockReason, 'warn');
       return;
-    }
-    if (!canRunWithSharedParams()) {
-      return;
-    }
-    if (!state.rvtList.length) {
-      toast('RVT 파일을 추가하세요.', 'warn');
-      return;
-    }
-    if (state.features.familylink.enabled) {
-      const targets = state.features.familylink.configCommitted.selectedTargets || [];
-      if (!targets.length) {
-        toast('패밀리 공유파라미터 연동 검토 대상이 없습니다.', 'warn');
-        return;
-      }
     }
     setBusyState(true);
     ProgressDialog.show('납품시 BQC 검토', '준비 중...');
     ProgressDialog.update(0, '준비 중...', '');
     post('hub:multi-run', buildPayload());
+  }
+
+  function getRunBlockingReason(options = {}) {
+    const silent = !!options.silent;
+    const selected = FEATURE_KEYS.filter((k) => state.features[k].enabled);
+    if (!selected.length) return '선택된 기능이 없습니다.';
+    const needsShared = FEATURE_KEYS.some((key) => state.features[key].enabled && requiresSharedParams(key));
+    const status = state.sharedParamStatus || {};
+    if (needsShared && status.status !== 'ok') {
+      if (!silent && !status.status) {
+        requestSharedParamStatus('run');
+        return 'Shared Parameter 상태를 확인 중입니다.';
+      }
+      if (!silent && status.status && status.status !== 'ok') {
+        requestSharedParamStatus('run');
+      }
+      return status.warning || status.errorMessage || 'Shared Parameter 상태를 확인하세요.';
+    }
+    if (state.features.familylink.enabled) {
+      const targets = state.features.familylink.configCommitted.selectedTargets || [];
+      if (!targets.length) return '패밀리 공유파라미터 연동 검토 대상이 없습니다.';
+    }
+    if (options.requireRvt && !state.rvtList.length) return 'RVT 파일을 추가하세요.';
+    return '';
   }
 
   function buildPayload() {
@@ -1720,14 +2267,76 @@ export function renderMulti(root) {
     });
   }
 
+  function updateOpenMultiBtnState() {
+    const blockReason = getOpenMultiBlockingReason();
+    (state.ui.openMultiButtons || []).forEach((btn) => {
+      if (!btn) return;
+      btn.disabled = !!blockReason;
+      btn.title = blockReason || '';
+    });
+  }
+
+  function getOpenMultiBlockingReason() {
+    if (state.busy) return '작업 진행 중입니다.';
+    const enabledCount = FEATURE_KEYS.filter((k) => state.features[k].enabled).length;
+    if (!enabledCount) return '선택된 기능이 있을 때만 RVT 여러개 검토를 열 수 있습니다.';
+    return '';
+  }
+
+  function updateMultiRunBtnState() {
+    const blockReason = getRunBlockingReason({ requireRvt: true, silent: true });
+    (state.ui.modalRunButtons || []).forEach((btn) => {
+      if (!btn) return;
+      btn.disabled = state.busy || !!blockReason;
+      btn.title = btn.disabled ? blockReason : '';
+    });
+  }
+
+  function updateBqcSidebar() {
+    const rows = getRecentResultRows();
+    const lastRunAt = getCurrentModeLastRunAt();
+    const runAt = lastRunAt ? new Date(lastRunAt) : null;
+    const captionText = runAt && !Number.isNaN(runAt.getTime())
+      ? `마지막 실행 ${runAt.toLocaleString('ko-KR')}`
+      : '아직 실행 결과가 없습니다.';
+    const hintText = rows.length
+      ? '영역을 눌러 최근 결과 상세 창을 열고, 검토별 엑셀을 각각 내보낼 수 있습니다.'
+      : '검토 실행 후 이 영역에서 최근 결과 상세 창을 열 수 있습니다.';
+
+    renderRecentResultTable([
+      {
+        caption: state.ui.modalRecentCaption,
+        hint: state.ui.modalRecentHint,
+        tbody: state.ui.modalRecentTableBody,
+        empty: state.ui.modalRecentEmpty
+      }
+    ]);
+
+    if (state.ui.bqcRecentCaption) {
+      state.ui.bqcRecentCaption.textContent = captionText;
+    }
+
+    if (state.ui.bqcRecentHint) {
+      state.ui.bqcRecentHint.textContent = hintText;
+    }
+
+    if (state.ui.bqcRecentOpenBtn) {
+      state.ui.bqcRecentOpenBtn.disabled = state.busy;
+      state.ui.bqcRecentOpenBtn.title = rows.length ? '' : '현재 화면의 최근 결과를 확인합니다.';
+    }
+
+    (state.ui.resultResetButtons || []).forEach((btn) => {
+      if (!btn) return;
+      btn.disabled = state.busy || !state.ui.reviewSummaryData;
+    });
+  }
+
   function setBusyState(on) {
     state.busy = on;
     setBusy(on);
-    if (buildRunBar.startBtn) buildRunBar.startBtn.disabled = on;
     FEATURE_KEYS.forEach(syncFeatureRow);
     const inputs = page.querySelectorAll('input, select, textarea, button');
     inputs.forEach((el) => {
-      if (el.classList.contains('multi-start-btn')) return;
       if (on) {
         el.disabled = true;
       } else {
@@ -1737,6 +2346,9 @@ export function renderMulti(root) {
     if (!on) renderRvtList();
     if (!on) updateSharedParamRunState();
     updateCurrentDocBtnState();
+    updateOpenMultiBtnState();
+    updateMultiRunBtnState();
+    updateBqcSidebar();
   }
 
   function renderRvtList() {
@@ -1751,13 +2363,13 @@ export function renderMulti(root) {
     state.ui.activeFeatureTitle = title || '';
     if (buildSettingsModal.modal && buildSettingsModal.body && buildSettingsModal.help && buildSettingsModal.form) {
       if (key === 'connector') {
-        buildSettingsModal.modal.style.width = 'min(1560px, 98vw)';
-        buildSettingsModal.modal.style.maxWidth = '1560px';
+        buildSettingsModal.modal.style.width = 'min(1320px, 95vw)';
+        buildSettingsModal.modal.style.maxWidth = '1320px';
         buildSettingsModal.body.style.display = 'grid';
-        buildSettingsModal.body.style.gridTemplateColumns = 'minmax(0, 2fr) minmax(0, 1fr)';
+        buildSettingsModal.body.style.gridTemplateColumns = 'minmax(0, 2.18fr) minmax(280px, 0.82fr)';
         buildSettingsModal.body.style.alignItems = 'start';
-        buildSettingsModal.body.style.gap = '16px';
-        buildSettingsModal.body.style.columnGap = '16px';
+        buildSettingsModal.body.style.gap = '10px';
+        buildSettingsModal.body.style.columnGap = '10px';
         buildSettingsModal.form.style.display = 'block';
         buildSettingsModal.form.style.gridTemplateColumns = '';
         buildSettingsModal.form.style.gridAutoFlow = '';
@@ -1771,7 +2383,7 @@ export function renderMulti(root) {
         buildSettingsModal.form.style.margin = '0';
         buildSettingsModal.form.style.justifySelf = 'stretch';
         buildSettingsModal.help.style.display = 'grid';
-        buildSettingsModal.help.style.gap = '12px';
+        buildSettingsModal.help.style.gap = '10px';
         buildSettingsModal.help.style.alignContent = 'start';
         buildSettingsModal.help.style.flex = '';
         buildSettingsModal.help.style.minWidth = '0';
@@ -1779,7 +2391,37 @@ export function renderMulti(root) {
         buildSettingsModal.help.style.maxWidth = 'none';
         buildSettingsModal.help.style.margin = '0';
         buildSettingsModal.help.style.justifySelf = 'stretch';
-        buildSettingsModal.help.style.alignSelf = 'stretch';
+        buildSettingsModal.help.style.alignSelf = 'start';
+      } else if (key === 'common') {
+        buildSettingsModal.modal.style.width = 'min(980px, 92vw)';
+        buildSettingsModal.modal.style.maxWidth = '980px';
+        buildSettingsModal.body.style.display = 'grid';
+        buildSettingsModal.body.style.gridTemplateColumns = 'minmax(0, 1.12fr) minmax(300px, 0.88fr)';
+        buildSettingsModal.body.style.alignItems = 'start';
+        buildSettingsModal.body.style.gap = '14px';
+        buildSettingsModal.body.style.columnGap = '14px';
+        buildSettingsModal.form.style.display = 'grid';
+        buildSettingsModal.form.style.gridTemplateColumns = 'minmax(0, 1fr)';
+        buildSettingsModal.form.style.gridAutoFlow = 'row';
+        buildSettingsModal.form.style.gap = '12px';
+        buildSettingsModal.form.style.alignContent = 'start';
+        buildSettingsModal.form.style.justifyItems = 'stretch';
+        buildSettingsModal.form.style.flex = '';
+        buildSettingsModal.form.style.minWidth = '0';
+        buildSettingsModal.form.style.width = '100%';
+        buildSettingsModal.form.style.maxWidth = '620px';
+        buildSettingsModal.form.style.margin = '0';
+        buildSettingsModal.form.style.justifySelf = 'start';
+        buildSettingsModal.help.style.display = 'grid';
+        buildSettingsModal.help.style.gap = '10px';
+        buildSettingsModal.help.style.alignContent = 'start';
+        buildSettingsModal.help.style.flex = '';
+        buildSettingsModal.help.style.minWidth = '0';
+        buildSettingsModal.help.style.width = '100%';
+        buildSettingsModal.help.style.maxWidth = '380px';
+        buildSettingsModal.help.style.margin = '0';
+        buildSettingsModal.help.style.justifySelf = 'stretch';
+        buildSettingsModal.help.style.alignSelf = 'start';
       } else {
         buildSettingsModal.modal.style.width = 'min(1220px, 96vw)';
         buildSettingsModal.modal.style.maxWidth = '1220px';
@@ -1883,16 +2525,10 @@ export function renderMulti(root) {
   }
 
   function updateRunSummary() {
-    if (!buildRunBar.summary) return;
-    const enabledCount = FEATURE_KEYS.filter((k) => state.features[k].enabled).length;
-    const rvtCount = state.rvtList.length;
-    if (buildRunBar.summaryTitle) {
-      buildRunBar.summaryTitle.textContent = `선택 기능: ${enabledCount}개`;
-    }
-    if (buildRunBar.summaryDetail) {
-      buildRunBar.summaryDetail.textContent = `RVT: ${rvtCount}개`;
-    }
     renderSelectedFeatures();
+    renderModalFeatureSummary();
+    updateActionSummaryVisibility();
+    updateBqcSidebar();
     updateSharedParamRunState();
   }
 
@@ -1900,10 +2536,21 @@ export function renderMulti(root) {
     if (!buildRunBar.progressText) return;
     buildRunBar.progressText.textContent = message || '대기 중';
     buildRunBar.progressDetail.textContent = detail || '';
+    buildRunBar.progressDetail.style.display = detail ? 'block' : 'none';
     if (buildRunBar.progressFill) {
       const pct = Math.max(0, Math.min(100, Number(percent) || 0));
       buildRunBar.progressFill.style.width = `${pct}%`;
     }
+  }
+
+  function updateActionSummaryVisibility() {
+    if (!buildRunBar.summary) return;
+    const hasHint = !!(
+      buildRunBar.runSharedParamHint &&
+      buildRunBar.runSharedParamHint.style.display !== 'none' &&
+      String(buildRunBar.runSharedParamHint.textContent || '').trim()
+    );
+    buildRunBar.summary.style.display = hasHint ? 'flex' : 'none';
   }
 
   function updateRunActionLabel() {
@@ -1914,6 +2561,10 @@ export function renderMulti(root) {
   function resetRunResults() {
     state.ui.runCompleted = false;
     state.ui.lastProgressPct = 0;
+    state.ui.reviewSummaryData = null;
+    state.ui.lastRunAt = null;
+    state.ui.reviewSummaryByMode = { bqc: null, utility: null };
+    state.ui.lastRunAtByMode = { bqc: null, utility: null };
     updateRunProgress(0, '대기 중', '');
     FEATURE_KEYS.forEach((key) => {
       if (state.results[key]) {
@@ -1927,6 +2578,7 @@ export function renderMulti(root) {
     syncFeatureRow('familylink');
     syncFeatureRow('points');
     updateRunActionLabel();
+    updateBqcSidebar();
     post('hub:multi-clear', {});
   }
 
@@ -1974,6 +2626,10 @@ export function renderMulti(root) {
     if (target) {
       target.textContent = buildCommonSummary();
     }
+    if (state.ui.actionCommonSummaryEl) {
+      state.ui.actionCommonSummaryEl.textContent = `공통 설정: ${buildCommonSummary()}`;
+    }
+    updateActionSummaryVisibility();
     updateFeatureSummary('connector');
   }
 
@@ -2008,8 +2664,8 @@ export function renderMulti(root) {
       item.style.margin = '0';
       item.style.padding = '12px 14px';
       item.style.borderRadius = '14px';
-      item.style.border = '1px solid rgba(148,163,184,.20)';
-      item.style.background = 'rgba(255,255,255,.92)';
+      item.style.border = '1px solid var(--border-soft)';
+      item.style.background = 'var(--surface-help)';
       list.append(item);
     });
     help.append(helpTitle, list);
@@ -2165,11 +2821,14 @@ export function renderMulti(root) {
     const enabledKeys = FEATURE_KEYS.filter((key) => state.features[key].enabled);
     state.ui.selectedRows.clear();
     state.ui.selectedTableBody.innerHTML = '';
+    if (state.ui.selectedSection) {
+      state.ui.selectedSection.classList.toggle('selected-panel--has-selection', enabledKeys.length > 0);
+    }
 
     if (enabledKeys.length === 0) {
       const row = document.createElement('tr');
       const cell = document.createElement('td');
-      cell.colSpan = 4;
+      cell.colSpan = 3;
       cell.className = 'selected-empty';
       cell.textContent = '선택된 기능이 없습니다.';
       row.append(cell);
@@ -2183,8 +2842,10 @@ export function renderMulti(root) {
       const nameWrap = div('selected-name');
       const nameMain = document.createElement('strong');
       nameMain.textContent = FEATURE_META[key]?.label || key;
+      nameMain.title = FEATURE_META[key]?.label || key;
       const nameSub = document.createElement('span');
       nameSub.textContent = FEATURE_META[key]?.desc || '';
+      nameSub.title = FEATURE_META[key]?.desc || '';
       nameWrap.append(nameMain, nameSub);
       nameCell.append(nameWrap);
 
@@ -2203,42 +2864,31 @@ export function renderMulti(root) {
       settingsBtn.addEventListener('click', () => openSettings(key, FEATURE_META[key]?.label));
       settingsCell.append(settingsBtn);
 
-      const exportCell = document.createElement('td');
-      exportCell.className = 'selected-action-col';
-      const exportBtn = document.createElement('button');
-      exportBtn.type = 'button';
-      exportBtn.className = 'btn btn--secondary';
-      exportBtn.textContent = '엑셀 내보내기';
-      exportBtn.addEventListener('click', () => onExport(key));
-      exportCell.append(exportBtn);
-
-      row.append(nameCell, statusCell, settingsCell, exportCell);
+      row.append(nameCell, statusCell, settingsCell);
       state.ui.selectedTableBody.append(row);
 
-      state.ui.selectedRows.set(key, { row, statusChip, exportBtn });
+      state.ui.selectedRows.set(key, { row, statusChip });
       updateSelectedFeatureRow(key);
     });
 
     if (state.ui.selectedCount) {
       state.ui.selectedCount.textContent = `${enabledKeys.length}개`;
+      state.ui.selectedCount.className = `chip ${enabledKeys.length ? 'chip--ok' : 'chip--info'}`;
     }
 
     updateCurrentDocBtnState();
+    updateMultiRunBtnState();
   }
 
   function updateSelectedFeatureRow(key) {
     const entry = state.ui.selectedRows.get(key);
-    if (!entry) return;
     const status = getSelectedFeatureStatus(key);
-    entry.statusChip.textContent = status.label;
-    entry.statusChip.className = `chip status-chip ${status.className}`;
-
-    const res = state.results[key];
-    const hasRun = !!res && res.hasRun && !res.stale;
-    entry.exportBtn.disabled = state.busy || !hasRun;
-    entry.exportBtn.classList.toggle('btn--primary', hasRun);
-    entry.exportBtn.classList.toggle('btn--secondary', !hasRun);
-    entry.exportBtn.title = entry.exportBtn.disabled ? '검토 후 내보내기 가능' : '';
+    if (entry) {
+      entry.statusChip.textContent = status.label;
+      entry.statusChip.className = `chip status-chip ${status.className}`;
+    }
+    renderModalFeatureSummary();
+    updateBqcSidebar();
   }
 
   function getSelectedFeatureStatus(key) {
@@ -2288,7 +2938,7 @@ export function renderMulti(root) {
   function renderGroupVisibility() {
     const filter = state.ui.groupFilter || 'all';
     const mode = state.ui.multiMode || 'bqc';
-    const sections = rightCol.querySelectorAll('.multi-section');
+    const sections = page.querySelectorAll('.multi-section[data-group]');
     sections.forEach((section) => {
       const group = section.dataset.group || '';
       const allowGroup = mode === 'utility' ? group === 'utility' : group === 'bqc';
@@ -2359,8 +3009,10 @@ export function renderMulti(root) {
         buildRunBar.runSharedParamHint.style.display = 'none';
       }
     }
-    if (buildRunBar.startBtn && !state.busy) {
-      buildRunBar.startBtn.disabled = (needsShared && !ok) || familyLinkNeedsTargets;
+    updateActionSummaryVisibility();
+    if (!state.busy) {
+      updateCurrentDocBtnState();
+      updateMultiRunBtnState();
     }
   }
 

@@ -6,6 +6,21 @@ import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 const DEFAULT_SUMMARY = { okCount: 0, failCount: 0, skipCount: 0 };
 const CATEGORY_PRESET_KEY = "kky_spb_cat_presets";
 
+function formatRevitParamGroupLabel(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.toUpperCase() === 'INVALID') return 'Other';
+  const source = raw.toUpperCase().startsWith('PG_') ? raw.substring(3) : raw;
+  return source
+    .split('_')
+    .filter(Boolean)
+    .map((part) => {
+      const lower = String(part || '').toLowerCase();
+      return lower ? lower.charAt(0).toUpperCase() + lower.slice(1) : '';
+    })
+    .join(' ');
+}
+
 export function renderSharedParamBatch(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');
   clear(target);
@@ -527,8 +542,8 @@ export function renderSharedParamBatch(root) {
 
   function formatParamGroup(value) {
     const match = state.paramGroups.find(g => g.key === value || g.Key === value || g.id === value || g.Id === value);
-    if (match) return match.label || match.Label || value || '';
-    return value || '';
+    if (match) return formatRevitParamGroupLabel(match.label || match.Label || match.key || match.Key || match.id || match.Id || value || '');
+    return formatRevitParamGroupLabel(value || '');
   }
 
   function applyBulkSettings() {
@@ -739,7 +754,7 @@ export function renderSharedParamBatch(root) {
     state.paramGroups.forEach((g) => {
       const opt = document.createElement('option');
       opt.value = g.key || g.Key || g.id || g.Id;
-      opt.textContent = g.label || g.Label || opt.value;
+      opt.textContent = formatParamGroup(opt.value);
       groupSelectEl.append(opt);
     });
     groupSelectEl.value = param.settings.paramGroup;

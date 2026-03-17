@@ -10,7 +10,7 @@ export function createRvtTable() {
   table.style.tableLayout = 'fixed';
 
   const colgroup = document.createElement('colgroup');
-  colgroup.innerHTML = '<col style="width:40px"><col style="width:50px"><col style="width:180px"><col>';
+  colgroup.innerHTML = '<col style="width:44px"><col style="width:56px"><col style="width:280px"><col>';
   table.append(colgroup);
 
   const thead = document.createElement('thead');

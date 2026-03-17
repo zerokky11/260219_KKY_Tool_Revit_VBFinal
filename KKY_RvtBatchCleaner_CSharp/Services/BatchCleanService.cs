@@ -363,13 +363,13 @@ namespace KKY_Tool_Revit.Services
 
                 var ids = new List<ElementId>();
                 ids.AddRange(new FilteredElementCollector(doc).OfClass(typeof(RevitLinkInstance)).ToElementIds());
-                ids.AddRange(new FilteredElementCollector(doc).OfClass(typeof(RevitLinkType)).ToElementIds());
                 ids.AddRange(new FilteredElementCollector(doc).OfClass(typeof(ImportInstance)).ToElementIds());
+                ids.AddRange(new FilteredElementCollector(doc).OfClass(typeof(RevitLinkType)).ToElementIds());
                 ids.AddRange(new FilteredElementCollector(doc).OfClass(typeof(CADLinkType)).ToElementIds());
 
                 ids.AddRange(GetElementIdsByTypeName(doc, "Autodesk.Revit.DB.ImageInstance"));
-                ids.AddRange(GetElementIdsByTypeName(doc, "Autodesk.Revit.DB.ImageType"));
                 ids.AddRange(GetElementIdsByTypeName(doc, "Autodesk.Revit.DB.PointClouds.PointCloudInstance"));
+                ids.AddRange(GetElementIdsByTypeName(doc, "Autodesk.Revit.DB.ImageType"));
                 ids.AddRange(GetElementIdsByTypeName(doc, "Autodesk.Revit.DB.PointClouds.PointCloudType"));
 
                 ids = ids
@@ -379,12 +379,66 @@ namespace KKY_Tool_Revit.Services
 
                 if (ids.Count > 0)
                 {
-                    doc.Delete(ids);
+                    int failedDeleteCount = 0;
+                    int deletedCount = DeleteElementsIndividually(doc, ids, "ManageLinks", log, ref failedDeleteCount);
+                    if (failedDeleteCount > 0 && deletedCount > 0)
+                    {
+                        int retryFailedDeleteCount = 0;
+                        int retryDeletedCount = DeleteElementsIndividually(doc, ids, "ManageLinksRetry", log, ref retryFailedDeleteCount);
+                        deletedCount += retryDeletedCount;
+                        failedDeleteCount = retryFailedDeleteCount;
+                    }
+                    log?.Invoke("Manage Links/Imports 삭제 결과 / 대상 " + ids.Count + ", 성공 " + deletedCount + ", 실패 " + failedDeleteCount);
                 }
 
                 tx.Commit();
+                log?.Invoke("Manage Links/Imports 단계 완료");
                 log?.Invoke("Manage Links/Imports 삭제 대상: " + ids.Count);
             }
+        }
+
+        private static int DeleteElementsIndividually(Document doc, IEnumerable<ElementId> ids, string label, Action<string> log, ref int failedCount)
+        {
+            List<ElementId> targets = (ids ?? Enumerable.Empty<ElementId>())
+                .Where(x => x != null && x != ElementId.InvalidElementId)
+                .Distinct(new ElementIdComparer())
+                .ToList();
+
+            if (targets.Count == 0)
+            {
+                return 0;
+            }
+
+            int deletedCount = 0;
+            int localFailedCount = 0;
+            int detailedFailureLogCount = 0;
+
+            foreach (ElementId id in targets)
+            {
+                try
+                {
+                    if (doc.GetElement(id) == null)
+                    {
+                        continue;
+                    }
+
+                    doc.Delete(id);
+                    deletedCount++;
+                }
+                catch (Exception ex)
+                {
+                    localFailedCount++;
+                    if (detailedFailureLogCount < 3)
+                    {
+                        log?.Invoke(label + " 삭제 실패: Id " + id.IntegerValue + " / " + ex.Message);
+                        detailedFailureLogCount++;
+                    }
+                }
+            }
+
+            failedCount += localFailedCount;
+            log?.Invoke(label + " 삭제 시도: 대상 " + targets.Count + ", 성공 " + deletedCount + ", 실패 " + localFailedCount);
+            return deletedCount;
         }
 
         private static List<ElementId> GetElementIdsByTypeName(Document doc, string fullTypeName)

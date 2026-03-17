@@ -20,6 +20,7 @@ body {
     background: var(--bg-body);
     transition: background 220ms ease, color 220ms ease;
     overflow: hidden;
+    color-scheme: dark;
 }
 
 :root {
@@ -50,8 +51,21 @@ body {
     --surface-card: var(--color-surface);
     --surface-subtle: color-mix(in srgb, var(--color-surface-3) 70%, transparent);
     --surface-sunken: color-mix(in srgb, var(--color-surface-2) 88%, transparent);
+    --surface-elevated: #16243b;
+    --surface-control: #111b2f;
+    --surface-control-soft: #15213a;
+    --surface-help: #15213a;
+    --surface-note: color-mix(in srgb, var(--accent) 10%, var(--color-surface));
+    --surface-note-strong: color-mix(in srgb, var(--accent) 16%, var(--color-surface));
+    --surface-empty: #101a2d;
+    --surface-soft-card: color-mix(in srgb, var(--color-surface) 92%, var(--color-surface-2));
+    --surface-modal: #16233a;
+    --overlay-scrim: rgba(2, 6, 20, 0.62);
+    --overlay-soft: rgba(2, 6, 20, 0.42);
     --border-soft: var(--color-border);
     --border-strong: var(--color-border-strong);
+    --border-accent-soft: color-mix(in srgb, var(--accent) 34%, var(--border-soft));
+    --border-accent-strong: color-mix(in srgb, var(--accent) 52%, var(--border-soft));
     --text-main: var(--color-text-primary);
     --text-muted: var(--color-text-secondary);
     --text-soft: var(--color-text-muted);
@@ -72,6 +86,7 @@ body {
     --radius: var(--radius-md);
     --shadow-soft: 0 18px 36px rgba(2, 4, 14, 0.6);
     --shadow-card: 0 24px 48px rgba(2, 6, 20, 0.72);
+    --shadow-accent-soft: 0 18px 36px rgba(8, 27, 56, 0.28);
     --bg: var(--color-background);
     --panel: var(--color-surface);
     --panel2: var(--color-surface-2);
@@ -119,8 +134,21 @@ body {
     --surface-card: var(--color-surface);
     --surface-subtle: #eef3fa;
     --surface-sunken: #eef2f7;
+    --surface-elevated: #f8fbff;
+    --surface-control: #ffffff;
+    --surface-control-soft: #f6f9ff;
+    --surface-help: #eef4ff;
+    --surface-note: #eef5ff;
+    --surface-note-strong: #e3f0ff;
+    --surface-empty: #f8fbff;
+    --surface-soft-card: #ffffff;
+    --surface-modal: #ffffff;
+    --overlay-scrim: rgba(15, 23, 42, 0.32);
+    --overlay-soft: rgba(15, 23, 42, 0.22);
     --border-soft: var(--color-border);
     --border-strong: var(--color-border-strong);
+    --border-accent-soft: color-mix(in srgb, var(--accent) 28%, var(--border-soft));
+    --border-accent-strong: color-mix(in srgb, var(--accent) 48%, var(--border-soft));
     --text-main: var(--color-text-primary);
     --text-muted: var(--color-text-secondary);
     --text-soft: var(--color-text-muted);
@@ -137,6 +165,7 @@ body {
     --disabled-text: var(--color-disabled-text);
     --shadow-soft: 0 14px 30px rgba(17, 24, 39, 0.08);
     --shadow-card: 0 18px 38px rgba(17, 24, 39, 0.12);
+    --shadow-accent-soft: 0 16px 32px rgba(47, 107, 255, 0.12);
     --bg: var(--color-background);
     --panel: var(--color-surface);
     --panel2: var(--color-surface-2);
@@ -155,6 +184,16 @@ body {
     --text-subtle: var(--text-soft);
     --text-default: var(--text);
     --radius: var(--radius-md);
+    color-scheme: light;
+}
+
+input,
+textarea,
+select,
+option,
+optgroup {
+    color: var(--text-main);
+    background: var(--surface-control);
 }
 
 #app {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Xml.Linq;
 using Autodesk.Revit.DB;
 using UIApplication = Autodesk.Revit.UI.UIApplication;
 using Drawing = System.Drawing;
@@ -35,6 +36,8 @@ namespace KKY_Tool_Revit.UI
         private readonly WinForms.ComboBox _filterOperatorCombo = new WinForms.ComboBox();
         private readonly WinForms.TextBox _filterValueText = new WinForms.TextBox();
         private readonly WinForms.TextBox _filterStructureText = new WinForms.TextBox();
+        private readonly WinForms.CheckedListBox _filterCategoryPreviewList = new WinForms.CheckedListBox();
+        private readonly WinForms.DataGridView _filterConditionsGrid = new WinForms.DataGridView();
 
         private ViewFilterProfile _boundFilterProfile;
 
@@ -58,6 +61,8 @@ namespace KKY_Tool_Revit.UI
             InitializeLayout();
             InitializeEvents();
             RestoreSharedState();
+            ConfigureFilterPreviewControls();
+            UpdateFilterPreview();
         }
 
         private void InitializeForm()
@@ -84,31 +89,25 @@ namespace KKY_Tool_Revit.UI
             root.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 100F));
             Controls.Add(root);
 
-            var leftPanel = new WinForms.TableLayoutPanel { Dock = WinForms.DockStyle.Fill, RowCount = 5, ColumnCount = 1 };
+            var leftPanel = new WinForms.TableLayoutPanel { Dock = WinForms.DockStyle.Fill, RowCount = 4, ColumnCount = 1 };
             leftPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 260F));
             leftPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 86F));
             leftPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 120F));
-            leftPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 280F));
             leftPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 100F));
             root.Controls.Add(leftPanel, 0, 0);
 
-            var rightPanel = new WinForms.TableLayoutPanel { Dock = WinForms.DockStyle.Fill, RowCount = 4, ColumnCount = 1 };
-            rightPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 260F));
-            rightPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 180F));
-            rightPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 290F));
+            var rightPanel = new WinForms.TableLayoutPanel { Dock = WinForms.DockStyle.Fill, RowCount = 2, ColumnCount = 1 };
             rightPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 100F));
+            rightPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 220F));
             root.Controls.Add(rightPanel, 1, 0);
 
             leftPanel.Controls.Add(BuildFilesGroup(), 0, 0);
             leftPanel.Controls.Add(BuildBasicOptionsGroup(), 0, 1);
             leftPanel.Controls.Add(BuildRunGroup(), 0, 2);
             leftPanel.Controls.Add(BuildHelpGroup(), 0, 3);
-            leftPanel.Controls.Add(new WinForms.Panel { Dock = WinForms.DockStyle.Fill }, 0, 4);
 
-            rightPanel.Controls.Add(BuildViewParametersGroup(), 0, 0);
-            rightPanel.Controls.Add(BuildElementUpdateGroup(), 0, 1);
-            rightPanel.Controls.Add(BuildFilterGroup(), 0, 2);
-            rightPanel.Controls.Add(BuildLogGroup(), 0, 3);
+            rightPanel.Controls.Add(BuildFeatureTabs(), 0, 0);
+            rightPanel.Controls.Add(BuildLogGroup(), 0, 1);
         }
 
         private WinForms.Control BuildFilesGroup()
@@ -239,6 +238,34 @@ namespace KKY_Tool_Revit.UI
             return group;
         }
 
+        private WinForms.Control BuildFeatureTabs()
+        {
+            var tabs = new WinForms.TabControl
+            {
+                Dock = WinForms.DockStyle.Fill,
+                Multiline = false,
+                Padding = new Drawing.Point(18, 6)
+            };
+
+            tabs.TabPages.Add(CreateFeatureTabPage("뷰 파라미터", BuildViewParametersGroup()));
+            tabs.TabPages.Add(CreateFeatureTabPage("객체 파라미터", BuildElementUpdateGroup()));
+            tabs.TabPages.Add(CreateFeatureTabPage("뷰 필터", BuildFilterPreviewGroup()));
+
+            return tabs;
+        }
+
+        private static WinForms.TabPage CreateFeatureTabPage(string title, WinForms.Control content)
+        {
+            var page = new WinForms.TabPage(title) { Padding = new WinForms.Padding(8) };
+            if (content != null)
+            {
+                content.Dock = WinForms.DockStyle.Fill;
+                page.Controls.Add(content);
+            }
+
+            return page;
+        }
+
         private WinForms.Control BuildViewParametersGroup()
         {
             var group = new WinForms.GroupBox { Text = "4) 뷰 파라미터 지정 (최대 5개)", Dock = WinForms.DockStyle.Fill };
@@ -295,6 +322,106 @@ namespace KKY_Tool_Revit.UI
             UpdateElementUpdateSummary();
 
             return group;
+        }
+
+        private WinForms.Control BuildFilterPreviewGroup()
+        {
+            var group = new WinForms.GroupBox { Text = "6) View Filter", Dock = WinForms.DockStyle.Fill };
+            var panel = new WinForms.TableLayoutPanel { Dock = WinForms.DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+            panel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 68F));
+            panel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 40F));
+            panel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 100F));
+            group.Controls.Add(panel);
+
+            var optionsPanel = new WinForms.TableLayoutPanel { Dock = WinForms.DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
+            optionsPanel.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 50F));
+            optionsPanel.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 50F));
+            optionsPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 32F));
+            optionsPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 32F));
+            panel.Controls.Add(optionsPanel, 0, 0);
+
+            _useFilterCheck.Text = "Use filter";
+            _useFilterCheck.Dock = WinForms.DockStyle.Fill;
+            optionsPanel.Controls.Add(_useFilterCheck, 0, 0);
+
+            _applyFilterInitiallyCheck.Text = "Apply on first open";
+            _applyFilterInitiallyCheck.Dock = WinForms.DockStyle.Fill;
+            optionsPanel.Controls.Add(_applyFilterInitiallyCheck, 1, 0);
+
+            _autoEnableFilterIfEmptyCheck.Text = "Auto-enable when view becomes empty";
+            _autoEnableFilterIfEmptyCheck.Dock = WinForms.DockStyle.Fill;
+            optionsPanel.Controls.Add(_autoEnableFilterIfEmptyCheck, 0, 1);
+            optionsPanel.SetColumnSpan(_autoEnableFilterIfEmptyCheck, 2);
+
+            var buttonPanel = new WinForms.FlowLayoutPanel
+            {
+                Dock = WinForms.DockStyle.Fill,
+                FlowDirection = WinForms.FlowDirection.LeftToRight,
+                WrapContents = false
+            };
+            panel.Controls.Add(buttonPanel, 0, 1);
+
+            var importXmlButton = new WinForms.Button { Text = "Import XML...", Width = 116, Height = 30 };
+            importXmlButton.Click += (_, __) => ImportFilterXml();
+            buttonPanel.Controls.Add(importXmlButton);
+
+            var exportXmlButton = new WinForms.Button { Text = "Save XML...", Width = 116, Height = 30 };
+            exportXmlButton.Click += (_, __) => ExportFilterXml();
+            buttonPanel.Controls.Add(exportXmlButton);
+
+            var exportExistingButton = new WinForms.Button { Text = "Extract From Document...", Width = 160, Height = 30 };
+            exportExistingButton.Click += (_, __) => ExportExistingDocumentFilterXml();
+            buttonPanel.Controls.Add(exportExistingButton);
+
+            var previewPanel = new WinForms.TableLayoutPanel { Dock = WinForms.DockStyle.Fill, ColumnCount = 2, RowCount = 2 };
+            previewPanel.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Absolute, 240F));
+            previewPanel.ColumnStyles.Add(new WinForms.ColumnStyle(WinForms.SizeType.Percent, 100F));
+            previewPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Percent, 100F));
+            previewPanel.RowStyles.Add(new WinForms.RowStyle(WinForms.SizeType.Absolute, 140F));
+            panel.Controls.Add(previewPanel, 0, 2);
+
+            var categoryGroup = new WinForms.GroupBox { Text = "Categories", Dock = WinForms.DockStyle.Fill };
+            _filterCategoryPreviewList.Dock = WinForms.DockStyle.Fill;
+            categoryGroup.Controls.Add(_filterCategoryPreviewList);
+            previewPanel.Controls.Add(categoryGroup, 0, 0);
+
+            var conditionsGroup = new WinForms.GroupBox { Text = "Conditions", Dock = WinForms.DockStyle.Fill };
+            _filterConditionsGrid.Dock = WinForms.DockStyle.Fill;
+            conditionsGroup.Controls.Add(_filterConditionsGrid);
+            previewPanel.Controls.Add(conditionsGroup, 1, 0);
+
+            var summaryGroup = new WinForms.GroupBox { Text = "Preview Summary", Dock = WinForms.DockStyle.Fill };
+            _filterStructureText.Dock = WinForms.DockStyle.Fill;
+            _filterStructureText.Multiline = true;
+            _filterStructureText.ScrollBars = WinForms.ScrollBars.Vertical;
+            _filterStructureText.ReadOnly = true;
+            summaryGroup.Controls.Add(_filterStructureText);
+            previewPanel.Controls.Add(summaryGroup, 0, 1);
+            previewPanel.SetColumnSpan(summaryGroup, 2);
+
+            return group;
+        }
+
+        private void ConfigureFilterPreviewControls()
+        {
+            _filterCategoryPreviewList.CheckOnClick = false;
+            _filterCategoryPreviewList.IntegralHeight = false;
+
+            _filterConditionsGrid.AllowUserToAddRows = false;
+            _filterConditionsGrid.AllowUserToDeleteRows = false;
+            _filterConditionsGrid.AllowUserToResizeRows = false;
+            _filterConditionsGrid.ReadOnly = true;
+            _filterConditionsGrid.RowHeadersVisible = false;
+            _filterConditionsGrid.SelectionMode = WinForms.DataGridViewSelectionMode.FullRowSelect;
+            _filterConditionsGrid.MultiSelect = false;
+            _filterConditionsGrid.AutoSizeColumnsMode = WinForms.DataGridViewAutoSizeColumnsMode.Fill;
+            _filterConditionsGrid.BackgroundColor = Drawing.SystemColors.Window;
+            _filterConditionsGrid.Columns.Clear();
+            _filterConditionsGrid.Columns.Add(new WinForms.DataGridViewTextBoxColumn { Name = "Join", HeaderText = "Join", FillWeight = 15F });
+            _filterConditionsGrid.Columns.Add(new WinForms.DataGridViewTextBoxColumn { Name = "Group", HeaderText = "Group", FillWeight = 25F });
+            _filterConditionsGrid.Columns.Add(new WinForms.DataGridViewTextBoxColumn { Name = "Parameter", HeaderText = "Parameter", FillWeight = 26F });
+            _filterConditionsGrid.Columns.Add(new WinForms.DataGridViewTextBoxColumn { Name = "Operator", HeaderText = "Operator", FillWeight = 16F });
+            _filterConditionsGrid.Columns.Add(new WinForms.DataGridViewTextBoxColumn { Name = "Value", HeaderText = "Value", FillWeight = 18F });
         }
 
         private WinForms.Control BuildFilterGroup()
@@ -369,6 +496,100 @@ namespace KKY_Tool_Revit.UI
             panel.Controls.Add(new WinForms.Label { Text = "XML 불러오기/문서 추출 시 유지", Dock = WinForms.DockStyle.Fill, TextAlign = Drawing.ContentAlignment.MiddleLeft }, 2, 8);
 
             return group;
+        }
+
+        private void LegacySimplifyFilterUi()
+        {
+            var panel = _filterStructureText.Parent as WinForms.TableLayoutPanel;
+            if (panel == null)
+            {
+                if (ShouldStopAfterLoadingCurrentDocumentFilter()) return;
+            }
+
+            _filterNameText.Visible = false;
+            _filterCategoriesText.Visible = false;
+            _filterParameterText.Visible = false;
+            _filterOperatorCombo.Visible = false;
+            _filterValueText.Visible = false;
+            _filterStructureText.Multiline = true;
+            _filterStructureText.ScrollBars = WinForms.ScrollBars.Vertical;
+
+            HideFilterRow(panel, 2);
+            HideFilterRow(panel, 4);
+            HideFilterRow(panel, 5);
+            HideFilterRow(panel, 6);
+            HideFilterRow(panel, 7);
+
+            if (panel.RowStyles.Count > 8)
+            {
+                panel.RowStyles[8].SizeType = WinForms.SizeType.Percent;
+                panel.RowStyles[8].Height = 100F;
+            }
+
+            WinForms.Control row1Button = FindControlAt(panel, 2, 1);
+            if (row1Button != null)
+            {
+                row1Button.Visible = false;
+            }
+
+            WinForms.Control row3Description = FindControlAt(panel, 1, 3);
+            if (row3Description != null)
+            {
+                row3Description.Text = "?대┛ Revit 臾몄꽌?먯꽌 Parameter Filter瑜?媛?몄삤硫?諛붾줈 ?ъ슜?⑸땲??";
+            }
+
+            WinForms.Control row3Button = FindControlAt(panel, 2, 3);
+            if (row3Button != null)
+            {
+                row3Button.Text = "臾몄꽌 ?꾪꽣 媛?몄삤湲?...";
+            }
+
+            WinForms.Control row8Description = FindControlAt(panel, 2, 8);
+            if (row8Description != null)
+            {
+                row8Description.Text = "?꾪꽣 ?붿빟留? ?쒖떆?⑸땲??";
+            }
+        }
+
+        private static void HideFilterRow(WinForms.TableLayoutPanel panel, int row)
+        {
+            if (panel == null) return;
+            if (row >= 0 && row < panel.RowStyles.Count)
+            {
+                panel.RowStyles[row].SizeType = WinForms.SizeType.Absolute;
+                panel.RowStyles[row].Height = 0F;
+            }
+
+            SetControlsVisibleForRow(panel, row, false);
+        }
+
+        private static void SetControlsVisibleForRow(WinForms.TableLayoutPanel panel, int row, bool visible)
+        {
+            foreach (WinForms.Control control in panel.Controls)
+            {
+                if (panel.GetRow(control) == row)
+                {
+                    control.Visible = visible;
+                }
+            }
+        }
+
+        private static WinForms.Control FindControlAt(WinForms.TableLayoutPanel panel, int column, int row)
+        {
+            foreach (WinForms.Control control in panel.Controls)
+            {
+                if (panel.GetColumn(control) == column && panel.GetRow(control) == row)
+                {
+                    return control;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool ShouldStopAfterLoadingCurrentDocumentFilter()
+        {
+            return true;
         }
 
         private WinForms.Control BuildLogGroup()
@@ -531,7 +752,7 @@ namespace KKY_Tool_Revit.UI
             {
                 ViewFilterProfile profile = RevitViewFilterProfileService.ExtractProfileFromFilter(doc, selectedFilter.Id);
                 BindFilterProfile(profile);
-
+                AppendLog("?꾩옱 臾몄꽌 ?꾪꽣 媛?몄삤湲? ?꾨즺: " + (profile.FilterName ?? string.Empty));
                 using (var dialog = new WinForms.SaveFileDialog())
                 {
                     dialog.Filter = "XML (*.xml)|*.xml";
@@ -593,40 +814,216 @@ namespace KKY_Tool_Revit.UI
 
         private void BindFilterProfile(ViewFilterProfile profile)
         {
-            if (profile == null) return;
+            _boundFilterProfile = profile != null ? profile.Clone() : null;
+            UpdateFilterPreview();
+        }
 
-            _boundFilterProfile = profile.Clone();
-            _filterNameText.Text = profile.FilterName ?? string.Empty;
-            _filterCategoriesText.Text = profile.CategoriesCsv ?? string.Empty;
-            _filterParameterText.Text = profile.ParameterToken ?? string.Empty;
-            _filterOperatorCombo.SelectedItem = profile.Operator.ToString();
-            _filterValueText.Text = profile.RuleValue ?? string.Empty;
-            _filterStructureText.Text = profile.StructureSummary ?? string.Empty;
+        private void UpdateFilterPreview()
+        {
+            if (_boundFilterProfile == null || !_boundFilterProfile.IsConfigured())
+            {
+                _filterCategoryPreviewList.Items.Clear();
+                _filterConditionsGrid.Rows.Clear();
+                _filterStructureText.Text = "No filter loaded yet." + Environment.NewLine
+                    + "Use Import XML or Extract From Document to populate the preview.";
+                return;
+            }
+
+            _filterCategoryPreviewList.Items.Clear();
+            foreach (string category in _boundFilterProfile.GetCategoryTokens())
+            {
+                _filterCategoryPreviewList.Items.Add(category, true);
+            }
+
+            _filterConditionsGrid.Rows.Clear();
+            foreach (FilterConditionPreviewRow row in BuildFilterConditionPreviewRows(_boundFilterProfile))
+            {
+                _filterConditionsGrid.Rows.Add(row.Join, row.Group, row.Parameter, row.Operator, row.Value);
+            }
+
+            var lines = new List<string>();
+            lines.Add("Filter: " + (_boundFilterProfile.FilterName ?? string.Empty));
+            lines.Add("Categories: " + (_boundFilterProfile.CategoriesCsv ?? string.Empty));
+            if (_filterConditionsGrid.Rows.Count == 0)
+            {
+                lines.Add("Parameter: " + (_boundFilterProfile.ParameterToken ?? string.Empty));
+                lines.Add("Operator: " + _boundFilterProfile.Operator);
+                lines.Add("Value: " + (_boundFilterProfile.RuleValue ?? string.Empty));
+            }
+            if (!string.IsNullOrWhiteSpace(_boundFilterProfile.StructureSummary))
+            {
+                lines.Add(string.Empty);
+                lines.Add("Structure:");
+                lines.Add(_boundFilterProfile.StructureSummary);
+            }
+
+            _filterStructureText.Text = string.Join(Environment.NewLine, lines);
+        }
+
+        private static List<FilterConditionPreviewRow> BuildFilterConditionPreviewRows(ViewFilterProfile profile)
+        {
+            var rows = new List<FilterConditionPreviewRow>();
+            if (profile == null)
+            {
+                return rows;
+            }
+
+            XElement definition = TryParseFilterDefinition(profile.FilterDefinitionXml);
+            if (definition != null)
+            {
+                CollectFilterConditionPreviewRows(definition, rows, string.Empty, string.Empty, string.Empty);
+            }
+
+            if (rows.Count == 0 && !string.IsNullOrWhiteSpace(profile.ParameterToken))
+            {
+                rows.Add(new FilterConditionPreviewRow
+                {
+                    Join = string.Empty,
+                    Group = "Rule 1",
+                    Parameter = profile.ParameterToken ?? string.Empty,
+                    Operator = profile.Operator.ToString(),
+                    Value = profile.RuleValue ?? string.Empty
+                });
+            }
+
+            return rows;
+        }
+
+        private static XElement TryParseFilterDefinition(string xml)
+        {
+            if (string.IsNullOrWhiteSpace(xml))
+            {
+                return null;
+            }
+
+            try
+            {
+                return XElement.Parse(xml);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static void CollectFilterConditionPreviewRows(XElement node, List<FilterConditionPreviewRow> rows, string parentJoin, string groupLabel, string inheritedPath)
+        {
+            if (node == null)
+            {
+                return;
+            }
+
+            string nodeName = node.Name.LocalName;
+            if (string.Equals(nodeName, "Logical", StringComparison.OrdinalIgnoreCase))
+            {
+                string logicalType = ((string)node.Attribute("Type") ?? "And").Trim().ToUpperInvariant();
+                int index = 1;
+                foreach (XElement child in node.Elements())
+                {
+                    string nextPath = string.IsNullOrWhiteSpace(inheritedPath)
+                        ? logicalType + " " + index
+                        : inheritedPath + " > " + logicalType + " " + index;
+                    string nextJoin = index == 1 ? parentJoin : logicalType;
+                    CollectFilterConditionPreviewRows(child, rows, nextJoin, nextPath, nextPath);
+                    index++;
+                }
+                return;
+            }
+
+            if (string.Equals(nodeName, "ParameterGroup", StringComparison.OrdinalIgnoreCase))
+            {
+                bool inverted = ParseBooleanAttribute(node.Attribute("Inverted"));
+                string effectiveGroup = string.IsNullOrWhiteSpace(groupLabel) ? "Rule Set" : groupLabel;
+                if (inverted)
+                {
+                    effectiveGroup = "NOT " + effectiveGroup;
+                }
+
+                int index = 1;
+                foreach (XElement rule in node.Elements().Where(x => string.Equals(x.Name.LocalName, "Rule", StringComparison.OrdinalIgnoreCase)))
+                {
+                    rows.Add(new FilterConditionPreviewRow
+                    {
+                        Join = rows.Count == 0 && index == 1 ? string.Empty : (index == 1 ? parentJoin : "AND"),
+                        Group = effectiveGroup,
+                        Parameter = ResolveRuleParameterLabel(rule),
+                        Operator = ((string)rule.Attribute("Operator") ?? string.Empty).Trim(),
+                        Value = ResolveRuleValueLabel(rule)
+                    });
+                    index++;
+                }
+                return;
+            }
+
+            if (string.Equals(nodeName, "Rule", StringComparison.OrdinalIgnoreCase))
+            {
+                rows.Add(new FilterConditionPreviewRow
+                {
+                    Join = rows.Count == 0 ? string.Empty : parentJoin,
+                    Group = string.IsNullOrWhiteSpace(groupLabel) ? "Rule" : groupLabel,
+                    Parameter = ResolveRuleParameterLabel(node),
+                    Operator = ((string)node.Attribute("Operator") ?? string.Empty).Trim(),
+                    Value = ResolveRuleValueLabel(node)
+                });
+            }
+        }
+
+        private static bool ParseBooleanAttribute(XAttribute attribute)
+        {
+            if (attribute == null)
+            {
+                return false;
+            }
+
+            bool parsed;
+            return bool.TryParse(attribute.Value, out parsed) && parsed;
+        }
+
+        private static string ResolveRuleParameterLabel(XElement rule)
+        {
+            return ((string)rule.Attribute("ParameterName")
+                ?? (string)rule.Attribute("ParameterToken")
+                ?? string.Empty).Trim();
+        }
+
+        private static string ResolveRuleValueLabel(XElement rule)
+        {
+            string operatorName = ((string)rule.Attribute("Operator") ?? string.Empty).Trim();
+            if (string.Equals(operatorName, nameof(FilterRuleOperator.HasValue), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(operatorName, nameof(FilterRuleOperator.HasNoValue), StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Empty;
+            }
+
+            return ((string)rule.Attribute("Value") ?? string.Empty).Trim();
+        }
+
+        private void UpdateFilterSummary()
+        {
+            if (_boundFilterProfile == null || !_boundFilterProfile.IsConfigured())
+            {
+                _filterStructureText.Text = "?좏깮??꾪꽣媛 ?놁뒿?덈떎. '?꾩옱 臾몄꽌 ?꾪꽣 媛?몄삤湲?..?濡?媛?몄삤?몄슂.";
+                return;
+            }
+
+            var lines = new List<string>();
+            lines.Add("Filter: " + (_boundFilterProfile.FilterName ?? string.Empty));
+            lines.Add("Categories: " + (_boundFilterProfile.CategoriesCsv ?? string.Empty));
+            lines.Add("Parameter: " + (_boundFilterProfile.ParameterToken ?? string.Empty));
+            lines.Add("Operator: " + _boundFilterProfile.Operator);
+            lines.Add("Value: " + (_boundFilterProfile.RuleValue ?? string.Empty));
+            if (!string.IsNullOrWhiteSpace(_boundFilterProfile.StructureSummary))
+            {
+                lines.Add(string.Empty);
+                lines.Add(_boundFilterProfile.StructureSummary);
+            }
+
+            _filterStructureText.Text = string.Join(Environment.NewLine, lines);
         }
 
         private ViewFilterProfile ReadFilterProfile()
         {
-            var op = (FilterRuleOperator)Enum.Parse(typeof(FilterRuleOperator), _filterOperatorCombo.SelectedItem?.ToString() ?? nameof(FilterRuleOperator.Equals));
-            var profile = new ViewFilterProfile
-            {
-                FilterName = _filterNameText.Text?.Trim(),
-                CategoriesCsv = _filterCategoriesText.Text?.Trim(),
-                ParameterToken = _filterParameterText.Text?.Trim(),
-                Operator = op,
-                RuleValue = _filterValueText.Text ?? string.Empty,
-                StructureSummary = _filterStructureText.Text ?? string.Empty
-            };
-
-            if (_boundFilterProfile != null && ShouldPreserveSerializedDefinition(profile, _boundFilterProfile))
-            {
-                profile.FilterDefinitionXml = _boundFilterProfile.FilterDefinitionXml;
-                if (string.IsNullOrWhiteSpace(profile.StructureSummary))
-                {
-                    profile.StructureSummary = _boundFilterProfile.StructureSummary;
-                }
-            }
-
-            return profile;
+            return _boundFilterProfile != null ? _boundFilterProfile.Clone() : new ViewFilterProfile();
         }
 
         private static bool ShouldPreserveSerializedDefinition(ViewFilterProfile current, ViewFilterProfile bound)
@@ -741,19 +1138,7 @@ namespace KKY_Tool_Revit.UI
             _applyFilterInitiallyCheck.Checked = settings.ApplyFilterInitially;
             _autoEnableFilterIfEmptyCheck.Checked = settings.AutoEnableFilterIfEmpty;
             _boundFilterProfile = settings.FilterProfile != null ? settings.FilterProfile.Clone() : null;
-            if (_boundFilterProfile != null)
-            {
-                BindFilterProfile(_boundFilterProfile);
-            }
-            else
-            {
-                _filterNameText.Text = string.Empty;
-                _filterCategoriesText.Text = string.Empty;
-                _filterParameterText.Text = string.Empty;
-                _filterOperatorCombo.SelectedIndex = 0;
-                _filterValueText.Text = string.Empty;
-                _filterStructureText.Text = string.Empty;
-            }
+            UpdateFilterPreview();
 
             _elementUpdateSettings = settings.ElementParameterUpdate != null ? settings.ElementParameterUpdate.Clone() : new ElementParameterUpdateSettings();
             _useElementUpdateCheck.Checked = _elementUpdateSettings.Enabled;
@@ -1153,6 +1538,15 @@ namespace KKY_Tool_Revit.UI
             };
             UpdateActionButtons();
             return _currentSession;
+        }
+
+        private sealed class FilterConditionPreviewRow
+        {
+            public string Join { get; set; }
+            public string Group { get; set; }
+            public string Parameter { get; set; }
+            public string Operator { get; set; }
+            public string Value { get; set; }
         }
 
         private void UpdateActionButtons()

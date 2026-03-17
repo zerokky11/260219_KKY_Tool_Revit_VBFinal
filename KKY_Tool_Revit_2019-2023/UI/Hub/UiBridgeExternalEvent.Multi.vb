@@ -104,7 +104,7 @@ Namespace UI.Hub
         End Class
 
         Private Shared ReadOnly _multiLock As New Object()
-        Private Shared _multiQueue As Queue(Of String)
+        Private Shared _multiQueue As List(Of String)
         Private Shared _multiTotal As Integer
         Private Shared _multiIndex As Integer
         Private Shared _multiActive As Boolean
@@ -252,7 +252,7 @@ Namespace UI.Hub
 
             SyncLock _multiLock
                 _multiRequest = req
-                _multiQueue = New Queue(Of String)(req.RvtPaths)
+                _multiQueue = New List(Of String)(req.RvtPaths)
                 _multiTotal = req.RvtPaths.Count
                 _multiIndex = 0
                 _multiActive = True
@@ -287,8 +287,8 @@ Namespace UI.Hub
         Private Sub ProcessMultiNext(app As UIApplication)
             Dim filePath As String = Nothing
             SyncLock _multiLock
-                If _multiQueue IsNot Nothing AndAlso _multiQueue.Count > 0 Then
-                    filePath = _multiQueue.Dequeue()
+                If _multiQueue IsNot Nothing AndAlso _multiIndex < _multiQueue.Count Then
+                    filePath = _multiQueue(_multiIndex)
                     _multiIndex += 1
                 End If
             End SyncLock
@@ -345,7 +345,7 @@ Namespace UI.Hub
 NextItem:
             SyncLock _multiLock
                 _multiBusy = False
-                If _multiQueue IsNot Nothing AndAlso _multiQueue.Count > 0 Then
+                If _multiQueue IsNot Nothing AndAlso _multiIndex < _multiQueue.Count Then
                     _multiPending = True
                 Else
                     _multiActive = False
@@ -965,6 +965,7 @@ NextItem:
 
         Private Function BuildMultiSummaryPayload() As Object
             Dim items As List(Of MultiRunItem) = If(_multiRunItems, New List(Of MultiRunItem)())
+            Dim featureSummaries = BuildMultiFeatureSummaries()
 
             Dim total As Integer = If(_multiTotal > 0, _multiTotal, items.Count)
 
@@ -983,8 +984,207 @@ NextItem:
         .skipped = skipped,
         .failed = failed,
         .canceled = False,
+        .featureSummaries = featureSummaries,
         .items = items
     }
+        End Function
+
+        Private Function BuildMultiFeatureSummaries() As Dictionary(Of String, Object)
+            Dim summaries As New Dictionary(Of String, Object)(StringComparer.OrdinalIgnoreCase)
+            If _multiRequest Is Nothing Then Return summaries
+
+            If _multiRequest.Connector IsNot Nothing AndAlso _multiRequest.Connector.Enabled Then
+                summaries("connector") = BuildConnectorMultiSummary()
+            End If
+
+            If _multiRequest.Guid IsNot Nothing AndAlso _multiRequest.Guid.Enabled Then
+                summaries("guid") = BuildGuidMultiSummary()
+            End If
+
+            If _multiRequest.FamilyLink IsNot Nothing AndAlso _multiRequest.FamilyLink.Enabled Then
+                summaries("familylink") = BuildFamilyLinkMultiSummary()
+            End If
+
+            If _multiRequest.Points IsNot Nothing AndAlso _multiRequest.Points.Enabled Then
+                summaries("points") = BuildPointsMultiSummary()
+            End If
+
+            Return summaries
+        End Function
+
+        Private Function BuildConnectorMultiSummary() As Object
+            Dim rows = If(_multiConnectorRows, New List(Of Dictionary(Of String, Object))())
+            Dim issueCount As Integer = rows.Where(Function(r) ShouldExportIssueRow(r)).Count()
+            Dim mismatchCount As Integer = rows.Where(Function(r) IsMismatchRow(r)).Count()
+            Dim nearCount As Integer = rows.Where(Function(r) IsZeroDistanceNotConnected(r)).Count()
+            Dim errorCount As Integer = rows.Where(Function(r) String.Equals(ReadField(r, "Status"), "ERROR", StringComparison.OrdinalIgnoreCase)).Count()
+            Dim normalCount As Integer = Math.Max(rows.Count - issueCount, 0)
+            Dim fileCount As Integer = GetRequestedMultiFileCount()
+            Dim fileSummaries = BuildConnectorFileSummaries(rows)
+
+            Return New With {
+                .key = "connector",
+                .label = "커넥터 파라미터 연속성 검토",
+                .lines = New String() {
+                    $"선택 파일 수: {fileCount}개",
+                    $"전체 결과 건수: {rows.Count}건",
+                    $"오류/불일치 건수: {errorCount + mismatchCount}건",
+                    $"연결 필요 건수: {nearCount}건",
+                    $"정상 건수: {normalCount}건",
+                    $"엑셀 내보내기 대상: {issueCount}건"
+                },
+                .fileSummaries = fileSummaries
+            }
+        End Function
+
+        Private Function BuildConnectorFileSummaries(rows As IList(Of Dictionary(Of String, Object))) As List(Of Object)
+            Dim sourceRows = If(rows, New List(Of Dictionary(Of String, Object))())
+            Dim orderedNames As New List(Of String)()
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing Then
+                For Each path In _multiRequest.RvtPaths
+                    Dim safeName As String = GetSafeMultiFileName(path)
+                    If String.IsNullOrWhiteSpace(safeName) Then Continue For
+                    If seen.Add(safeName) Then orderedNames.Add(safeName)
+                Next
+            End If
+
+            If _multiRunItems IsNot Nothing Then
+                For Each item In _multiRunItems
+                    If item Is Nothing Then Continue For
+                    Dim safeName As String = GetSafeMultiFileName(item.File)
+                    If String.IsNullOrWhiteSpace(safeName) Then Continue For
+                    If seen.Add(safeName) Then orderedNames.Add(safeName)
+                Next
+            End If
+
+            For Each row In sourceRows
+                Dim safeName As String = GetSafeMultiFileName(ReadField(row, "File"))
+                If String.IsNullOrWhiteSpace(safeName) Then Continue For
+                If seen.Add(safeName) Then orderedNames.Add(safeName)
+            Next
+
+            Dim result As New List(Of Object)()
+            For Each fileName In orderedNames
+                Dim total As Integer = 0
+                Dim issueCount As Integer = 0
+                Dim nearCount As Integer = 0
+                Dim statusText As String = "pending"
+
+                For Each row In sourceRows
+                    Dim rowFile As String = GetSafeMultiFileName(ReadField(row, "File"))
+                    If Not String.Equals(rowFile, fileName, StringComparison.OrdinalIgnoreCase) Then Continue For
+                    total += 1
+                    If ShouldExportIssueRow(row) Then issueCount += 1
+                    If IsZeroDistanceNotConnected(row) Then nearCount += 1
+                Next
+
+                If _multiRunItems IsNot Nothing Then
+                    For Each item In _multiRunItems
+                        If item Is Nothing Then Continue For
+                        Dim itemFile As String = GetSafeMultiFileName(item.File)
+                        If String.Equals(itemFile, fileName, StringComparison.OrdinalIgnoreCase) Then
+                            statusText = If(String.IsNullOrWhiteSpace(item.Status), "pending", item.Status)
+                            Exit For
+                        End If
+                    Next
+                End If
+
+                result.Add(New With {
+                    .file = fileName,
+                    .total = total,
+                    .issues = issueCount,
+                    .near = nearCount,
+                    .status = statusText
+                })
+            Next
+
+            Return result
+        End Function
+
+        Private Function BuildGuidMultiSummary() As Object
+            Dim projectRows As Integer = If(_multiGuidProject, New DataTable()).Rows.Count
+            Dim familyRows As Integer = If(_multiGuidFamilyDetail, New DataTable()).Rows.Count
+            Dim includeFamily As Boolean = (_multiRequest IsNot Nothing AndAlso _multiRequest.Guid IsNot Nothing AndAlso _multiRequest.Guid.IncludeFamily)
+            Dim lines As New List(Of String) From {
+                $"선택 파일 수: {GetRequestedMultiFileCount()}개",
+                $"프로젝트 결과 행 수: {projectRows}행"
+            }
+            If includeFamily Then
+                lines.Add($"패밀리 결과 행 수: {familyRows}행")
+            End If
+            lines.Add($"엑셀 시트 수: {If(includeFamily, 2, 1)}개")
+
+            Return New With {
+                .key = "guid",
+                .label = "공유파라미터 GUID 검토",
+                .lines = lines.ToArray()
+            }
+        End Function
+
+        Private Function BuildFamilyLinkMultiSummary() As Object
+            Dim rows = If(_multiFamilyLinkRows, New List(Of FamilyLinkAuditRow)())
+            Dim errorCount As Integer = rows.Where(Function(r) r IsNot Nothing AndAlso String.Equals(If(r.Issue, ""), FamilyLinkAuditIssue.[Error].ToString(), StringComparison.OrdinalIgnoreCase)).Count()
+            Dim targetCount As Integer = 0
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.FamilyLink IsNot Nothing AndAlso _multiRequest.FamilyLink.Targets IsNot Nothing Then
+                targetCount = _multiRequest.FamilyLink.Targets.Count
+            End If
+
+            Return New With {
+                .key = "familylink",
+                .label = "패밀리 공유파라미터 연동 검토",
+                .lines = New String() {
+                    $"선택 파일 수: {GetRequestedMultiFileCount()}개",
+                    $"검토 대상 파라미터 수: {targetCount}개",
+                    $"이슈 결과 행 수: {rows.Count}행",
+                    $"오류 행 수: {errorCount}행"
+                }
+            }
+        End Function
+
+        Private Function BuildPointsMultiSummary() As Object
+            Dim rows = If(_multiPointRows, New List(Of ExportPointsService.Row)())
+            Dim successFileSet As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            For Each row In rows
+                If row Is Nothing Then Continue For
+                If String.IsNullOrWhiteSpace(row.File) Then Continue For
+                successFileSet.Add(row.File)
+            Next
+            Dim successFiles As Integer = successFileSet.Count
+            Dim requestedCount As Integer = GetRequestedMultiFileCount()
+            Dim failedCount As Integer = Math.Max(requestedCount - successFiles, 0)
+
+            Return New With {
+                .key = "points",
+                .label = "Point 추출",
+                .lines = New String() {
+                    $"선택 파일 수: {requestedCount}개",
+                    $"결과 행 수: {rows.Count}행",
+                    $"성공 파일 수: {successFiles}개",
+                    $"실패 파일 수: {failedCount}개"
+                }
+            }
+        End Function
+
+        Private Function GetRequestedMultiFileCount() As Integer
+            If _multiRequest Is Nothing OrElse _multiRequest.RvtPaths Is Nothing Then Return 0
+            Dim fileSet As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            For Each path In _multiRequest.RvtPaths
+                If String.IsNullOrWhiteSpace(path) Then Continue For
+                fileSet.Add(GetSafeMultiFileName(path))
+            Next
+            Return fileSet.Count
+        End Function
+
+        Private Shared Function GetSafeMultiFileName(path As String) As String
+            If String.IsNullOrWhiteSpace(path) Then Return String.Empty
+            Try
+                Dim name As String = System.IO.Path.GetFileName(path)
+                If Not String.IsNullOrWhiteSpace(name) Then Return name
+            Catch
+            End Try
+            Return path
         End Function
 
         Private Sub ReportMultiProgress(percent As Double, message As String, detail As String)

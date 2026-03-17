@@ -30,6 +30,21 @@ const PHASE_LABEL = {
     done: '완료'
 };
 
+function formatRevitParamGroupLabel(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (raw.toUpperCase() === 'INVALID') return 'Other';
+    const source = raw.toUpperCase().startsWith('PG_') ? raw.substring(3) : raw;
+    return source
+        .split('_')
+        .filter(Boolean)
+        .map((part) => {
+            const lower = String(part || '').toLowerCase();
+            return lower ? lower.charAt(0).toUpperCase() + lower.slice(1) : '';
+        })
+        .join(' ');
+}
+
 export function renderParamProp(root) {
     const target = root || document.getElementById('view-root') || document.getElementById('app');
     clear(target);
@@ -376,7 +391,7 @@ export function renderParamProp(root) {
         opts.forEach(o => {
             const opt = document.createElement('option');
             opt.value = o.id;
-            opt.textContent = o.name;
+            opt.textContent = formatRevitParamGroupLabel(o.name || o.label || o.id);
             groupSel.append(opt);
         });
         if (opts.length) {
