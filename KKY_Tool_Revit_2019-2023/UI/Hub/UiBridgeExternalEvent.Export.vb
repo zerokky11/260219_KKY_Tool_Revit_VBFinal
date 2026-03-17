@@ -63,23 +63,50 @@ Namespace UI.Hub
         ' ========== Export: 미리보기 ==========
         Private Sub HandleExportPreview(app As UIApplication, payload As Dictionary(Of String, Object))
             ResetExportProgressState()
+            Dim files = ExtractStringListLocal(payload, "files")
+            Dim requestedCount As Integer = If(files, New List(Of String)()).Count
             Try
-                Dim files = ExtractStringListLocal(payload, "files")
-                ReportExportProgress("COLLECT", "파일 목록 준비 중", 0, If(files, New List(Of String)()).Count, 0.0, True)
+                ReportExportProgress("COLLECT", "파일 목록 준비 중", 0, requestedCount, 0.0, True)
                 Dim rows = TryCallExportPointsService(app, files)
                 If rows Is Nothing Then
                     ReportExportProgress("ERROR", "Export Points 서비스가 준비되지 않았습니다.", 0, 0, 0.0, True)
                     _host?.SendToWeb("revit:error", New With {.message = "Export Points 서비스가 준비되지 않았습니다."})
-                    _host?.SendToWeb("export:previewed", New With {.rows = New List(Of Dictionary(Of String, Object))()})
+                    _host?.SendToWeb("export:previewed", New With {
+                        .rows = New List(Of Dictionary(Of String, Object))(),
+                        .summary = New With {
+                            .selectedFileCount = requestedCount,
+                            .previewRowCount = 0,
+                            .successFileCount = 0,
+                            .failedFileCount = requestedCount
+                        }
+                    })
                     Return
                 End If
                 rows = rows.Select(Function(r) AdaptExportRow(r)).ToList()
                 Export_LastExportRows = rows
-                _host?.SendToWeb("export:previewed", New With {.rows = rows})
+                Dim successCount As Integer = rows.Count
+                Dim failedCount As Integer = Math.Max(requestedCount - successCount, 0)
+                _host?.SendToWeb("export:previewed", New With {
+                    .rows = rows,
+                    .summary = New With {
+                        .selectedFileCount = requestedCount,
+                        .previewRowCount = rows.Count,
+                        .successFileCount = successCount,
+                        .failedFileCount = failedCount
+                    }
+                })
             Catch ex As Exception
                 ReportExportProgress("ERROR", ex.Message, 0, 0, 0.0, True)
                 _host?.SendToWeb("revit:error", New With {.message = "미리보기 실패: " & ex.Message})
-                _host?.SendToWeb("export:previewed", New With {.rows = New List(Of Dictionary(Of String, Object))()})
+                _host?.SendToWeb("export:previewed", New With {
+                    .rows = New List(Of Dictionary(Of String, Object))(),
+                    .summary = New With {
+                        .selectedFileCount = requestedCount,
+                        .previewRowCount = 0,
+                        .successFileCount = 0,
+                        .failedFileCount = requestedCount
+                    }
+                })
             End Try
         End Sub
 

@@ -857,6 +857,105 @@ input[type="checkbox"]:disabled {
     justify-content: flex-end;
 }
 
+.completion-summary-backdrop {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in srgb, var(--color-background) 58%, transparent);
+    backdrop-filter: blur(4px);
+    display: grid;
+    place-items: center;
+    z-index: 365;
+    padding: 24px;
+}
+
+.completion-summary-dialog {
+    width: min(560px, 96vw);
+    max-height: min(80vh, 720px);
+    overflow: auto;
+    background: var(--surface-panel);
+    border: 1px solid var(--border-soft);
+    border-radius: 22px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+}
+
+.completion-summary-header {
+    padding: 20px 22px 14px;
+    border-bottom: 1px solid var(--border-soft);
+}
+
+.completion-summary-header h3 {
+    margin: 0;
+    font-size: 1.08rem;
+    font-weight: 700;
+}
+
+.completion-summary-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px 22px;
+}
+
+.completion-summary-message {
+    margin: 0;
+    color: var(--text-muted);
+    line-height: 1.55;
+}
+
+.completion-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.completion-summary-item {
+    border: 1px solid var(--border-soft);
+    background: var(--surface-sunken);
+    border-radius: 16px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.completion-summary-item-label {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+.completion-summary-item-value {
+    color: var(--text-main);
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.completion-summary-notes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.completion-summary-note {
+    border-radius: 14px;
+    border: 1px dashed var(--border-soft);
+    background: color-mix(in srgb, var(--surface-sunken) 88%, transparent);
+    color: var(--text-muted);
+    padding: 10px 12px;
+    line-height: 1.5;
+    font-size: 0.88rem;
+}
+
+.completion-summary-footer {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 14px 22px 20px;
+    border-top: 1px solid var(--border-soft);
+}
+
 /* -----------------------------
    Settings/help drawer
    ----------------------------- */

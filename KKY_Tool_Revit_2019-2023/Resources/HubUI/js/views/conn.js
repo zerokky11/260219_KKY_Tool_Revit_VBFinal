@@ -6,7 +6,7 @@
 // - UX: 결과영역은 검토 시작 전 숨김 → [검토 시작] 후 안내문 노출 → 데이터 수신 시 필터+표 노출
 // - 강조: Status별 톤은 Value1/Value2/Status 셀만 '캡슐형 테두리'로 표시
 
-import { clear, div, tdText, toast, setBusy, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
+import { clear, div, tdText, toast, setBusy, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 
@@ -547,6 +547,7 @@ export function renderConn(root) {
   });
 
   function onRun(){
+    closeCompletionSummaryDialog();
     commit(); setBusy(true);
     state.hasRun = true;
 
@@ -597,12 +598,19 @@ export function renderConn(root) {
 
   onHost(({ ev, payload }) => {
     switch (ev) {
-      case 'connector:done':
       case 'connector:loaded':
         setBusy(false);
         // 결과 섹션 보장
         cardResults.style.display = 'block';
         applyIncomingRows(payload || {});
+        break;
+      case 'connector:done':
+        setBusy(false);
+        cardResults.style.display = 'block';
+        applyIncomingRows(payload || {});
+        if (payload?.ok !== false) {
+          showConnectorCompletionDialog(payload || {});
+        }
         break;
       case 'connector:progress':
         handleConnectorProgress(payload);
@@ -799,6 +807,45 @@ export function renderConn(root) {
   function updateSaveDisabled(){
     const saveBtn = document.getElementById('btnConnSave');
     if (saveBtn) saveBtn.disabled = state.totalCount === 0 || exporting;
+  }
+
+  function showConnectorCompletionDialog(payload){
+    const summary = payload && typeof payload.summary === 'object' ? payload.summary : {};
+    const allCount = Number(summary.allCount);
+    const displayedTotal = Number(summary.displayedTotal);
+    const mismatchCount = Number(summary.mismatchCount);
+    const nearCount = Number(summary.nearCount);
+    const previewCount = Number(summary.previewCount);
+    const normalCount = Number(summary.normalCount);
+
+    const totalResults = Number.isFinite(allCount) ? allCount : Math.max(state.totalCount, state.rowsInch.length);
+    const shownTotal = Number.isFinite(displayedTotal) ? displayedTotal : state.totalCount;
+    const mismatch = Number.isFinite(mismatchCount) ? mismatchCount : state.mismatchTotal;
+    const near = Number.isFinite(nearCount) ? nearCount : state.notConnectedTotal;
+    const normal = Number.isFinite(normalCount) ? normalCount : Math.max(totalResults - mismatch - near, 0);
+    const shown = Number.isFinite(previewCount) ? previewCount : Math.min(shownTotal, MAX_PREVIEW_ROWS);
+
+    const notes = [];
+    if (summary?.hasMore === true || payload?.hasMore === true) {
+      notes.push(`미리보기에서는 상위 ${shown}건만 표시했습니다. 전체 ${shownTotal}건은 엑셀 내보내기로 확인할 수 있습니다.`);
+    }
+
+    showCompletionSummaryDialog({
+      title: '커넥터 진단 완료',
+      message: '검토 결과를 요약했습니다. 필요하면 바로 엑셀로 내보내세요.',
+      summaryItems: [
+        { label: '전체 결과 건수', value: String(totalResults) },
+        { label: '오류/불일치 건수', value: String(mismatch) },
+        { label: 'near/연결 필요 건수', value: String(near) },
+        { label: '정상 건수', value: String(normal) },
+        { label: '표시 건수 / 전체 건수', value: `${shown} / ${shownTotal}` }
+      ],
+      notes,
+      exportDisabled: !!save.disabled,
+      onExport: () => {
+        save.click();
+      }
+    });
   }
 
 

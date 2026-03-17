@@ -227,6 +227,7 @@ Namespace UI.Hub
 
                 Dim mismatchAll = filteredRows.Where(Function(r) IsMismatchRow(r)).ToList()
                 Dim nearAll = filteredRows.Where(Function(r) IsNearConnection(r)).ToList()
+                Dim displayedTotal As Integer = filteredRows.Count
 
 
                 ' ✅ 멀티 파라미터 중 "이슈 0건" 파라미터도 검토 여부를 알 수 있도록 안내행 추가
@@ -249,7 +250,9 @@ Namespace UI.Hub
                 LogDebug($"[connector] 커넥터 수집 완료: 결과 행 {filteredRows.Count}개 (Mismatch={mismatchAll.Count}, Near={nearAll.Count})")
 
                 LogDebug("[connector] 결과 전송 준비 완료, connector:done/connector:loaded emit 직전")
-                Dim hasMore As Boolean = filteredRows.Count > PREVIEW_LIMIT
+                Dim hasMore As Boolean = displayedTotal > PREVIEW_LIMIT
+                Dim previewDisplayCount As Integer = Math.Min(displayedTotal, PREVIEW_LIMIT)
+                Dim normalCount As Integer = Math.Max(totalRows.Count - mismatchAll.Count - nearAll.Count, 0)
                 SendToWeb("connector:loaded", New With {
                     .rows = previewRows,
                     .total = filteredRows.Count,
@@ -269,7 +272,16 @@ Namespace UI.Hub
                     },
                     .extraParams = _connectorExtraParams,
                     .reviewParams = reviewParams,
-                    .paramsCsv = paramCsvNormalized
+                    .paramsCsv = paramCsvNormalized,
+                    .summary = New With {
+                        .allCount = totalRows.Count,
+                        .displayedTotal = displayedTotal,
+                        .previewCount = previewDisplayCount,
+                        .mismatchCount = mismatchAll.Count,
+                        .nearCount = nearAll.Count,
+                        .normalCount = normalCount,
+                        .hasMore = hasMore
+                    }
                 })
                 SendToWeb("connector:done", New With {
                     .rows = previewRows,
@@ -290,7 +302,16 @@ Namespace UI.Hub
                     },
                     .extraParams = _connectorExtraParams,
                     .reviewParams = reviewParams,
-                    .paramsCsv = paramCsvNormalized
+                    .paramsCsv = paramCsvNormalized,
+                    .summary = New With {
+                        .allCount = totalRows.Count,
+                        .displayedTotal = displayedTotal,
+                        .previewCount = previewDisplayCount,
+                        .mismatchCount = mismatchAll.Count,
+                        .nearCount = nearAll.Count,
+                        .normalCount = normalCount,
+                        .hasMore = hasMore
+                    }
                 })
                 LogDebug("[connector] 결과 전송 완료, connector:done emit")
                 LogDebug("[connector] HandleConnectorRun 정상 종료")

@@ -1,5 +1,5 @@
 // Resources/HubUI/js/views/dup.js
-import { clear, div, toast, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
+import { clear, div, toast, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
 import { onHost, post } from '../core/bridge.js';
 
@@ -779,6 +779,7 @@ export function renderDup(root){
 
   var busy = false;
   var exporting = false;
+  var lastCompletionSignature = '';
 
   var rows = [];
   var groups = [];
@@ -876,6 +877,7 @@ export function renderDup(root){
           refreshSummary();
           renderAppliedBar();
         }
+        showDupCompletionDialog();
         return;
       }
 
@@ -997,6 +999,8 @@ export function renderDup(root){
   // ---- UI events ----
   runBtn.addEventListener('click', function(){
     if (busy) return;
+    closeCompletionSummaryDialog();
+    lastCompletionSignature = '';
 
     rows = [];
     groups = [];
@@ -1452,6 +1456,50 @@ export function renderDup(root){
     }
 
   
+  }
+
+  function showDupCompletionDialog(){
+    if (!lastResult || typeof lastResult !== 'object') return;
+
+    var modeKey = String(asStr(lastResult.mode, mode) || mode || 'duplicate').toLowerCase();
+    var isClashMode = modeKey === 'clash';
+    var scanCount = asNum(lastResult.scan, 0);
+    var groupCount = asNum(lastResult.groups, groups.length);
+    var candidateCount = asNum(lastResult.candidates, isClashMode ? lastPairs.length : rows.length);
+    var shownCount = asNum(lastResult.shown, isClashMode ? lastPairs.length : rows.length);
+    var totalCount = asNum(lastResult.total, isClashMode ? lastPairs.length : rows.length);
+    var signature = [
+      modeKey,
+      scanCount,
+      groupCount,
+      candidateCount,
+      shownCount,
+      totalCount,
+      lastResult.truncated ? '1' : '0'
+    ].join('|');
+    if (signature === lastCompletionSignature) return;
+    lastCompletionSignature = signature;
+
+    var notes = [];
+    if (lastResult.truncated){
+      notes.push('결과가 많아 화면에는 상위 ' + shownCount + '건만 표시했습니다. 전체 ' + totalCount + '건은 엑셀 내보내기에서 확인할 수 있습니다.');
+    }
+
+    showCompletionSummaryDialog({
+      title: isClashMode ? '자체간섭 검토 완료' : '중복 검토 완료',
+      message: '검토 결과를 요약했습니다. 필요하면 바로 엑셀로 내보내세요.',
+      summaryItems: [
+        { label: '검사 대상 수', value: String(scanCount) },
+        { label: '그룹 수', value: String(groupCount) },
+        { label: isClashMode ? '간섭 후보 수' : '삭제 후보 수', value: String(candidateCount) },
+        { label: '표시 건수 / 전체 건수', value: shownCount + ' / ' + totalCount }
+      ],
+      notes: notes,
+      exportDisabled: !!exportBtn.disabled,
+      onExport: function(){
+        exportBtn.click();
+      }
+    });
   }
 
 

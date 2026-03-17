@@ -1,11 +1,13 @@
-import { clear, div, tdText, toast, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
+import { clear, div, tdText, toast, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 
-const state = { files: [], rowsRaw: [], folder: '', unit: 'ft' };
+const state = { files: [], rowsRaw: [], folder: '', unit: 'ft', previewSummary: null };
 const FT_TO_M = 0.3048;
 const FT_TO_MM = 304.8;
+let activeTask = '';
+let previewHadFatalError = false;
 const HEADERS = [
   { key: 'ProjectPoint_E(mm)', label: 'E/W', group: 'project' },
   { key: 'ProjectPoint_N(mm)', label: 'N/S', group: 'project' },
@@ -34,7 +36,10 @@ export function renderExport(root) {
     addFilesBtn.id = 'btnExAddFiles';
     const preview = cardBtn('추출 시작', () => {
       const targets = selectedFilePaths();
+      closeCompletionSummaryDialog();
+      previewHadFatalError = false;
       if (!targets.length) { toast('선택된 RVT가 없습니다.', 'warn'); return; }
+      activeTask = 'preview';
       setWorking(true);
       startProgress('COLLECT', '미리보기 준비 중…', targets.length);
       post('export:preview', { files: targets, unit: state.unit });
@@ -43,6 +48,7 @@ export function renderExport(root) {
     const save = cardBtn('엑셀 내보내기', () => {
       chooseExcelMode((mode) => {
         const payload = { rows: convertRowsForSave(), unit: state.unit, files: selectedFilePaths(), excelMode: mode || 'fast' };
+        activeTask = 'save';
         setWorking(true);
         startProgress('EXCEL', '엑셀 내보내기 준비 중…', state.rowsRaw.length);
         post('export:save-excel', payload);
@@ -112,18 +118,26 @@ export function renderExport(root) {
     });
 
     // === 미리보기 결과 ===
-    onHost('export:previewed', ({ rows }) => {
+    onHost('export:previewed', ({ rows, summary }) => {
         finishWorking();
         ProgressDialog.hide();
         state.rowsRaw = Array.isArray(rows) ? rows : [];
+        state.previewSummary = buildPreviewSummary(summary);
         repaintRows();
         syncSaveState();
+        const shouldShowSummary = !(previewHadFatalError && state.rowsRaw.length === 0);
+        activeTask = '';
+        if (shouldShowSummary) {
+          showExportCompletionDialog(save);
+        }
+        previewHadFatalError = false;
         toast(`미리보기 ${state.rowsRaw.length}행`, 'ok');
     });
 
     // === 저장 결과 ===
     onHost('export:saved', ({ path }) => {
         const p = path || '';
+        activeTask = '';
         finishWorking();
         ProgressDialog.hide();
         if (p) {
@@ -392,6 +406,10 @@ function setWorking(on) {
 }
 
 function handleError(message) {
+    if (activeTask === 'preview') {
+        previewHadFatalError = true;
+    }
+    activeTask = '';
     resetProgressState();
     finishWorking();
     ProgressDialog.hide();
@@ -400,6 +418,49 @@ function handleError(message) {
 
 function resetProgressState() {
     lastProgressPct = 0;
+}
+
+function buildPreviewSummary(summary) {
+    const selectedCountRaw = Number(summary?.selectedFileCount);
+    const successCountRaw = Number(summary?.successFileCount);
+    const failedCountRaw = Number(summary?.failedFileCount);
+    const previewRowCountRaw = Number(summary?.previewRowCount);
+
+    const selectedFileCount = Number.isFinite(selectedCountRaw) ? selectedCountRaw : selectedFilePaths().length;
+    const successFileCount = Number.isFinite(successCountRaw) ? successCountRaw : state.rowsRaw.length;
+    const failedFileCount = Number.isFinite(failedCountRaw) ? failedCountRaw : Math.max(selectedFileCount - successFileCount, 0);
+    const previewRowCount = Number.isFinite(previewRowCountRaw) ? previewRowCountRaw : state.rowsRaw.length;
+
+    return {
+        selectedFileCount,
+        previewRowCount,
+        successFileCount,
+        failedFileCount
+    };
+}
+
+function showExportCompletionDialog(saveBtn) {
+    const summary = state.previewSummary || buildPreviewSummary(null);
+    const notes = [];
+    if (summary.failedFileCount > 0) {
+        notes.push(`추출에 실패한 파일 ${summary.failedFileCount}개는 미리보기에서 제외되었습니다.`);
+    }
+
+    showCompletionSummaryDialog({
+        title: '좌표/북각 추출 완료',
+        message: '추출 결과를 요약했습니다. 필요하면 바로 엑셀로 내보내세요.',
+        summaryItems: [
+            { label: '선택 파일 수', value: String(summary.selectedFileCount) },
+            { label: '미리보기 결과 행 수', value: String(summary.previewRowCount) },
+            { label: '성공 파일 수', value: String(summary.successFileCount) },
+            { label: '실패 파일 수', value: String(summary.failedFileCount) }
+        ],
+        notes,
+        exportDisabled: !!saveBtn?.disabled,
+        onExport: () => {
+            saveBtn.click();
+        }
+    });
 }
 
 function buildSubtitle(phase, current, total) {
