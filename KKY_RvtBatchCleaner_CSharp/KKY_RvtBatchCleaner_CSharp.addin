@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>KKY_RvtBatchCleaner_CSharp</Name>
+    <Assembly>%APPDATA%\Autodesk\Revit\Addins\2019\KKY_RvtBatchCleaner_CSharp.dll</Assembly>
+    <AddInId>54DFF7AD-7194-4E88-8D9D-9F6A3C08C8A7</AddInId>
+    <FullClassName>KKY_Tool_Revit.App</FullClassName>
+    <VendorId>KKY</VendorId>
+    <VendorDescription>KKY RVT Batch Cleaner</VendorDescription>
+  </AddIn>
+</RevitAddIns>
