@@ -113,6 +113,7 @@ export function renderMulti(root) {
   group3.section.id = 'utilities';
 
   buildGroup1Options();
+  group1.section.append(buildDeliveryCleanerWorkflowRow());
   group1.section.append(buildToggleRow('connector', buildConnectorConfig()));
   group3.section.append(buildPmsWorkflowRow());
   group3.section.append(buildToggleRow('guid', buildGuidConfig()));
@@ -569,6 +570,16 @@ export function renderMulti(root) {
       desc: 'Segment ↔ PMS 매핑 및 사이즈 검토',
       summary: '추출 → PMS 등록 → 매핑 준비 → 비교 실행 → 결과 내보내기',
       route: 'segmentpms'
+    });
+  }
+
+  function buildDeliveryCleanerWorkflowRow() {
+    return buildWorkflowLaunchRow({
+      iconLabel: 'RVT',
+      title: 'RVT 정리 (납품용)',
+      desc: '납품용 모델 정리, 필터 적용, 파라미터 입력, 검토, 추출, Purge를 한 흐름으로 실행합니다.',
+      summary: 'RVT 선택 → 정리 옵션 설정 → 정리 실행 → 검토/속성 추출 → Purge',
+      route: 'deliverycleaner'
     });
   }
 

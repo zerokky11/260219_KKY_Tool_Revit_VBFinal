@@ -181,6 +181,20 @@ Namespace UI.Hub
             map.Add("hub:multi-clear", "HandleMultiClear")
             map.Add("commonoptions:get", "HandleCommonOptionsGet")
             map.Add("commonoptions:save", "HandleCommonOptionsSave")
+            map.Add("deliverycleaner:init", "HandleDeliveryCleanerInit")
+            map.Add("deliverycleaner:pick-rvts", "HandleDeliveryCleanerPickRvts")
+            map.Add("deliverycleaner:browse-output-folder", "HandleDeliveryCleanerBrowseOutputFolder")
+            map.Add("deliverycleaner:filter-import", "HandleDeliveryCleanerFilterImport")
+            map.Add("deliverycleaner:filter-save", "HandleDeliveryCleanerFilterSave")
+            map.Add("deliverycleaner:filter-doc-list", "HandleDeliveryCleanerFilterDocList")
+            map.Add("deliverycleaner:filter-doc-extract", "HandleDeliveryCleanerFilterDocExtract")
+            map.Add("deliverycleaner:run", "HandleDeliveryCleanerRun")
+            map.Add("deliverycleaner:verify", "HandleDeliveryCleanerVerify")
+            map.Add("deliverycleaner:extract", "HandleDeliveryCleanerExtract")
+            map.Add("deliverycleaner:purge", "HandleDeliveryCleanerPurge")
+            map.Add("deliverycleaner:purge-status", "HandleDeliveryCleanerPurgeStatus")
+            map.Add("deliverycleaner:export-log", "HandleDeliveryCleanerExportLog")
+            map.Add("deliverycleaner:open-folder", "HandleDeliveryCleanerOpenFolder")
 
             Dim methodName As String = Nothing
             If Not map.TryGetValue(name, methodName) Then

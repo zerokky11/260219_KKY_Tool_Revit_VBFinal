@@ -79,6 +79,10 @@
 		<PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<ProjectReference Include="..\KKY_RvtBatchCleaner_Core\KKY_RvtBatchCleaner_Core.csproj" />
+	</ItemGroup>
+
 	<!-- Revit 2025 API 참조 -->
 	<ItemGroup>
 		<Reference Include="RevitAPI">

@@ -13,6 +13,7 @@ import { renderSegmentPms } from './views/segmentpms.js';
 import { renderGuid } from './views/guid.js';
 import { renderFamilyLink } from './views/familylink.js';
 import { renderMulti } from './views/multi.js';
+import { renderDeliveryCleaner } from './views/deliverycleaner.js';
 
 initTheme();
 
@@ -121,6 +122,7 @@ function route() {
         case 'guid': return renderGuid(targetRoot);
         case 'familylink': return renderFamilyLink(targetRoot);
         case 'multi': return renderMulti(targetRoot);
+        case 'deliverycleaner': return renderDeliveryCleaner(targetRoot);
         case 'active-menu': return renderActiveMenu(targetRoot);
         default: return renderHome(targetRoot);
     }
