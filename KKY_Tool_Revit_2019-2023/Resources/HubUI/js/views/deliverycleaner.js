@@ -827,27 +827,180 @@ function renderResultSummary(state) {
   state.ui.resultSummary.textContent = lines.join('\n');
 }
 
+function isDeliveryCleanerConfigured(state) {
+  return !!state.outputFolder;
+}
+
+function stripLogStamp(line) {
+  if (!line) return '';
+  return String(line).replace(/^\[[^\]]+\]\s*/, '').trim();
+}
+
+function extractValueAfterColonText(line) {
+  const text = stripLogStamp(line);
+  const index = text.indexOf(': ');
+  if (index >= 0 && index < text.length - 2) return text.substring(index + 2).trim();
+  return text;
+}
+
+function getFileNameOnly(path) {
+  if (!path) return '';
+  const text = String(path).trim();
+  const tokens = text.split(/[\\/]/);
+  return tokens[tokens.length - 1] || text;
+}
+
+function buildProgressSnapshot(state) {
+  const snapshot = {
+    mode: '',
+    currentFile: '',
+    currentTask: '',
+    completedCount: 0,
+    totalCount: state.filePaths.length || (Array.isArray(state.session?.cleanedOutputPaths) ? state.session.cleanedOutputPaths.length : 0)
+  };
+
+  if (state.purgeSnapshot?.isRunning) {
+    snapshot.mode = 'purge';
+    snapshot.currentFile = state.purgeSnapshot.currentFileName || '';
+    snapshot.currentTask = state.purgeSnapshot.message || state.purgeSnapshot.stateName || 'Purge 진행 중';
+    snapshot.completedCount = Math.max(0, (state.purgeSnapshot.currentFileIndex || 1) - 1);
+    snapshot.totalCount = state.purgeSnapshot.totalFiles || snapshot.totalCount;
+    return snapshot;
+  }
+
+  state.logs.forEach((rawLine) => {
+    const line = stripLogStamp(rawLine);
+    if (!line) return;
+
+    if (line.startsWith('정리 시작: ') || line.startsWith('대상 시작: ')) {
+      snapshot.mode = 'clean';
+      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
+      snapshot.currentTask = '정리 준비 중';
+      return;
+    }
+
+    if (line.startsWith('[STEP] ')) {
+      snapshot.mode = 'clean';
+      snapshot.currentTask = line.substring(7).trim() || '정리 진행 중';
+      return;
+    }
+
+    if (line.startsWith('정리 및 저장 완료: ') || line.startsWith('저장 완료: ')) {
+      snapshot.mode = 'clean';
+      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
+      snapshot.currentTask = '정리 저장 완료';
+      snapshot.completedCount += 1;
+      return;
+    }
+
+    if (line.startsWith('실패: ')) {
+      snapshot.currentTask = '오류 확인 필요';
+      return;
+    }
+
+    if (line.startsWith('검토 파일 열기: ')) {
+      snapshot.mode = 'verify';
+      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
+      snapshot.currentTask = '정리 결과 검토 중';
+      return;
+    }
+
+    if (line.startsWith('검토 완료: ')) {
+      snapshot.mode = 'verify';
+      snapshot.currentTask = '정리 결과 검토 완료';
+      snapshot.completedCount += 1;
+      return;
+    }
+
+    if (line.startsWith('속성값 추출 파일 열기: ')) {
+      snapshot.mode = 'extract';
+      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
+      snapshot.currentTask = '속성값 추출 중';
+      return;
+    }
+
+    if (line.startsWith('속성값 추출 완료: ')) {
+      snapshot.mode = 'extract';
+      snapshot.currentTask = '속성값 추출 완료';
+      snapshot.completedCount += 1;
+      return;
+    }
+
+    if (line.startsWith('Purge 실행: ')) {
+      snapshot.mode = 'purge';
+      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
+      snapshot.currentTask = 'Purge 일괄처리 중';
+      return;
+    }
+
+    if (line.startsWith('Purge 후 저장 완료: ')) {
+      snapshot.mode = 'purge';
+      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
+      snapshot.currentTask = 'Purge 후 저장 완료';
+      snapshot.completedCount += 1;
+    }
+  });
+
+  return snapshot;
+}
+
+function renderStatusBox(state, hasFiles, isConfigured, hasSessionTargets, isPurging) {
+  const progress = buildProgressSnapshot(state);
+  const lines = [];
+  let tone = 'idle';
+
+  if (state.busy || isPurging) {
+    tone = 'active';
+    lines.push('작업 진행 중');
+    lines.push(progress.currentTask ? `현재 작업: ${progress.currentTask}` : '현재 작업: 진행 정보 확인 중');
+    lines.push(progress.currentFile ? `현재 파일: ${progress.currentFile}` : '현재 파일: 대기 중');
+    if (progress.totalCount > 0) lines.push(`진행 파일: ${Math.min(progress.completedCount, progress.totalCount)}/${progress.totalCount}`);
+  } else if (!hasFiles) {
+    tone = 'idle';
+    lines.push('대상 RVT를 먼저 추가해 주세요.');
+    lines.push('RVT를 추가하면 설정 버튼이 강조되고, 설정 완료 후 정리 시작이 활성화됩니다.');
+  } else if (!isConfigured) {
+    tone = 'required';
+    lines.push(`대상 RVT ${state.filePaths.length}개가 준비되었습니다.`);
+    lines.push('다음 단계: 설정하기 (기본/세부)에서 결과 폴더를 지정해 주세요.');
+    lines.push('설정이 완료되면 정리 시작 버튼이 활성화됩니다.');
+  } else {
+    tone = 'ready';
+    lines.push(`대상 RVT ${state.filePaths.length}개와 결과 폴더 설정이 준비되었습니다.`);
+    lines.push('정리 시작을 눌러 납품용 정리를 실행할 수 있습니다.');
+    if (hasSessionTargets) lines.push(`최근 정리 결과 ${state.session.cleanedOutputPaths.length}개 파일이 준비되어 있습니다.`);
+  }
+
+  if (state.useFilter && state.filterProfile && isFilterConfigured(state.filterProfile) && !(state.busy || isPurging)) {
+    lines.push('뷰 필터 설정도 적용 가능한 상태입니다.');
+  }
+
+  state.ui.status.classList.remove('is-idle', 'is-required', 'is-ready', 'is-active');
+  state.ui.status.classList.add(`is-${tone}`);
+  state.ui.status.textContent = lines.join('\n');
+}
+
 function updateActionState(state) {
   const hasFiles = state.filePaths.length > 0;
   const hasOutput = !!state.outputFolder;
+  const isConfigured = isDeliveryCleanerConfigured(state);
   const hasSessionTargets = Array.isArray(state.session?.cleanedOutputPaths) && state.session.cleanedOutputPaths.length > 0;
   const isPurging = !!state.purgeSnapshot?.isRunning;
+  const canRun = !state.busy && hasFiles && isConfigured;
 
-  state.ui.runBtn.disabled = state.busy || !hasFiles || !hasOutput;
+  state.ui.runBtn.disabled = !canRun;
   state.ui.verifyBtn.disabled = state.busy || !(hasFiles || hasSessionTargets);
   state.ui.extractBtn.disabled = state.busy || !(hasFiles || hasSessionTargets);
   state.ui.purgeBtn.disabled = state.busy || isPurging || !(hasFiles || hasSessionTargets);
   state.ui.folderBtn.disabled = state.busy || !(state.outputFolder || state.session?.outputFolder);
   state.ui.exportLogBtn.disabled = state.busy || !state.logs.length;
 
-  const summary = [];
-  summary.push(hasFiles ? `대상 RVT ${state.filePaths.length}개 준비됨` : '대상 RVT를 선택해 주세요.');
-  summary.push(hasOutput ? '결과 파일 저장 폴더가 지정되어 있습니다.' : '결과 파일 저장 폴더를 지정해 주세요.');
-  if (hasSessionTargets) summary.push(`정리 결과 ${state.session.cleanedOutputPaths.length}개`);
-  if (state.useFilter && state.filterProfile && isFilterConfigured(state.filterProfile)) summary.push('필터 준비 완료');
-  if (isPurging) summary.push('Purge 진행 중');
+  state.ui.settingsBtn.classList.toggle('is-required', hasFiles && !isConfigured && !state.busy);
+  state.ui.settingsBtn.classList.toggle('is-complete', hasFiles && isConfigured && !state.busy);
+  state.ui.runBtn.classList.toggle('deliverycleaner-run-ready', canRun);
+  state.ui.runBtn.classList.toggle('deliverycleaner-run-blocked', hasFiles && !isConfigured && !state.busy);
 
-  state.ui.status.textContent = summary.join('\n');
+  renderStatusBox(state, hasFiles, isConfigured, hasSessionTargets, isPurging);
   renderResultSummary(state);
 }
 

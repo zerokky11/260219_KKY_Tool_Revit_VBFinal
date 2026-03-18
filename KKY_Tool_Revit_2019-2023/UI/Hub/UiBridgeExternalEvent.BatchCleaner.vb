@@ -27,6 +27,22 @@ Namespace UI.Hub
         Private Shared _deliveryCleanerExtractParamsCsv As String = String.Empty
         Private Shared _deliveryCleanerLastLogExportPath As String = String.Empty
 
+        Private NotInheritable Class DeliveryCleanerLogSummaryRow
+            Public Property FileName As String
+            Public Property WorkType As String
+            Public Property ItemName As String
+            Public Property Status As String
+            Public Property Detail As String
+        End Class
+
+        Private NotInheritable Class DeliveryCleanerStepTracker
+            Public Property FileName As String
+            Public Property WorkType As String
+            Public Property ItemName As String
+            Public Property SuccessDetail As String
+            Public Property FailureDetail As String
+        End Class
+
         Private Sub HandleDeliveryCleanerInit(app As UIApplication, payload As Object)
             SendToWeb("deliverycleaner:init", BuildDeliveryCleanerStatePayload())
         End Sub
@@ -307,7 +323,7 @@ Namespace UI.Hub
             Try
                 Directory.CreateDirectory(outputFolder)
                 Dim exportPath = Path.Combine(outputFolder, $"RVT_정리_납품용_로그_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx")
-                SaveDeliveryCleanerLogsWorkbook(exportPath, logs)
+                SaveDeliveryCleanerLogSummaryWorkbook(exportPath, logs)
 
                 SyncLock _deliveryCleanerLock
                     _deliveryCleanerLastLogExportPath = exportPath
@@ -690,8 +706,10 @@ Namespace UI.Hub
             If String.Equals(Path.GetExtension(csvPath), ".xlsx", StringComparison.OrdinalIgnoreCase) Then Return csvPath
 
             Dim table = LoadDeliveryCleanerCsvAsDataTable(csvPath, sheetName)
+            TrimDeliveryCleanerExportTable(table, sheetName)
             Dim xlsxPath = Path.ChangeExtension(csvPath, ".xlsx")
-            ExcelCore.SaveXlsx(xlsxPath, sheetName, table, autoFit:=True)
+            ExcelCore.SaveStyledSimple(xlsxPath, sheetName, table, GetDeliveryCleanerGroupHeader(table), autoFit:=True)
+            EnsureDeliveryCleanerWorkbookBorders(xlsxPath)
 
             Try
                 File.Delete(csvPath)
@@ -748,6 +766,81 @@ Namespace UI.Hub
             Return table
         End Function
 
+        Private Shared Sub TrimDeliveryCleanerExportTable(table As DataTable, sheetName As String)
+            If table Is Nothing Then Return
+
+            If String.Equals(sheetName, "Design Option 검토", StringComparison.OrdinalIgnoreCase) Then
+                If table.Columns.Contains("SourcePath") Then
+                    table.Columns.Remove("SourcePath")
+                End If
+            End If
+        End Sub
+
+        Private Shared Function GetDeliveryCleanerGroupHeader(table As DataTable) As String
+            If table Is Nothing Then Return Nothing
+            If table.Columns.Contains("파일명") Then Return "파일명"
+            If table.Columns.Contains("FileName") Then Return "FileName"
+            Return Nothing
+        End Function
+
+        Private Shared Sub EnsureDeliveryCleanerWorkbookBorders(xlsxPath As String)
+            If String.IsNullOrWhiteSpace(xlsxPath) OrElse Not File.Exists(xlsxPath) Then Return
+
+            Dim workbook As XSSFWorkbook = Nothing
+
+            Using readStream As New FileStream(xlsxPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
+                workbook = New XSSFWorkbook(readStream)
+            End Using
+
+            If workbook Is Nothing Then Return
+
+            Try
+                For i As Integer = 0 To workbook.NumberOfSheets - 1
+                    Dim sheet = workbook.GetSheetAt(i)
+                    If sheet Is Nothing Then Continue For
+                    ApplyThinBordersToExistingCells(workbook, sheet)
+                Next
+
+                Using writeStream As New FileStream(xlsxPath, FileMode.Create, FileAccess.Write, FileShare.None)
+                    workbook.Write(writeStream)
+                End Using
+            Finally
+                workbook.Close()
+            End Try
+        End Sub
+
+        Private Shared Sub ApplyThinBordersToExistingCells(workbook As IWorkbook, sheet As ISheet)
+            If workbook Is Nothing OrElse sheet Is Nothing Then Return
+
+            Dim styleCache As New Dictionary(Of Integer, ICellStyle)()
+
+            For rowIndex As Integer = 0 To sheet.LastRowNum
+                Dim row = sheet.GetRow(rowIndex)
+                If row Is Nothing OrElse row.LastCellNum <= 0 Then Continue For
+
+                For colIndex As Integer = 0 To row.LastCellNum - 1
+                    Dim cell = row.GetCell(colIndex)
+                    If cell Is Nothing Then Continue For
+
+                    Dim baseStyle = cell.CellStyle
+                    Dim cacheKey As Integer = If(baseStyle Is Nothing, -1, CInt(baseStyle.Index))
+                    Dim borderedStyle As ICellStyle = Nothing
+
+                    If Not styleCache.TryGetValue(cacheKey, borderedStyle) Then
+                        borderedStyle = workbook.CreateCellStyle()
+                        If baseStyle IsNot Nothing Then borderedStyle.CloneStyleFrom(baseStyle)
+                        borderedStyle.BorderBottom = BorderStyle.Thin
+                        borderedStyle.BorderTop = BorderStyle.Thin
+                        borderedStyle.BorderLeft = BorderStyle.Thin
+                        borderedStyle.BorderRight = BorderStyle.Thin
+                        styleCache(cacheKey) = borderedStyle
+                    End If
+
+                    cell.CellStyle = borderedStyle
+                Next
+            Next
+        End Sub
+
         Private Shared Sub SaveDeliveryCleanerLogsWorkbook(filePath As String, logs As IList(Of String))
             Using workbook As IWorkbook = New XSSFWorkbook()
                 Dim sheet = workbook.CreateSheet("실행 로그")
@@ -769,6 +862,302 @@ Namespace UI.Hub
                 End Using
             End Using
         End Sub
+
+        Private Shared Sub SaveDeliveryCleanerLogSummaryWorkbook(filePath As String, logs As IList(Of String))
+            Dim table = BuildDeliveryCleanerLogSummaryTable(logs)
+            ExcelCore.SaveStyledSimple(filePath, "실행 로그 요약", table, "파일명", autoFit:=True)
+        End Sub
+
+        Private Shared Function BuildDeliveryCleanerLogSummaryTable(logs As IList(Of String)) As DataTable
+            Dim table As New DataTable("실행 로그 요약")
+            table.Columns.Add("파일명", GetType(String))
+            table.Columns.Add("작업", GetType(String))
+            table.Columns.Add("항목", GetType(String))
+            table.Columns.Add("상태", GetType(String))
+            table.Columns.Add("상세", GetType(String))
+
+            For Each item In BuildDeliveryCleanerLogSummaryRows(logs)
+                table.Rows.Add(
+                    If(item.FileName, String.Empty),
+                    If(item.WorkType, String.Empty),
+                    If(item.ItemName, String.Empty),
+                    If(item.Status, String.Empty),
+                    If(item.Detail, String.Empty))
+            Next
+
+            If table.Rows.Count = 0 Then
+                table.Rows.Add("", "실행 로그", "기록 없음", "O", "요약할 로그가 없습니다.")
+            End If
+
+            Return table
+        End Function
+
+        Private Shared Function BuildDeliveryCleanerLogSummaryRows(logs As IList(Of String)) As List(Of DeliveryCleanerLogSummaryRow)
+            Dim result As New List(Of DeliveryCleanerLogSummaryRow)()
+            Dim currentCleanFile As String = String.Empty
+            Dim currentVerifyFile As String = String.Empty
+            Dim currentExtractFile As String = String.Empty
+            Dim currentPurgeFile As String = String.Empty
+            Dim currentStep As DeliveryCleanerStepTracker = Nothing
+
+            For Each rawLine In If(logs, Array.Empty(Of String)())
+                Dim line = NormalizeDeliveryCleanerLogLine(rawLine)
+                If String.IsNullOrWhiteSpace(line) Then Continue For
+
+                If line.StartsWith("정리 시작: ", StringComparison.OrdinalIgnoreCase) OrElse
+                   line.StartsWith("저장 시작: ", StringComparison.OrdinalIgnoreCase) Then
+                    FinalizeDeliveryCleanerStep(result, currentStep)
+                    currentStep = Nothing
+                    currentCleanFile = GetFileNameOnly(ExtractValueAfterColon(line))
+                    Continue For
+                End If
+
+                If line.StartsWith("[STEP] ", StringComparison.OrdinalIgnoreCase) Then
+                    FinalizeDeliveryCleanerStep(result, currentStep)
+                    currentStep = New DeliveryCleanerStepTracker With {
+                        .FileName = currentCleanFile,
+                        .WorkType = "정리",
+                        .ItemName = line.Substring(7).Trim()
+                    }
+                    Continue For
+                End If
+
+                If line.StartsWith("실패: ", StringComparison.OrdinalIgnoreCase) Then
+                    Dim detail = line.Substring(4).Trim()
+                    If currentStep IsNot Nothing AndAlso String.IsNullOrWhiteSpace(currentStep.FailureDetail) Then
+                        currentStep.FailureDetail = detail
+                    End If
+                    result.Add(New DeliveryCleanerLogSummaryRow With {
+                        .FileName = currentCleanFile,
+                        .WorkType = "정리",
+                        .ItemName = "정리 실행",
+                        .Status = "X",
+                        .Detail = detail
+                    })
+                    Continue For
+                End If
+
+                If line.StartsWith("정리 및 저장 완료: ", StringComparison.OrdinalIgnoreCase) OrElse
+                   line.StartsWith("저장 완료: ", StringComparison.OrdinalIgnoreCase) Then
+                    FinalizeDeliveryCleanerStep(result, currentStep)
+                    currentStep = Nothing
+                    result.Add(New DeliveryCleanerLogSummaryRow With {
+                        .FileName = GetFileNameOnly(ExtractValueAfterColon(line)),
+                        .WorkType = "정리",
+                        .ItemName = "저장",
+                        .Status = "O",
+                        .Detail = "정리 결과 저장 완료"
+                    })
+                    Continue For
+                End If
+
+                If line.StartsWith("검토 파일 열기: ", StringComparison.OrdinalIgnoreCase) Then
+                    currentVerifyFile = GetFileNameOnly(ExtractValueAfterColon(line))
+                    Continue For
+                End If
+
+                If line.StartsWith("검토 완료: ", StringComparison.OrdinalIgnoreCase) Then
+                    Dim detail = ExtractValueAfterColon(line)
+                    result.Add(New DeliveryCleanerLogSummaryRow With {
+                        .FileName = currentVerifyFile,
+                        .WorkType = "정리 결과 검토",
+                        .ItemName = "정리 결과 검토",
+                        .Status = If(detail.IndexOf("CHECK", StringComparison.OrdinalIgnoreCase) >= 0, "X", "O"),
+                        .Detail = detail
+                    })
+                    Continue For
+                End If
+
+                If line.StartsWith("검토 CSV 저장: ", StringComparison.OrdinalIgnoreCase) Then
+                    result.Add(New DeliveryCleanerLogSummaryRow With {
+                        .FileName = "",
+                        .WorkType = "정리 결과 검토",
+                        .ItemName = "엑셀 저장",
+                        .Status = "O",
+                        .Detail = GetFileNameOnly(ExtractValueAfterColon(line))
+                    })
+                    Continue For
+                End If
+
+                If line.StartsWith("검토 중 오류: ", StringComparison.OrdinalIgnoreCase) Then
+                    result.Add(New DeliveryCleanerLogSummaryRow With {
+                        .FileName = currentVerifyFile,
+                        .WorkType = "정리 결과 검토",
+                        .ItemName = "정리 결과 검토",
+                        .Status = "X",
+                        .Detail = ExtractValueAfterColon(line)
+                    })
+                    Continue For
+                End If
+
+                If line.StartsWith("속성값 추출 파일 열기: ", StringComparison.OrdinalIgnoreCase) Then
+                    currentExtractFile = GetFileNameOnly(ExtractValueAfterColon(line))
+                    Continue For
+                End If
+
+                If line.StartsWith("속성값 추출 완료: ", StringComparison.OrdinalIgnoreCase) Then
+                    result.Add(New DeliveryCleanerLogSummaryRow With {
+                        .FileName = currentExtractFile,
+                        .WorkType = "속성값 추출",
+                        .ItemName = "속성값 추출",
+                        .Status = "O",
+                        .Detail = ExtractValueAfterColon(line)
+                    })
+                    Continue For
+                End If
+
+                If line.StartsWith("속성값 추출 CSV 저장: ", StringComparison.OrdinalIgnoreCase) Then
+                    result.Add(New DeliveryCleanerLogSummaryRow With {
+                        .FileName = "",
+                        .WorkType = "속성값 추출",
+                        .ItemName = "엑셀 저장",
+                        .Status = "O",
+                        .Detail = GetFileNameOnly(ExtractValueAfterColon(line))
+                    })
+                    Continue For
+                End If
+
+                If line.StartsWith("속성값 추출 중 오류: ", StringComparison.OrdinalIgnoreCase) Then
+                    result.Add(New DeliveryCleanerLogSummaryRow With {
+                        .FileName = currentExtractFile,
+                        .WorkType = "속성값 추출",
+                        .ItemName = "속성값 추출",
+                        .Status = "X",
+                        .Detail = ExtractValueAfterColon(line)
+                    })
+                    Continue For
+                End If
+
+                If line.StartsWith("Purge 실행: ", StringComparison.OrdinalIgnoreCase) Then
+                    currentPurgeFile = GetFileNameOnly(ExtractValueAfterColon(line))
+                    Continue For
+                End If
+
+                If line.StartsWith("Purge 후 저장 완료: ", StringComparison.OrdinalIgnoreCase) Then
+                    result.Add(New DeliveryCleanerLogSummaryRow With {
+                        .FileName = GetFileNameOnly(ExtractValueAfterColon(line)),
+                        .WorkType = "Purge",
+                        .ItemName = "Purge 일괄처리",
+                        .Status = "O",
+                        .Detail = "Purge 후 저장 완료"
+                    })
+                    Continue For
+                End If
+
+                If line.StartsWith("Purge 시작 실패: ", StringComparison.OrdinalIgnoreCase) OrElse
+                   line.StartsWith("Purge 상태 처리 오류: ", StringComparison.OrdinalIgnoreCase) OrElse
+                   line.StartsWith("퍼지 대상 활성 열기 실패: ", StringComparison.OrdinalIgnoreCase) Then
+                    result.Add(New DeliveryCleanerLogSummaryRow With {
+                        .FileName = currentPurgeFile,
+                        .WorkType = "Purge",
+                        .ItemName = "Purge 일괄처리",
+                        .Status = "X",
+                        .Detail = ExtractValueAfterColon(line)
+                    })
+                    Continue For
+                End If
+
+                If currentStep IsNot Nothing Then
+                    If IsDeliveryCleanerFailureLine(line) Then
+                        If String.IsNullOrWhiteSpace(currentStep.FailureDetail) Then
+                            currentStep.FailureDetail = line
+                        End If
+                    ElseIf String.IsNullOrWhiteSpace(currentStep.SuccessDetail) AndAlso IsDeliveryCleanerUsefulSuccessLine(line) Then
+                        currentStep.SuccessDetail = line
+                    End If
+                End If
+            Next
+
+            FinalizeDeliveryCleanerStep(result, currentStep)
+            Return result
+        End Function
+
+        Private Shared Sub FinalizeDeliveryCleanerStep(rows As IList(Of DeliveryCleanerLogSummaryRow), tracker As DeliveryCleanerStepTracker)
+            If rows Is Nothing OrElse tracker Is Nothing OrElse String.IsNullOrWhiteSpace(tracker.ItemName) Then Return
+
+            Dim detail = If(String.IsNullOrWhiteSpace(tracker.FailureDetail), tracker.SuccessDetail, tracker.FailureDetail)
+            If String.IsNullOrWhiteSpace(detail) Then
+                detail = If(String.IsNullOrWhiteSpace(tracker.FailureDetail), "완료", "실패")
+            End If
+
+            rows.Add(New DeliveryCleanerLogSummaryRow With {
+                .FileName = tracker.FileName,
+                .WorkType = tracker.WorkType,
+                .ItemName = tracker.ItemName,
+                .Status = If(String.IsNullOrWhiteSpace(tracker.FailureDetail), "O", "X"),
+                .Detail = detail
+            })
+        End Sub
+
+        Private Shared Function NormalizeDeliveryCleanerLogLine(rawLine As String) As String
+            Dim text = If(rawLine, String.Empty).Trim()
+            If text.StartsWith("[") Then
+                Dim endIndex = text.IndexOf("]"c)
+                If endIndex >= 0 AndAlso endIndex < text.Length - 1 Then
+                    text = text.Substring(endIndex + 1).Trim()
+                End If
+            End If
+            Return text
+        End Function
+
+        Private Shared Function IsDeliveryCleanerFailureLine(line As String) As Boolean
+            If String.IsNullOrWhiteSpace(line) Then Return False
+
+            Dim failureTokens = {
+                "실패",
+                "오류",
+                "충돌",
+                "유효하지 않습니다",
+                "찾지 못",
+                "남아 있습니다"
+            }
+
+            Return failureTokens.Any(Function(token) line.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+        End Function
+
+        Private Shared Function IsDeliveryCleanerUsefulSuccessLine(line As String) As Boolean
+            If String.IsNullOrWhiteSpace(line) Then Return False
+            If line.StartsWith("Detach + ", StringComparison.OrdinalIgnoreCase) Then Return True
+            If line.StartsWith("모든 워크셋 닫기 일반 열기로 재시도", StringComparison.OrdinalIgnoreCase) Then Return True
+            If line.Contains("삭제 결과") Then Return True
+            If line.Contains("단계 완료") Then Return True
+            If line.Contains("설정 완료") Then Return True
+            If line.Contains("설정 적용 완료") Then Return True
+            If line.Contains("대상 3D 뷰 생성") Then Return True
+            If line.Contains("삭제된 뷰/템플릿") Then Return True
+            If line.Contains("건너뜀") Then Return True
+            If line.Contains("일괄 입력:") Then Return True
+            If line.Contains("선삭제:") Then Return True
+            If line.Contains("CSV 저장") Then Return True
+            Return False
+        End Function
+
+        Private Shared Function ExtractValueAfterColon(line As String) As String
+            If String.IsNullOrWhiteSpace(line) Then Return String.Empty
+            Dim index = line.IndexOf(": ")
+            If index >= 0 AndAlso index < line.Length - 2 Then
+                Return line.Substring(index + 2).Trim()
+            End If
+
+            index = line.IndexOf(":")
+            If index >= 0 AndAlso index < line.Length - 1 Then
+                Return line.Substring(index + 1).Trim()
+            End If
+
+            Return line.Trim()
+        End Function
+
+        Private Shared Function GetFileNameOnly(value As String) As String
+            Dim text = If(value, String.Empty).Trim()
+            If String.IsNullOrWhiteSpace(text) Then Return String.Empty
+
+            Dim slashIndex = Math.Max(text.LastIndexOf("\"c), text.LastIndexOf("/"c))
+            If slashIndex >= 0 AndAlso slashIndex < text.Length - 1 Then
+                Return text.Substring(slashIndex + 1).Trim()
+            End If
+
+            Return text
+        End Function
 
         Private Shared Sub AppendDeliveryCleanerLog(message As String)
             If String.IsNullOrWhiteSpace(message) Then Return
