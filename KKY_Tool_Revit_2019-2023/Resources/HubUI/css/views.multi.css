@@ -627,6 +627,21 @@
     padding: 12px;
 }
 
+[data-theme="light"] .modal .familylink-target-row,
+.theme-light .modal .familylink-target-row {
+    color: var(--text-main);
+}
+
+[data-theme="light"] .modal .familylink-target-row strong,
+.theme-light .modal .familylink-target-row strong {
+    color: var(--text-main);
+}
+
+[data-theme="light"] .modal .familylink-target-row small,
+.theme-light .modal .familylink-target-row small {
+    color: var(--text-muted);
+}
+
 .familylink-selected {
     display: flex;
     flex-direction: column;
