@@ -32,7 +32,10 @@ Namespace Exports
             "Notes"
         }
 
-        Public Function Export(rows As IEnumerable(Of FamilyLinkAuditRow), Optional fastExport As Boolean = True, Optional autoFit As Boolean = False) As String
+        Public Function Export(rows As IEnumerable(Of FamilyLinkAuditRow),
+                               Optional fastExport As Boolean = True,
+                               Optional autoFit As Boolean = False,
+                               Optional progressChannel As String = Nothing) As String
             If rows Is Nothing Then Return String.Empty
             Dim table As DataTable = ToDataTable(rows)
             ' Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("familylink", table)
@@ -60,16 +63,34 @@ Namespace Exports
                 End If
 
                 If ext = ".csv" Then
+                    ReportProgress(progressChannel, "EXCEL_SAVE", "CSV 저장 중...", 1, 1, 0.95R, True)
                     SaveCsv(filePath, table)
                 Else
                     Dim doAutoFit As Boolean = (Not fastExport) AndAlso autoFit
                     Dim excelMode As String = If(fastExport, "fast", "normal")
-                    ExcelCore.SaveXlsx(filePath, "FamilyLinkAudit", table, doAutoFit)
+                    ReportProgress(progressChannel, "EXCEL_INIT", "엑셀 저장 준비 중...", 0, Math.Max(1, table.Rows.Count), 0.0R, True)
+                    ExcelCore.SaveXlsx(filePath, "FamilyLinkAudit", table, doAutoFit, progressKey:=progressChannel, exportKind:="familylink")
+                    ReportProgress(progressChannel, "EXCEL_SAVE", "엑셀 파일 저장 중...", Math.Max(1, table.Rows.Count), Math.Max(1, table.Rows.Count), 0.95R, True)
                     ExcelExportStyleRegistry.ApplyStylesForKey("familylink", filePath, autoFit:=doAutoFit, excelMode:=excelMode)
+                    If doAutoFit Then
+                        ReportProgress(progressChannel, "AUTOFIT", "열 너비 자동 조정 중...", 1, 1, 1.0R, True)
+                    End If
                 End If
+                ReportProgress(progressChannel, "DONE", "내보내기 완료", 1, 1, 1.0R, True)
                 Return filePath
             End Using
         End Function
+
+        Private Sub ReportProgress(channel As String,
+                                   phase As String,
+                                   message As String,
+                                   current As Integer,
+                                   total As Integer,
+                                   Optional percentOverride As Double? = Nothing,
+                                   Optional force As Boolean = False)
+            If String.IsNullOrWhiteSpace(channel) Then Return
+            Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(channel, phase, message, current, total, percentOverride, force)
+        End Sub
 
         Public Function ToDataTable(rows As IEnumerable(Of FamilyLinkAuditRow)) As DataTable
             Return BuildTable(rows)

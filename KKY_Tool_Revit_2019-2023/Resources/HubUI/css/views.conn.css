@@ -425,3 +425,18 @@
     gap: 6px;
     color: var(--text-soft);
 }
+
+[data-theme="light"] .conn-page .familylink-target-row,
+.theme-light .conn-page .familylink-target-row {
+    color: var(--text-main);
+}
+
+[data-theme="light"] .conn-page .familylink-target-row strong,
+.theme-light .conn-page .familylink-target-row strong {
+    color: var(--text-main);
+}
+
+[data-theme="light"] .conn-page .familylink-target-row small,
+.theme-light .conn-page .familylink-target-row small {
+    color: var(--text-muted);
+}

@@ -786,7 +786,11 @@ NextItem:
 
         Private Sub ExportFamilyLink(doAutoFit As Boolean, excelMode As String)
             Dim rows = If(_multiFamilyLinkRows, New List(Of FamilyLinkAuditRow)())
-            Dim saved = FamilyLinkAuditExport.Export(rows, fastExport:=String.Equals(excelMode, "fast", StringComparison.OrdinalIgnoreCase), autoFit:=doAutoFit)
+            ExcelProgressReporter.Reset("hub:multi-progress")
+            Dim saved = FamilyLinkAuditExport.Export(rows,
+                                                     fastExport:=String.Equals(excelMode, "fast", StringComparison.OrdinalIgnoreCase),
+                                                     autoFit:=doAutoFit,
+                                                     progressChannel:="hub:multi-progress")
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
             Else

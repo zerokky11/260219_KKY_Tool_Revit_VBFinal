@@ -26,6 +26,7 @@ Namespace UI.Hub
         Private Shared _deliveryCleanerSession As BatchPrepareSession
         Private Shared _deliveryCleanerExtractParamsCsv As String = String.Empty
         Private Shared _deliveryCleanerLastLogExportPath As String = String.Empty
+        Private Const DeliveryCleanerProgressChannel As String = "deliverycleaner:progress"
 
         Private NotInheritable Class DeliveryCleanerLogSummaryRow
             Public Property FileName As String
@@ -42,6 +43,168 @@ Namespace UI.Hub
             Public Property SuccessDetail As String
             Public Property FailureDetail As String
         End Class
+
+        Private NotInheritable Class DeliveryCleanerProgressContext
+            Public Property Title As String
+            Public Property Mode As String
+            Public Property TotalFiles As Integer
+            Public Property CompletedFiles As Integer
+            Public Property CurrentFileIndex As Integer
+            Public Property CurrentFileName As String
+            Public Property StepIndex As Integer
+            Public Property TotalSteps As Integer
+            Public Property LastPercent As Double
+        End Class
+
+        Private Shared Function CountExistingDeliveryCleanerFiles(paths As IEnumerable(Of String)) As Integer
+            Return If(paths, Enumerable.Empty(Of String)()) _
+                .Where(Function(path) Not String.IsNullOrWhiteSpace(path) AndAlso File.Exists(path)) _
+                .Distinct(StringComparer.OrdinalIgnoreCase) _
+                .Count()
+        End Function
+
+        Private Shared Function ClampDeliveryCleanerPercent(value As Double) As Double
+            If Double.IsNaN(value) OrElse Double.IsInfinity(value) Then Return 0.0R
+            Return Math.Max(0.0R, Math.Min(100.0R, value))
+        End Function
+
+        Private Shared Sub SendDeliveryCleanerProgress(context As DeliveryCleanerProgressContext,
+                                                       message As String,
+                                                       detail As String,
+                                                       Optional fileProgress As Double? = Nothing,
+                                                       Optional fixedPercent As Double? = Nothing,
+                                                       Optional complete As Boolean = False)
+            If context Is Nothing Then Return
+
+            Dim totalFiles As Integer = Math.Max(1, context.TotalFiles)
+            Dim percent As Double
+
+            If complete Then
+                percent = 100.0R
+            ElseIf fixedPercent.HasValue Then
+                percent = fixedPercent.Value
+            Else
+                Dim completed As Integer = Math.Max(0, Math.Min(context.CompletedFiles, totalFiles))
+                Dim activeProgress As Double = 0.0R
+                If fileProgress.HasValue AndAlso completed < totalFiles Then
+                    activeProgress = Math.Max(0.0R, Math.Min(1.0R, fileProgress.Value))
+                End If
+                percent = ((CDbl(completed) + activeProgress) / CDbl(totalFiles)) * 100.0R
+            End If
+
+            percent = ClampDeliveryCleanerPercent(percent)
+            If Not complete Then
+                percent = Math.Max(context.LastPercent, percent)
+            End If
+            context.LastPercent = percent
+
+            SendToWeb(DeliveryCleanerProgressChannel, New With {
+                .title = If(context.Title, "Delivery Cleaner"),
+                .mode = If(context.Mode, String.Empty),
+                .message = If(message, String.Empty),
+                .detail = If(detail, String.Empty),
+                .percent = percent,
+                .complete = complete,
+                .currentFile = If(context.CurrentFileName, String.Empty),
+                .currentFileIndex = Math.Max(0, context.CurrentFileIndex),
+                .totalFiles = Math.Max(0, context.TotalFiles)
+            })
+        End Sub
+
+        Private Shared Sub UpdateDeliveryCleanerProgressFromLog(context As DeliveryCleanerProgressContext, rawLine As String)
+            If context Is Nothing Then Return
+
+            Dim line = NormalizeDeliveryCleanerLogLine(rawLine)
+            If String.IsNullOrWhiteSpace(line) Then Return
+
+            Select Case If(context.Mode, String.Empty).Trim().ToLowerInvariant()
+                Case "run"
+                    If line.StartsWith("정리 시작: ", StringComparison.OrdinalIgnoreCase) OrElse
+                       line.StartsWith("저장 시작: ", StringComparison.OrdinalIgnoreCase) Then
+                        context.CurrentFileIndex = Math.Min(Math.Max(1, context.CompletedFiles + 1), Math.Max(1, context.TotalFiles))
+                        context.CurrentFileName = GetFileNameOnly(ExtractValueAfterColon(line))
+                        context.StepIndex = 0
+                        SendDeliveryCleanerProgress(context, "파일 준비 중...", context.CurrentFileName, fileProgress:=0.05R)
+                        Return
+                    End If
+
+                    If line.StartsWith("[STEP] ", StringComparison.OrdinalIgnoreCase) Then
+                        context.StepIndex = Math.Min(context.StepIndex + 1, Math.Max(1, context.TotalSteps))
+                        Dim fileProgress = Math.Min(0.9R, CDbl(context.StepIndex) / CDbl(Math.Max(1, context.TotalSteps)))
+                        SendDeliveryCleanerProgress(context, line.Substring(7).Trim(), context.CurrentFileName, fileProgress:=fileProgress)
+                        Return
+                    End If
+
+                    If line.StartsWith("정리 및 저장 완료: ", StringComparison.OrdinalIgnoreCase) OrElse
+                       line.StartsWith("저장 완료: ", StringComparison.OrdinalIgnoreCase) Then
+                        context.CompletedFiles = Math.Min(context.TotalFiles, context.CompletedFiles + 1)
+                        context.CurrentFileIndex = context.CompletedFiles
+                        If String.IsNullOrWhiteSpace(context.CurrentFileName) Then
+                            context.CurrentFileName = GetFileNameOnly(ExtractValueAfterColon(line))
+                        End If
+                        context.StepIndex = context.TotalSteps
+                        SendDeliveryCleanerProgress(context, "파일 처리 완료", context.CurrentFileName)
+                        Return
+                    End If
+
+                    If line.StartsWith("실패: ", StringComparison.OrdinalIgnoreCase) Then
+                        context.CompletedFiles = Math.Min(context.TotalFiles, context.CompletedFiles + 1)
+                        context.CurrentFileIndex = context.CompletedFiles
+                        SendDeliveryCleanerProgress(context, "파일 처리 실패", ExtractValueAfterColon(line))
+                        Return
+                    End If
+
+                    If line.StartsWith("Design Option CSV 저장: ", StringComparison.OrdinalIgnoreCase) Then
+                        SendDeliveryCleanerProgress(context, "Design Option 리포트 저장 중...", GetFileNameOnly(ExtractValueAfterColon(line)), fixedPercent:=98.0R)
+                        Return
+                    End If
+
+                    If line.StartsWith("Design Option CSV 저장 실패: ", StringComparison.OrdinalIgnoreCase) Then
+                        SendDeliveryCleanerProgress(context, "Design Option 리포트 저장 실패", ExtractValueAfterColon(line), fixedPercent:=98.0R)
+                        Return
+                    End If
+
+                Case "verify"
+                    If line.StartsWith("검토 파일 열기: ", StringComparison.OrdinalIgnoreCase) Then
+                        context.CurrentFileIndex = Math.Min(Math.Max(1, context.CompletedFiles + 1), Math.Max(1, context.TotalFiles))
+                        context.CurrentFileName = GetFileNameOnly(ExtractValueAfterColon(line))
+                        SendDeliveryCleanerProgress(context, "검토 중...", context.CurrentFileName, fileProgress:=0.15R)
+                        Return
+                    End If
+
+                    If line.StartsWith("검토 완료: ", StringComparison.OrdinalIgnoreCase) Then
+                        context.CompletedFiles = Math.Min(context.TotalFiles, context.CompletedFiles + 1)
+                        context.CurrentFileIndex = context.CompletedFiles
+                        SendDeliveryCleanerProgress(context, "검토 완료", If(String.IsNullOrWhiteSpace(context.CurrentFileName), line, context.CurrentFileName))
+                        Return
+                    End If
+
+                    If line.StartsWith("검토 CSV 저장: ", StringComparison.OrdinalIgnoreCase) Then
+                        SendDeliveryCleanerProgress(context, "검토 결과 저장 중...", GetFileNameOnly(ExtractValueAfterColon(line)), fixedPercent:=98.0R)
+                        Return
+                    End If
+
+                Case "extract"
+                    If line.StartsWith("속성값 추출 파일 열기: ", StringComparison.OrdinalIgnoreCase) Then
+                        context.CurrentFileIndex = Math.Min(Math.Max(1, context.CompletedFiles + 1), Math.Max(1, context.TotalFiles))
+                        context.CurrentFileName = GetFileNameOnly(ExtractValueAfterColon(line))
+                        SendDeliveryCleanerProgress(context, "속성값 추출 중...", context.CurrentFileName, fileProgress:=0.15R)
+                        Return
+                    End If
+
+                    If line.StartsWith("속성값 추출 완료: ", StringComparison.OrdinalIgnoreCase) Then
+                        context.CompletedFiles = Math.Min(context.TotalFiles, context.CompletedFiles + 1)
+                        context.CurrentFileIndex = context.CompletedFiles
+                        SendDeliveryCleanerProgress(context, "속성값 추출 완료", If(String.IsNullOrWhiteSpace(context.CurrentFileName), line, context.CurrentFileName))
+                        Return
+                    End If
+
+                    If line.StartsWith("속성값 추출 CSV 저장: ", StringComparison.OrdinalIgnoreCase) Then
+                        SendDeliveryCleanerProgress(context, "속성값 추출 결과 저장 중...", GetFileNameOnly(ExtractValueAfterColon(line)), fixedPercent:=98.0R)
+                        Return
+                    End If
+            End Select
+        End Sub
 
         Private Sub HandleDeliveryCleanerInit(app As UIApplication, payload As Object)
             SendToWeb("deliverycleaner:init", BuildDeliveryCleanerStatePayload())
@@ -162,7 +325,18 @@ Namespace UI.Hub
                 _deliveryCleanerLogs.Clear()
             End SyncLock
 
-            Dim logger As Action(Of String) = Sub(line) AppendDeliveryCleanerLog(line)
+            Dim progress As New DeliveryCleanerProgressContext With {
+                .Title = "Delivery Cleaner",
+                .Mode = "run",
+                .TotalFiles = CountExistingDeliveryCleanerFiles(settings.FilePaths),
+                .TotalSteps = 12
+            }
+            Dim logger As Action(Of String) =
+                Sub(line)
+                    AppendDeliveryCleanerLog(line)
+                    UpdateDeliveryCleanerProgressFromLog(progress, line)
+                End Sub
+            SendDeliveryCleanerProgress(progress, "Preparing...", "", fixedPercent:=0.0R)
             AppendDeliveryCleanerLog("정리 시작")
 
             Try
@@ -173,6 +347,7 @@ Namespace UI.Hub
                     _deliveryCleanerSession = session
                 End SyncLock
 
+                SendDeliveryCleanerProgress(progress, "Completed", "", complete:=True)
                 SendToWeb("deliverycleaner:run-done", New With {
                     .ok = True,
                     .state = BuildDeliveryCleanerStatePayload(),
@@ -180,6 +355,7 @@ Namespace UI.Hub
                 })
             Catch ex As Exception
                 AppendDeliveryCleanerLog("정리 중 오류: " & ex.Message)
+                SendDeliveryCleanerProgress(progress, "Failed", ex.Message, fixedPercent:=progress.LastPercent)
                 SendToWeb("deliverycleaner:error", New With {.message = ex.Message})
             End Try
         End Sub
@@ -194,7 +370,17 @@ Namespace UI.Hub
             End If
 
             Dim outputFolder = ResolveDeliveryCleanerOutputFolder(settings, targetPaths)
-            Dim logger As Action(Of String) = Sub(line) AppendDeliveryCleanerLog(line)
+            Dim progress As New DeliveryCleanerProgressContext With {
+                .Title = "Verification",
+                .Mode = "verify",
+                .TotalFiles = CountExistingDeliveryCleanerFiles(targetPaths)
+            }
+            Dim logger As Action(Of String) =
+                Sub(line)
+                    AppendDeliveryCleanerLog(line)
+                    UpdateDeliveryCleanerProgressFromLog(progress, line)
+                End Sub
+            SendDeliveryCleanerProgress(progress, "Preparing...", "", fixedPercent:=0.0R)
 
             Try
                 Dim csvPath = VerificationService.VerifyPaths(app, targetPaths, outputFolder, settings, logger)
@@ -206,9 +392,11 @@ Namespace UI.Hub
                     If _deliveryCleanerSettings Is Nothing Then _deliveryCleanerSettings = settings.Clone()
                 End SyncLock
 
+                SendDeliveryCleanerProgress(progress, "Completed", exportPath, complete:=True)
                 SendToWeb("deliverycleaner:verify-done", New With {.ok = True, .path = exportPath, .state = BuildDeliveryCleanerStatePayload()})
             Catch ex As Exception
                 AppendDeliveryCleanerLog("검토 중 오류: " & ex.Message)
+                SendDeliveryCleanerProgress(progress, "Failed", ex.Message, fixedPercent:=progress.LastPercent)
                 SendToWeb("deliverycleaner:error", New With {.message = ex.Message})
             End Try
         End Sub
@@ -230,7 +418,17 @@ Namespace UI.Hub
             End If
 
             Dim outputFolder = ResolveDeliveryCleanerOutputFolder(settings, targetPaths)
-            Dim logger As Action(Of String) = Sub(line) AppendDeliveryCleanerLog(line)
+            Dim progress As New DeliveryCleanerProgressContext With {
+                .Title = "Parameter Extraction",
+                .Mode = "extract",
+                .TotalFiles = CountExistingDeliveryCleanerFiles(targetPaths)
+            }
+            Dim logger As Action(Of String) =
+                Sub(line)
+                    AppendDeliveryCleanerLog(line)
+                    UpdateDeliveryCleanerProgressFromLog(progress, line)
+                End Sub
+            SendDeliveryCleanerProgress(progress, "Preparing...", "", fixedPercent:=0.0R)
 
             Try
                 Dim csvPath = ModelParameterExtractionService.ExportModelParameters(app, targetPaths, outputFolder, parameterNamesCsv, logger)
@@ -242,6 +440,7 @@ Namespace UI.Hub
                     If _deliveryCleanerSettings Is Nothing Then _deliveryCleanerSettings = settings.Clone()
                 End SyncLock
 
+                SendDeliveryCleanerProgress(progress, "Completed", exportPath, complete:=True)
                 SendToWeb("deliverycleaner:extract-done", New With {
                     .ok = True,
                     .path = exportPath,
@@ -250,6 +449,7 @@ Namespace UI.Hub
                 })
             Catch ex As Exception
                 AppendDeliveryCleanerLog("속성값 추출 중 오류: " & ex.Message)
+                SendDeliveryCleanerProgress(progress, "Failed", ex.Message, fixedPercent:=progress.LastPercent)
                 SendToWeb("deliverycleaner:error", New With {.message = ex.Message})
             End Try
         End Sub
@@ -323,7 +523,14 @@ Namespace UI.Hub
             Try
                 Directory.CreateDirectory(outputFolder)
                 Dim exportPath = Path.Combine(outputFolder, $"RVT_정리_납품용_로그_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx")
+                Dim progress As New DeliveryCleanerProgressContext With {
+                    .Title = "Log Export",
+                    .Mode = "log",
+                    .TotalFiles = 1
+                }
+                SendDeliveryCleanerProgress(progress, "Preparing summary...", "", fixedPercent:=0.1R)
                 SaveDeliveryCleanerLogSummaryWorkbook(exportPath, logs)
+                SendDeliveryCleanerProgress(progress, "Completed", exportPath, complete:=True)
 
                 SyncLock _deliveryCleanerLock
                     _deliveryCleanerLastLogExportPath = exportPath
@@ -701,14 +908,16 @@ Namespace UI.Hub
             Return If(text, String.Empty).Trim()
         End Function
 
-        Private Shared Function ConvertDeliveryCleanerCsvToXlsx(csvPath As String, sheetName As String) As String
+        Private Shared Function ConvertDeliveryCleanerCsvToXlsx(csvPath As String,
+                                                                sheetName As String,
+                                                                Optional progressKey As String = DeliveryCleanerProgressChannel) As String
             If String.IsNullOrWhiteSpace(csvPath) OrElse Not File.Exists(csvPath) Then Return csvPath
             If String.Equals(Path.GetExtension(csvPath), ".xlsx", StringComparison.OrdinalIgnoreCase) Then Return csvPath
 
             Dim table = LoadDeliveryCleanerCsvAsDataTable(csvPath, sheetName)
             TrimDeliveryCleanerExportTable(table, sheetName)
             Dim xlsxPath = Path.ChangeExtension(csvPath, ".xlsx")
-            ExcelCore.SaveStyledSimple(xlsxPath, sheetName, table, GetDeliveryCleanerGroupHeader(table), autoFit:=True)
+            ExcelCore.SaveStyledSimple(xlsxPath, sheetName, table, GetDeliveryCleanerGroupHeader(table), autoFit:=True, progressKey:=progressKey)
             EnsureDeliveryCleanerWorkbookBorders(xlsxPath)
 
             Try

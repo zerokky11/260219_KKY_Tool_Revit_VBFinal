@@ -4,6 +4,7 @@ import { ProgressDialog } from '../core/progress.js';
 import { onHost, post } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 
+const EXCEL_PHASE_WEIGHT = { EXCEL_INIT: 0.05, EXCEL_WRITE: 0.85, EXCEL_SAVE: 0.08, AUTOFIT: 0.02, DONE: 1, ERROR: 1 };
 const DEFAULT_SCHEMA = [
   'FileName',
   'HostFamilyName',
@@ -42,6 +43,7 @@ export function renderFamilyLink(root) {
     rvtChecked: new Set(),
     busy: false
   };
+  let lastExcelPct = 0;
 
   const page = div('familylink-page feature-shell');
 
@@ -220,12 +222,39 @@ export function renderFamilyLink(root) {
 
   function handleProgress(payload) {
     if (!payload) return;
+    if (payload.phase || payload.current != null || payload.total != null) {
+      handleExcelProgress(payload);
+      return;
+    }
     const pct = Math.max(0, Math.min(100, Number(payload.percent) || 0));
     const msg = payload.message || '';
     ProgressDialog.show('패밀리 연동 검토', msg || '진행 중...');
     ProgressDialog.update(pct, msg || '진행 중...', '');
     if (pct >= 100) {
       setTimeout(() => ProgressDialog.hide(), 350);
+    }
+  }
+
+  function handleExcelProgress(payload) {
+    const phase = normalizeExcelPhase(payload?.phase);
+    const total = Number(payload?.total) || 0;
+    const current = Number(payload?.current) || 0;
+    const percent = computeExcelPercent(phase, current, total, payload?.phaseProgress, payload?.percent);
+    const subtitle = buildExcelSubtitle(phase, current, total);
+    const detail = formatExcelDetail(phase, payload?.message);
+    const exporting = phase !== 'DONE' && phase !== 'ERROR';
+
+    if (!state.busy && exporting) setBusy(true);
+
+    ProgressDialog.show('?묒? ?대낫?닿린', subtitle || '?묒? ?대낫?닿린 以묅?');
+    ProgressDialog.update(percent, subtitle, detail);
+
+    if (!exporting) {
+      setTimeout(() => {
+        ProgressDialog.hide();
+        lastExcelPct = 0;
+        setBusy(false);
+      }, 260);
     }
   }
 
@@ -241,11 +270,15 @@ export function renderFamilyLink(root) {
   function handleError(payload) {
     setBusy(false);
     ProgressDialog.hide();
+    lastExcelPct = 0;
     const message = payload?.message || '작업 중 오류가 발생했습니다.';
     toast(message, 'err', 3200);
   }
 
   function handleExported(payload) {
+    setBusy(false);
+    ProgressDialog.hide();
+    lastExcelPct = 0;
     const ok = payload?.ok !== false && payload?.path;
     exportBtn.disabled = state.rows.length === 0 || state.busy;
     if (ok) {
@@ -288,6 +321,10 @@ export function renderFamilyLink(root) {
     exportBtn.disabled = true;
     chooseExcelMode((mode) => {
       const selected = mode || 'fast';
+      lastExcelPct = 0;
+      setBusy(true);
+      ProgressDialog.show('?묒? ?대낫?닿린', '以鍮?以?..');
+      ProgressDialog.update(0, '以鍮?以?..', '');
       post('familylink:export', {
         fastExport: selected === 'fast',
         autoFit: selected === 'normal'
@@ -417,6 +454,59 @@ export function renderFamilyLink(root) {
       if (d?.groupName) set.add(d.groupName);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'));
+  }
+
+  function normalizeExcelPhase(phase) {
+    return String(phase || '').trim().toUpperCase() || 'EXCEL_WRITE';
+  }
+
+  function clamp01(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+  }
+
+  function computeExcelPercent(phase, current, total, phaseProgress, percentOverride) {
+    const norm = normalizeExcelPhase(phase);
+    if (norm === 'DONE') {
+      lastExcelPct = 100;
+      return 100;
+    }
+    if (norm === 'ERROR') return lastExcelPct;
+
+    if (typeof percentOverride === 'number' && Number.isFinite(percentOverride) && percentOverride > 0 && percentOverride <= 1) {
+      lastExcelPct = Math.max(lastExcelPct, percentOverride * 100);
+      return lastExcelPct;
+    }
+
+    const completed = ['EXCEL_INIT', 'EXCEL_WRITE', 'EXCEL_SAVE', 'AUTOFIT'].reduce((acc, key) => {
+      if (key === norm) return acc;
+      return acc + (EXCEL_PHASE_WEIGHT[key] || 0);
+    }, 0);
+    const weight = EXCEL_PHASE_WEIGHT[norm] || 0;
+    const ratio = total > 0 ? Math.max(0, Math.min(1, current / total)) : 0;
+    const staged = Math.max(ratio, clamp01(phaseProgress));
+    const denominator = completed + weight || 1;
+    const pct = (completed + weight * staged) / denominator * 100;
+    lastExcelPct = Math.max(lastExcelPct, Math.min(100, pct));
+    return lastExcelPct;
+  }
+
+  function buildExcelSubtitle(phase, current, total) {
+    const norm = normalizeExcelPhase(phase);
+    switch (norm) {
+      case 'EXCEL_INIT': return '?묒? ?뚰겕遺?以鍮?以?';
+      case 'EXCEL_WRITE': return `?묒? ?곗씠???묒꽦 以?(${current}/${Math.max(total, current || 1)})`;
+      case 'EXCEL_SAVE': return '?묒? ?대낫?닿린 以?';
+      case 'AUTOFIT': return '???덈퉬 ?먮룞 議곗젙 以묅?';
+      case 'DONE': return '?묒? ?대낫?닿린 ?꾨즺';
+      case 'ERROR': return '?묒? ?대낫?닿린 ?ㅻ쪟';
+      default: return '?묒? ?대낫?닿린 以묅?';
+    }
+  }
+
+  function formatExcelDetail(phase, message) {
+    if (message) return message;
+    return normalizeExcelPhase(phase) === 'DONE' ? '?묒? ?대낫?닿린 ?꾨즺' : '';
   }
 
   function renderRvtList() {

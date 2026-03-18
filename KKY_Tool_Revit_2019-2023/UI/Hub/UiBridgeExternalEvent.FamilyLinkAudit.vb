@@ -165,7 +165,8 @@ End Function
             fastExport = Not autoFit
 
             Try
-                Dim savedPath As String = FamilyLinkAuditExport.Export(_familyLinkLastRows, fastExport, autoFit)
+                ExcelProgressReporter.Reset("familylink:progress")
+                Dim savedPath As String = FamilyLinkAuditExport.Export(_familyLinkLastRows, fastExport, autoFit, "familylink:progress")
                 If String.IsNullOrWhiteSpace(savedPath) Then
                     SendToWeb("familylink:exported", New With {
                         .ok = False,
@@ -180,6 +181,7 @@ End Function
                 })
 
             Catch ex As Exception
+                ExcelProgressReporter.Report("familylink:progress", "ERROR", ex.Message, 0, 0, Nothing, True)
                 SendToWeb("familylink:exported", New With {
                     .ok = False,
                     .message = ex.Message

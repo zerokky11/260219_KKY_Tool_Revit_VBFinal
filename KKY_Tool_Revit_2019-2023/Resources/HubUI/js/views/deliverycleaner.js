@@ -1,4 +1,5 @@
 import { clear, div, toast, setBusy } from '../core/dom.js';
+import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 
@@ -9,6 +10,7 @@ const FILTER_OPERATORS = [
 ];
 
 const TAB_KEYS = ['view', 'element', 'filter'];
+const EXCEL_PHASE_WEIGHT = { EXCEL_INIT: 0.05, EXCEL_WRITE: 0.85, EXCEL_SAVE: 0.08, AUTOFIT: 0.02, DONE: 1, ERROR: 1 };
 
 export function renderDeliveryCleaner(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');
@@ -33,6 +35,7 @@ export function renderDeliveryCleaner(root) {
     busy: false,
     purgeSnapshot: null,
     filterDocItems: [],
+    progressPercent: 0,
     ui: {}
   };
 
@@ -93,18 +96,24 @@ export function renderDeliveryCleaner(root) {
     state.filterDocItems = Array.isArray(payload?.items) ? payload.items : [];
     openFilterDocModal(state, payload?.docTitle || '');
   });
+  onHost('deliverycleaner:progress', (payload) => {
+    handleDeliveryCleanerProgress(state, payload);
+  });
   onHost('deliverycleaner:run-done', (payload) => {
+    resetDeliveryCleanerProgress(state);
     setPageBusy(state, false);
     applyHostState(state, payload?.state || {});
     const summary = payload?.summary || {};
     toast(`정리 완료 · 성공 ${summary.successCount ?? 0} / 실패 ${summary.failCount ?? 0}`, summary.failCount ? 'err' : 'ok', 3200);
   });
   onHost('deliverycleaner:verify-done', (payload) => {
+    resetDeliveryCleanerProgress(state);
     setPageBusy(state, false);
     applyHostState(state, payload?.state || {});
     toast(payload?.path ? `정리 결과 검토 엑셀 생성: ${payload.path}` : '정리 결과 검토가 완료되었습니다.', 'ok', 3200);
   });
   onHost('deliverycleaner:extract-done', (payload) => {
+    resetDeliveryCleanerProgress(state);
     setPageBusy(state, false);
     applyHostState(state, payload?.state || {});
     if (typeof payload?.parameterNamesCsv === 'string') {
@@ -129,12 +138,14 @@ export function renderDeliveryCleaner(root) {
     const snapshot = state.purgeSnapshot || {};
     if (!snapshot.isRunning && (snapshot.isCompleted || snapshot.isFaulted)) {
       stopPurgePolling(state);
+      resetDeliveryCleanerProgress(state);
       setPageBusy(state, false);
       if (snapshot.isCompleted) toast('Purge 일괄처리가 완료되었습니다.', 'ok', 3200);
       if (snapshot.isFaulted) toast(snapshot.message || 'Purge 진행 중 오류가 발생했습니다.', 'err', 3600);
     }
   });
   onHost('deliverycleaner:log-exported', (payload) => {
+    resetDeliveryCleanerProgress(state);
     setPageBusy(state, false);
     applyHostState(state, payload?.state || {});
     if (payload?.path) toast(`로그 엑셀 저장 완료: ${payload.path}`, 'ok', 3200);
@@ -146,6 +157,7 @@ export function renderDeliveryCleaner(root) {
     appendLog(state, payload?.message || '');
   });
   onHost('deliverycleaner:error', (payload) => {
+    resetDeliveryCleanerProgress(state);
     setPageBusy(state, false);
     stopPurgePolling(state);
     if (payload?.message) {
@@ -1084,6 +1096,96 @@ function buildPayload(state) {
       assignments: state.elementParameterUpdate.assignments.map((row) => ({ ...row }))
     }
   };
+}
+
+function handleDeliveryCleanerProgress(state, payload) {
+  if (!payload) return;
+
+  if (payload.phase || payload.current != null || payload.total != null) {
+    const phase = normalizeDeliveryCleanerExcelPhase(payload?.phase);
+    const total = Number(payload?.total) || 0;
+    const current = Number(payload?.current) || 0;
+    const percent = computeDeliveryCleanerExcelPercent(state, phase, current, total, payload?.phaseProgress, payload?.percent);
+    const subtitle = buildDeliveryCleanerExcelSubtitle(phase, current, total);
+    const detail = payload?.message || '';
+
+    ProgressDialog.show(payload?.title || 'RVT 정리 (납품용)', subtitle || '진행 중...');
+    ProgressDialog.update(percent, subtitle || '진행 중...', detail);
+
+    if (phase === 'DONE' || phase === 'ERROR') {
+      window.setTimeout(() => resetDeliveryCleanerProgress(state), 260);
+    }
+    return;
+  }
+
+  const title = payload?.title || 'RVT 정리 (납품용)';
+  const message = payload?.message || '진행 중...';
+  const detail = payload?.detail || '';
+  const percent = clampDeliveryCleanerPercent(payload?.percent);
+  state.progressPercent = Math.max(state.progressPercent || 0, percent);
+  ProgressDialog.show(title, message);
+  ProgressDialog.update(state.progressPercent, message, detail);
+
+  if (payload?.complete) {
+    window.setTimeout(() => resetDeliveryCleanerProgress(state), 260);
+  }
+}
+
+function resetDeliveryCleanerProgress(state) {
+  state.progressPercent = 0;
+  ProgressDialog.hide();
+}
+
+function normalizeDeliveryCleanerExcelPhase(phase) {
+  return String(phase || '').trim().toUpperCase() || 'EXCEL_WRITE';
+}
+
+function clampDeliveryCleanerPercent(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0;
+}
+
+function clampDeliveryCleanerRatio(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
+}
+
+function computeDeliveryCleanerExcelPercent(state, phase, current, total, phaseProgress, percentOverride) {
+  const norm = normalizeDeliveryCleanerExcelPhase(phase);
+  if (norm === 'DONE') {
+    state.progressPercent = 100;
+    return 100;
+  }
+  if (norm === 'ERROR') return state.progressPercent || 0;
+
+  if (typeof percentOverride === 'number' && Number.isFinite(percentOverride) && percentOverride > 0 && percentOverride <= 1) {
+    state.progressPercent = Math.max(state.progressPercent || 0, percentOverride * 100);
+    return state.progressPercent;
+  }
+
+  const completed = ['EXCEL_INIT', 'EXCEL_WRITE', 'EXCEL_SAVE', 'AUTOFIT'].reduce((acc, key) => {
+    if (key === norm) return acc;
+    return acc + (EXCEL_PHASE_WEIGHT[key] || 0);
+  }, 0);
+  const weight = EXCEL_PHASE_WEIGHT[norm] || 0;
+  const ratio = total > 0 ? Math.max(0, Math.min(1, current / total)) : 0;
+  const staged = Math.max(ratio, clampDeliveryCleanerRatio(phaseProgress));
+  const denominator = completed + weight || 1;
+  const percent = (completed + weight * staged) / denominator * 100;
+  state.progressPercent = Math.max(state.progressPercent || 0, Math.min(100, percent));
+  return state.progressPercent;
+}
+
+function buildDeliveryCleanerExcelSubtitle(phase, current, total) {
+  switch (normalizeDeliveryCleanerExcelPhase(phase)) {
+    case 'EXCEL_INIT': return '엑셀 저장 준비 중...';
+    case 'EXCEL_WRITE': return `엑셀 데이터 작성 중... (${current}/${Math.max(total, current || 1)})`;
+    case 'EXCEL_SAVE': return '엑셀 파일 저장 중...';
+    case 'AUTOFIT': return '열 너비 자동 조정 중...';
+    case 'DONE': return '내보내기 완료';
+    case 'ERROR': return '내보내기 오류';
+    default: return '진행 중...';
+  }
 }
 
 function setPageBusy(state, on) {

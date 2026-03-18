@@ -357,8 +357,8 @@ Namespace Infrastructure
                     End If
                 End If
 
-                If (r Mod 200) = 0 Then
-                    TryReportProgress(progressKey, r, total, sheetName)
+                If (r Mod 200) = 0 OrElse r = total - 1 Then
+                    TryReportProgress(progressKey, r + 1, total, sheetName)
                 End If
             Next
 
@@ -920,9 +920,15 @@ Namespace Infrastructure
                 Dim mi = t.GetMethod("Report", System.Reflection.BindingFlags.Public Or System.Reflection.BindingFlags.Static)
                 If mi Is Nothing Then Return
 
-                Dim percent As Double = 0
-                If total > 0 Then percent = (CDbl(current) / CDbl(total)) * 100.0R
-                mi.Invoke(Nothing, New Object() {progressKey, percent, $"Exporting {sheetName}...", $"{current}/{total}"})
+                mi.Invoke(Nothing, New Object() {
+                    progressKey,
+                    "EXCEL_WRITE",
+                    $"Writing {sheetName}",
+                    Math.Max(0, current),
+                    Math.Max(0, total),
+                    Nothing,
+                    False
+                })
             Catch
             End Try
         End Sub
