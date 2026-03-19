@@ -1078,7 +1078,9 @@ export function renderMulti(root) {
     documentMeta.style.color = 'var(--muted,#64748b)';
 
     const baseWrap = div('paramprop-opt paramprop-opt-group');
-    const baseLbl = labelSpan('주 레벨');
+    const baseLbl = document.createElement('span');
+    baseLbl.className = 'feature-note';
+    baseLbl.textContent = '주 레벨';
     const baseSelect = document.createElement('select');
     baseSelect.className = 'paramprop-select';
     baseSelect.addEventListener('change', () => {
