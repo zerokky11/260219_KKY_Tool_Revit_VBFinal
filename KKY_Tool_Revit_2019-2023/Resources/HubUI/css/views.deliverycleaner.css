@@ -411,6 +411,10 @@
     max-height: calc(100vh - 28px);
 }
 
+.deliverycleaner-extract-modal__dialog {
+    width: min(720px, calc(100vw - 32px));
+}
+
 .deliverycleaner-settings-layout {
     display: grid;
     grid-template-columns: minmax(290px, 340px) minmax(0, 1fr);

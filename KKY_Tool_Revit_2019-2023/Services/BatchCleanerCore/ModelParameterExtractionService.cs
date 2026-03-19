@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.DB;
@@ -51,12 +52,13 @@ namespace KKY_Tool_Revit.Services
                     log?.Invoke("속성값 추출 파일 열기: " + path);
                     ModelPath modelPath = ModelPathUtils.ConvertUserVisiblePathToModelPath(path);
                     doc = uiapp.Application.OpenDocumentFile(modelPath, new OpenOptions());
+                    HashSet<int> schedulableCategoryIds = GetSchedulableCategoryIds(doc);
 
                     IList<Element> elements = new FilteredElementCollector(doc)
                         .WhereElementIsNotElementType()
                         .Cast<Element>()
                         .Where(x => x != null)
-                        .Where(IsEligibleModelElement)
+                        .Where(x => IsEligibleModelElement(x, schedulableCategoryIds))
                         .OrderBy(x => x.Id.IntegerValue)
                         .ToList();
 
@@ -138,6 +140,181 @@ namespace KKY_Tool_Revit.Services
             if (string.Equals(categoryName, "Reference Planes", StringComparison.OrdinalIgnoreCase)) return false;
             if (string.Equals(categoryName, "참조 평면", StringComparison.OrdinalIgnoreCase)) return false;
             return true;
+        }
+
+        private static bool IsEligibleModelElement(Element element, ISet<int> schedulableCategoryIds)
+        {
+            if (element == null) return false;
+            if (element.ViewSpecific) return false;
+            if (element.Category == null) return false;
+            if (element is View) return false;
+            if (element is ReferencePlane) return false;
+
+            int categoryId;
+            try
+            {
+                categoryId = element.Category.Id != null ? element.Category.Id.IntegerValue : 0;
+            }
+            catch
+            {
+                return false;
+            }
+
+            return schedulableCategoryIds != null && schedulableCategoryIds.Contains(categoryId);
+        }
+
+        private static HashSet<int> GetSchedulableCategoryIds(Document doc)
+        {
+            var result = new HashSet<int>();
+            if (doc == null) return result;
+
+            Categories categories = null;
+            try { categories = doc.Settings != null ? doc.Settings.Categories : null; } catch { }
+            if (categories == null) return result;
+
+            foreach (Category category in categories)
+            {
+                if (category == null || category.Id == null) continue;
+
+                int categoryId;
+                try { categoryId = category.Id.IntegerValue; }
+                catch { continue; }
+
+                if (categoryId == 0) continue;
+                if (IsSchedulableCategory(doc, category))
+                {
+                    result.Add(categoryId);
+                }
+            }
+
+            return result;
+        }
+
+        private static bool IsSchedulableCategory(Document doc, Category category)
+        {
+            if (doc == null || category == null || category.Id == null) return false;
+
+            bool? directCheck = TryIsValidCategoryForSchedule(doc, category);
+            if (directCheck.HasValue) return directCheck.Value;
+
+            HashSet<int> validIds = TryGetValidCategoriesForSchedule(doc);
+            if (validIds != null && validIds.Count > 0)
+            {
+                return validIds.Contains(category.Id.IntegerValue);
+            }
+
+            return category.CategoryType == CategoryType.Model;
+        }
+
+        private static bool? TryIsValidCategoryForSchedule(Document doc, Category category)
+        {
+            foreach (MethodInfo method in typeof(ViewSchedule).GetMethods(BindingFlags.Public | BindingFlags.Static)
+                         .Where(x => string.Equals(x.Name, "IsValidCategoryForSchedule", StringComparison.Ordinal)))
+            {
+                ParameterInfo[] parameters = method.GetParameters();
+                try
+                {
+                    if (parameters.Length == 1)
+                    {
+                        if (parameters[0].ParameterType == typeof(ElementId))
+                        {
+                            return Convert.ToBoolean(method.Invoke(null, new object[] { category.Id }));
+                        }
+
+                        if (parameters[0].ParameterType == typeof(Category))
+                        {
+                            return Convert.ToBoolean(method.Invoke(null, new object[] { category }));
+                        }
+                    }
+                    else if (parameters.Length == 2)
+                    {
+                        if (parameters[0].ParameterType == typeof(Document) && parameters[1].ParameterType == typeof(ElementId))
+                        {
+                            return Convert.ToBoolean(method.Invoke(null, new object[] { doc, category.Id }));
+                        }
+
+                        if (parameters[0].ParameterType == typeof(Document) && parameters[1].ParameterType == typeof(Category))
+                        {
+                            return Convert.ToBoolean(method.Invoke(null, new object[] { doc, category }));
+                        }
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return null;
+        }
+
+        private static HashSet<int> TryGetValidCategoriesForSchedule(Document doc)
+        {
+            foreach (MethodInfo method in typeof(ViewSchedule).GetMethods(BindingFlags.Public | BindingFlags.Static)
+                         .Where(x => string.Equals(x.Name, "GetValidCategoriesForSchedule", StringComparison.Ordinal)))
+            {
+                ParameterInfo[] parameters = method.GetParameters();
+                try
+                {
+                    object raw = null;
+                    if (parameters.Length == 0)
+                    {
+                        raw = method.Invoke(null, null);
+                    }
+                    else if (parameters.Length == 1 && parameters[0].ParameterType == typeof(Document))
+                    {
+                        raw = method.Invoke(null, new object[] { doc });
+                    }
+
+                    HashSet<int> categoryIds = ExtractCategoryIds(raw);
+                    if (categoryIds.Count > 0) return categoryIds;
+                }
+                catch
+                {
+                }
+            }
+
+            return null;
+        }
+
+        private static HashSet<int> ExtractCategoryIds(object raw)
+        {
+            var result = new HashSet<int>();
+            var enumerable = raw as System.Collections.IEnumerable;
+            if (enumerable == null || raw is string) return result;
+
+            foreach (object item in enumerable)
+            {
+                if (item == null) continue;
+
+                if (item is ElementId elementId)
+                {
+                    result.Add(elementId.IntegerValue);
+                    continue;
+                }
+
+                if (item is Category category && category.Id != null)
+                {
+                    result.Add(category.Id.IntegerValue);
+                    continue;
+                }
+
+                PropertyInfo idProperty = item.GetType().GetProperty("Id", BindingFlags.Public | BindingFlags.Instance);
+                if (idProperty == null) continue;
+
+                object idValue = null;
+                try { idValue = idProperty.GetValue(item, null); } catch { }
+
+                if (idValue is ElementId reflectedId)
+                {
+                    result.Add(reflectedId.IntegerValue);
+                }
+                else if (idValue is Category reflectedCategory && reflectedCategory.Id != null)
+                {
+                    result.Add(reflectedCategory.Id.IntegerValue);
+                }
+            }
+
+            return result;
         }
 
         private static List<string> SplitParameterNames(string csv)

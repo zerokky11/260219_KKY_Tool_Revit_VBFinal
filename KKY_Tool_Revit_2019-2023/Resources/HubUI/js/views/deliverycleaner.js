@@ -53,11 +53,12 @@ export function renderDeliveryCleaner(root) {
   const controlCard = buildControlCard(state);
   const filesCard = buildFilesCard(state);
   const settingsModal = buildSettingsModal(state);
+  const extractModal = buildExtractModal(state);
   const filterDocModal = buildFilterDocModal(state);
   const topGrid = div('deliverycleaner-top-grid');
   topGrid.append(controlCard, filesCard);
 
-  page.append(topGrid, settingsModal, filterDocModal);
+  page.append(topGrid, settingsModal, extractModal, filterDocModal);
   target.append(page);
 
   onHost('deliverycleaner:init', (payload) => applyHostState(state, payload));
@@ -116,6 +117,7 @@ export function renderDeliveryCleaner(root) {
     resetDeliveryCleanerProgress(state);
     setPageBusy(state, false);
     applyHostState(state, payload?.state || {});
+    closeExtractModal(state);
     if (typeof payload?.parameterNamesCsv === 'string') {
       state.extractParameterNamesCsv = payload.parameterNamesCsv;
       syncStateToInputs(state);
@@ -197,8 +199,7 @@ function buildControlCard(state) {
     post('deliverycleaner:verify', buildPayload(state));
   });
   const extractBtn = actionButton('속성값 추출', () => {
-    setPageBusy(state, true);
-    post('deliverycleaner:extract', buildPayload(state));
+    openExtractModal(state);
   });
   const purgeBtn = actionButton('Purge 일괄처리', () => {
     setPageBusy(state, true);
@@ -354,12 +355,11 @@ function buildBasicsCard(state) {
   });
   extractField.append(extractInput);
 
-  fields.append(outputField, viewNameField, extractField);
+  fields.append(outputField, viewNameField);
   card.append(fields);
 
   state.ui.outputFolderInput = outputInput;
   state.ui.viewNameInput = viewNameInput;
-  state.ui.extractInput = extractInput;
   return card;
 }
 
@@ -553,6 +553,73 @@ function buildFilterDocModal(state) {
   state.ui.filterDocOverlay = overlay;
   state.ui.filterDocTitle = overlay.querySelector('[data-doc-title]');
   state.ui.filterDocList = overlay.querySelector('[data-doc-list]');
+  return overlay;
+}
+
+function buildExtractModal(state) {
+  const overlay = div('deliverycleaner-modal deliverycleaner-extract-modal is-hidden');
+  overlay.innerHTML = `
+    <div class="deliverycleaner-modal__dialog deliverycleaner-extract-modal__dialog">
+      <div class="deliverycleaner-modal__head">
+        <div>
+          <h3>속성값 추출</h3>
+          <p>추출할 파라미터를 입력한 뒤 이 창에서 바로 엑셀 추출을 실행합니다.</p>
+        </div>
+        <button type="button" class="deliverycleaner-modal__close" data-close>&times;</button>
+      </div>
+      <div class="deliverycleaner-modal__body">
+        <div class="deliverycleaner-field-stack">
+          <div class="deliverycleaner-note">
+            New Schedule/Quantities에서 리스트업 가능한 카테고리의 객체만 추출 대상으로 사용합니다.
+            Centerline, 주석, 일반 선처럼 스케줄 대상이 아닌 객체는 제외됩니다.
+          </div>
+          <div class="deliverycleaner-field">
+            <label>추출 파라미터</label>
+            <textarea rows="5" data-extract-input placeholder="예: Comments, Mark, Type Comments"></textarea>
+          </div>
+          <div class="deliverycleaner-summary-box" data-extract-summary></div>
+        </div>
+      </div>
+      <div class="deliverycleaner-modal__foot">
+        <button type="button" class="btn btn--secondary" data-cancel>닫기</button>
+        <button type="button" class="btn btn--primary" data-run>엑셀로 추출</button>
+      </div>
+    </div>
+  `;
+
+  overlay.querySelector('[data-close]').addEventListener('click', () => closeExtractModal(state));
+  overlay.querySelector('[data-cancel]').addEventListener('click', () => closeExtractModal(state));
+  overlay.addEventListener('click', (ev) => {
+    if (ev.target === overlay) closeExtractModal(state);
+  });
+
+  const extractInput = overlay.querySelector('[data-extract-input]');
+  const runBtn = overlay.querySelector('[data-run]');
+
+  extractInput.addEventListener('input', () => {
+    state.extractParameterNamesCsv = extractInput.value.trim();
+    renderExtractModalSummary(state);
+  });
+
+  runBtn.addEventListener('click', () => {
+    if (!getDeliveryCleanerExtractionTargetCount(state)) {
+      toast('추출 대상 RVT가 없습니다. 먼저 RVT를 추가하거나 정리 결과를 준비해주세요.', 'err', 3200);
+      return;
+    }
+
+    if (!state.extractParameterNamesCsv.trim()) {
+      toast('추출할 파라미터 이름을 입력해주세요.', 'err', 3200);
+      return;
+    }
+
+    setPageBusy(state, true);
+    post('deliverycleaner:extract', buildPayload(state));
+  });
+
+  state.ui.extractOverlay = overlay;
+  state.ui.extractInput = extractInput;
+  state.ui.extractRunBtn = runBtn;
+  state.ui.extractSummary = overlay.querySelector('[data-extract-summary]');
   return overlay;
 }
 
@@ -843,6 +910,12 @@ function isDeliveryCleanerConfigured(state) {
   return !!state.outputFolder;
 }
 
+function getDeliveryCleanerExtractionTargetCount(state) {
+  if (state.filePaths.length) return state.filePaths.length;
+  if (Array.isArray(state.session?.cleanedOutputPaths)) return state.session.cleanedOutputPaths.length;
+  return 0;
+}
+
 function stripLogStamp(line) {
   if (!line) return '';
   return String(line).replace(/^\[[^\]]+\]\s*/, '').trim();
@@ -1014,6 +1087,7 @@ function updateActionState(state) {
 
   renderStatusBox(state, hasFiles, isConfigured, hasSessionTargets, isPurging);
   renderResultSummary(state);
+  renderExtractModalSummary(state);
 }
 
 function applyHostState(state, payload) {
@@ -1052,7 +1126,7 @@ function applyHostState(state, payload) {
 function syncStateToInputs(state) {
   state.ui.outputFolderInput.value = state.outputFolder || '';
   state.ui.viewNameInput.value = state.target3DViewName || '';
-  state.ui.extractInput.value = state.extractParameterNamesCsv || '';
+  if (state.ui.extractInput) state.ui.extractInput.value = state.extractParameterNamesCsv || '';
   state.ui.elementEnabled.checked = !!state.elementParameterUpdate.enabled;
   state.ui.combinationMode.value = state.elementParameterUpdate.combinationMode || 'And';
 }
@@ -1216,6 +1290,16 @@ function closeSettingsModal(state) {
   state.ui.settingsOverlay?.classList.add('is-hidden');
 }
 
+function openExtractModal(state) {
+  renderExtractModalSummary(state);
+  state.ui.extractOverlay?.classList.remove('is-hidden');
+  state.ui.extractInput?.focus();
+}
+
+function closeExtractModal(state) {
+  state.ui.extractOverlay?.classList.add('is-hidden');
+}
+
 function openFilterDocModal(state, docTitle) {
   state.ui.filterDocTitle.textContent = docTitle ? `현재 문서: ${docTitle}` : '현재 문서 필터 목록';
   state.ui.filterDocList.innerHTML = '';
@@ -1243,6 +1327,32 @@ function openFilterDocModal(state, docTitle) {
 
 function closeFilterDocModal(state) {
   state.ui.filterDocOverlay.classList.add('is-hidden');
+}
+
+function renderExtractModalSummary(state) {
+  if (!state.ui.extractSummary) return;
+
+  const targetCount = getDeliveryCleanerExtractionTargetCount(state);
+  const outputFolder = state.outputFolder || state.session?.outputFolder || '';
+  const parameterCount = (state.extractParameterNamesCsv || '')
+    .split(/[,\n;\r]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .length;
+
+  const lines = [
+    `대상 RVT: ${targetCount ? `${targetCount}개` : '없음'}`,
+    `추출 파라미터: ${parameterCount ? `${parameterCount}개` : '입력 필요'}`,
+    `결과 저장 폴더: ${outputFolder || '설정 필요'}`,
+    '',
+    '추출 결과는 대상 폴더에 엑셀로 저장됩니다.'
+  ];
+
+  state.ui.extractSummary.textContent = lines.join('\n');
+
+  if (state.ui.extractRunBtn) {
+    state.ui.extractRunBtn.disabled = state.busy || !targetCount || !parameterCount;
+  }
 }
 
 function isFilterConfigured(profile) {
