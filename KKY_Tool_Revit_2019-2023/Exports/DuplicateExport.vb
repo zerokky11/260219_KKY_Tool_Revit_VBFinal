@@ -30,6 +30,7 @@ Public Class PairRowDto
     Public Property BCategory As String
     Public Property BFamily As String
     Public Property BType As String
+    Public Property Comment As String
 End Class
 
 
@@ -108,6 +109,7 @@ Private Function MapPairs(pairs As System.Collections.IEnumerable) As System.Col
         it.BCategory = ReadProp(o, "BCategory", "bCategory", "CategoryB")
         it.BFamily = ReadProp(o, "BFamily", "bFamily", "FamilyB")
         it.BType = ReadProp(o, "BType", "bType", "TypeB")
+        it.Comment = ReadProp(o, "Comment", "comment", "Note", "note", "Reason", "reason")
 
         list.Add(it)
     Next
@@ -129,6 +131,7 @@ Private Function BuildPairTable(pairs As System.Collections.Generic.List(Of Pair
     dt.Columns.Add("B_Category")
     dt.Columns.Add("B_Family")
     dt.Columns.Add("B_Type")
+    dt.Columns.Add("Comment")
 
     If pairs IsNot Nothing AndAlso pairs.Count > 0 Then
         For Each p In pairs
@@ -145,6 +148,7 @@ Private Function BuildPairTable(pairs As System.Collections.Generic.List(Of Pair
             dr("B_Category") = Nz(p.BCategory)
             dr("B_Family") = Nz(p.BFamily)
             dr("B_Type") = Nz(p.BType)
+            dr("Comment") = Nz(p.Comment)
 
             dt.Rows.Add(dr)
         Next

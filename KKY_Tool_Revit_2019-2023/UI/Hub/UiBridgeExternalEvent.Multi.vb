@@ -87,6 +87,7 @@ Namespace UI.Hub
         Private Class MultiRunRequest
             Public Property Common As MultiCommonOptions = New MultiCommonOptions()
             Public Property Connector As MultiConnectorOptions = New MultiConnectorOptions()
+            Public Property FloorInfo As MultiFloorInfoOptions = New MultiFloorInfoOptions()
             Public Property Pms As MultiPmsOptions = New MultiPmsOptions()
             Public Property Guid As MultiGuidOptions = New MultiGuidOptions()
             Public Property FamilyLink As MultiFamilyLinkOptions = New MultiFamilyLinkOptions()
@@ -153,6 +154,8 @@ Namespace UI.Hub
                 Case "connector"
                     _multiConnectorRows = Nothing
                     _multiConnectorExtras = Nothing
+                Case "floorinfo"
+                    ClearMultiFloorInfoCache()
                 Case "pms"
                     _multiPmsClassRows = Nothing
                     _multiPmsSizeRows = Nothing
@@ -390,6 +393,13 @@ NextItem:
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "커넥터 진단 완료", safeName)
             End If
 
+            If _multiRequest.FloorInfo.Enabled Then
+                stepIndex += 1
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "층정보 Z 검토 실행 중", safeName)
+                RunFloorInfoMultiForDocument(doc, safeName, basePct)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "층정보 Z 검토 완료", safeName)
+            End If
+
             If _multiRequest.Pms.Enabled Then
                 stepIndex += 1
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "PMS 검토 실행 중", safeName)
@@ -447,13 +457,25 @@ NextItem:
         End Sub
 
         Private Sub FinishMultiRun()
-            Dim summary As New Dictionary(Of String, Object) From {
-                {"connector", New With {.rows = If(_multiConnectorRows, New List(Of Dictionary(Of String, Object))()).Count}},
-                {"pms", New With {.rows = If(_multiPmsSizeRows, New List(Of Dictionary(Of String, Object))()).Count}},
-                {"guid", New With {.rows = If(_multiGuidProject, New DataTable()).Rows.Count}},
-                {"familylink", New With {.rows = If(_multiFamilyLinkRows, New List(Of FamilyLinkAuditRow)()).Count}},
-                {"points", New With {.rows = If(_multiPointRows, New List(Of ExportPointsService.Row)()).Count}}
-            }
+            Dim summary As New Dictionary(Of String, Object)(StringComparer.OrdinalIgnoreCase)
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.Connector IsNot Nothing AndAlso _multiRequest.Connector.Enabled Then
+                summary("connector") = New With {.rows = If(_multiConnectorRows, New List(Of Dictionary(Of String, Object))()).Count}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.FloorInfo IsNot Nothing AndAlso _multiRequest.FloorInfo.Enabled Then
+                summary("floorinfo") = New With {.rows = GetMultiFloorInfoRowCount()}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.Pms IsNot Nothing AndAlso _multiRequest.Pms.Enabled Then
+                summary("pms") = New With {.rows = If(_multiPmsSizeRows, New List(Of Dictionary(Of String, Object))()).Count}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.Guid IsNot Nothing AndAlso _multiRequest.Guid.Enabled Then
+                summary("guid") = New With {.rows = If(_multiGuidProject, New DataTable()).Rows.Count}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.FamilyLink IsNot Nothing AndAlso _multiRequest.FamilyLink.Enabled Then
+                summary("familylink") = New With {.rows = If(_multiFamilyLinkRows, New List(Of FamilyLinkAuditRow)()).Count}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.Points IsNot Nothing AndAlso _multiRequest.Points.Enabled Then
+                summary("points") = New With {.rows = If(_multiPointRows, New List(Of ExportPointsService.Row)()).Count}
+            End If
             SendToWeb("hub:multi-done", New With {.summary = summary})
             SendToWeb("multi:review-summary", BuildMultiSummaryPayload())
         End Sub
@@ -471,6 +493,8 @@ NextItem:
                 Select Case If(key, "").ToLowerInvariant()
                     Case "connector"
                         ExportConnector(doAutoFit, excelMode)
+                    Case "floorinfo"
+                        ExportFloorInfo(doAutoFit, excelMode)
                     Case "pms"
                         ExportSegmentPms(doAutoFit, excelMode)
                     Case "guid"
@@ -833,6 +857,9 @@ NextItem:
         Private Shared Sub ResetMultiCaches()
             _multiConnectorRows = Nothing
             _multiConnectorExtras = Nothing
+            _multiFloorInfoRows = Nothing
+            _multiFloorInfoFileSummaries = Nothing
+            _multiFloorInfoWarnings = Nothing
             _multiPmsClassRows = Nothing
             _multiPmsSizeRows = Nothing
             _multiPmsRoutingRows = Nothing
@@ -864,6 +891,7 @@ NextItem:
             If pd.TryGetValue("features", featuresObj) Then
                 Dim fd = ToDict(featuresObj)
                 req.Connector = ParseConnector(fd)
+                req.FloorInfo = ParseFloorInfo(fd)
                 req.Pms = ParsePms(fd)
                 req.Guid = ParseGuid(fd)
                 req.FamilyLink = ParseFamilyLink(fd)
@@ -941,13 +969,14 @@ NextItem:
 
         Private Shared Function AnyFeatureEnabled(req As MultiRunRequest) As Boolean
             If req Is Nothing Then Return False
-            Return req.Connector.Enabled OrElse req.Pms.Enabled OrElse req.Guid.Enabled OrElse req.FamilyLink.Enabled OrElse req.Points.Enabled
+            Return req.Connector.Enabled OrElse req.FloorInfo.Enabled OrElse req.Pms.Enabled OrElse req.Guid.Enabled OrElse req.FamilyLink.Enabled OrElse req.Points.Enabled
         End Function
 
         Private Shared Function CountEnabledFeatures(req As MultiRunRequest) As Integer
             If req Is Nothing Then Return 0
             Dim count As Integer = 0
             If req.Connector.Enabled Then count += 1
+            If req.FloorInfo.Enabled Then count += 1
             If req.Pms.Enabled Then count += 1
             If req.Guid.Enabled Then count += 1
             If req.FamilyLink.Enabled Then count += 1
@@ -999,6 +1028,10 @@ NextItem:
 
             If _multiRequest.Connector IsNot Nothing AndAlso _multiRequest.Connector.Enabled Then
                 summaries("connector") = BuildConnectorMultiSummary()
+            End If
+
+            If _multiRequest.FloorInfo IsNot Nothing AndAlso _multiRequest.FloorInfo.Enabled Then
+                summaries("floorinfo") = BuildFloorInfoMultiSummary()
             End If
 
             If _multiRequest.Guid IsNot Nothing AndAlso _multiRequest.Guid.Enabled Then

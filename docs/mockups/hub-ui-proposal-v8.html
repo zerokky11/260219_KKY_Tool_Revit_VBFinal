@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hub UI Proposal V8</title>
+  <style>
+    :root {
+      --bg: #edf3fa;
+      --panel: rgba(255,255,255,.95);
+      --panel-soft: #f8fbff;
+      --line: #d4deef;
+      --line-strong: #bfd1ec;
+      --text: #1e2b3f;
+      --muted: #6b7b92;
+      --accent: #3b6cff;
+      --accent-soft: rgba(59,108,255,.11);
+      --success: #0f9a62;
+      --shadow: 0 18px 40px rgba(24, 56, 102, .10);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(116,164,255,.10), transparent 24%),
+        linear-gradient(180deg, #f5f8fc 0%, #edf2f8 100%);
+    }
+
+    .frame {
+      width: 1500px;
+      height: 940px;
+      margin: 0 auto;
+      padding: 24px;
+      position: relative;
+    }
+
+    .topbar {
+      height: 84px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(249,251,255,.94));
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-columns: 330px 1fr 360px;
+      align-items: center;
+      gap: 18px;
+      padding: 0 20px;
+    }
+
+    .brand { display:flex; align-items:center; gap:14px; }
+    .logo {
+      width: 50px; height: 50px; border-radius: 16px; border: 1px solid var(--line);
+      display:grid; place-items:center; font-weight:700; color:#3558b4;
+      background: linear-gradient(180deg, #fff, #eef4ff);
+    }
+    .brand h1 { margin:0 0 4px; font-size:28px; }
+    .brand p, .meta-copy { margin:0; color:var(--muted); font-size:14px; }
+    .meta-copy { text-align:center; }
+    .top-actions { display:flex; justify-content:flex-end; gap:10px; }
+    .pill {
+      padding: 10px 14px; border-radius:999px; border:1px solid var(--line-strong);
+      background:#fff; font-size:14px;
+    }
+
+    .hub {
+      margin-top: 16px;
+      width: 1040px;
+      height: 780px;
+      border-radius: 28px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding: 20px;
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 16px;
+    }
+
+    .hero {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: linear-gradient(180deg, #ffffff, #f8fbff);
+      padding: 18px 22px;
+      display:flex; justify-content:space-between; align-items:center;
+    }
+    .hero h2 { margin:0 0 8px; font-size:34px; }
+    .hero p { margin:0; color:var(--muted); font-size:15px; line-height:1.45; max-width:740px; }
+    .tag {
+      padding: 10px 14px; border-radius:999px; background:#fff;
+      border:1px solid var(--line-strong); color:#4b6795; font-size:13px;
+    }
+
+    .run-card {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: linear-gradient(180deg, #fbfdff, #f6faff);
+      padding: 18px 20px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+    }
+    .run-card strong { display:block; margin-bottom:8px; font-size:19px; }
+    .run-card p { margin:0; color:var(--muted); font-size:14px; line-height:1.45; }
+    .run-actions {
+      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    }
+
+    .btn {
+      padding: 11px 18px;
+      border-radius: 14px;
+      border: 1px solid var(--line-strong);
+      background: #fff;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .btn.primary {
+      background: linear-gradient(180deg, #4e7eff, #3268ff);
+      color:#fff; border-color:#3268ff;
+      box-shadow: 0 10px 22px rgba(59,108,255,.24);
+    }
+
+    .feature-list {
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: linear-gradient(180deg, #fdfefe, #f7fbff);
+      padding: 18px;
+      display:grid; gap:14px; align-content:start;
+    }
+
+    .feature-item {
+      padding: 16px;
+      border-radius: 20px;
+      border: 1px solid #9dc9ff;
+      background: linear-gradient(180deg, rgba(235,246,255,.92), rgba(247,251,255,.97));
+    }
+    .feature-head {
+      display:grid; grid-template-columns:auto 1fr auto auto; gap:12px; align-items:center; margin-bottom:12px;
+    }
+    .check {
+      width: 28px; height: 28px; border-radius: 10px; display:grid; place-items:center;
+      background: var(--accent); color:#fff; font-weight:700; font-size:18px;
+    }
+    .feature-copy h4 { margin:0 0 5px; font-size:16px; }
+    .feature-copy p { margin:0; color:var(--muted); font-size:13px; line-height:1.4; }
+    .badge {
+      padding: 8px 12px; border-radius:999px; background:var(--accent-soft);
+      border:1px solid rgba(59,108,255,.28); color:#2f5fea; font-size:13px; font-weight:700;
+    }
+    .feature-body {
+      display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center;
+      padding: 14px 15px; border-radius: 16px; border:1px solid rgba(157,201,255,.82); background:rgba(255,255,255,.75);
+    }
+    .chip-row { display:flex; flex-wrap:wrap; gap:8px; }
+    .chip {
+      padding: 7px 11px; border-radius:999px; border:1px solid var(--line-strong);
+      background:#fff; color:#49617f; font-size:13px;
+    }
+
+    .modal {
+      position: absolute;
+      left: 760px;
+      top: 280px;
+      width: 520px;
+      border-radius: 24px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.98);
+      box-shadow: 0 26px 50px rgba(18, 42, 82, .22);
+      padding: 18px;
+      display:grid; gap:14px;
+    }
+    .modal-head {
+      display:flex; justify-content:space-between; align-items:start; gap:12px;
+    }
+    .modal-head h3 { margin:0 0 6px; font-size:24px; }
+    .modal-head p { margin:0; color:var(--muted); font-size:13px; line-height:1.4; }
+    .list-box {
+      border:1px solid var(--line); border-radius:18px; background:var(--panel-soft); overflow:hidden;
+    }
+    .list-head, .list-row {
+      display:grid; grid-template-columns: 34px 1fr 80px; gap:10px; align-items:center; padding:12px 14px;
+    }
+    .list-head {
+      background:#eef4fb; color:var(--muted); font-size:12px; font-weight:700;
+      border-bottom:1px solid var(--line);
+    }
+    .list-row { font-size:14px; border-bottom:1px solid #e1e8f4; }
+    .list-row:last-child { border-bottom:0; }
+    .status {
+      padding:6px 10px; border-radius:999px; background:rgba(15,154,98,.12); color:#0b8c58; font-size:12px; font-weight:700;
+      width:fit-content;
+    }
+    .modal-actions {
+      display:grid; grid-template-columns: 1fr auto auto; gap:10px; align-items:center;
+    }
+    .modal-note { color:var(--muted); font-size:13px; }
+
+    .float {
+      position:absolute;
+      width: 320px;
+      border-radius: 22px;
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.98);
+      box-shadow: 0 22px 44px rgba(23, 48, 88, .16);
+      padding:16px;
+      display:grid; gap:12px;
+    }
+    .float h4 { margin:0; font-size:20px; }
+    .float p { margin:0; color:var(--muted); font-size:13px; line-height:1.4; }
+    .float-header { display:flex; justify-content:space-between; align-items:center; }
+    .dot {
+      width:10px; height:10px; border-radius:50%; background:#c5d6ef;
+      box-shadow: 16px 0 0 #c5d6ef, 32px 0 0 #c5d6ef;
+      margin-right:32px;
+    }
+    .small-list { display:grid; gap:8px; }
+    .small-row {
+      display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center;
+      padding:10px 12px; border-radius:14px; border:1px solid var(--line); background:var(--panel-soft); font-size:13px;
+    }
+    .summary-mini { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; }
+    .mini {
+      padding:10px 12px; border-radius:14px; border:1px solid var(--line); background:var(--panel-soft);
+    }
+    .mini span { display:block; color:var(--muted); font-size:12px; margin-bottom:6px; }
+    .mini strong { font-size:18px; }
+
+    .float.features { left: 1080px; top: 120px; }
+    .float.results { left: 1120px; top: 470px; }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo">KKY</div>
+        <div>
+          <h1>KKY Tool Hub</h1>
+          <p>Revit 작업 보조 통합 도구</p>
+        </div>
+      </div>
+      <p class="meta-copy">Revit 워크플로우를 하나의 허브에서 관리하세요.</p>
+      <div class="top-actions">
+        <div class="pill">연결됨</div>
+        <div class="pill">항상 위</div>
+        <div class="pill">테마</div>
+        <div class="pill">설정</div>
+      </div>
+    </div>
+
+    <div class="hub">
+      <div class="hero">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#4c71ef;letter-spacing:.08em;margin-bottom:8px;">MULTI RVT HUB</div>
+          <h2>납품시 BQC 검토</h2>
+          <p>허브 본체는 기능 선택과 실행만 남기고, 다중 RVT와 결과/선택 기능은 별도 창으로 분리한 구성입니다.</p>
+        </div>
+        <div class="tag">메인 허브 단순화</div>
+      </div>
+
+      <div class="run-card">
+        <div>
+          <strong>검토 실행</strong>
+          <p>공통 설정과 RVT 목록 버튼도 이 영역으로 이동해, 실행 전 필요한 조작이 여기서 끝나도록 구성합니다.</p>
+        </div>
+        <div class="run-actions">
+          <button class="btn">공통 설정</button>
+          <button class="btn">RVT 목록</button>
+          <button class="btn primary">현재 파일 검토</button>
+          <button class="btn">RVT 여러개 검토</button>
+        </div>
+      </div>
+
+      <div class="feature-list">
+        <div class="feature-item">
+          <div class="feature-head">
+            <div class="check">✓</div>
+            <div class="feature-copy">
+              <h4>커넥터 파라미터 연속성 검토</h4>
+              <p>BQC 핵심 검토만 메인에 남기고, 설명은 짧게 유지합니다.</p>
+            </div>
+            <div class="badge">BQC 핵심</div>
+            <button class="btn">설정</button>
+          </div>
+          <div class="feature-body">
+            <div class="chip-row">
+              <span class="chip">파라미터 1개: Comments</span>
+              <span class="chip">허용범위 1 inch</span>
+              <span class="chip">검토 준비됨</span>
+            </div>
+            <button class="btn">도움말</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3>RVT 여러개 검토</h3>
+          <p>선택한 RVT 목록을 여기서 확인하고, 같은 창에서 바로 검토를 시작합니다.</p>
+        </div>
+        <div class="tag">새창</div>
+      </div>
+
+      <div class="list-box">
+        <div class="list-head">
+          <div></div>
+          <div>파일명</div>
+          <div>상태</div>
+        </div>
+        <div class="list-row">
+          <div>☑</div>
+          <div>A-101_Main.rvt</div>
+          <div><span class="status">선택됨</span></div>
+        </div>
+        <div class="list-row">
+          <div>☑</div>
+          <div>A-102_Core.rvt</div>
+          <div><span class="status">선택됨</span></div>
+        </div>
+        <div class="list-row">
+          <div>☐</div>
+          <div>A-201_Shell.rvt</div>
+          <div><span class="status" style="background:rgba(59,108,255,.11);color:#2f5fea;">대기</span></div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <div class="modal-note">파일 추가, 제거, 확인을 모두 이 창 안에서 처리</div>
+        <button class="btn">RVT 추가</button>
+        <button class="btn primary">선택한 RVT 검토 시작</button>
+      </div>
+    </div>
+
+    <div class="float features">
+      <div class="float-header">
+        <h4>선택된 기능</h4>
+        <div class="dot"></div>
+      </div>
+      <p>허브와 별개로 띄워서, 작업 중에도 선택된 기능만 계속 볼 수 있게 합니다.</p>
+      <div class="small-list">
+        <div class="small-row">
+          <div>커넥터 파라미터 연속성 검토</div>
+          <span class="status">활성</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="float results">
+      <div class="float-header">
+        <h4>최근 결과</h4>
+        <div class="dot"></div>
+      </div>
+      <p>결과 패널도 별도 플로팅으로 띄워 두면 허브 본체가 훨씬 가벼워집니다.</p>
+      <div class="summary-mini">
+        <div class="mini"><span>전체 결과</span><strong>124건</strong></div>
+        <div class="mini"><span>오류/불일치</span><strong>18건</strong></div>
+        <div class="mini"><span>near</span><strong>7건</strong></div>
+        <div class="mini"><span>정상</span><strong>99건</strong></div>
+      </div>
+      <div class="run-actions" style="justify-content:flex-start;">
+        <button class="btn primary">엑셀 내보내기</button>
+        <button class="btn">결과 팝업</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

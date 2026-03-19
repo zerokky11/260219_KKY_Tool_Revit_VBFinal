@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <title>RVT Batch Cleaner Layout Preview</title>
+  <style>
+    :root {
+      --bg: #eef1f6;
+      --panel: #f7f9fc;
+      --panel-2: #ffffff;
+      --border: #cfd6e4;
+      --border-strong: #aeb8ca;
+      --text: #243046;
+      --muted: #66748c;
+      --tab: #e7ecf5;
+      --tab-active: #ffffff;
+      --accent: #2e5aac;
+      --button: #eef3fb;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, #ffffff 0, #f4f6fa 34%, #edf1f7 100%);
+      font-family: "Segoe UI", sans-serif;
+      color: var(--text);
+    }
+
+    .canvas {
+      width: 1280px;
+      height: 940px;
+      margin: 0 auto;
+      padding: 18px;
+      background: linear-gradient(180deg, #f8fafc 0%, #edf2f8 100%);
+    }
+
+    .window {
+      width: 100%;
+      height: 100%;
+      border: 1px solid var(--border-strong);
+      border-radius: 14px;
+      background: var(--bg);
+      box-shadow: 0 18px 40px rgba(24, 39, 75, 0.16);
+      overflow: hidden;
+    }
+
+    .titlebar {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      background: linear-gradient(180deg, #fefefe 0%, #e9eef6 100%);
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 430px 1fr;
+      gap: 12px;
+      padding: 12px;
+      height: calc(100% - 42px);
+    }
+
+    .col {
+      display: grid;
+      gap: 12px;
+      min-height: 0;
+    }
+
+    .left {
+      grid-template-rows: 260px 86px 120px 1fr;
+    }
+
+    .right {
+      grid-template-rows: 1fr 220px;
+    }
+
+    .group {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .group-title {
+      padding: 10px 12px 8px;
+      font-size: 13px;
+      font-weight: 700;
+      border-bottom: 1px solid #dde3ee;
+      background: linear-gradient(180deg, #fbfcfe, #f2f5fa);
+    }
+
+    .group-body {
+      padding: 10px 12px 12px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .file-list {
+      height: calc(100% - 44px);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel-2);
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .file-item {
+      height: 30px;
+      border: 1px solid #e4e9f2;
+      border-radius: 6px;
+      background: #fafbfd;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: #41506a;
+    }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .button {
+      height: 30px;
+      padding: 0 12px;
+      border: 1px solid #c7d1e2;
+      background: linear-gradient(180deg, #ffffff, var(--button));
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: #33425b;
+      white-space: nowrap;
+    }
+
+    .button.primary {
+      background: linear-gradient(180deg, #4f79c7, var(--accent));
+      color: #fff;
+      border-color: #2b4f97;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 110px 1fr 126px;
+      gap: 8px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .label { color: #50607c; font-weight: 600; }
+
+    .input, .hint {
+      height: 30px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      padding: 6px 8px;
+      font-size: 12px;
+      color: #31415a;
+    }
+
+    .hint {
+      background: #f8fafc;
+      color: var(--muted);
+    }
+
+    .run-area {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-content: flex-start;
+    }
+
+    .help-box, .log-box, .summary-box {
+      width: 100%;
+      height: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: #475771;
+      overflow: hidden;
+    }
+
+    .tabs-shell {
+      display: grid;
+      grid-template-rows: 42px 1fr;
+      height: 100%;
+      min-height: 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: end;
+      gap: 6px;
+      padding: 8px 10px 0;
+      background: linear-gradient(180deg, #f4f7fb, #e8edf6);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab {
+      min-width: 112px;
+      height: 30px;
+      padding: 0 14px;
+      border: 1px solid var(--border);
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      background: var(--tab);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: #55647d;
+      font-weight: 600;
+    }
+
+    .tab.active {
+      background: var(--tab-active);
+      color: var(--text);
+    }
+
+    .tab-panel {
+      background: #fff;
+      padding: 12px;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 1fr;
+    }
+
+    .table {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      height: 100%;
+      display: grid;
+      grid-template-rows: 32px repeat(5, 1fr);
+      background: #fff;
+    }
+
+    .table-head, .table-row {
+      display: grid;
+      grid-template-columns: 70px 1fr 1fr;
+      align-items: center;
+    }
+
+    .table-head {
+      background: #eef3fb;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 700;
+      color: #485974;
+    }
+
+    .table-head div, .table-row div {
+      padding: 0 10px;
+      border-right: 1px solid #e4e9f2;
+      height: 100%;
+      display: flex;
+      align-items: center;
+    }
+
+    .table-head div:last-child, .table-row div:last-child { border-right: none; }
+    .table-row { border-bottom: 1px solid #edf1f7; font-size: 12px; color: #6a7790; }
+    .table-row:last-child { border-bottom: none; }
+
+    .checkbox {
+      width: 15px;
+      height: 15px;
+      border: 1px solid #93a2be;
+      border-radius: 4px;
+      background: #fff;
+    }
+
+    .log-lines {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      color: #516178;
+    }
+  </style>
+</head>
+<body>
+  <div class="canvas">
+    <div class="window">
+      <div class="titlebar">KKY RVT Batch Cleaner</div>
+      <div class="content">
+        <div class="col left">
+          <section class="group">
+            <div class="group-title">1) 대상 RVT 파일</div>
+            <div class="group-body">
+              <div class="file-list">
+                <div class="file-item">A-001_MainModel.rvt</div>
+                <div class="file-item">B-105_MEP_Coordination.rvt</div>
+                <div class="file-item">C-Tower_CleanTarget.rvt</div>
+                <div class="file-item">D-Basement_Sample.rvt</div>
+                <div class="file-item">E-Detached_Review.rvt</div>
+              </div>
+              <div class="button-row">
+                <div class="button">RVT 추가...</div>
+                <div class="button">선택 제거</div>
+                <div class="button">목록 비우기</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="group">
+            <div class="group-title">2) 기본 설정</div>
+            <div class="group-body">
+              <div class="form-grid">
+                <div class="label">결과 폴더</div>
+                <div class="input">C:\Project\Cleaner\Output</div>
+                <div class="button">찾아보기...</div>
+                <div class="label">3D 뷰 이름</div>
+                <div class="input">KKY_CLEAN_3D</div>
+                <div class="hint">기존 3D 뷰 정리 후 새로 생성</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="group">
+            <div class="group-title">3) 실행</div>
+            <div class="group-body">
+              <div class="run-area">
+                <div class="button primary">정리 시작</div>
+                <div class="button">Purge 일괄처리</div>
+                <div class="button">검토</div>
+                <div class="button">속성값 추출</div>
+                <div class="button">결과 폴더 열기</div>
+                <div class="button">닫기</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="group">
+            <div class="group-title">동작 요약</div>
+            <div class="group-body">
+              <div class="help-box">
+                - 선택한 RVT를 순차적으로 정리하고 저장합니다.<br>
+                - 이후 저장본을 다시 열어 Purge를 반복 실행합니다.<br>
+                - 링크/임포트/이미지/포인트클라우드 제거를 포함합니다.<br>
+                - 표준 3D 뷰 생성, 뷰/객체 파라미터 입력, 필터 적용을 지원합니다.<br>
+                - 결과 검토와 CSV 추출 기능을 함께 사용합니다.
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="col right">
+          <div class="tabs-shell">
+            <div class="tabs">
+              <div class="tab active">뷰 파라미터</div>
+              <div class="tab">객체 파라미터</div>
+              <div class="tab">뷰 필터</div>
+            </div>
+            <div class="tab-panel">
+              <div class="table">
+                <div class="table-head">
+                  <div>사용</div>
+                  <div>파라미터명</div>
+                  <div>값</div>
+                </div>
+                <div class="table-row">
+                  <div><span class="checkbox"></span></div>
+                  <div>View Description</div>
+                  <div>Cleaned Model</div>
+                </div>
+                <div class="table-row">
+                  <div><span class="checkbox"></span></div>
+                  <div>Discipline</div>
+                  <div>Coordination</div>
+                </div>
+                <div class="table-row">
+                  <div><span class="checkbox"></span></div>
+                  <div></div>
+                  <div></div>
+                </div>
+                <div class="table-row">
+                  <div><span class="checkbox"></span></div>
+                  <div></div>
+                  <div></div>
+                </div>
+                <div class="table-row">
+                  <div><span class="checkbox"></span></div>
+                  <div></div>
+                  <div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <section class="group">
+            <div class="group-title">로그</div>
+            <div class="group-body">
+              <div class="log-box">
+                <div class="log-lines">
+                  <div>[14:02:11] 정리 시작</div>
+                  <div>[14:02:14] Manage Links/Imports 단계 완료</div>
+                  <div>[14:02:17] 대상 3D 뷰 생성</div>
+                  <div>[14:02:20] 뷰 파라미터 적용</div>
+                  <div>[14:02:24] 정리 및 저장 완료</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

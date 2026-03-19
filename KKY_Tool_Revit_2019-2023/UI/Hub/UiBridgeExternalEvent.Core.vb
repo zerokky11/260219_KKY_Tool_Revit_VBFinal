@@ -128,6 +128,7 @@ Namespace UI.Hub
             map.Add("connector:run", "HandleConnectorRun")
             map.Add("connector:param-list", "HandleConnectorParamList")
             map.Add("connector:save-excel", "HandleConnectorSaveExcel")
+            map.Add("floorinfo:config-load", "HandleFloorInfoConfigLoad")
             ' Export Points with Angle
             map.Add("export:browse-folder", "HandleExportBrowse")
             map.Add("export:add-rvt-files", "HandleExportAddRvtFiles")

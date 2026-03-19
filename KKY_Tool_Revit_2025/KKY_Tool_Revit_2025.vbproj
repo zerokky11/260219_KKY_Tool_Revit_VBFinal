@@ -80,7 +80,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\KKY_RvtBatchCleaner_Core\KKY_RvtBatchCleaner_Core.csproj" />
+		<ProjectReference Include="..\KKY_Tool_Revit_2019-2023\Services\BatchCleanerCore\CoreProject\KKY_RvtBatchCleaner_Core.csproj" />
 	</ItemGroup>
 
 	<!-- Revit 2025 API 참조 -->
@@ -150,7 +150,7 @@
 	</ItemGroup>
 
 	<!-- ✅ 빌드 후: ProgramData Addins\2025\KKY_Tool_Revit.addin 생성 (Assembly는 빌드 산출물의 절대경로) -->
-	<Target Name="CreateAddin" AfterTargets="Build">
+	<Target Name="CreateAddin" AfterTargets="Build" Condition="'$(SkipCreateAddin)'!='true' and '$(BuildingInsideVisualStudio)'!='true'">
 		<PropertyGroup>
 			<BuiltDll>$(TargetPath)</BuiltDll>
 			<AddinOutDir>$(AddinRoot)\$(AddinYear)\</AddinOutDir>

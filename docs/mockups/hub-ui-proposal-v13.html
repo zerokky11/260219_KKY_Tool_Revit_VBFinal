@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hub UI Proposal V13</title>
+  <style>
+    :root {
+      --bg: #eef3fa;
+      --panel: rgba(255,255,255,.98);
+      --panel-soft: #f7fbff;
+      --line: #d4e0f1;
+      --line-strong: #bfd1eb;
+      --text: #1d2a3c;
+      --muted: #6c7f98;
+      --accent: #356bff;
+      --accent-soft: rgba(53,107,255,.10);
+      --teal: #14a39a;
+      --shadow: 0 18px 38px rgba(22, 52, 96, .10);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(88,130,255,.10), transparent 22%),
+        linear-gradient(180deg, #f6f9fd 0%, #eef3fa 100%);
+    }
+
+    .frame {
+      width: 1900px;
+      height: 1080px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .hero {
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding: 26px 28px;
+      margin-bottom: 18px;
+    }
+
+    .hero .eyebrow {
+      color: #4e73ff;
+      font-size: 18px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .hero h1 {
+      margin: 10px 0 12px;
+      font-size: 36px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 20px;
+      line-height: 1.55;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.75fr 0.95fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .left-card,
+    .sidebar-card,
+    .mini-card {
+      border: 1px solid var(--line);
+      border-radius: 26px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .left-card {
+      padding: 20px;
+      min-height: 520px;
+      background: linear-gradient(180deg, rgba(102,185,255,.10), rgba(255,255,255,.98));
+    }
+
+    .feature {
+      border: 1px solid #89cdfb;
+      border-radius: 24px;
+      padding: 22px 24px 18px;
+      background: linear-gradient(180deg, rgba(173,223,255,.18), rgba(255,255,255,.52));
+    }
+
+    .feature-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .feature-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .check {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: white;
+      font-size: 22px;
+      background: var(--accent);
+      box-shadow: 0 8px 18px rgba(53,107,255,.22);
+    }
+
+    .feature-title {
+      font-size: 24px;
+      font-weight: 800;
+    }
+
+    .feature-desc {
+      color: var(--muted);
+      font-size: 18px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .badge {
+      padding: 10px 18px;
+      border-radius: 999px;
+      border: 1px solid #8cb1ff;
+      background: rgba(132,178,255,.16);
+      color: #325bd7;
+      font-size: 18px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .feature-summary {
+      margin-top: 18px;
+      border: 1px solid #99d5ff;
+      border-radius: 22px;
+      padding: 18px 20px;
+      background: rgba(255,255,255,.30);
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.6;
+    }
+
+    .sidebar {
+      display: grid;
+      gap: 14px;
+    }
+
+    .sidebar-card {
+      padding: 22px 24px;
+    }
+
+    .sidebar-card h2 {
+      margin: 0 0 10px;
+      font-size: 30px;
+    }
+
+    .sidebar-copy {
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.5;
+      margin-bottom: 18px;
+    }
+
+    .status {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+
+    .progress {
+      height: 14px;
+      border-radius: 999px;
+      background: #e6edf7;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+
+    .progress::after {
+      content: "";
+      display: block;
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--teal));
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 14px 22px;
+      border-radius: 18px;
+      border: 1px solid var(--line-strong);
+      background: white;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .btn.primary {
+      color: white;
+      border-color: transparent;
+      background: linear-gradient(135deg, #366dff, #2e61e6);
+    }
+
+    .btn.multi {
+      color: white;
+      border-color: transparent;
+      background: linear-gradient(135deg, #10877f, #17b2a7);
+    }
+
+    .mini-card {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: linear-gradient(180deg, rgba(53,107,255,.05), rgba(255,255,255,.98));
+    }
+
+    .mini-card strong {
+      font-size: 16px;
+      white-space: nowrap;
+    }
+
+    .mini-card span {
+      font-size: 16px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    .selected-card,
+    .recent-card {
+      padding: 22px 24px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .section-head h3 {
+      margin: 0;
+      font-size: 28px;
+    }
+
+    .count {
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid #95b4ff;
+      color: #3b67ea;
+      background: rgba(86,125,255,.08);
+      font-size: 18px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #edf4ff;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 14px 16px;
+      font-size: 18px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .empty {
+      color: var(--muted);
+    }
+
+    .recent-card .sub {
+      color: var(--muted);
+      font-size: 18px;
+      line-height: 1.5;
+      margin-bottom: 14px;
+    }
+
+    .recent-launcher {
+      border: 1px solid #b7caf0;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(53,107,255,.05), rgba(255,255,255,.95));
+      padding: 16px 18px;
+    }
+
+    .recent-launcher strong {
+      display: block;
+      font-size: 22px;
+      margin-bottom: 6px;
+    }
+
+    .recent-launcher span {
+      display: block;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.45;
+      margin-bottom: 14px;
+    }
+
+    .recent-meta {
+      font-size: 15px;
+      color: #6f86a6;
+      padding-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <section class="hero">
+      <div class="eyebrow">MULTI RVT HUB</div>
+      <h1>납품시 BQC 검토</h1>
+      <p>기능 영역을 눌러 선택한 뒤 검토 시작을 눌러주세요. 여러 기능을 한 번에 선택해 같은 RVT 목록으로 순차 검토할 수 있습니다.</p>
+    </section>
+
+    <section class="layout">
+      <div class="left-card">
+        <div class="feature">
+          <div class="feature-head">
+            <div class="feature-left">
+              <div class="check">✓</div>
+              <div>
+                <div class="feature-title">커넥터 파라미터 연속성 검토</div>
+                <div class="feature-desc">BQC 핵심 검토 · 연결 객체들의 파라미터 값 연속성을 확인합니다.</div>
+              </div>
+            </div>
+            <div class="badge">BQC 핵심</div>
+          </div>
+          <div class="feature-summary">
+            체크 후 옵션을 열어 공유 파라미터 목록에서 검토 대상을 선택하세요.<br>
+            선택 파라미터 1개 · Comments · 허용범위 1 inch
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar">
+        <div class="sidebar-card">
+          <h2>검토 실행</h2>
+          <div class="sidebar-copy">왼쪽 기능 영역을 눌러 선택한 뒤 검토를 시작하세요.</div>
+          <div class="status">대기 중</div>
+          <div class="progress"></div>
+          <div class="actions">
+            <button class="btn primary">현재 파일 검토</button>
+            <button class="btn multi">RVT 여러개 검토</button>
+            <button class="btn">공통 설정</button>
+          </div>
+        </div>
+
+        <div class="mini-card">
+          <strong>공통 설정</strong>
+          <span>extra=31 / ddd / Dummy 포함</span>
+        </div>
+
+        <div class="selected-card">
+          <div class="section-head">
+            <h3>선택된 기능</h3>
+            <div class="count">1개</div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>기능</th>
+                <th>상태</th>
+                <th>설정</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>커넥터 파라미터 연속성 검토</td>
+                <td>검토 준비됨</td>
+                <td>설정</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="recent-card">
+          <div class="section-head">
+            <h3>최근 결과 보기</h3>
+          </div>
+          <div class="sub">아직 실행 결과가 없습니다. 검토 실행 후 이 영역에서 최근 결과 상세 창을 열 수 있습니다.</div>
+          <div class="recent-launcher">
+            <strong>상세 결과 창 열기</strong>
+            <span>파일별 결과 표와 기능별 엑셀 내보내기를 별도 창에서 확인합니다.</span>
+            <button class="btn primary">최근 결과 보기</button>
+            <div class="recent-meta">기능이 늘어나도 이 카드는 작은 진입점으로만 유지됩니다.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

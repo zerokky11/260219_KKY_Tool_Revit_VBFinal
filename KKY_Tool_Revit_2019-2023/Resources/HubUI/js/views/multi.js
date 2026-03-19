@@ -5,13 +5,14 @@ import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 
 const FEATURE_META = {
     connector: { label: '커넥터 파라미터 연속성 검토', desc: 'BQC 핵심 검토 · 연결 객체들의 파라미터 값 연속성을 확인합니다.', requiresSharedParams: false },
+    floorinfo: { label: '층정보 파라미터 Z 검토', desc: 'BQC Sub · 레벨 절대 Z 기준으로 층정보 파라미터 값을 검토합니다.', requiresSharedParams: false },
     guid: {
         label: '공유파라미터 GUID 검토', desc: '프로젝트/패밀리 내 공유 파라미터 GUID 검토', requiresSharedParams: true },
   familylink: { label: '패밀리 공유파라미터 연동 검토', desc: '복합 패밀리의 하위 패밀리 파라미터 연동 상태를 검토합니다.', requiresSharedParams: true },
   points: { label: 'Point 추출', desc: 'Project/Survey Point 좌표 추출', requiresSharedParams: false }
 };
 const FEATURE_KEYS = Object.keys(FEATURE_META);
-const BQC_FEATURE_KEYS = ['connector'];
+const BQC_FEATURE_KEYS = ['connector', 'floorinfo'];
 const UTILITY_FEATURE_KEYS = FEATURE_KEYS.filter((key) => !BQC_FEATURE_KEYS.includes(key));
 const COMMON_OPTIONS_KEY = 'kky.hub.commonOptions';
 const GROUP_FILTER_KEY = 'kky.hub.multiGroupFilter';
@@ -41,6 +42,7 @@ export function renderMulti(root) {
     }),
     features: {
       connector: createFeatureState({ tol: 1.0, unit: 'inch', param: 'Comments', paramItems: ['Comments'] }),
+      floorinfo: createFeatureState({ parameterName: '', baseLevelName: '', levelRules: [], documentTitle: '', warnings: [] }),
       guid: createFeatureState({ includeFamily: false, includeAnnotation: false }),
       familylink: createFeatureState({ targetsText: '', selectedTargets: [], targets: [] }),
       points: createFeatureState({ unit: 'ft' })
@@ -115,6 +117,7 @@ export function renderMulti(root) {
   buildGroup1Options();
   group1.section.append(buildDeliveryCleanerWorkflowRow());
   group1.section.append(buildToggleRow('connector', buildConnectorConfig()));
+  group1.section.append(buildToggleRow('floorinfo', buildFloorInfoConfig()));
   group3.section.append(buildPmsWorkflowRow());
   group3.section.append(buildToggleRow('guid', buildGuidConfig()));
   group3.section.append(buildToggleRow('familylink', buildFamilyLinkConfig()));
@@ -232,6 +235,10 @@ export function renderMulti(root) {
     const ok = payload?.ok !== false;
     state.connectorParamItems = ok ? normalizeConnectorParamItems(payload) : [];
     if (buildConnectorConfig.renderList) buildConnectorConfig.renderList(payload);
+  });
+
+  onHost('floorinfo:config-loaded', (payload) => {
+    if (buildFloorInfoConfig.applySnapshot) buildFloorInfoConfig.applySnapshot(payload);
   });
 
   onHost('hub:multi-error', (payload) => {
@@ -501,6 +508,7 @@ export function renderMulti(root) {
       markStale(key);
       updateRunSummary();
       refreshConnectorFeatureSummary();
+      refreshFloorInfoFeatureSummary();
       renderSelectedFeatures();
     };
     toggle.addEventListener('change', () => {
@@ -526,6 +534,11 @@ export function renderMulti(root) {
       row.style.border = '1px solid var(--border-accent-soft)';
       row.style.boxShadow = 'var(--shadow-accent-soft)';
       row.style.background = 'var(--surface-note)';
+    } else if (key === 'floorinfo') {
+      const badge = document.createElement('span');
+      badge.className = 'chip chip--info';
+      badge.textContent = 'BQC Sub';
+      right.append(badge);
     }
 
     header.append(metaWrap, right);
@@ -552,6 +565,22 @@ export function renderMulti(root) {
       row.append(summary);
       state.ui.connectorHeroSummary = { row, top, sub };
       refreshConnectorFeatureSummary();
+    } else if (key === 'floorinfo') {
+      const summary = div('feature-row__summary');
+      summary.style.display = 'grid';
+      summary.style.gap = '4px';
+      summary.style.padding = '10px 12px';
+      summary.style.borderRadius = '14px';
+      summary.style.border = '1px dashed var(--border-soft)';
+      summary.style.background = 'var(--surface-help)';
+      const top = document.createElement('strong');
+      const sub = document.createElement('span');
+      top.textContent = '레벨 절대 Z와 기대 층정보 값을 설정하면 모델 객체를 구간별로 검토합니다.';
+      sub.textContent = '아직 검토 파라미터와 레벨 규칙이 지정되지 않았습니다.';
+      summary.append(top, sub);
+      row.append(summary);
+      state.ui.floorInfoSummary = { row, top, sub };
+      refreshFloorInfoFeatureSummary();
     }
 
     config.title = meta.label || key;
@@ -1006,6 +1035,209 @@ export function renderMulti(root) {
     buildConnectorConfig.renderList = renderConnectorList;
     renderConnectorList();
     return { panel, controls: { tol, unit, searchInput, listWrap, selectedWrap, renderConnectorList, renderConnectorSelected } };
+  }
+
+  function buildFloorInfoConfig() {
+    const panel = div('multi-config');
+    panel.style.display = 'grid';
+    panel.style.gap = '12px';
+
+    const param = makeField('층정보 파라미터명', 'floorinfo-param', '예: FloorInfo', 'text');
+    param.input.value = state.features.floorinfo.configDraft.parameterName || '';
+    param.input.addEventListener('change', () => {
+      state.features.floorinfo.configDraft.parameterName = param.input.value || '';
+      markFeatureDirty('floorinfo');
+      refreshFloorInfoFeatureSummary();
+    });
+
+    const sourceCard = div('feature-row__summary');
+    sourceCard.style.display = 'grid';
+    sourceCard.style.gap = '8px';
+    sourceCard.style.padding = '12px';
+    sourceCard.style.borderRadius = '16px';
+    sourceCard.style.border = '1px solid var(--border-accent-soft)';
+    sourceCard.style.background = 'var(--surface-elevated)';
+    sourceCard.style.boxShadow = 'var(--shadow-soft)';
+
+    const sourceHead = document.createElement('div');
+    sourceHead.style.display = 'flex';
+    sourceHead.style.justifyContent = 'space-between';
+    sourceHead.style.alignItems = 'center';
+    sourceHead.style.gap = '10px';
+    const sourceTitle = document.createElement('strong');
+    sourceTitle.textContent = '활성 문서 레벨 기준';
+    const refreshBtn = document.createElement('button');
+    refreshBtn.type = 'button';
+    refreshBtn.className = 'btn btn--secondary';
+    refreshBtn.textContent = '레벨 새로고침';
+    refreshBtn.addEventListener('click', () => requestFloorInfoConfig('settings-refresh'));
+    sourceHead.append(sourceTitle, refreshBtn);
+
+    const documentMeta = document.createElement('div');
+    documentMeta.style.fontSize = '12px';
+    documentMeta.style.color = 'var(--muted,#64748b)';
+
+    const baseWrap = div('paramprop-opt paramprop-opt-group');
+    const baseLbl = labelSpan('주 레벨');
+    const baseSelect = document.createElement('select');
+    baseSelect.className = 'paramprop-select';
+    baseSelect.addEventListener('change', () => {
+      state.features.floorinfo.configDraft.baseLevelName = baseSelect.value || '';
+      markFeatureDirty('floorinfo');
+      refreshFloorInfoFeatureSummary();
+      renderRules();
+    });
+    baseWrap.append(baseLbl, baseSelect);
+
+    const warningBox = div('feature-note');
+    warningBox.style.display = 'none';
+    warningBox.style.whiteSpace = 'pre-wrap';
+
+    const tableWrap = div('paramprop-table-wrap');
+    tableWrap.style.maxHeight = '280px';
+    tableWrap.style.border = '1px solid var(--border-soft)';
+    tableWrap.style.borderRadius = '14px';
+    tableWrap.style.background = 'var(--surface-control)';
+    const table = document.createElement('table');
+    table.className = 'paramprop-table';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>기준</th>
+          <th>레벨명</th>
+          <th>절대 Z(mm)</th>
+          <th>기대 층정보 값</th>
+        </tr>
+      </thead>
+      <tbody></tbody>`;
+    const tbody = table.querySelector('tbody');
+    tableWrap.append(table);
+
+    sourceCard.append(sourceHead, documentMeta, baseWrap, warningBox, tableWrap);
+    panel.append(param.field, sourceCard);
+
+    function updateBaseSelect() {
+      const draft = state.features.floorinfo.configDraft;
+      const rules = normalizeFloorInfoRules(draft.levelRules);
+      baseSelect.innerHTML = '';
+      if (!rules.length) {
+        const empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = '레벨을 먼저 불러오세요';
+        baseSelect.append(empty);
+        baseSelect.value = '';
+        return;
+      }
+      rules.forEach((rule) => {
+        const option = document.createElement('option');
+        option.value = rule.levelName;
+        option.textContent = `${rule.levelName} · ${Number(rule.absoluteZMm || 0).toLocaleString('ko-KR', { maximumFractionDigits: 1 })} mm`;
+        baseSelect.append(option);
+      });
+      if (!draft.baseLevelName || !rules.some((rule) => rule.levelName === draft.baseLevelName)) {
+        draft.baseLevelName = rules[0].levelName;
+      }
+      baseSelect.value = draft.baseLevelName || '';
+    }
+
+    function updateWarnings() {
+      const warnings = Array.isArray(state.features.floorinfo.configDraft.warnings)
+        ? state.features.floorinfo.configDraft.warnings.filter(Boolean)
+        : [];
+      warningBox.style.display = warnings.length ? 'block' : 'none';
+      warningBox.textContent = warnings.length ? warnings.join('\n') : '';
+    }
+
+    function renderRules() {
+      const draft = state.features.floorinfo.configDraft;
+      const rules = normalizeFloorInfoRules(draft.levelRules);
+      documentMeta.textContent = draft.documentTitle
+        ? `활성 문서: ${draft.documentTitle}`
+        : '활성 문서 기준으로 레벨과 절대 Z를 불러옵니다.';
+      updateBaseSelect();
+      updateWarnings();
+      tbody.innerHTML = '';
+
+      if (!rules.length) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td');
+        cell.colSpan = 4;
+        cell.className = 'paramprop-empty';
+        cell.textContent = '레벨 목록이 없습니다. 활성 문서를 열고 레벨 새로고침을 눌러주세요.';
+        row.append(cell);
+        tbody.append(row);
+        return;
+      }
+
+      rules.forEach((rule) => {
+        const row = document.createElement('tr');
+        if (draft.baseLevelName === rule.levelName) row.classList.add('is-selected');
+
+        const baseCell = document.createElement('td');
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'floorinfo-base-level';
+        radio.checked = draft.baseLevelName === rule.levelName;
+        radio.addEventListener('change', () => {
+          draft.baseLevelName = rule.levelName;
+          baseSelect.value = draft.baseLevelName;
+          markFeatureDirty('floorinfo');
+          refreshFloorInfoFeatureSummary();
+          renderRules();
+        });
+        baseCell.append(radio);
+
+        const nameCell = document.createElement('td');
+        nameCell.textContent = rule.levelName;
+
+        const zCell = document.createElement('td');
+        zCell.textContent = Number(rule.absoluteZMm || 0).toLocaleString('ko-KR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+        const valueCell = document.createElement('td');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'paramprop-search';
+        input.style.width = '100%';
+        input.style.minWidth = '160px';
+        input.value = rule.expectedValue || '';
+        input.placeholder = '예: 1F';
+        input.addEventListener('change', () => {
+          draft.levelRules = rules.map((item) => item.levelName === rule.levelName
+            ? { ...item, expectedValue: input.value || '' }
+            : item);
+          markFeatureDirty('floorinfo');
+          refreshFloorInfoFeatureSummary();
+        });
+        valueCell.append(input);
+
+        row.append(baseCell, nameCell, zCell, valueCell);
+        tbody.append(row);
+      });
+    }
+
+    function applySnapshot(payload) {
+      const draft = state.features.floorinfo.configDraft;
+      if (payload?.ok === false) {
+        draft.documentTitle = '';
+        draft.levelRules = [];
+        draft.warnings = [payload?.message || '레벨 정보를 불러오지 못했습니다.'];
+        renderRules();
+        return;
+      }
+      const levels = Array.isArray(payload?.levels) ? payload.levels : [];
+      draft.documentTitle = payload?.documentTitle || '';
+      draft.levelRules = mergeFloorInfoRules(draft.levelRules, levels);
+      draft.warnings = Array.isArray(payload?.warnings) ? payload.warnings : [];
+      if (!draft.baseLevelName || !draft.levelRules.some((rule) => rule.levelName === draft.baseLevelName)) {
+        draft.baseLevelName = draft.levelRules[0]?.levelName || '';
+      }
+      renderRules();
+      refreshFloorInfoFeatureSummary();
+    }
+
+    buildFloorInfoConfig.applySnapshot = applySnapshot;
+    renderRules();
+    return { panel, controls: { param, baseSelect, renderRules, updateWarnings } };
   }
 
   function buildGuidConfig() {
@@ -1872,11 +2104,35 @@ export function renderMulti(root) {
 
   function getRecentResultRows() {
     const payload = getCurrentModeReviewSummary();
-    const connectorRows = Array.isArray(payload?.featureSummaries?.connector?.fileSummaries)
-      ? payload.featureSummaries.connector.fileSummaries
-      : [];
-    if (connectorRows.length) {
-      return connectorRows.map((row) => ({
+    const modeKeys = getModeFeatureKeys();
+    const summaryRows = [];
+    modeKeys.forEach((key) => {
+      const fileSummaries = Array.isArray(payload?.featureSummaries?.[key]?.fileSummaries)
+        ? payload.featureSummaries[key].fileSummaries
+        : [];
+      fileSummaries.forEach((row) => summaryRows.push(row));
+    });
+    if (summaryRows.length) {
+      const merged = new Map();
+      summaryRows.forEach((row) => {
+        const file = row?.file || '';
+        if (!file) return;
+        const current = merged.get(file) || {
+          file,
+          total: 0,
+          issues: 0,
+          near: 0,
+          status: String(row?.status || 'pending'),
+          reason: row?.reason || ''
+        };
+        current.total = Math.max(Number(current.total) || 0, Number(row?.total) || 0);
+        current.issues += Number(row?.issues) || 0;
+        current.near += Number(row?.near) || 0;
+        current.status = current.status || String(row?.status || 'pending');
+        if (!current.reason && row?.reason) current.reason = row.reason;
+        merged.set(file, current);
+      });
+      return Array.from(merged.values()).map((row) => ({
         file: row?.file || '',
         total: Number(row?.total) || 0,
         issues: Number(row?.issues) || 0,
@@ -1949,25 +2205,28 @@ export function renderMulti(root) {
       });
     });
 
-    const connectorRows = Array.isArray(payload?.featureSummaries?.connector?.fileSummaries)
-      ? payload.featureSummaries.connector.fileSummaries
-      : [];
-    connectorRows.forEach((item) => {
-      const file = item?.file || '';
-      if (!file) return;
-      const existing = byFile.get(file) || {
-        file,
-        status: String(item?.status || 'pending'),
-        total: '',
-        issues: '',
-        near: '',
-        reason: ''
-      };
-      existing.total = Number(item?.total) || 0;
-      existing.issues = Number(item?.issues) || 0;
-      existing.near = Number(item?.near) || 0;
-      existing.status = existing.status || String(item?.status || 'pending');
-      byFile.set(file, existing);
+    getModeFeatureKeys().forEach((key) => {
+      const fileSummaries = Array.isArray(payload?.featureSummaries?.[key]?.fileSummaries)
+        ? payload.featureSummaries[key].fileSummaries
+        : [];
+      fileSummaries.forEach((item) => {
+        const file = item?.file || '';
+        if (!file) return;
+        const existing = byFile.get(file) || {
+          file,
+          status: String(item?.status || 'pending'),
+          total: '',
+          issues: '',
+          near: '',
+          reason: ''
+        };
+        existing.total = existing.total === '' ? (Number(item?.total) || 0) : Math.max(Number(existing.total) || 0, Number(item?.total) || 0);
+        existing.issues = (Number(existing.issues) || 0) + (Number(item?.issues) || 0);
+        existing.near = (Number(existing.near) || 0) + (Number(item?.near) || 0);
+        existing.status = existing.status || String(item?.status || 'pending');
+        if (!existing.reason && item?.reason) existing.reason = item.reason;
+        byFile.set(file, existing);
+      });
     });
 
     byFile.forEach((value) => result.push(value));
@@ -1987,6 +2246,7 @@ export function renderMulti(root) {
 
   function getFeatureExportActionLabel(key) {
     if (key === 'connector') return '커넥터 결과 엑셀';
+    if (key === 'floorinfo') return '층정보 결과 엑셀';
     if (key === 'guid') return 'GUID 결과 엑셀';
     if (key === 'familylink') return '패밀리 연동 결과 엑셀';
     if (key === 'points') return 'Point 결과 엑셀';
@@ -2163,6 +2423,7 @@ export function renderMulti(root) {
   function syncFeatureRow(key) {
     updateSelectedFeatureRow(key);
     if (key === 'connector') refreshConnectorFeatureSummary();
+    if (key === 'floorinfo') refreshFloorInfoFeatureSummary();
   }
 
   function updateResultSummary(summary) {
@@ -2254,6 +2515,15 @@ export function renderMulti(root) {
       const targets = state.features.familylink.configCommitted.selectedTargets || [];
       if (!targets.length) return '패밀리 공유파라미터 연동 검토 대상이 없습니다.';
     }
+    if (state.features.floorinfo.enabled) {
+      const config = state.features.floorinfo.configCommitted || {};
+      const rules = normalizeFloorInfoRules(config.levelRules);
+      const configuredCount = rules.filter((rule) => String(rule.expectedValue || '').trim()).length;
+      if (!String(config.parameterName || '').trim()) return '층정보 검토 파라미터명을 입력하세요.';
+      if (!String(config.baseLevelName || '').trim()) return '층정보 검토의 주 레벨을 선택하세요.';
+      if (!rules.length) return '활성 문서에서 레벨 목록을 불러와 층정보 검토 규칙을 설정하세요.';
+      if (!configuredCount) return '최소 1개 이상의 레벨에 기대 층정보 값을 입력하세요.';
+    }
     if (options.requireRvt && !state.rvtList.length) return 'RVT 파일을 추가하세요.';
     return '';
   }
@@ -2264,6 +2534,7 @@ export function renderMulti(root) {
       commonOptions: state.common.configCommitted,
       features: {
         connector: buildCommittedFeature('connector'),
+        floorinfo: buildCommittedFeature('floorinfo'),
         guid: buildCommittedFeature('guid'),
         familylink: buildCommittedFeature('familylink'),
         points: buildCommittedFeature('points')
@@ -2468,6 +2739,7 @@ export function renderMulti(root) {
     syncControlsFromDraft(key);
     renderSharedParamBanner(key);
     if (key === 'connector') requestConnectorParamList('settings-open');
+    if (key === 'floorinfo') requestFloorInfoConfig('settings-open');
     const panel = getFeaturePanel(key);
     if (panel) {
       if (key === 'connector') {
@@ -2585,6 +2857,7 @@ export function renderMulti(root) {
       }
     });
     syncFeatureRow('connector');
+    syncFeatureRow('floorinfo');
     syncFeatureRow('guid');
     syncFeatureRow('familylink');
     syncFeatureRow('points');
@@ -2622,6 +2895,7 @@ export function renderMulti(root) {
     updateSelectedFeatureRow(key);
     updateDrawerBadge(key);
     if (key === 'connector') refreshConnectorFeatureSummary();
+    if (key === 'floorinfo') refreshFloorInfoFeatureSummary();
   }
 
   function buildCommonSummary() {
@@ -2695,6 +2969,13 @@ export function renderMulti(root) {
         '공유 파라미터 txt 목록에서 검토 대상을 검색해 선택합니다.',
         '여러 파라미터를 선택하면 같은 논리로 연속성 검토를 진행합니다.',
         '허용범위와 단위는 기존 커넥터 검토 로직 그대로 적용됩니다.'
+      ];
+    }
+    if (key === 'floorinfo') {
+      return [
+        '활성 문서의 레벨과 절대 Z를 기준으로 레벨 구간별 기대 층정보 값을 설정합니다.',
+        '객체가 여러 레벨 구간을 관통하면 가장 아래 구간의 층정보를 기대값으로 사용합니다.',
+        'BQC Sub 기능이라 필요한 프로젝트에서만 선택해 보조 검토로 활용하면 됩니다.'
       ];
     }
     if (key === 'guid') {
@@ -2806,6 +3087,40 @@ export function renderMulti(root) {
     return items;
   }
 
+  function normalizeFloorInfoRules(raw) {
+    const seen = new Set();
+    const rules = [];
+    const items = Array.isArray(raw) ? raw : [];
+    items.forEach((item) => {
+      const levelName = String(item?.levelName || '').trim();
+      if (!levelName) return;
+      const key = levelName.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      rules.push({
+        levelName,
+        absoluteZFt: Number(item?.absoluteZFt) || 0,
+        absoluteZMm: Number(item?.absoluteZMm) || 0,
+        expectedValue: String(item?.expectedValue || '')
+      });
+    });
+    return rules.sort((a, b) => a.absoluteZFt - b.absoluteZFt || a.levelName.localeCompare(b.levelName, 'ko'));
+  }
+
+  function mergeFloorInfoRules(existingRules, snapshotLevels) {
+    const existingMap = new Map(normalizeFloorInfoRules(existingRules).map((rule) => [rule.levelName.toLowerCase(), rule]));
+    return normalizeFloorInfoRules(snapshotLevels).map((level) => ({
+      levelName: level.levelName,
+      absoluteZFt: Number(level.absoluteZFt) || 0,
+      absoluteZMm: Number(level.absoluteZMm) || 0,
+      expectedValue: existingMap.get(level.levelName.toLowerCase())?.expectedValue || ''
+    }));
+  }
+
+  function requestFloorInfoConfig(context = 'manual') {
+    post('floorinfo:config-load', { source: 'multi', context });
+  }
+
   function refreshConnectorFeatureSummary() {
     const target = state.ui.connectorHeroSummary;
     if (!target) return;
@@ -2824,6 +3139,23 @@ export function renderMulti(root) {
       ? '체크됨 · 설정창에서 검토 파라미터를 선택하거나 수정할 수 있습니다.'
       : '체크 후 옵션을 열어 공유 파라미터 목록에서 검토 대상을 선택하세요.';
     target.sub.textContent = `선택 파라미터 ${selected.length}개 · ${selectedText} · 허용범위 ${tol} ${unit}`;
+    target.row.classList.toggle('is-active', !!feature.enabled);
+  }
+
+  function refreshFloorInfoFeatureSummary() {
+    const target = state.ui.floorInfoSummary;
+    if (!target) return;
+    const feature = state.features.floorinfo;
+    const committedRules = normalizeFloorInfoRules(feature.configCommitted?.levelRules);
+    const draftRules = normalizeFloorInfoRules(feature.configDraft?.levelRules);
+    const rules = draftRules.length ? draftRules : committedRules;
+    const configuredCount = rules.filter((rule) => String(rule.expectedValue || '').trim()).length;
+    const baseLevelName = feature.configDraft?.baseLevelName || feature.configCommitted?.baseLevelName || '';
+    const parameterName = feature.configDraft?.parameterName || feature.configCommitted?.parameterName || '(미입력)';
+    target.top.textContent = feature.enabled
+      ? '체크됨 · 설정창에서 기준 레벨과 레벨별 기대 층정보 값을 관리할 수 있습니다.'
+      : 'Sub 기능입니다. 필요할 때만 켜서 층정보 파라미터의 레벨/Z 일치 여부를 검토하세요.';
+    target.sub.textContent = `파라미터 ${parameterName} · 기준 레벨 ${baseLevelName || '(미선택)'} · 규칙 ${configuredCount}/${rules.length || 0}개`;
     target.row.classList.toggle('is-active', !!feature.enabled);
   }
 
@@ -2911,6 +3243,13 @@ export function renderMulti(root) {
     if (key === 'familylink') {
       const targets = feature.configCommitted.selectedTargets || [];
       if (!targets.length) {
+        return { label: '설정 필요', className: 'status-chip--warn' };
+      }
+    }
+    if (key === 'floorinfo') {
+      const rules = normalizeFloorInfoRules(feature.configCommitted.levelRules);
+      const configuredCount = rules.filter((rule) => String(rule.expectedValue || '').trim()).length;
+      if (!String(feature.configCommitted.parameterName || '').trim() || !String(feature.configCommitted.baseLevelName || '').trim() || !configuredCount) {
         return { label: '설정 필요', className: 'status-chip--warn' };
       }
     }
@@ -3105,6 +3444,16 @@ export function renderMulti(root) {
         targets: feature.configCommitted.selectedTargets || []
       };
     }
+    if (key === 'floorinfo') {
+      const committed = deepCopy(feature.configCommitted || {});
+      committed.levelRules = normalizeFloorInfoRules(committed.levelRules);
+      committed.parameterName = String(committed.parameterName || '').trim();
+      committed.baseLevelName = String(committed.baseLevelName || '').trim();
+      return {
+        enabled: feature.enabled,
+        ...committed
+      };
+    }
     if (key === 'connector') {
       const committed = deepCopy(feature.configCommitted || {});
       committed.paramItems = normalizeConnectorParamNames(committed.paramItems && committed.paramItems.length ? committed.paramItems : committed.param);
@@ -3131,6 +3480,11 @@ export function renderMulti(root) {
       target.configDraft.paramItems = normalizeConnectorParamNames(target.configDraft.paramItems && target.configDraft.paramItems.length ? target.configDraft.paramItems : target.configDraft.param);
       target.configDraft.param = target.configDraft.paramItems.join(',') || 'Comments';
     }
+    if (state.ui.activeFeatureKey === 'floorinfo') {
+      target.configDraft.parameterName = String(target.configDraft.parameterName || '').trim();
+      target.configDraft.baseLevelName = String(target.configDraft.baseLevelName || '').trim();
+      target.configDraft.levelRules = normalizeFloorInfoRules(target.configDraft.levelRules);
+    }
     target.configCommitted = deepCopy(target.configDraft);
     target.applied = true;
     target.dirty = false;
@@ -3151,6 +3505,11 @@ export function renderMulti(root) {
     if (key === 'connector') {
       feature.configDraft.paramItems = normalizeConnectorParamNames(feature.configDraft.paramItems && feature.configDraft.paramItems.length ? feature.configDraft.paramItems : feature.configDraft.param);
       feature.configDraft.param = feature.configDraft.paramItems.join(',') || 'Comments';
+    }
+    if (key === 'floorinfo') {
+      feature.configDraft.levelRules = normalizeFloorInfoRules(feature.configDraft.levelRules);
+      feature.configDraft.parameterName = String(feature.configDraft.parameterName || '').trim();
+      feature.configDraft.baseLevelName = String(feature.configDraft.baseLevelName || '').trim();
     }
     if (key === 'familylink') {
       feature.configDraft.targetsText = buildTargetsText(feature.configDraft.selectedTargets);
@@ -3184,6 +3543,11 @@ export function renderMulti(root) {
       if (controls.searchInput) controls.searchInput.value = '';
       if (controls.renderConnectorList) controls.renderConnectorList();
       if (controls.renderConnectorSelected) controls.renderConnectorSelected();
+    } else if (key === 'floorinfo') {
+      const draft = state.features.floorinfo.configDraft;
+      draft.levelRules = normalizeFloorInfoRules(draft.levelRules);
+      if (controls.param?.input) controls.param.input.value = draft.parameterName || '';
+      if (controls.renderRules) controls.renderRules();
     } else if (key === 'guid') {
       const draft = state.features.guid.configDraft;
       controls.includeFamily.input.checked = draft.includeFamily;

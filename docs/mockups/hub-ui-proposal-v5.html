@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hub UI Proposal V5</title>
+  <style>
+    :root {
+      --bg: #eef2f8;
+      --panel: rgba(255,255,255,.92);
+      --panel-soft: rgba(246,249,254,.96);
+      --line: #cfd9ea;
+      --line-strong: #b6c9e7;
+      --text: #1e293b;
+      --muted: #6b7a90;
+      --accent: #336dff;
+      --accent-soft: rgba(51,109,255,.10);
+      --accent-strong: rgba(51,109,255,.16);
+      --success: #0f9f64;
+      --shadow: 0 16px 36px rgba(27, 55, 97, .10);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(102,153,255,.10), transparent 28%),
+        linear-gradient(180deg, #f4f7fb 0%, #edf2f8 100%);
+      color: var(--text);
+      font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+    }
+
+    .frame {
+      width: 1366px;
+      height: 768px;
+      margin: 0 auto;
+      padding: 28px;
+    }
+
+    .topbar {
+      height: 92px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(255,255,255,.96), rgba(250,252,255,.92));
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-columns: 320px 1fr 460px;
+      align-items: center;
+      padding: 0 22px;
+      gap: 18px;
+    }
+
+    .brand, .top-meta, .top-actions { display: flex; align-items: center; }
+    .brand { gap: 16px; }
+    .brand-badge {
+      width: 54px;
+      height: 54px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      display: grid;
+      place-items: center;
+      background: linear-gradient(180deg, #ffffff, #eef4ff);
+      font-weight: 700;
+      color: #3355aa;
+    }
+
+    .brand-copy h1 {
+      margin: 0 0 4px;
+      font-size: 28px;
+    }
+
+    .brand-copy p, .top-meta p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line-strong);
+      background: #fff;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .top-meta {
+      justify-content: center;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    .top-actions {
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .hero {
+      margin-top: 16px;
+      padding: 22px 28px;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      min-height: 104px;
+    }
+
+    .hero h2 {
+      margin: 0 0 8px;
+      font-size: 34px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      max-width: 760px;
+      line-height: 1.5;
+    }
+
+    .hero-side {
+      display: grid;
+      gap: 10px;
+      justify-items: end;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .layout {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.52fr) minmax(360px, .92fr);
+      gap: 18px;
+      height: 590px;
+    }
+
+    .left {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .right {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    .section-head h3 {
+      margin: 0 0 4px;
+      font-size: 28px;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .common-settings {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, #f8fbff, #f1f6ff);
+    }
+
+    .common-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .token {
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line-strong);
+      background: white;
+      font-size: 13px;
+      color: #3d4f70;
+    }
+
+    .run-card {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr auto;
+      align-items: center;
+      gap: 16px;
+      padding: 18px;
+      border-radius: 20px;
+      border: 1px solid var(--line-strong);
+      background: linear-gradient(180deg, white, #f8fbff);
+    }
+
+    .run-block strong,
+    .run-state strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 18px;
+    }
+
+    .run-block p,
+    .run-state p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .run-actions {
+      display: grid;
+      gap: 10px;
+      min-width: 188px;
+    }
+
+    .btn {
+      border: 1px solid var(--line-strong);
+      border-radius: 14px;
+      padding: 12px 18px;
+      font-size: 15px;
+      font-weight: 600;
+      background: white;
+      color: var(--text);
+    }
+
+    .btn.primary {
+      background: linear-gradient(180deg, #4c7cff, #2f67ff);
+      color: white;
+      border-color: #2f67ff;
+      box-shadow: 0 10px 22px rgba(51,109,255,.24);
+    }
+
+    .feature-card {
+      display: grid;
+      grid-template-rows: auto auto;
+      gap: 12px;
+      padding: 16px;
+      border-radius: 20px;
+      border: 1px solid #96c7ff;
+      background: linear-gradient(180deg, rgba(230,244,255,.88), rgba(245,250,255,.96));
+      min-height: 0;
+    }
+
+    .feature-head {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .check {
+      width: 28px;
+      height: 28px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: white;
+      display: grid;
+      place-items: center;
+      font-weight: 700;
+      font-size: 18px;
+    }
+
+    .feature-copy h4 {
+      margin: 0 0 6px;
+      font-size: 16px;
+    }
+
+    .feature-copy p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .badge {
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      border: 1px solid rgba(51,109,255,.32);
+      color: #2e61eb;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .feature-inner {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: start;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(150,199,255,.78);
+      background: rgba(255,255,255,.68);
+    }
+
+    .feature-inner strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .feature-inner ul {
+      margin: 0;
+      padding-left: 18px;
+      color: #44607f;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .feature-actions {
+      display: grid;
+      gap: 8px;
+      min-width: 96px;
+    }
+
+    .side-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+    }
+
+    .metric span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .metric strong {
+      font-size: 22px;
+    }
+
+    .side-slim {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .side-list {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 8px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #33455f;
+    }
+
+    .side-actions {
+      display: grid;
+      gap: 8px;
+      min-width: 132px;
+    }
+
+    .result-card {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 14px;
+      overflow: hidden;
+    }
+
+    .mini-table {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel-soft);
+      overflow: hidden;
+    }
+
+    .mini-row {
+      display: grid;
+      grid-template-columns: 1.15fr .7fr .6fr .8fr;
+      gap: 12px;
+      padding: 12px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid #dbe4f2;
+      align-items: center;
+    }
+
+    .mini-row:last-child { border-bottom: 0; }
+    .mini-row.head {
+      background: #edf3fb;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(15,159,100,.12);
+      color: #0c8a58;
+      width: fit-content;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-badge">KKY</div>
+        <div class="brand-copy">
+          <h1>KKY Tool Hub</h1>
+          <p>Revit 작업 보조 통합 도구</p>
+        </div>
+      </div>
+      <div class="top-meta">
+        <p>Revit 워크플로우를 하나의 허브에서 관리하세요.</p>
+      </div>
+      <div class="top-actions">
+        <div class="pill">연결됨</div>
+        <div class="pill">항상 위</div>
+        <div class="pill">테마</div>
+        <div class="pill">설정</div>
+      </div>
+    </div>
+
+    <div class="hero">
+      <div>
+        <div style="color:#4a6cf2;font-size:13px;font-weight:700;letter-spacing:.08em;margin-bottom:8px;">MULTI RVT HUB</div>
+        <h2>납품시 BQC 검토</h2>
+        <p>핵심 검토 하나에 집중해서 더 빠르게 실행할 수 있도록 정리했습니다. 현재 파일은 바로 검토하고, 여러 RVT는 별도 창에서 파일을 추가한 뒤 실행합니다.</p>
+      </div>
+      <div class="hero-side">
+        <div class="pill">BQC 전용 화면</div>
+        <div>현재 문서 중심 + 다중 RVT 보조 흐름</div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="left">
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <h3>납품 시 BQC 검토</h3>
+              <p>복잡한 선택을 줄이고, 커넥터 연속성 검토만 빠르게 실행하는 흐름입니다.</p>
+            </div>
+            <div class="pill">커넥터 단일 검토</div>
+          </div>
+
+          <div class="common-settings">
+            <div>
+              <strong style="display:block;font-size:16px;">BQC 공통 설정</strong>
+              <div class="common-summary">
+                <span class="token">extra = 0</span>
+                <span class="token">필터 없음</span>
+                <span class="token">Dummy 포함</span>
+                <span class="token">공통 설정 적용 중</span>
+              </div>
+            </div>
+            <button class="btn">설정</button>
+          </div>
+        </div>
+
+        <div class="run-card card" style="padding:18px;">
+          <div class="run-block">
+            <strong>검토 실행</strong>
+            <p>메인 액션을 위로 끌어올려 사용자가 다음 행동을 바로 이해할 수 있게 합니다.</p>
+          </div>
+          <div class="run-state">
+            <strong>선택 기능 1개 · 납품시 BQC 검토</strong>
+            <p>현재 파일은 바로 검토 가능, 다중 RVT는 목록 추가 후 시작</p>
+          </div>
+          <div class="run-actions">
+            <button class="btn primary">현재 파일 검토</button>
+            <button class="btn">RVT 여러개 검토</button>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-head">
+            <div class="check">✓</div>
+            <div class="feature-copy">
+              <h4>커넥터 파라미터 연속성 검토</h4>
+              <p>BQC 핵심 검토만 남기고 설명과 상태를 한 줄에 압축합니다.</p>
+            </div>
+            <div class="badge">BQC 핵심</div>
+          </div>
+          <div class="feature-inner">
+            <div>
+              <strong>현재 설정 요약</strong>
+              <ul>
+                <li>선택 파라미터 1개: Comments</li>
+                <li>허용범위 1 inch</li>
+                <li>설정은 필요할 때만 눌러 수정</li>
+              </ul>
+            </div>
+            <div class="feature-actions">
+              <button class="btn">설정</button>
+              <button class="btn">도움말</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="right">
+        <div class="card">
+          <div class="section-head" style="margin-bottom:12px;">
+            <div>
+              <h3 style="font-size:24px;">실행 요약</h3>
+              <p>큰 카드 대신 압축된 요약으로 한 화면에서 끝냅니다.</p>
+            </div>
+          </div>
+          <div class="side-grid">
+            <div class="metric"><span>선택 기능</span><strong>1개</strong></div>
+            <div class="metric"><span>다중 RVT</span><strong>0개</strong></div>
+            <div class="metric"><span>실행 대상</span><strong style="font-size:18px;">현재 파일</strong></div>
+            <div class="metric"><span>상태</span><strong style="font-size:18px;">준비 완료</strong></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="section-head" style="margin-bottom:12px;">
+            <div>
+              <h3 style="font-size:24px;">현재 실행 조건</h3>
+              <p>오른쪽은 길게 늘어뜨리기보다 한 번에 읽히게 정리합니다.</p>
+            </div>
+            <button class="btn">수정</button>
+          </div>
+          <div class="side-slim">
+            <ul class="side-list">
+              <li>BQC 공통 설정: extra=0 / 필터 없음 / Dummy 포함</li>
+              <li>커넥터 파라미터: Comments 1개</li>
+              <li>허용범위: 1 inch</li>
+              <li>Shared Parameter: 확인 필요</li>
+            </ul>
+            <div class="side-actions">
+              <button class="btn">설정 열기</button>
+              <button class="btn">RVT 목록</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card result-card">
+          <div class="section-head" style="margin-bottom:0;">
+            <div>
+              <h3 style="font-size:24px;">최근 결과</h3>
+              <p>결과 패널은 세로 길이를 줄이고 바로 행동할 수 있게 만듭니다.</p>
+            </div>
+            <div class="pill" style="border-color:#9ed9bb;color:#0b8a57;">마지막 실행 10:42</div>
+          </div>
+
+          <div class="side-slim">
+            <ul class="side-list">
+              <li>전체 결과 124건</li>
+              <li>오류/불일치 18건</li>
+              <li>near/연결 필요 7건</li>
+              <li>정상 99건</li>
+            </ul>
+            <div class="side-actions">
+              <button class="btn primary">엑셀 내보내기</button>
+              <button class="btn">결과 팝업</button>
+            </div>
+          </div>
+
+          <div class="mini-table">
+            <div class="mini-row head">
+              <div>기능</div>
+              <div>상태</div>
+              <div>설정</div>
+              <div>엑셀</div>
+            </div>
+            <div class="mini-row">
+              <div>커넥터 파라미터 연속성 검토</div>
+              <div><span class="status">완료</span></div>
+              <div>설정</div>
+              <div>내보내기</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

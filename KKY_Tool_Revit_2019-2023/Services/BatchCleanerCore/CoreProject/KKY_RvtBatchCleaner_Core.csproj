@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net48;net8.0-windows</TargetFrameworks>
+    <UseWindowsForms>true</UseWindowsForms>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <RootNamespace>KKY_Tool_Revit</RootNamespace>
+    <AssemblyName>KKY_RvtBatchCleaner_Core</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Platforms>AnyCPU;x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+    <Deterministic>false</Deterministic>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net48'">
+    <AddinYear Condition="'$(AddinYear)' == ''">2019</AddinYear>
+    <ProgramFilesPath>$([System.Environment]::GetEnvironmentVariable('ProgramFiles'))</ProgramFilesPath>
+    <RevitApiDirCandidate0>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..\..\Compile\$(AddinYear)addin'))</RevitApiDirCandidate0>
+    <RevitApiInstallCandidate0>$(ProgramFilesPath)\Autodesk\Revit $(AddinYear)</RevitApiInstallCandidate0>
+    <RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiDirCandidate0)\RevitAPI.dll')">$(RevitApiDirCandidate0)</RevitApiDir>
+    <RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiInstallCandidate0)\RevitAPI.dll')">$(RevitApiInstallCandidate0)</RevitApiDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <RevitApiDirCandidate0>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..\..\Compile\2025addin'))</RevitApiDirCandidate0>
+    <RevitApiDirCandidate1>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..\..\Compile\2025addin'))</RevitApiDirCandidate1>
+    <RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiDirCandidate0)\RevitAPI.dll')">$(RevitApiDirCandidate0)</RevitApiDir>
+    <RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiDirCandidate1)\RevitAPI.dll')">$(RevitApiDirCandidate1)</RevitApiDir>
+  </PropertyGroup>
+
+  <Target Name="CheckRevitApiDir" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(RevitApiDir)' == ''" Text="Local Revit API folder not found for KKY_RvtBatchCleaner_Core." />
+  </Target>
+
+  <ItemGroup>
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitApiDir)\RevitAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitApiDir)\RevitAPIUI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Models\BatchCleanResult.cs" Link="Models\BatchCleanResult.cs" />
+    <Compile Include="..\Models\BatchCleanSettings.cs" Link="Models\BatchCleanSettings.cs" />
+    <Compile Include="..\Models\BatchPrepareSession.cs" Link="Models\BatchPrepareSession.cs" />
+    <Compile Include="..\Models\ElementParameterUpdateSettings.cs" Link="Models\ElementParameterUpdateSettings.cs" />
+    <Compile Include="..\Models\PreparedDocumentEntry.cs" Link="Models\PreparedDocumentEntry.cs" />
+    <Compile Include="..\Models\PurgeBatchProgressSnapshot.cs" Link="Models\PurgeBatchProgressSnapshot.cs" />
+    <Compile Include="..\Models\ViewFilterProfile.cs" Link="Models\ViewFilterProfile.cs" />
+    <Compile Include="..\Models\ViewParameterAssignment.cs" Link="Models\ViewParameterAssignment.cs" />
+
+    <Compile Include="..\BatchCleanService.cs" Link="Services\BatchCleanService.cs" />
+    <Compile Include="..\FloorInfoReviewService.cs" Link="Services\FloorInfoReviewService.cs" />
+    <Compile Include="..\LegacyPurgeService.cs" Link="Services\LegacyPurgeService.cs" />
+    <Compile Include="..\ModelParameterExtractionService.cs" Link="Services\ModelParameterExtractionService.cs" />
+    <Compile Include="..\PurgeUiBatchService.cs" Link="Services\PurgeUiBatchService.cs" />
+    <Compile Include="..\RevitViewFilterProfileService.cs" Link="Services\RevitViewFilterProfileService.cs" />
+    <Compile Include="..\TransactionFailureSwallower.cs" Link="Services\TransactionFailureSwallower.cs" />
+    <Compile Include="..\VerificationService.cs" Link="Services\VerificationService.cs" />
+  </ItemGroup>
+
+</Project>

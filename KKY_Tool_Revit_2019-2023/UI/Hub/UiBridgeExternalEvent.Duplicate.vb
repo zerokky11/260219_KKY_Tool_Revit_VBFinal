@@ -700,7 +700,11 @@ Dim q = Function(x As Double) As Long
                 .SizeKey = GetMEPSizeKey(e),
                 .RadiusHint = 0R,
                 .HasCurve = False,
-                .Radius = 0R
+                .Radius = 0R,
+                .ProfileKind = CurveProfileKind.Unknown,
+                .ProfileWidth = 0R,
+                .ProfileHeight = 0R,
+                .UsesApproxProfile = True
             }
 
             ci.RadiusHint = ComputeRadiusHint(ci.MinX, ci.MinY, ci.MinZ, ci.MaxX, ci.MaxY, ci.MaxZ, tolFeet)
@@ -711,9 +715,17 @@ Dim q = Function(x As Double) As Long
                 ci.X0 = p0.X : ci.Y0 = p0.Y : ci.Z0 = p0.Z
                 ci.X1 = p1.X : ci.Y1 = p1.Y : ci.Z1 = p1.Z
 
+                Dim profileKind As CurveProfileKind = CurveProfileKind.Unknown
                 Dim r As Double = 0R
-                If TryGetCrossSectionRadius(e, r) Then
+                Dim w As Double = 0R
+                Dim h As Double = 0R
+                Dim exactProfile As Boolean = False
+                If TryGetCurveProfile(e, profileKind, r, w, h, exactProfile) Then
+                    ci.ProfileKind = profileKind
+                    ci.ProfileWidth = Math.Max(0R, w)
+                    ci.ProfileHeight = Math.Max(0R, h)
                     ci.Radius = Math.Max(0R, r)
+                    ci.UsesApproxProfile = Not exactProfile
                 End If
             End If
 
@@ -919,7 +931,17 @@ Try
             If Not infos.TryGetValue(aId, aInfo) Then Continue For
             If Not infos.TryGetValue(bId, bInfo) Then Continue For
 
+            Dim commentParts As New List(Of String)()
+            If IsExactDuplicateCurvePair(aInfo, bInfo, tolFeet) OrElse IsExactBBoxDuplicate(aInfo, bInfo, tolFeet) Then
+                commentParts.Add("완전 중복 객체 겹침 포함")
+            End If
+
             Dim pairComment As String = BuildClashComment(doc, aId, bId)
+            If Not String.IsNullOrWhiteSpace(pairComment) Then
+                commentParts.Add(pairComment)
+            End If
+
+            pairComment = String.Join(" ", commentParts.Where(Function(x) Not String.IsNullOrWhiteSpace(x)).ToArray())
 
             pairs.Add(New PairRowDto With {
                 .FileName = doc.Title,
@@ -1467,6 +1489,12 @@ End If
 
 #Region "자체간섭 내부 구현"
 
+    Private Enum CurveProfileKind
+        Unknown = 0
+        Circular = 1
+        Rectangular = 2
+    End Enum
+
     Private Structure ClashInfo
         Public Id As Integer
         Public MinX As Double
@@ -1491,6 +1519,10 @@ End If
         Public Y1 As Double
         Public Z1 As Double
         Public Radius As Double
+        Public ProfileKind As CurveProfileKind
+        Public ProfileWidth As Double
+        Public ProfileHeight As Double
+        Public UsesApproxProfile As Boolean
     End Structure
 
     Private Shared Sub AddCell(cells As Dictionary(Of Long, List(Of Integer)), ix As Integer, iy As Integer, id As Integer)
@@ -1579,21 +1611,31 @@ Private Shared Sub CollectSolidsFromGeom(geom As GeometryElement, xform As Trans
         Dim gi As GeometryInstance = TryCast(go, GeometryInstance)
         If gi IsNot Nothing Then
             Try
-                Dim instXf As Transform = gi.Transform
-                Dim nextXf As Transform = xform
-                If nextXf Is Nothing Then
-                    nextXf = instXf
-                Else
-                    nextXf = nextXf.Multiply(instXf)
-                End If
-
                 Dim instGeom As GeometryElement = Nothing
                 Try
                     instGeom = gi.GetInstanceGeometry()
                 Catch
                 End Try
                 If instGeom IsNot Nothing Then
-                    CollectSolidsFromGeom(instGeom, nextXf, acc)
+                    ' GetInstanceGeometry 는 이미 프로젝트 좌표계 기준이므로
+                    ' gi.Transform 를 다시 곱하면 FamilyInstance 계열이 이중 변환될 수 있다.
+                    CollectSolidsFromGeom(instGeom, Nothing, acc)
+                Else
+                    Dim symGeom As GeometryElement = Nothing
+                    Try
+                        symGeom = gi.GetSymbolGeometry()
+                    Catch
+                    End Try
+                    If symGeom IsNot Nothing Then
+                        Dim instXf As Transform = gi.Transform
+                        Dim nextXf As Transform = xform
+                        If nextXf Is Nothing Then
+                            nextXf = instXf
+                        Else
+                            nextXf = nextXf.Multiply(instXf)
+                        End If
+                        CollectSolidsFromGeom(symGeom, nextXf, acc)
+                    End If
                 End If
             Catch
             End Try
@@ -1627,13 +1669,22 @@ Private Shared Function SolidsIntersect(doc As Document,
                                        opt As Options,
                                        cache As Dictionary(Of Integer, List(Of Solid)),
                                        tolFeet As Double) As Boolean
+    ' 접촉(face/edge)이나 필터 true 만으로는 간섭으로 확정하지 않는다.
+    ' 자체간섭 결과는 실제 볼륨 겹침이 있을 때만 hard clash로 본다.
+    Return HasMeaningfulSolidOverlap(doc, aId, bId, opt, cache, tolFeet)
+End Function
+
+Private Shared Function HasMeaningfulSolidOverlap(doc As Document,
+                                                 aId As Integer,
+                                                 bId As Integer,
+                                                 opt As Options,
+                                                 cache As Dictionary(Of Integer, List(Of Solid)),
+                                                 tolFeet As Double) As Boolean
     Dim sa = GetSolidsCached(doc, aId, opt, cache)
     Dim sb = GetSolidsCached(doc, bId, opt, cache)
     If sa Is Nothing OrElse sb Is Nothing OrElse sa.Count = 0 OrElse sb.Count = 0 Then Return False
 
-    ' ✅ tiny overlap/touch 누락 방지:
-    '    Intersect 결과 Solid가 생성되면, 볼륨이 극소(수치오차)여도 Faces/Edges가 있으면 간섭으로 본다.
-    Dim tolVol As Double = Math.Max(1.0E-12, tolFeet * tolFeet * tolFeet)
+    Dim tolVol As Double = GetMeaningfulOverlapTolerance(doc, aId, bId, tolFeet)
 
     For Each s1 In sa
         If s1 Is Nothing Then Continue For
@@ -1647,30 +1698,166 @@ Private Shared Function SolidsIntersect(doc As Document,
                 Dim v As Double = 0R
                 Try : v = inter.Volume : Catch : v = 0R : End Try
                 If v > tolVol Then Return True
-
-                ' 볼륨이 0에 가까워도(면 접촉/미세 겹침) Faces/Edges가 있으면 간섭으로 포함
-                Dim fCnt As Integer = 0
-                Dim eCnt As Integer = 0
-                Try : fCnt = inter.Faces.Size : Catch : fCnt = 0 : End Try
-                Try : eCnt = inter.Edges.Size : Catch : eCnt = 0 : End Try
-                If fCnt > 0 OrElse eCnt > 0 Then Return True
-
             Catch
-                ' ✅ boolean 실패 시(슬리버/미세 겹침): Revit 교차 필터로 폴백
-                Try
-                    Dim ea As Element = doc.GetElement(New ElementId(aId))
-                    Dim eb As Element = doc.GetElement(New ElementId(bId))
-                    If ea IsNot Nothing AndAlso eb IsNot Nothing Then
-                        Dim f As New ElementIntersectsElementFilter(eb)
-                        If f.PassesFilter(doc, ea.Id) Then Return True
-                    End If
-                Catch
-                End Try
             End Try
         Next
     Next
 
     Return False
+End Function
+
+Private Shared Function GetMeaningfulOverlapTolerance(doc As Document,
+                                                     aId As Integer,
+                                                     bId As Integer,
+                                                     tolFeet As Double) As Double
+    Dim baseTol As Double = Math.Max(1.0E-9, Math.Pow(Math.Max(tolFeet, 0.0005R), 3) * 8.0R)
+
+    If doc Is Nothing Then Return baseTol
+
+    Dim ea As Element = Nothing
+    Dim eb As Element = Nothing
+    Try
+        ea = doc.GetElement(New ElementId(aId))
+        eb = doc.GetElement(New ElementId(bId))
+    Catch
+    End Try
+
+    ' 엘보/티/전환 피팅은 패밀리 빈 공간/목 부분 때문에
+    ' 매우 작은 교차 볼륨이 쉽게 생겨 오탐이 잦다.
+    ' fitting 이 포함된 pair는 의미 있는 겹침 기준을 더 엄격하게 본다.
+    If IsMepFittingElement(ea) OrElse IsMepFittingElement(eb) Then
+        Return Math.Max(baseTol * 64.0R, 5.0E-7)
+    End If
+
+    Return baseTol
+End Function
+
+Private Shared Function IsMepFittingElement(e As Element) As Boolean
+    If e Is Nothing OrElse e.Category Is Nothing Then Return False
+
+    Try
+        Select Case e.Category.Id.IntegerValue
+            Case CInt(BuiltInCategory.OST_DuctFitting),
+                 CInt(BuiltInCategory.OST_PipeFitting),
+                 CInt(BuiltInCategory.OST_CableTrayFitting),
+                 CInt(BuiltInCategory.OST_ConduitFitting)
+                Return True
+        End Select
+    Catch
+    End Try
+
+    Return False
+End Function
+
+Private Shared Function IsMepAccessoryElement(e As Element) As Boolean
+    If e Is Nothing OrElse e.Category Is Nothing Then Return False
+
+    Try
+        Select Case e.Category.Id.IntegerValue
+            Case CInt(BuiltInCategory.OST_PipeAccessory),
+                 CInt(BuiltInCategory.OST_DuctAccessory)
+                Return True
+        End Select
+    Catch
+    End Try
+
+    Return False
+End Function
+
+Private Shared Function HasSubComponents(fi As FamilyInstance) As Boolean
+    If fi Is Nothing Then Return False
+
+    Try
+        Dim subs = fi.GetSubComponentIds()
+        Return subs IsNot Nothing AndAlso subs.Count > 0
+    Catch
+        Return False
+    End Try
+End Function
+
+Private Shared Function IsMepCurveElement(e As Element) As Boolean
+    Return TypeOf e Is MEPCurve
+End Function
+
+Private Shared Function IsInsertedMepFamily(e As Element) As Boolean
+    Dim fi As FamilyInstance = TryCast(e, FamilyInstance)
+    If fi Is Nothing Then Return False
+
+    Dim hasConn As Boolean = False
+    Try
+        hasConn = (GetConnectorManagerSafe(fi) IsNot Nothing)
+    Catch
+        hasConn = False
+    End Try
+    If Not hasConn Then Return False
+
+    Dim hosted As Boolean = False
+    Dim nested As Boolean = False
+    Try : hosted = (fi.Host IsNot Nothing) : Catch : hosted = False : End Try
+    Try : nested = HasSubComponents(fi) : Catch : nested = False : End Try
+
+    If hosted OrElse nested Then Return True
+    If IsMepFittingElement(fi) OrElse IsMepAccessoryElement(fi) Then Return True
+
+    Return False
+End Function
+
+Private Shared Function ShouldIgnoreConnectedInsertClash(doc As Document,
+                                                        aId As Integer,
+                                                        bId As Integer,
+                                                        connCache As Dictionary(Of Integer, HashSet(Of Integer))) As Boolean
+    If doc Is Nothing Then Return False
+    If Not IsIntentionallyConnectedOrJoined(doc, aId, bId, connCache) Then Return False
+
+    Dim ea As Element = Nothing
+    Dim eb As Element = Nothing
+    Try
+        ea = doc.GetElement(New ElementId(aId))
+        eb = doc.GetElement(New ElementId(bId))
+    Catch
+    End Try
+    If ea Is Nothing OrElse eb Is Nothing Then Return False
+
+    If IsMepCurveElement(ea) AndAlso IsInsertedMepFamily(eb) Then Return True
+    If IsMepCurveElement(eb) AndAlso IsInsertedMepFamily(ea) Then Return True
+
+    Return False
+End Function
+
+Private Shared Function HasSolidGeometry(doc As Document,
+                                        id As Integer,
+                                        opt As Options,
+                                        cache As Dictionary(Of Integer, List(Of Solid))) As Boolean
+    Try
+        Dim solids = GetSolidsCached(doc, id, opt, cache)
+        Return solids IsNot Nothing AndAlso solids.Count > 0
+    Catch
+        Return False
+    End Try
+End Function
+
+Private Shared Function NeedsCurveSolidConfirmation(a As ClashInfo, b As ClashInfo) As Boolean
+    If Not a.HasCurve OrElse Not b.HasCurve Then Return False
+    If a.UsesApproxProfile OrElse b.UsesApproxProfile Then Return True
+    If a.ProfileKind = CurveProfileKind.Unknown OrElse b.ProfileKind = CurveProfileKind.Unknown Then Return True
+    If a.ProfileKind = CurveProfileKind.Rectangular OrElse b.ProfileKind = CurveProfileKind.Rectangular Then Return True
+    Return False
+End Function
+
+Private Shared Function ConfirmCurveClash(doc As Document,
+                                         a As ClashInfo,
+                                         b As ClashInfo,
+                                         opt As Options,
+                                         solidCache As Dictionary(Of Integer, List(Of Solid)),
+                                         tolFeet As Double) As Boolean
+    Dim hasSolidA As Boolean = HasSolidGeometry(doc, a.Id, opt, solidCache)
+    Dim hasSolidB As Boolean = HasSolidGeometry(doc, b.Id, opt, solidCache)
+
+    If Not (hasSolidA AndAlso hasSolidB) Then Return False
+
+    ' 곡선 기반 과검출이 잦은 요소는 필터/터치 판정보다
+    ' 실제 볼륨 겹침이 있을 때만 간섭으로 확정한다.
+    Return HasMeaningfulSolidOverlap(doc, a.Id, b.Id, opt, solidCache, tolFeet)
 End Function
 
 Private Shared Sub AddEdge(adj As Dictionary(Of Integer, HashSet(Of Integer)), a As Integer, b As Integer)
@@ -1780,10 +1967,15 @@ End Function
 
 Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashInfo, tolFeet As Double, opt As Options, solidCache As Dictionary(Of Integer, List(Of Solid)), connCache As Dictionary(Of Integer, HashSet(Of Integer))) As Boolean
         ' ✅ 완전 중복은 간섭에서 제외
-        If IsExactBBoxDuplicate(a, b, tolFeet) Then Return False
+        If IsExactBBoxDuplicate(a, b, tolFeet) Then
+            Return HasMeaningfulSolidOverlap(doc, a.Id, b.Id, opt, solidCache, tolFeet)
+        End If
 
         ' ✅ 탭/피팅/조인트 등 의도된 MEP 연결은 간섭에서 제외
-        If IsIntentionallyConnectedOrJoined(doc, a.Id, b.Id, connCache) Then Return False
+        If IsIntentionallyConnectedOrJoined(doc, a.Id, b.Id, connCache) Then
+            If ShouldIgnoreConnectedInsertClash(doc, a.Id, b.Id, connCache) Then Return False
+            If Not HasMeaningfulSolidOverlap(doc, a.Id, b.Id, opt, solidCache, tolFeet) Then Return False
+        End If
 
         ' 1) curve-curve: centerline distance + overlap for near-parallel
         If a.HasCurve AndAlso b.HasCurve Then
@@ -1798,17 +1990,13 @@ Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashI
 
             Dim dist As Double = SegmentDistance(p0, p1, q0, q1)
             If dist > radSum Then
-                ' ✅ 매우 작은 겹침/특수 형상으로 거리 판정이 빗나가는 경우 폴백
-                Try
-                    Dim ea2 As Element = doc.GetElement(New ElementId(a.Id))
-                    Dim eb2 As Element = doc.GetElement(New ElementId(b.Id))
-                    If ea2 IsNot Nothing AndAlso eb2 IsNot Nothing Then
-                        Dim f As New ElementIntersectsElementFilter(eb2)
-                        If f.PassesFilter(doc, ea2.Id) Then Return True
-                    End If
-                Catch
-                End Try
-                Return False
+                If NeedsCurveSolidConfirmation(a, b) Then
+                    Return ConfirmCurveClash(doc, a, b, opt, solidCache, tolFeet)
+                End If
+
+                ' 거리 근사치가 빗나가더라도 필터 true 만으로 확정하지 않고,
+                ' 실제 볼륨 겹침이 있을 때만 간섭으로 본다.
+                Return HasMeaningfulSolidOverlap(doc, a.Id, b.Id, opt, solidCache, tolFeet)
             End If
 
             Dim vA As XYZ = p1 - p0
@@ -1830,7 +2018,11 @@ Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashI
 
             ' ✅ 완전 중복(동일 기하/동일 사이즈/동일 타입)은 간섭에서 제외
             If IsExactDuplicateCurvePair(a, b, tolFeet) Then
-                Return False
+                Return HasMeaningfulSolidOverlap(doc, a.Id, b.Id, opt, solidCache, tolFeet)
+            End If
+
+            If NeedsCurveSolidConfirmation(a, b) Then
+                Return ConfirmCurveClash(doc, a, b, opt, solidCache, tolFeet)
             End If
 
             Return True
@@ -1858,7 +2050,8 @@ Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashI
     End Try
 
     If Not maybe Then
-        ' 장비 패밀리 오탐 방지: 필터가 false면 간섭 아님
+        ' 필터가 놓친 경우라도 실제 솔리드 겹침이 있으면 간섭으로 포함
+        If HasMeaningfulSolidOverlap(doc, a.Id, b.Id, opt, solidCache, tolFeet) Then Return True
         Return False
     End If
 
@@ -2035,6 +2228,9 @@ Return False
             End If
 
             If TypeOf e Is Autodesk.Revit.DB.Mechanical.Duct Then
+                Dim d As Double = GetParamDouble(e, BuiltInParameter.RBS_CURVE_DIAMETER_PARAM)
+                If d > 0 Then Return "D" & qS(d).ToString()
+
                 Dim w As Double = GetParamDouble(e, BuiltInParameter.RBS_CURVE_WIDTH_PARAM)
                 Dim h As Double = GetParamDouble(e, BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)
                 If w > 0 AndAlso h > 0 Then Return "W" & qS(w) & "H" & qS(h)
@@ -2070,15 +2266,28 @@ Return False
         Return 0R
     End Function
 
-    Private Shared Function TryGetCrossSectionRadius(e As Element, ByRef radius As Double) As Boolean
+    Private Shared Function TryGetCurveProfile(e As Element,
+                                               ByRef kind As CurveProfileKind,
+                                               ByRef radius As Double,
+                                               ByRef width As Double,
+                                               ByRef height As Double,
+                                               ByRef isExact As Boolean) As Boolean
+        kind = CurveProfileKind.Unknown
         radius = 0R
+        width = 0R
+        height = 0R
+        isExact = False
         If e Is Nothing Then Return False
 
         Try
             If TypeOf e Is Autodesk.Revit.DB.Plumbing.Pipe Then
                 Dim d As Double = GetParamDouble(e, BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)
                 If d > 0 Then
+                    kind = CurveProfileKind.Circular
+                    width = d
+                    height = d
                     radius = d * 0.5R
+                    isExact = True
                     Return True
                 End If
             End If
@@ -2086,18 +2295,38 @@ Return False
             If TypeOf e Is Autodesk.Revit.DB.Electrical.Conduit Then
                 Dim d As Double = GetParamDouble(e, BuiltInParameter.RBS_CONDUIT_DIAMETER_PARAM)
                 If d > 0 Then
+                    kind = CurveProfileKind.Circular
+                    width = d
+                    height = d
                     radius = d * 0.5R
+                    isExact = True
                     Return True
                 End If
             End If
 
             If TypeOf e Is Autodesk.Revit.DB.Mechanical.Duct Then
+                Dim d As Double = GetParamDouble(e, BuiltInParameter.RBS_CURVE_DIAMETER_PARAM)
+                If d > 0 Then
+                    kind = CurveProfileKind.Circular
+                    width = d
+                    height = d
+                    radius = d * 0.5R
+                    isExact = True
+                    Return True
+                End If
+
                 Dim w As Double = GetParamDouble(e, BuiltInParameter.RBS_CURVE_WIDTH_PARAM)
                 Dim h As Double = GetParamDouble(e, BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)
                 If w > 0 AndAlso h > 0 Then
+                    kind = CurveProfileKind.Rectangular
+                    width = w
+                    height = h
                     radius = Math.Sqrt((w * 0.5R) * (w * 0.5R) + (h * 0.5R) * (h * 0.5R))
+                    isExact = True
                     Return True
                 ElseIf w > 0 Then
+                    kind = CurveProfileKind.Unknown
+                    width = w
                     radius = w * 0.5R
                     Return True
                 End If
@@ -2107,9 +2336,15 @@ Return False
                 Dim w As Double = GetParamDouble(e, BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM)
                 Dim h As Double = GetParamDouble(e, BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM)
                 If w > 0 AndAlso h > 0 Then
+                    kind = CurveProfileKind.Rectangular
+                    width = w
+                    height = h
                     radius = Math.Sqrt((w * 0.5R) * (w * 0.5R) + (h * 0.5R) * (h * 0.5R))
+                    isExact = True
                     Return True
                 ElseIf w > 0 Then
+                    kind = CurveProfileKind.Unknown
+                    width = w
                     radius = w * 0.5R
                     Return True
                 End If
@@ -2118,6 +2353,15 @@ Return False
         End Try
 
         Return False
+    End Function
+
+    Private Shared Function TryGetCrossSectionRadius(e As Element, ByRef radius As Double) As Boolean
+        radius = 0R
+        Dim kind As CurveProfileKind = CurveProfileKind.Unknown
+        Dim width As Double = 0R
+        Dim height As Double = 0R
+        Dim isExact As Boolean = False
+        Return TryGetCurveProfile(e, kind, radius, width, height, isExact)
     End Function
 
 #End Region

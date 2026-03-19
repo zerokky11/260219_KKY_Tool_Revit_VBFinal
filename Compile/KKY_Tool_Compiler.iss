@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "KKY_Tool_Revit"
-#define MyAppVersion "0.95"
+#define MyAppVersion "2.01"
 #define MyAppPublisher "Kyeongyeon Kim"
 #define MyAppURL "kkykiki89@nate.com"
 
@@ -28,9 +28,9 @@ DisableProgramGroupPage=yes
 ; Revit Addins 폴더에 쓰려면 관리자 권한 필요
 PrivilegesRequired=admin
 
-OutputDir=C:\Users\manager\Desktop\KKY_Tool_Revit\Compile\Compile
+OutputDir=C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\Compile\Compile
 OutputBaseFilename=KKY_Tool_Revit(2019,21,23,25)
-SetupIconFile=C:\Users\manager\Desktop\KKY_Tool_Revit\Compile\KKY_Tool_Revit_Installer.ico
+SetupIconFile=C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\Compile\KKY_Tool_Revit_Installer.ico
 SolidCompression=yes
 WizardStyle=modern dark windows11
 
@@ -56,45 +56,45 @@ Name: "revit2025"; Description: "Install for Revit 2025"; GroupDescription: "Sel
 ; --------------------------------------------------------
 [Files]
 ; ===== Revit 2019 =====
-Source: "C:\Users\manager\Desktop\KKY_Tool_Revit\Compile\2019addin\KKY_Tool_Revit.addin"; \
+Source: "C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\Compile\2019addin\KKY_Tool_Revit.addin"; \
     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2019"; \
     Flags: ignoreversion; \
     Tasks: revit2019
 
-Source: "C:\Users\manager\Desktop\KKY_Tool_Revit\KKY_Tool_Revit_2019-2023\bin\Rvt2019\net48\*"; \
+Source: "C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\KKY_Tool_Revit_2019-2023\bin\Rvt2019\net48\*"; \
     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2019\KKY_Tool_Revit"; \
     Flags: ignoreversion recursesubdirs createallsubdirs; \
     Tasks: revit2019
 
 ; ===== Revit 2021 =====
-Source: "C:\Users\manager\Desktop\KKY_Tool_Revit\Compile\2021addin\KKY_Tool_Revit.addin"; \
+Source: "C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\Compile\2021addin\KKY_Tool_Revit.addin"; \
     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2021"; \
     Flags: ignoreversion; \
     Tasks: revit2021
 
-Source: "C:\Users\manager\Desktop\KKY_Tool_Revit\KKY_Tool_Revit_2019-2023\bin\Rvt2021\net48\*"; \
+Source: "C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\KKY_Tool_Revit_2019-2023\bin\Rvt2021\net48\*"; \
     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2021\KKY_Tool_Revit"; \
     Flags: ignoreversion recursesubdirs createallsubdirs; \
     Tasks: revit2021
 
 ; ===== Revit 2023 =====
-Source: "C:\Users\manager\Desktop\KKY_Tool_Revit\Compile\2023addin\KKY_Tool_Revit.addin"; \
+Source: "C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\Compile\2023addin\KKY_Tool_Revit.addin"; \
     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2023"; \
     Flags: ignoreversion; \
     Tasks: revit2023
 
-Source: "C:\Users\manager\Desktop\KKY_Tool_Revit\KKY_Tool_Revit_2019-2023\bin\Rvt2023\net48\*"; \
+Source: "C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\KKY_Tool_Revit_2019-2023\bin\Rvt2023\net48\*"; \
     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2023\KKY_Tool_Revit"; \
     Flags: ignoreversion recursesubdirs createallsubdirs; \
     Tasks: revit2023
 
 ; ===== Revit 2025 =====
-Source: "C:\Users\manager\Desktop\KKY_Tool_Revit\Compile\2025addin\KKY_Tool_Revit.addin"; \
+Source: "C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\Compile\2025addin\KKY_Tool_Revit.addin"; \
     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2025"; \
     Flags: ignoreversion; \
     Tasks: revit2025
 
-Source: "C:\Users\manager\Desktop\KKY_Tool_Revit\KKY_Tool_Revit_2019-2023\bin\Rvt2025\net8.0-windows\*"; \
+Source: "C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\KKY_Tool_Revit_2019-2023\bin\Rvt2025\net8.0-windows\*"; \
     DestDir: "{commonappdata}\Autodesk\Revit\Addins\2025\KKY_Tool_Revit"; \
     Flags: ignoreversion recursesubdirs createallsubdirs; \
     Tasks: revit2025
