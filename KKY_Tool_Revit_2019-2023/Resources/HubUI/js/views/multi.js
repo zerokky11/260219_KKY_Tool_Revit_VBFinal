@@ -289,7 +289,7 @@ export function renderMulti(root) {
     state.rvtList = state.rvtList.filter((p) => !state.rvtChecked.has(p));
     state.rvtChecked.clear();
     markAllStale();
-    if (buildRvtSection.render) buildRvtSection.render();
+    renderRvtList();
   }
 
   function handleClearList() {
@@ -299,7 +299,7 @@ export function renderMulti(root) {
     state.rvtList = [];
     state.rvtChecked.clear();
     markAllStale();
-    if (buildRvtSection.render) buildRvtSection.render();
+    renderRvtList();
   }
 
   function requestSharedParamList(context) {
@@ -2677,6 +2677,7 @@ export function renderMulti(root) {
 
   function renderRvtList() {
     if (buildRvtSection.render) buildRvtSection.render();
+    if (buildRvtExpandedModal.render) buildRvtExpandedModal.render();
   }
 
   function openSettings(key, title) {

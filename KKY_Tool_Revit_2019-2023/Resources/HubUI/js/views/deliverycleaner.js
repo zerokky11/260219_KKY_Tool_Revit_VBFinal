@@ -775,6 +775,8 @@ function renderRvtList(state) {
   }));
 
   renderRvtRows(state.ui.rvtBody, rows, '등록된 RVT가 없습니다.');
+  renderExtractModalSummary(state);
+  updateActionState(state);
 }
 
 function renderViewParameterRows(state) {
