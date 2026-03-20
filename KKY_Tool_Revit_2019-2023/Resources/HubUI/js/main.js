@@ -1,6 +1,6 @@
 import { initTheme } from './core/theme.js';
 import { onHost, post } from './core/bridge.js';
-import { updateTopMost, setActiveDocument, setDocList, renderTopbar } from './core/topbar.js';
+import { updateTopMost, setActiveDocument, setDocList, setUpdateInfo, setUpdateState, renderTopbar } from './core/topbar.js';
 import { initLogConsole, toggleLogConsole, log } from './core/dom.js';
 import { renderHome } from './views/home.js';
 import { renderActiveMenu } from './views/activeMenu.js';
@@ -51,6 +51,7 @@ function boot() {
 
     // 초기 TopMost 상태 동기화(이제 여기서만 전송)
     try { post('ui:query-topmost'); } catch { }
+    try { post('update:query'); } catch { }
 
     route();
     window.addEventListener('hashchange', route);
@@ -80,6 +81,14 @@ function boot() {
                     setDocList(msg.payload);
                     break;
                 }
+                case 'host:update-info': {
+                    setUpdateInfo(msg.payload || {});
+                    break;
+                }
+                case 'host:update-state': {
+                    setUpdateState(msg.payload || {});
+                    break;
+                }
                 default:
                     break;
             }
@@ -91,6 +100,7 @@ function boot() {
 
 function route() {
     const hash = (location.hash || '').replace('#', '');
+    try { post('ui:route-changed', { route: hash }); } catch { }
     if (!_suppressHistory && _lastHash !== null && _lastHash !== hash) {
         _historyStack.push(_lastHash);
     }

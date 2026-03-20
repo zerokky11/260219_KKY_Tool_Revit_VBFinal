@@ -1,5 +1,6 @@
 import { clear, div, toast, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
+import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
@@ -80,11 +81,27 @@ export function renderGuid(root) {
     rvtActions.append(btnAdd, btnAddFolder, btnRemove, btnClear, runBtn, exportBtn);
 
     rvtHeader.append(rvtTitle, rvtActions);
-    const rvtTableWrap = div('segmentpms-rvtlist guid-rvt-wrap');
+    const rvtHint = div('rvt-drop-hint');
+    rvtHint.textContent = 'RVT 파일 추가, 폴더 선택 또는 탐색기 드래그앤드롭으로 .rvt 목록을 바로 채울 수 있습니다.';
+    const rvtTableWrap = div('segmentpms-rvtlist guid-rvt-wrap rvt-drop-zone');
     const { table: rvtTable, tbody: rvtBody, master: rvtMaster } = createRvtTable();
     rvtTableWrap.append(rvtTable);
     const rvtSummary = div('segmentpms-summary'); rvtSummary.textContent = '파일 0개';
-    rvtSection.append(rvtHeader, rvtTableWrap, rvtSummary);
+    rvtSection.append(rvtHeader, rvtHint, rvtTableWrap, rvtSummary);
+    attachRvtDropZone(rvtTableWrap, {
+        onDropPaths: (paths) => {
+            const added = appendDroppedRvts(paths);
+            if (!added) {
+                toast('이미 등록된 RVT입니다.', 'warn');
+                return;
+            }
+            persistRvts();
+            renderRvtList();
+            syncRvtActionState();
+            toast(`${added}개 RVT를 추가했습니다.`, 'ok');
+        },
+        onInvalid: () => toast('RVT 파일만 드래그해서 추가할 수 있습니다.', 'warn')
+    });
     body.append(rvtSection);
 
     // Result tabs
@@ -184,16 +201,7 @@ export function renderGuid(root) {
 
     // Host events
     onHost('guid:files', ({ paths }) => {
-        const list = Array.isArray(paths) ? paths : [];
-        let added = 0;
-        list.forEach(p => {
-            const path = normalizeRvtPath(p);
-            if (!path) return;
-            const exists = state.rvtList.some(x => samePath(x, path));
-            if (!exists) { state.rvtList.push(path); added++; }
-            state.rvtChecked.add(path);
-        });
-        state.rvtList = dedupPaths(state.rvtList);
+        const added = appendDroppedRvts(paths);
         if (added) persistRvts();
         refreshUiAfterHostDialog(() => {
             renderRvtList();
@@ -869,6 +877,22 @@ export function renderGuid(root) {
         state.rvtChecked.clear();
         persistRvts();
         renderRvtList();
+    }
+
+    function appendDroppedRvts(paths) {
+        let added = 0;
+        (Array.isArray(paths) ? paths : []).forEach((entry) => {
+            const path = normalizeRvtPath(entry);
+            if (!path) return;
+            const exists = state.rvtList.some((item) => samePath(item, path));
+            if (!exists) {
+                state.rvtList.push(path);
+                added += 1;
+            }
+            state.rvtChecked.add(path);
+        });
+        state.rvtList = dedupPaths(state.rvtList);
+        return added;
     }
 
     function syncRvtActionState() {

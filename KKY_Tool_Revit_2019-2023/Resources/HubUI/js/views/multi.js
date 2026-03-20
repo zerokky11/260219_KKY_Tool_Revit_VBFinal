@@ -1,6 +1,7 @@
 ﻿import { clear, div, toast, setBusy, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
+import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { post, onHost } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 
@@ -282,6 +283,34 @@ export function renderMulti(root) {
 
   function handleAddRvt() {
     post('hub:pick-rvt', {});
+  }
+
+  function mergeRvtPaths(paths) {
+    const list = Array.isArray(paths) ? paths : [];
+    const existing = new Set(state.rvtList.map((path) => String(path || '').toLowerCase()));
+    let added = 0;
+    list.forEach((path) => {
+      if (!path) return;
+      const key = path.toLowerCase();
+      if (!existing.has(key)) {
+        state.rvtList.push(path);
+        existing.add(key);
+        added += 1;
+      }
+      state.rvtChecked.add(path);
+    });
+    return { added };
+  }
+
+  function handleDroppedRvts(droppedPaths) {
+    const { added } = mergeRvtPaths(droppedPaths);
+    if (!added) {
+      toast('이미 등록된 RVT입니다.', 'warn');
+      return;
+    }
+    markAllStale();
+    renderRvtList();
+    toast(`${added}개 RVT를 추가했습니다.`, 'ok');
   }
 
   function handleRemoveSelected() {
@@ -1436,9 +1465,12 @@ export function renderMulti(root) {
 
     head.append(title, controls);
     section.append(head);
+    const dropHint = div('rvt-drop-hint');
+    dropHint.textContent = 'RVT 추가 버튼을 누르거나 탐색기에서 .rvt 파일을 이 목록으로 끌어다 놓으면 바로 등록됩니다.';
+    section.append(dropHint);
 
     const body = div('rvt-panel-body');
-    const tableWrap = div('rvt-table-wrap');
+    const tableWrap = div('rvt-table-wrap rvt-drop-zone');
     const { table, tbody, master } = createRvtTable();
     const summary = div('multi-rvt-summary');
     const footer = div('rvt-list-footer');
@@ -1448,7 +1480,7 @@ export function renderMulti(root) {
     const emptyTitle = document.createElement('strong');
     emptyTitle.textContent = '등록된 RVT가 없습니다.';
     const emptySub = document.createElement('span');
-    emptySub.textContent = 'RVT 추가로 파일을 등록하세요.';
+    emptySub.textContent = 'RVT 추가 또는 드래그앤드롭으로 파일을 등록하세요.';
     const emptyBtn = cardBtn('RVT 추가', handleAddRvt, 'btn--primary');
     empty.append(emptyTitle, emptySub, emptyBtn);
 
@@ -1457,6 +1489,10 @@ export function renderMulti(root) {
     footer.append(summary, footerRight);
     body.append(tableWrap, empty, footer);
     section.append(body);
+    attachRvtDropZone(tableWrap, {
+      onDropPaths: handleDroppedRvts,
+      onInvalid: () => toast('RVT 파일만 드래그해서 추가할 수 있습니다.', 'warn')
+    });
 
     function syncMaster() {
       const allChecked = state.rvtList.length > 0 && state.rvtList.every((p) => state.rvtChecked.has(p));
@@ -1659,20 +1695,24 @@ export function renderMulti(root) {
     const listTitle = document.createElement('h4');
     listTitle.textContent = '선택한 RVT 목록';
     const listSub = document.createElement('span');
-    listSub.textContent = '목록에서 체크된 파일만 제거할 수 있고, 검토는 전체 등록 목록 기준으로 실행됩니다.';
+    listSub.textContent = '목록에서 체크된 파일만 제거할 수 있고, 탐색기에서 .rvt 파일을 드래그해 바로 추가할 수 있습니다.';
     listHead.append(listTitle, listSub);
-    const tableWrap = div('rvt-expand-table');
+    const tableWrap = div('rvt-expand-table rvt-drop-zone');
     const { table, tbody, master } = createRvtTable();
     table.classList.add('rvt-expand-table__grid');
     const listEmpty = div('rvt-expand-list-empty');
     const listEmptyTitle = document.createElement('strong');
     listEmptyTitle.textContent = '등록된 RVT가 없습니다.';
     const listEmptyText = document.createElement('span');
-    listEmptyText.textContent = 'RVT 추가 버튼으로 파일을 등록하면 여기에서 바로 목록을 확인할 수 있습니다.';
+    listEmptyText.textContent = 'RVT 추가 버튼을 누르거나 탐색기에서 .rvt 파일을 이 영역으로 끌어오면 바로 목록에 추가됩니다.';
     const listEmptyBtn = cardBtn('RVT 추가', handleAddRvt, 'btn--primary');
     listEmpty.append(listEmptyTitle, listEmptyText, listEmptyBtn);
     tableWrap.append(table, listEmpty);
     listSection.append(listHead, tableWrap);
+    attachRvtDropZone(tableWrap, {
+      onDropPaths: handleDroppedRvts,
+      onInvalid: () => toast('RVT 파일만 드래그해서 추가할 수 있습니다.', 'warn')
+    });
 
     const sideSection = div('rvt-expand-section rvt-expand-section--side');
     const featureSection = div('rvt-expand-subsection');

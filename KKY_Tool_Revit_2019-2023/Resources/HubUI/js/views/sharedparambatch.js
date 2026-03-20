@@ -1,5 +1,6 @@
 import { clear, div, toast, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
+import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
@@ -142,10 +143,25 @@ export function renderSharedParamBatch(root) {
 
   rvtHeader.append(rvtHeaderLeft, rvtHeaderRight);
   rvtSection.append(rvtHeader);
+  const rvtHint = div('rvt-drop-hint');
+  rvtHint.textContent = 'RVT 추가 버튼을 누르거나 탐색기에서 .rvt 파일을 이 목록으로 끌어다 놓으면 바로 등록됩니다.';
+  rvtSection.append(rvtHint);
   const { table: rvtTable, tbody: rvtBody, master: rvtMaster } = createRvtTable();
-  const rvtListWrap = div('spb-rvtTableWrap');
+  const rvtListWrap = div('spb-rvtTableWrap rvt-drop-zone');
   rvtListWrap.append(rvtTable);
   rvtSection.append(rvtListWrap);
+  attachRvtDropZone(rvtListWrap, {
+    onDropPaths: (paths) => {
+      const added = appendDroppedRvts(paths);
+      if (!added) {
+        toast('이미 등록된 RVT입니다.', 'warn');
+        return;
+      }
+      renderRvtList();
+      toast(`${added}개 RVT를 추가했습니다.`, 'ok');
+    },
+    onInvalid: () => toast('RVT 파일만 드래그해서 추가할 수 있습니다.', 'warn')
+  });
 
   const rvtModal = buildRvtModal();
   const paramPickerModal = buildParamPickerModal();
@@ -383,17 +399,8 @@ export function renderSharedParamBatch(root) {
       if (payload?.message) toast(payload.message, 'err');
       return;
     }
-    const paths = Array.isArray(payload.rvtPaths) ? payload.rvtPaths : [];
-    let changed = false;
-    let added = 0;
-    paths.forEach((p) => {
-      if (!state.rvtList.includes(p)) {
-        state.rvtList.push(p);
-        state.rvtChecked.add(p);
-        changed = true;
-        added += 1;
-      }
-    });
+    const added = appendDroppedRvts(payload.rvtPaths);
+    const changed = added > 0;
     if (changed) {
       refreshUiAfterHostDialog(() => renderRvtList());
     }
@@ -413,6 +420,19 @@ export function renderSharedParamBatch(root) {
     state.rvtList = [];
     state.rvtChecked.clear();
     renderRvtList();
+  }
+
+  function appendDroppedRvts(paths) {
+    let added = 0;
+    (Array.isArray(paths) ? paths : []).forEach((path) => {
+      if (!path) return;
+      if (!state.rvtList.includes(path)) {
+        state.rvtList.push(path);
+        added += 1;
+      }
+      state.rvtChecked.add(path);
+    });
+    return added;
   }
 
   function onBrowseFolder() {
@@ -721,9 +741,21 @@ export function renderSharedParamBatch(root) {
       cardBtn('전체 삭제', clearRvts, 'btn--secondary')
     );
     const { table, tbody, master } = createRvtTable();
-    const wrap = div('spb-rvtTableWrap');
+    const wrap = div('spb-rvtTableWrap rvt-drop-zone');
     wrap.append(table);
     body.append(actions, wrap);
+    attachRvtDropZone(wrap, {
+      onDropPaths: (paths) => {
+        const added = appendDroppedRvts(paths);
+        if (!added) {
+          toast('이미 등록된 RVT입니다.', 'warn');
+          return;
+        }
+        renderRvtList();
+        toast(`${added}개 RVT를 추가했습니다.`, 'ok');
+      },
+      onInvalid: () => toast('RVT 파일만 드래그해서 추가할 수 있습니다.', 'warn')
+    });
 
     modal.append(header, body);
     overlay.append(modal);

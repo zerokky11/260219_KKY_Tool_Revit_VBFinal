@@ -1,5 +1,6 @@
 ﻿import { clear, div, toast, setBusy, showCompletionSummaryDialog, showExcelSavedDialog } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
+import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { post, onHost } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 
@@ -357,13 +358,27 @@ function buildFilesCard(state) {
     updateActionState(state);
   });
   actions.append(addBtn, removeBtn, clearBtn);
+  const hint = div('rvt-drop-hint');
+  hint.textContent = 'RVT 추가 버튼을 누르거나 탐색기에서 .rvt 파일을 이 목록으로 끌어다 놓으면 바로 등록됩니다.';
 
-  const tableWrap = div('deliverycleaner-table-wrap');
+  const tableWrap = div('deliverycleaner-table-wrap rvt-drop-zone');
   const { table, tbody, master } = createRvtTable();
   table.classList.add('deliverycleaner-rvt-table');
   tableWrap.append(table);
+  attachRvtDropZone(tableWrap, {
+    onDropPaths: (paths) => {
+      const added = appendDroppedRvts(state, paths);
+      if (!added) {
+        toast('이미 등록된 RVT입니다.', 'warn');
+        return;
+      }
+      renderRvtList(state);
+      toast(`${added}개 RVT를 추가했습니다.`, 'ok');
+    },
+    onInvalid: () => toast('RVT 파일만 드래그해서 추가할 수 있습니다.', 'warn')
+  });
 
-  card.append(actions, tableWrap);
+  card.append(actions, hint, tableWrap);
   state.ui.rvtBody = tbody;
   state.ui.rvtMaster = master;
   return card;
@@ -750,6 +765,20 @@ function renderTabs(state) {
   Object.entries(state.ui.panels).forEach(([key, panel]) => {
     panel.classList.toggle('is-active', state.activeTab === key);
   });
+}
+
+function appendDroppedRvts(state, paths) {
+  let added = 0;
+  (Array.isArray(paths) ? paths : []).forEach((path) => {
+    if (!path) return;
+    const exists = state.filePaths.some((item) => String(item).toLowerCase() === String(path).toLowerCase());
+    if (!exists) {
+      state.filePaths.push(path);
+      added += 1;
+    }
+    state.checked.add(path);
+  });
+  return added;
 }
 
 function renderRvtList(state) {

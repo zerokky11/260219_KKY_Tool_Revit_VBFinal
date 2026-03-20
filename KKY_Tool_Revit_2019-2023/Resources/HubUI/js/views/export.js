@@ -1,5 +1,6 @@
 import { clear, div, tdText, toast, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
+import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
@@ -83,11 +84,27 @@ export function renderExport(root) {
     });
     const unitToggle = buildUnitToggle();
     lbar.append(addFilesBtn, pick, removeBtn, clearBtn, preview, save);
-    const listWrap = div('segmentpms-rvtlist');
+    const dropHint = div('rvt-drop-hint');
+    dropHint.textContent = 'RVT 추가 버튼을 누르거나 탐색기에서 .rvt 파일을 이 목록으로 끌어다 놓으면 바로 등록됩니다.';
+    const listWrap = div('segmentpms-rvtlist rvt-drop-zone');
     const { table: tblWrap, tbody: filesBody, master: filesMaster } = createRvtTable();
     listWrap.append(tblWrap);
     const info = div('segmentpms-summary'); info.textContent = '파일 0개';
-    left.append(lbar, listWrap, unitToggle, info);
+    left.append(lbar, dropHint, listWrap, unitToggle, info);
+    attachRvtDropZone(listWrap, {
+        onDropPaths: (paths) => {
+            const added = appendDroppedFiles(paths);
+            if (!added) {
+                toast('이미 등록된 RVT입니다.', 'warn');
+                return;
+            }
+            renderFiles();
+            repaintRows();
+            syncSaveState();
+            toast(`${added}개 RVT를 추가했습니다.`, 'ok');
+        },
+        onInvalid: () => toast('RVT 파일만 드래그해서 추가할 수 있습니다.', 'warn')
+    });
 
     const right = div('kkyt-right feature-results-panel');
     const tbl = document.createElement('table'); tbl.className = 'kkyt-table';
@@ -117,6 +134,15 @@ export function renderExport(root) {
         state.files = dedupFiles(merged);
         refreshUiAfterHostDialog(() => renderFiles());
     });
+
+    function appendDroppedFiles(paths) {
+        const list = Array.isArray(paths) ? paths : [];
+        if (!list.length) return 0;
+        if (!state.folder) state.folder = commonDir(list) || state.folder || '';
+        const before = state.files.length;
+        state.files = dedupFiles([...state.files, ...toFileItems(list, state.folder)]);
+        return state.files.length - before;
+    }
 
     // === 미리보기 결과 ===
     onHost('export:previewed', ({ rows, summary }) => {

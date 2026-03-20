@@ -3,7 +3,8 @@
 ; Non-commercial use only
 
 #define MyAppName "KKY_Tool_Revit"
-#define MyAppVersion "2.01"
+#define MyAppVersion "2.02"
+#define MyOutputBaseName "KKY_Tool_Revit(2019,21,23,25)_v" + MyAppVersion
 #define MyAppPublisher "Kyeongyeon Kim"
 #define MyAppURL "kkykiki89@nate.com"
 
@@ -28,8 +29,8 @@ DisableProgramGroupPage=yes
 ; Revit Addins 폴더에 쓰려면 관리자 권한 필요
 PrivilegesRequired=admin
 
-OutputDir=C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\Compile\Compile
-OutputBaseFilename=KKY_Tool_Revit(2019,21,23,25)
+OutputDir=C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\Sever\Release
+OutputBaseFilename={#MyOutputBaseName}
 SetupIconFile=C:\Users\kkyki\OneDrive\바탕 화면\KKY_Tool_Revit\Compile\KKY_Tool_Revit_Installer.ico
 SolidCompression=yes
 WizardStyle=modern dark windows11

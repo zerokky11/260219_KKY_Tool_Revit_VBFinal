@@ -1,6 +1,7 @@
 // Resources/HubUI/js/views/familylink.js
 import { clear, div, toast, debounce, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
+import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { ProgressDialog } from '../core/progress.js';
 import { onHost, post } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
@@ -147,11 +148,27 @@ export function renderFamilyLink(root) {
   });
   rvtActions.append(btnAddRvt, btnRemoveRvt, btnClearRvt);
   rvtCard.append(rvtActions);
+  const rvtHint = div('rvt-drop-hint');
+  rvtHint.textContent = 'RVT 파일 추가 버튼 또는 탐색기 드래그앤드롭으로 여러 .rvt를 바로 등록할 수 있습니다.';
+  rvtCard.append(rvtHint);
 
-  const rvtTableWrap = div('familylink-rvt-table');
+  const rvtTableWrap = div('familylink-rvt-table rvt-drop-zone');
   const { table: rvtTable, tbody: rvtTbody, master: rvtMaster } = createRvtTable();
   rvtTableWrap.append(rvtTable);
   rvtCard.append(rvtTableWrap);
+  attachRvtDropZone(rvtTableWrap, {
+    onDropPaths: (paths) => {
+      const added = appendDroppedRvts(paths);
+      if (!added) {
+        toast('이미 등록된 RVT입니다.', 'warn');
+        return;
+      }
+      renderRvtList();
+      syncRunState();
+      toast(`${added}개 RVT를 추가했습니다.`, 'ok');
+    },
+    onInvalid: () => toast('RVT 파일만 드래그해서 추가할 수 있습니다.', 'warn')
+  });
 
   // ----- 결과 영역 -----
   const resultHead = div('familylink-results-head');
@@ -208,19 +225,27 @@ export function renderFamilyLink(root) {
 
   function handleRvtsPicked(payload) {
     const paths = Array.isArray(payload?.paths) ? payload.paths : [];
-    const existing = new Set(state.rvtPaths.map(p => p.toLowerCase()));
-    paths.forEach(p => {
-      if (!p) return;
-      const key = p.toLowerCase();
-      if (!existing.has(key)) {
-        existing.add(key);
-        state.rvtPaths.push(p);
-      }
-    });
+    appendDroppedRvts(paths);
     refreshUiAfterHostDialog(() => {
       renderRvtList();
       syncRunState();
     });
+  }
+
+  function appendDroppedRvts(paths) {
+    const existing = new Set(state.rvtPaths.map((path) => String(path || '').toLowerCase()));
+    let added = 0;
+    (Array.isArray(paths) ? paths : []).forEach((path) => {
+      if (!path) return;
+      const key = String(path).toLowerCase();
+      if (!existing.has(key)) {
+        existing.add(key);
+        state.rvtPaths.push(path);
+        added += 1;
+      }
+      state.rvtChecked.add(path);
+    });
+    return added;
   }
 
   function handleProgress(payload) {

@@ -1,0 +1,6 @@
+{
+  "feedUrls": [
+    "https://update.zerokky.com/latest.json"
+  ],
+  "downloadDirectory": "%LOCALAPPDATA%\\KKY_Tool_Revit\\Updates"
+}

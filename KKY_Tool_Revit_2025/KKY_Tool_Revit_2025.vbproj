@@ -143,6 +143,20 @@
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 			<TargetPath>Resources\HubUI\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
 		</Content>
+
+		<Content Include="Resources\update-config.json"
+				 Condition="Exists('Resources\update-config.json')"
+				 Link="Resources\update-config.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<TargetPath>Resources\update-config.json</TargetPath>
+		</Content>
+
+		<Content Include="..\KKY_Tool_Revit_2019-2023\Resources\update-config.json"
+				 Condition="!Exists('Resources\update-config.json') and Exists('..\KKY_Tool_Revit_2019-2023\Resources\update-config.json')"
+				 Link="Resources\update-config.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<TargetPath>Resources\update-config.json</TargetPath>
+		</Content>
 	</ItemGroup>
 
 	<ItemGroup>

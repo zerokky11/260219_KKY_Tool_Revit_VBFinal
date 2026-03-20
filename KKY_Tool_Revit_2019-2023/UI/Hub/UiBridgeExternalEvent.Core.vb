@@ -201,6 +201,10 @@ Namespace UI.Hub
             map.Add("deliverycleaner:export-purge", "HandleDeliveryCleanerExportPurge")
             map.Add("deliverycleaner:export-log", "HandleDeliveryCleanerExportLog")
             map.Add("deliverycleaner:open-folder", "HandleDeliveryCleanerOpenFolder")
+            ' App Update
+            map.Add("update:query", "HandleUpdateQuery")
+            map.Add("update:check", "HandleUpdateCheck")
+            map.Add("update:install", "HandleUpdateInstall")
 
             Dim methodName As String = Nothing
             If Not map.TryGetValue(name, methodName) Then
@@ -258,12 +262,31 @@ Namespace UI.Hub
         ' -----------------------------
 
         Friend Shared Sub SendToWeb(channel As String, payload As Object)
+            Dim host = _host
+            If host Is Nothing Then Return
+
+            Dim dispatch As Action =
+                Sub()
+                    Try
+                        host.SendToWeb(channel, payload)
+                    Catch
+                    End Try
+                End Sub
+
             Try
-                If _host IsNot Nothing Then
-                    _host.SendToWeb(channel, payload)
+                Dim dispatcher = host.Dispatcher
+                If dispatcher Is Nothing Then
+                    dispatch()
+                    Return
+                End If
+
+                If dispatcher.CheckAccess() Then
+                    dispatch()
+                Else
+                    dispatcher.BeginInvoke(dispatch, DispatcherPriority.Background)
                 End If
             Catch
-                ' Host 없는 초기 구간 등에서는 조용히 무시
+                dispatch()
             End Try
         End Sub
 

@@ -843,6 +843,15 @@ input[type="checkbox"]:disabled {
     z-index: 300;
 }
 
+.toast-wrap[data-placement="top-center"] {
+    right: 50%;
+    top: 22px;
+    bottom: auto;
+    transform: translateX(50%);
+    align-items: center;
+    z-index: 4600;
+}
+
 /* -----------------------------
    Excel saved dialog
    ----------------------------- */
@@ -1059,6 +1068,27 @@ input[type="checkbox"]:disabled {
     min-width: 180px;
 }
 
+.toast.warn {
+    min-width: min(520px, calc(100vw - 32px));
+    max-width: min(640px, calc(100vw - 32px));
+    padding: 14px 18px;
+    border-radius: 14px;
+    border-color: color-mix(in srgb, var(--warning) 72%, var(--border-soft));
+    background:
+        linear-gradient(180deg,
+            color-mix(in srgb, var(--warning) 22%, var(--surface-panel)) 0%,
+            color-mix(in srgb, var(--warning) 10%, var(--surface-panel)) 100%);
+    color: color-mix(in srgb, var(--warning) 78%, var(--text-main));
+    box-shadow:
+        0 18px 40px color-mix(in srgb, var(--warning) 24%, transparent),
+        var(--shadow-card);
+    font-size: 0.96rem;
+    font-weight: 700;
+    line-height: 1.45;
+    text-align: center;
+    animation: toast-warn-pop 180ms ease-out;
+}
+
 .toast.ok {
     border-color: color-mix(in srgb, var(--success) 45%, var(--border-soft));
     color: color-mix(in srgb, var(--success) 70%, var(--text-main));
@@ -1067,4 +1097,15 @@ input[type="checkbox"]:disabled {
 .toast.err {
     border-color: color-mix(in srgb, var(--error) 45%, var(--border-soft));
     color: color-mix(in srgb, var(--error) 70%, var(--text-main));
+}
+
+@keyframes toast-warn-pop {
+    from {
+        opacity: 0;
+        transform: translateY(-8px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }

@@ -131,12 +131,24 @@ export function setBusy(on, text='작업 중…'){
 }
 
 export function toast(msg, kind='info', ms=2600){
-  let wrap = $('.toast-wrap');
-  if (!wrap){ wrap=document.createElement('div'); wrap.className='toast-wrap'; document.body.append(wrap); }
+  const placement = kind === 'warn' ? 'top-center' : 'bottom-right';
+  const selector = `.toast-wrap[data-placement="${placement}"]`;
+  let wrap = $(selector);
+  if (!wrap){
+    wrap=document.createElement('div');
+    wrap.className='toast-wrap';
+    wrap.dataset.placement = placement;
+    document.body.append(wrap);
+  }
   const t = document.createElement('div');
-  t.className = 'toast' + (kind==='ok'?' ok':kind==='err'?' err':'');
+  t.className = 'toast' + (
+    kind==='ok' ? ' ok' :
+    kind==='err' ? ' err' :
+    kind==='warn' ? ' warn' : ''
+  );
   t.textContent = msg; wrap.append(t);
-  setTimeout(()=>{ t.remove(); if(!wrap.children.length) wrap.remove(); }, ms);
+  const duration = kind === 'warn' && ms === 2600 ? 4200 : ms;
+  setTimeout(()=>{ t.remove(); if(!wrap.children.length) wrap.remove(); }, duration);
 }
 
 export function showExcelSavedDialog(message, filePath, onOpen){

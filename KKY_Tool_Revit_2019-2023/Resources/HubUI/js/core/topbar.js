@@ -3,7 +3,7 @@ import { div, toast } from './dom.js';
 import { toggleTheme } from './theme.js';
 import { setConn, ping, post } from './bridge.js';
 
-export const APP_VERSION = 'v2.02';
+const APP_VERSION_FALLBACK = 'v2.02';
 
 let _docNameEl = null;
 let _docSelectEl = null;
@@ -18,6 +18,21 @@ let _progressWrap = null;
 let _progressFill = null;
 let _progressText = null;
 let _progressPct = null;
+let _versionEl = null;
+let _updateBtn = null;
+let _updateState = {
+    currentVersion: APP_VERSION_FALLBACK.replace(/^v/i, ''),
+    currentVersionDisplay: APP_VERSION_FALLBACK.replace(/^v/i, ''),
+    latestVersion: '',
+    hasUpdate: false,
+    canInstall: false,
+    isConfigured: false,
+    busy: false,
+    message: '',
+    kind: 'info',
+    configPath: '',
+    feedUrl: ''
+};
 
 export function renderTopbar(root, withBack = false, onBack = null, canGoBack = false, onNavBack = null) {
     const host = document.getElementById('topbar-root') || root;
@@ -143,10 +158,12 @@ function buildBrand(host) {
 
     const ver = document.createElement('span');
     ver.className = 'topbar-version';
-    ver.textContent = APP_VERSION;
+    _versionEl = ver;
+    ver.textContent = APP_VERSION_FALLBACK;
 
     wrap.append(logo, text, ver);
     host.append(wrap);
+    applyUpdateVisualState();
 }
 
 export function renderTopbarChips() {
@@ -197,6 +214,16 @@ export function renderTopbarChips() {
     applyThemeState();
     chipRow.append(themeBtn);
 
+    const updateBtn = createControlButton({
+        id: 'updateChip',
+        label: '업데이트 확인',
+        icon: 'update',
+        classes: 'chip-btn update-chip'
+    });
+    updateBtn.addEventListener('click', onUpdateButtonClick);
+    _updateBtn = updateBtn;
+    chipRow.append(updateBtn);
+
     const help = createControlButton({
         label: '설정',
         icon: 'gear',
@@ -209,6 +236,7 @@ export function renderTopbarChips() {
     actions.append(chipRow);
 
     applyActiveDocumentState();
+    applyUpdateVisualState();
 }
 
 export function updateTopMost(on) {
@@ -352,6 +380,37 @@ export function setDocList(payload) {
     rebuildDocSelect();
 }
 
+export function setUpdateInfo(payload = {}) {
+    _updateState = {
+        ..._updateState,
+        currentVersion: payload?.currentVersion || _updateState.currentVersion,
+        currentVersionDisplay: payload?.currentVersionDisplay || payload?.currentVersion || _updateState.currentVersionDisplay,
+        latestVersion: payload?.latestVersion || '',
+        hasUpdate: !!payload?.hasUpdate,
+        canInstall: !!payload?.canInstall,
+        isConfigured: !!payload?.isConfigured,
+        configPath: payload?.configPath || '',
+        feedUrl: payload?.feedUrl || '',
+        message: payload?.message || _updateState.message
+    };
+    applyUpdateVisualState();
+}
+
+export function setUpdateState(payload = {}) {
+    _updateState = {
+        ..._updateState,
+        busy: !!payload?.busy,
+        message: payload?.message || _updateState.message,
+        kind: payload?.kind || _updateState.kind
+    };
+    applyUpdateVisualState();
+
+    if (payload?.showToast && payload?.message) {
+        const kind = payload.kind === 'err' ? 'err' : payload.kind === 'ok' ? 'ok' : 'info';
+        toast(payload.message, kind, 3600);
+    }
+}
+
 function toggleHelpPanel(trigger) {
     const existing = document.querySelector('.settings-backdrop');
     if (existing) {
@@ -442,6 +501,8 @@ function iconSvg(name) {
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M8 4h8l-1 5 3 3-6 6-6-6 3-3z" fill="none"/><path d="M12 18v4" stroke-linecap="round"/></svg>';
         case 'theme':
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="half-dark" d="M12 3a9 9 0 0 1 0 18V3Z" fill="currentColor"/><path class="half-light" d="M12 21a9 9 0 0 1 0-18v18Z" fill="currentColor"/><circle cx="12" cy="12" r="8.5" fill="none"/></svg>';
+        case 'update':
+            return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v6m0 0 2.5-2.5M12 10 9.5 7.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 12a5 5 0 1 0 1.46-3.54" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 20v-2" stroke-linecap="round"/></svg>';
         case 'gear':
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 13.5v-3l-2.1-.6a6.1 6.1 0 0 0-.6-1.4l1.2-1.8-2.1-2.1-1.8 1.2a6.1 6.1 0 0 0-1.4-.6L13.5 2h-3l-.6 2.1a6.1 6.1 0 0 0-1.4.6L6.7 3.5 4.6 5.6l1.2 1.8c-.26.44-.47.91-.6 1.4L3 10.5v3l2.1.6c.13.49.34.96.6 1.4l-1.2 1.8 2.1 2.1 1.8-1.2c.44.26.91.47 1.4.6l.6 2.1h3l.6-2.1c.49-.13.96-.34 1.4-.6l1.8 1.2 2.1-2.1-1.2-1.8c.26-.44.47-.91.6-1.4Z" fill="none"/><circle cx="12" cy="12" r="3.2" fill="none"/></svg>';
         case 'help':
@@ -451,4 +512,76 @@ function iconSvg(name) {
         default:
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"/></svg>';
     }
+}
+
+function onUpdateButtonClick() {
+    if (_updateState.busy) return;
+
+    if (_updateState.hasUpdate && _updateState.canInstall) {
+        const current = formatVersionText(_updateState.currentVersionDisplay);
+        const latest = formatVersionText(_updateState.latestVersion);
+        const message = [
+            `현재 버전: ${current}`,
+            `최신 버전: ${latest}`,
+            '',
+            '설치파일을 준비한 뒤 Revit 종료 시 자동으로 업데이트를 시작할까요?'
+        ].join('\n');
+
+        if (!window.confirm(message)) return;
+        post('update:install', { version: _updateState.latestVersion });
+        return;
+    }
+
+    post('update:check');
+}
+
+function applyUpdateVisualState() {
+    if (_versionEl) {
+        _versionEl.textContent = formatVersionText(_updateState.currentVersionDisplay);
+    }
+
+    if (!_updateBtn) return;
+
+    let label = '업데이트 확인';
+    if (_updateState.busy) {
+        label = '업데이트 확인 중';
+    } else if (_updateState.hasUpdate) {
+        label = `업데이트 ${formatVersionText(_updateState.latestVersion)}`;
+    } else if (_updateState.isConfigured) {
+        label = '최신 버전 사용 중';
+    }
+
+    const text = _updateBtn.querySelector('.chip-text');
+    if (text) text.textContent = label;
+
+    _updateBtn.disabled = !!_updateState.busy;
+    _updateBtn.classList.toggle('is-active', !!_updateState.hasUpdate);
+    _updateBtn.classList.toggle('is-busy', !!_updateState.busy);
+    _updateBtn.title = buildUpdateTooltip();
+}
+
+function buildUpdateTooltip() {
+    const lines = [
+        `현재 버전: ${formatVersionText(_updateState.currentVersionDisplay)}`
+    ];
+
+    if (_updateState.latestVersion) {
+        lines.push(`최신 버전: ${formatVersionText(_updateState.latestVersion)}`);
+    }
+
+    if (!_updateState.isConfigured && _updateState.configPath) {
+        lines.push(`설정 파일: ${_updateState.configPath}`);
+    }
+
+    if (_updateState.message) {
+        lines.push(_updateState.message);
+    }
+
+    return lines.join('\n');
+}
+
+function formatVersionText(versionText) {
+    const value = String(versionText || '').trim();
+    if (!value) return APP_VERSION_FALLBACK;
+    return value.toLowerCase().startsWith('v') ? value : `v${value}`;
 }

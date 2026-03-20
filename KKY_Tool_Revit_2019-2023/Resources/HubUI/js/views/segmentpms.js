@@ -1,5 +1,6 @@
 import { clear, div, toast, setBusy, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
+import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
@@ -104,15 +105,31 @@ export function renderSegmentPms(root) {
   const btnSaveExtract = cardBtn('엑셀 내보내기', () => chooseExcelMode((mode) => post('segmentpms:save-extract', { excelMode: mode || 'fast' })));
   exActions.append(btnAddRvt, btnAddFolder, btnRemoveSel, btnClearAll, btnExtract, btnSaveExtract);
   exHeader.append(exActions);
+  const rvtHint = div('rvt-drop-hint');
+  rvtHint.textContent = 'RVT 파일 추가, 폴더 선택 또는 탐색기 드래그앤드롭으로 여러 .rvt를 바로 등록할 수 있습니다.';
 
   const { table: rvtTable, tbody: rvtBody, master: rvtMaster } = createRvtTable();
-  const rvtBox = div('segmentpms-rvtlist');
+  const rvtBox = div('segmentpms-rvtlist rvt-drop-zone');
   rvtBox.append(rvtTable);
   const extractInfo = div('segmentpms-summary'); extractInfo.textContent = '추출 상태: 미실행';
   const extractLoadRow = div('segmentpms-actions-row');
   const btnLoadExtract = cardBtn('추출 결과 불러오기', () => post('segmentpms:load-extract', {}));
   extractLoadRow.append(btnLoadExtract);
-  extractSection.append(exHeader, rvtBox, extractLoadRow, extractInfo);
+  extractSection.append(exHeader, rvtHint, rvtBox, extractLoadRow, extractInfo);
+  attachRvtDropZone(rvtBox, {
+    onDropPaths: (paths) => {
+      const added = appendDroppedRvts(paths);
+      if (!added) {
+        toast('이미 등록된 RVT입니다.', 'warn');
+        return;
+      }
+      persistRvt();
+      renderRvtList();
+      updateButtons();
+      toast(`${added}개 RVT를 추가했습니다.`, 'ok');
+    },
+    onInvalid: () => toast('RVT 파일만 드래그해서 추가할 수 있습니다.', 'warn')
+  });
   page.append(extractSection);
 
   /* Check section */
@@ -303,14 +320,26 @@ export function renderSegmentPms(root) {
     btnSave.disabled = state.busy || !state.results;
   }
 
+  function appendDroppedRvts(paths) {
+    let added = 0;
+    (Array.isArray(paths) ? paths : []).forEach((path) => {
+      if (!path) return;
+      const exists = state.rvtList.some((item) => item.toLowerCase() === String(path).toLowerCase());
+      if (!exists) {
+        state.rvtList.push(path);
+        added += 1;
+      }
+      state.rvtChecked.add(path);
+    });
+    return added;
+  }
+
   function handleHost(msg) {
     if (!msg || !msg.ev) return;
     switch (msg.ev) {
       case 'segmentpms:rvt-picked-files':
       case 'segmentpms:rvt-picked-folder': {
-        const files = Array.isArray(msg.payload?.paths) ? msg.payload.paths : [];
-        files.forEach(f => { if (!state.rvtList.some(x => x.toLowerCase() === String(f).toLowerCase())) state.rvtList.push(f); });
-        state.rvtChecked = new Set(files);
+        appendDroppedRvts(msg.payload?.paths);
         persistRvt();
         refreshUiAfterHostDialog(() => {
           renderRvtList();
