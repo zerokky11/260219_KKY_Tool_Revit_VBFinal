@@ -3,7 +3,7 @@ import { div, toast } from './dom.js';
 import { toggleTheme } from './theme.js';
 import { setConn, ping, post } from './bridge.js';
 
-const APP_VERSION_FALLBACK = 'v2.02';
+const APP_VERSION_FALLBACK = 'v2.03';
 
 let _docNameEl = null;
 let _docSelectEl = null;
@@ -20,6 +20,7 @@ let _progressText = null;
 let _progressPct = null;
 let _versionEl = null;
 let _updateBtn = null;
+let _updateDialogBackdrop = null;
 let _updateState = {
     currentVersion: APP_VERSION_FALLBACK.replace(/^v/i, ''),
     currentVersionDisplay: APP_VERSION_FALLBACK.replace(/^v/i, ''),
@@ -216,7 +217,7 @@ export function renderTopbarChips() {
 
     const updateBtn = createControlButton({
         id: 'updateChip',
-        label: '업데이트 확인',
+        label: 'Tool 버전 체크',
         icon: 'update',
         classes: 'chip-btn update-chip'
     });
@@ -406,8 +407,7 @@ export function setUpdateState(payload = {}) {
     applyUpdateVisualState();
 
     if (payload?.showToast && payload?.message) {
-        const kind = payload.kind === 'err' ? 'err' : payload.kind === 'ok' ? 'ok' : 'info';
-        toast(payload.message, kind, 3600);
+        showUpdateResultDialog(payload);
     }
 }
 
@@ -514,21 +514,38 @@ function iconSvg(name) {
     }
 }
 
-function onUpdateButtonClick() {
+function onUpdateButtonClickLegacy() {
     if (_updateState.busy) return;
 
     if (_updateState.hasUpdate && _updateState.canInstall) {
         const current = formatVersionText(_updateState.currentVersionDisplay);
         const latest = formatVersionText(_updateState.latestVersion);
         const message = [
+            '새 Tool 버전이 있습니다.',
+            '',
             `현재 버전: ${current}`,
             `최신 버전: ${latest}`,
             '',
-            '설치파일을 준비한 뒤 Revit 종료 시 자동으로 업데이트를 시작할까요?'
+            '설치파일을 준비하고, Revit을 종료하면 자동으로 업데이트를 시작할까요?'
         ].join('\n');
 
         if (!window.confirm(message)) return;
         post('update:install', { version: _updateState.latestVersion });
+        return;
+    }
+
+    post('update:check');
+}
+
+// Keep the click behavior consistent whether the tool is current or outdated.
+function onUpdateButtonClick() {
+    if (_updateState.busy) return;
+
+    if (_updateState.hasUpdate) {
+        showUpdateResultDialog({
+            kind: 'warn',
+            message: _updateState.message
+        });
         return;
     }
 
@@ -542,13 +559,13 @@ function applyUpdateVisualState() {
 
     if (!_updateBtn) return;
 
-    let label = '업데이트 확인';
+    let label = 'Tool 버전 체크';
     if (_updateState.busy) {
-        label = '업데이트 확인 중';
+        label = 'Tool 버전 확인 중';
     } else if (_updateState.hasUpdate) {
-        label = `업데이트 ${formatVersionText(_updateState.latestVersion)}`;
+        label = `Tool 업데이트 ${formatVersionText(_updateState.latestVersion)}`;
     } else if (_updateState.isConfigured) {
-        label = '최신 버전 사용 중';
+        label = 'Tool 최신 버전';
     }
 
     const text = _updateBtn.querySelector('.chip-text');
@@ -562,11 +579,11 @@ function applyUpdateVisualState() {
 
 function buildUpdateTooltip() {
     const lines = [
-        `현재 버전: ${formatVersionText(_updateState.currentVersionDisplay)}`
+        `Tool 현재 버전: ${formatVersionText(_updateState.currentVersionDisplay)}`
     ];
 
     if (_updateState.latestVersion) {
-        lines.push(`최신 버전: ${formatVersionText(_updateState.latestVersion)}`);
+        lines.push(`Tool 최신 버전: ${formatVersionText(_updateState.latestVersion)}`);
     }
 
     if (!_updateState.isConfigured && _updateState.configPath) {
@@ -578,6 +595,132 @@ function buildUpdateTooltip() {
     }
 
     return lines.join('\n');
+}
+
+function showUpdateResultDialog(payload = {}) {
+    closeUpdateResultDialog();
+
+    const current = formatVersionText(_updateState.currentVersionDisplay);
+    const latest = _updateState.latestVersion ? formatVersionText(_updateState.latestVersion) : '-';
+    const hasUpdate = !!_updateState.hasUpdate;
+    const installReady = !!payload?.installerPath || !!payload?.scriptPath;
+    const isError = payload?.kind === 'err';
+
+    let tone = 'info';
+    let title = 'Tool 버전 확인';
+    let summary = payload?.message || '';
+    let statusText = '확인 완료';
+
+    if (isError) {
+        tone = 'err';
+        title = 'Tool 버전 확인 실패';
+        statusText = '확인 실패';
+    } else if (installReady) {
+        tone = 'ok';
+        title = '업데이트 준비 완료';
+        statusText = '업데이트 준비됨';
+    } else if (hasUpdate) {
+        tone = 'warn';
+        title = '새 Tool 버전이 있습니다';
+        statusText = '업데이트 필요';
+        summary = summary || `현재 버전 ${current}에서 최신 버전 ${latest}로 업데이트할 수 있습니다.`;
+    } else {
+        tone = 'ok';
+        title = '현재 최신 버전입니다';
+        statusText = '최신 상태';
+        summary = summary || `현재 버전 ${current}이 최신 버전입니다.`;
+    }
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'update-result-backdrop';
+
+    const dialog = document.createElement('section');
+    dialog.className = `update-result-dialog ${tone}`.trim();
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-label', title);
+
+    const header = document.createElement('header');
+    header.className = 'update-result-header';
+    header.innerHTML = `
+        <div class="update-result-badge ${tone}">${statusText}</div>
+        <h3>${title}</h3>
+    `;
+
+    const body = document.createElement('div');
+    body.className = 'update-result-body';
+
+    const desc = document.createElement('p');
+    desc.className = 'update-result-desc';
+    desc.textContent = summary;
+    body.append(desc);
+
+    const grid = document.createElement('div');
+    grid.className = 'update-result-grid';
+    grid.innerHTML = `
+        <div class="update-result-item">
+            <span class="update-result-item-label">현재 버전</span>
+            <strong class="update-result-item-value">${current}</strong>
+        </div>
+        <div class="update-result-item">
+            <span class="update-result-item-label">최신 버전</span>
+            <strong class="update-result-item-value">${latest}</strong>
+        </div>
+    `;
+    body.append(grid);
+
+    if (_updateState.feedUrl) {
+        const feed = document.createElement('div');
+        feed.className = 'update-result-note';
+        feed.textContent = `업데이트 확인 주소: ${_updateState.feedUrl}`;
+        body.append(feed);
+    }
+
+    const footer = document.createElement('div');
+    footer.className = 'update-result-footer';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn btn-ghost';
+    closeBtn.textContent = '닫기';
+    closeBtn.addEventListener('click', closeUpdateResultDialog);
+    footer.append(closeBtn);
+
+    if (!isError && hasUpdate && _updateState.canInstall && !installReady) {
+        const installBtn = document.createElement('button');
+        installBtn.type = 'button';
+        installBtn.className = 'btn';
+        installBtn.textContent = '업데이트 진행';
+        installBtn.addEventListener('click', () => {
+            closeUpdateResultDialog();
+            post('update:install', { version: _updateState.latestVersion });
+        });
+        footer.append(installBtn);
+    }
+
+    dialog.append(header, body, footer);
+    backdrop.append(dialog);
+    backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) closeUpdateResultDialog();
+    });
+
+    const escHandler = (e) => {
+        if (e.key === 'Escape') closeUpdateResultDialog();
+    };
+    backdrop._escHandler = escHandler;
+    document.addEventListener('keydown', escHandler);
+
+    document.body.append(backdrop);
+    _updateDialogBackdrop = backdrop;
+}
+
+function closeUpdateResultDialog() {
+    if (!_updateDialogBackdrop) return;
+    if (_updateDialogBackdrop._escHandler) {
+        document.removeEventListener('keydown', _updateDialogBackdrop._escHandler);
+    }
+    _updateDialogBackdrop.remove();
+    _updateDialogBackdrop = null;
 }
 
 function formatVersionText(versionText) {

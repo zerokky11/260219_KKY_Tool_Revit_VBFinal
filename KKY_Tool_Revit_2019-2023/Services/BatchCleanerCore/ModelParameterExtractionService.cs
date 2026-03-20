@@ -174,6 +174,7 @@ namespace KKY_Tool_Revit.Services
         {
             if (doc == null || category == null || category.Id == null) return false;
             if (category.CategoryType != CategoryType.Model) return false;
+            if (IsExplicitlyIncludedCategory(category)) return true;
             if (IsExplicitlyExcludedCategory(category)) return false;
 
             bool? directCheck = TryIsValidCategoryForSchedule(doc, category);
@@ -188,9 +189,17 @@ namespace KKY_Tool_Revit.Services
             return true;
         }
 
+        private static bool IsExplicitlyIncludedCategory(Category category)
+        {
+            return MatchesBuiltInCategoryNames(category,
+                "OST_Curtain_Systems",
+                "OST_CurtaSystem");
+        }
+
         private static bool IsExplicitlyExcludedCategory(Category category)
         {
             if (category == null) return true;
+            if (IsExplicitlyIncludedCategory(category)) return false;
 
             string name = string.Empty;
             try { name = category.Name ?? string.Empty; } catch { }

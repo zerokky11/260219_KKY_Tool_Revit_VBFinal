@@ -852,6 +852,144 @@ input[type="checkbox"]:disabled {
     z-index: 4600;
 }
 
+.update-result-backdrop {
+    position: fixed;
+    inset: 0;
+    background: color-mix(in srgb, var(--color-background) 58%, transparent);
+    backdrop-filter: blur(4px);
+    display: grid;
+    place-items: center;
+    z-index: 4200;
+    padding: 24px;
+}
+
+.update-result-dialog {
+    width: min(520px, 96vw);
+    background: var(--surface-panel);
+    border: 1px solid var(--border-soft);
+    border-radius: 22px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.update-result-dialog.ok {
+    border-color: color-mix(in srgb, var(--success) 40%, var(--border-soft));
+}
+
+.update-result-dialog.warn {
+    border-color: color-mix(in srgb, var(--warning) 52%, var(--border-soft));
+}
+
+.update-result-dialog.err {
+    border-color: color-mix(in srgb, var(--error) 48%, var(--border-soft));
+}
+
+.update-result-header {
+    padding: 20px 22px 14px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.update-result-header h3 {
+    margin: 0;
+    font-size: 1.14rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+}
+
+.update-result-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    min-width: 96px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.update-result-badge.ok {
+    color: color-mix(in srgb, var(--success) 82%, var(--text-main));
+    background: color-mix(in srgb, var(--success) 15%, transparent);
+}
+
+.update-result-badge.warn {
+    color: color-mix(in srgb, var(--warning) 82%, var(--text-main));
+    background: color-mix(in srgb, var(--warning) 16%, transparent);
+}
+
+.update-result-badge.err {
+    color: color-mix(in srgb, var(--error) 82%, var(--text-main));
+    background: color-mix(in srgb, var(--error) 14%, transparent);
+}
+
+.update-result-body {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px 22px;
+}
+
+.update-result-desc {
+    margin: 0;
+    font-size: 0.96rem;
+    line-height: 1.6;
+    color: var(--text-main);
+}
+
+.update-result-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.update-result-item {
+    border: 1px solid var(--border-soft);
+    background: var(--surface-sunken);
+    border-radius: 16px;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.update-result-item-label {
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+.update-result-item-value {
+    color: var(--text-main);
+    font-size: 1.12rem;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.update-result-note {
+    border-radius: 14px;
+    border: 1px dashed var(--border-soft);
+    background: color-mix(in srgb, var(--surface-sunken) 88%, transparent);
+    color: var(--text-muted);
+    padding: 10px 12px;
+    line-height: 1.5;
+    font-size: 0.86rem;
+    word-break: break-all;
+}
+
+.update-result-footer {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    padding: 14px 22px 20px;
+    border-top: 1px solid var(--border-soft);
+}
+
 /* -----------------------------
    Excel saved dialog
    ----------------------------- */

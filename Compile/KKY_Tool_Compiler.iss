@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "KKY_Tool_Revit"
-#define MyAppVersion "2.02"
+#define MyAppVersion "2.03"
 #define MyOutputBaseName "KKY_Tool_Revit(2019,21,23,25)_v" + MyAppVersion
 #define MyAppPublisher "Kyeongyeon Kim"
 #define MyAppURL "kkykiki89@nate.com"
@@ -14,6 +14,7 @@
 AppId={{DD10228E-A453-45EA-8DAF-45AF599FB9A8}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+UninstallDisplayName={#MyAppName}
 ;AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
