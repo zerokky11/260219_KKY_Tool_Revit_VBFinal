@@ -1,4 +1,5 @@
 import { clear, div, toast, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
+import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
@@ -46,7 +47,6 @@ export function renderSharedParamBatch(root) {
     },
     summary: { ...DEFAULT_SUMMARY },
     logs: [],
-    logTextPath: '',
     running: false,
     lastProgressPct: 0,
     categoryFilterText: ''
@@ -63,6 +63,14 @@ export function renderSharedParamBatch(root) {
   const btnRun = cardBtn('실행', onRun);
   const btnExport = cardBtn('엑셀 내보내기', onExport, 'btn--secondary');
   btnExport.disabled = true;
+  /*
+
+  const btnViewResult = cardBtn('寃곌낵 蹂닿린', openResultModal, 'btn--secondary');
+  btnViewResult.disabled = true;
+
+  */
+  const btnViewResult = cardBtn('\uACB0\uACFC \uBCF4\uAE30', openResultModal, 'btn--secondary');
+  btnViewResult.disabled = true;
 
   header.append(heading);
   page.append(header);
@@ -82,6 +90,10 @@ export function renderSharedParamBatch(root) {
   const paramPickerBtn = cardBtn('Parameter 선택하기', openParamPicker, 'btn--secondary');
   const selectHeader = buildSelectHeader('Shared Parameter 선택', paramPickerBtn, btnRun, btnExport);
   selectSection.append(selectHeader);
+  const selectHeaderActions = selectHeader.querySelector('.spb-headerRight');
+  if (selectHeaderActions) {
+    selectHeaderActions.insertBefore(btnViewResult, btnExport);
+  }
 
   const selectedSection = div('section sharedparambatch-section');
   const bulkApplyBtn = cardBtn('설정 일괄 적용', applyBulkSettings, 'btn--secondary');
@@ -137,6 +149,7 @@ export function renderSharedParamBatch(root) {
 
   const rvtModal = buildRvtModal();
   const paramPickerModal = buildParamPickerModal();
+  const resultModal = buildResultModal();
 
   const resultSection = div('sharedparambatch-result');
   const resultHeader = sectionHeader('최근 실행 결과', []);
@@ -161,14 +174,13 @@ export function renderSharedParamBatch(root) {
   logTable.className = 'sharedparambatch-table';
   logTable.innerHTML = '<thead><tr><th>Level</th><th>RVT</th><th>Message</th></tr></thead><tbody></tbody>';
   const logBody = logTable.querySelector('tbody');
-
   resultSection.append(summaryRow, logPathRow, logTable);
   resultSection.style.display = 'none';
+  resultModal.body.append(summaryRow, logTable);
 
-  selectSection.append(resultSection);
   layout.append(warningSection, selectSection, selectedSection, rvtSection);
   page.append(layout);
-  page.append(buildSettingsModal(), paramPickerModal, rvtModal);
+  page.append(buildSettingsModal(), paramPickerModal, rvtModal, resultModal.overlay);
 
   target.append(page);
 
@@ -382,7 +394,9 @@ export function renderSharedParamBatch(root) {
         added += 1;
       }
     });
-    if (changed) renderRvtList();
+    if (changed) {
+      refreshUiAfterHostDialog(() => renderRvtList());
+    }
     if (payload?.fromFolder) {
       toast(added ? `${added}개 추가됨` : '추가된 RVT가 없습니다.', added ? 'ok' : 'err');
     }
@@ -469,9 +483,11 @@ export function renderSharedParamBatch(root) {
     }
     state.summary = payload.summary || { ...DEFAULT_SUMMARY };
     state.logs = Array.isArray(payload.logs) ? payload.logs : [];
-    state.logTextPath = payload.logTextPath || '';
     renderSummary();
     renderLogs();
+    if (hasRunResults()) {
+      openResultModal();
+    }
     if (state.logs.length) toast('완료되었습니다.', 'ok');
   }
 
@@ -505,8 +521,9 @@ export function renderSharedParamBatch(root) {
     badgeSkip.value.textContent = String(state.summary.skipCount ?? 0);
     logPathText.textContent = state.logTextPath ? `로그 파일: ${state.logTextPath}` : '로그 파일: -';
     logOpenBtn.disabled = !state.logTextPath;
-    btnExport.disabled = !state.logs.length;
-    resultSection.style.display = state.logs.length ? 'flex' : 'none';
+    btnViewResult.disabled = !hasRunResults();
+    btnExport.disabled = !hasRunResults();
+    resultSection.style.display = 'none';
   }
 
   function renderLogs() {
@@ -534,10 +551,17 @@ export function renderSharedParamBatch(root) {
   function updateButtons() {
     const disabled = state.running;
     btnRun.disabled = disabled || !state.selectedParams.length || !state.rvtList.length;
-    btnExport.disabled = disabled || !state.logs.length;
+    btnViewResult.disabled = disabled || !hasRunResults();
+    btnExport.disabled = disabled || !hasRunResults();
     const modal = buildParamPickerModal;
     if (modal.addBtn) modal.addBtn.disabled = disabled;
     bulkApplyBtn.disabled = disabled || state.selectedParams.length < 2;
+  }
+
+  function hasRunResults() {
+    if (state.logs.length) return true;
+    const summary = state.summary || DEFAULT_SUMMARY;
+    return Number(summary.okCount || 0) + Number(summary.failCount || 0) + Number(summary.skipCount || 0) > 0;
   }
 
   function formatParamGroup(value) {
@@ -711,6 +735,51 @@ export function renderSharedParamBatch(root) {
     buildRvtModal.master = master;
 
     return overlay;
+  }
+
+  function buildResultModal() {
+    const overlay = div('sharedparambatch-modal-overlay');
+    const modal = div('sharedparambatch-modal spb-modalLarge');
+    const header = div('sharedparambatch-modal__header');
+    const title = div('sharedparambatch-modal__title');
+    /*
+    title.textContent = '寃곌낵 蹂닿린';
+    const closeBtn = actionBtn('?リ린', closeResultModal, 'btn--ghost');
+    */
+    title.textContent = '\uACB0\uACFC \uBCF4\uAE30';
+    const closeBtn = actionBtn('\uB2EB\uAE30', closeResultModal, 'btn--ghost');
+    header.append(title, closeBtn);
+
+    const body = div('sharedparambatch-modal__body');
+    const footer = div('sharedparambatch-modal__footer');
+    const spacer = document.createElement('span');
+    /*
+    const closeFooterBtn = cardBtn('?リ린', closeResultModal, 'btn--secondary');
+    */
+    const closeFooterBtn = cardBtn('\uB2EB\uAE30', closeResultModal, 'btn--secondary');
+    footer.append(spacer, closeFooterBtn);
+
+    modal.append(header, body, footer);
+    overlay.append(modal);
+
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) closeResultModal(); });
+
+    return { overlay, body };
+  }
+
+  function openResultModal() {
+    if (!hasRunResults()) {
+      /*
+      toast('理쒓렐 ?ㅽ뻾 寃곌낵媛 ?놁뒿?덈떎.', 'err');
+      */
+      toast('\uCD5C\uADFC \uC2E4\uD589 \uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.', 'err');
+      return;
+    }
+    if (resultModal.overlay) resultModal.overlay.classList.add('is-open');
+  }
+
+  function closeResultModal() {
+    if (resultModal.overlay) resultModal.overlay.classList.remove('is-open');
   }
 
   function openRvtModal() {

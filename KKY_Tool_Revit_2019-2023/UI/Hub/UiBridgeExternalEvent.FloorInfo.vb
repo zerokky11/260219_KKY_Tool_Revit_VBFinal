@@ -17,7 +17,6 @@ Namespace UI.Hub
         Private Class MultiFloorInfoOptions
             Public Property Enabled As Boolean
             Public Property ParameterName As String = String.Empty
-            Public Property BaseLevelName As String = String.Empty
             Public Property LevelRules As List(Of FloorInfoReviewService.LevelRule) = New List(Of FloorInfoReviewService.LevelRule)()
         End Class
 
@@ -45,8 +44,7 @@ Namespace UI.Hub
                         .levelId = level.LevelId,
                         .levelName = level.LevelName,
                         .absoluteZFt = level.AbsoluteZFt,
-                        .absoluteZMm = level.AbsoluteZMm,
-                        .isBaseLevel = level.IsBaseLevel
+                        .absoluteZMm = level.AbsoluteZMm
                     }).ToList()
 
                 SendToWeb("floorinfo:config-loaded", New With {
@@ -72,7 +70,6 @@ Namespace UI.Hub
             Dim d = ToDict(obj)
             opt.Enabled = ToBool(GetDictValue(d, "enabled"))
             opt.ParameterName = SafeStr(GetDictValue(d, "parameterName"))
-            opt.BaseLevelName = SafeStr(GetDictValue(d, "baseLevelName"))
 
             Dim rawRules = GetDictValue(d, "levelRules")
             Dim arr = TryCast(rawRules, System.Collections.IEnumerable)
@@ -80,17 +77,18 @@ Namespace UI.Hub
                 For Each item In arr
                     Dim ruleDict = ToDict(item)
                     Dim levelName = SafeStr(GetDictValue(ruleDict, "levelName"))
+                    Dim useAsBoundary As Boolean = True
                     If String.IsNullOrWhiteSpace(levelName) Then Continue For
+                    If ruleDict IsNot Nothing AndAlso ruleDict.ContainsKey("useAsBoundary") Then
+                        useAsBoundary = ToBool(GetDictValue(ruleDict, "useAsBoundary"))
+                    End If
                     opt.LevelRules.Add(New FloorInfoReviewService.LevelRule With {
                         .LevelName = levelName,
                         .ExpectedValue = SafeStr(GetDictValue(ruleDict, "expectedValue")),
-                        .AbsoluteZFt = ToDouble(GetDictValue(ruleDict, "absoluteZFt"), 0.0R)
+                        .AbsoluteZFt = ToDouble(GetDictValue(ruleDict, "absoluteZFt"), 0.0R),
+                        .UseAsBoundary = useAsBoundary
                     })
                 Next
-            End If
-
-            If String.IsNullOrWhiteSpace(opt.BaseLevelName) AndAlso opt.LevelRules.Count > 0 Then
-                opt.BaseLevelName = opt.LevelRules(0).LevelName
             End If
 
             Return opt
@@ -101,7 +99,6 @@ Namespace UI.Hub
 
             Dim settings As New FloorInfoReviewService.Settings With {
                 .ParameterName = If(_multiRequest.FloorInfo.ParameterName, String.Empty),
-                .BaseLevelName = If(_multiRequest.FloorInfo.BaseLevelName, String.Empty),
                 .LevelRules = If(_multiRequest.FloorInfo.LevelRules, New List(Of FloorInfoReviewService.LevelRule)())
             }
 
@@ -111,7 +108,7 @@ Namespace UI.Hub
                 settings,
                 Sub(pct, msg)
                     Dim overallPct = ((basePct + (pct / 100.0R) / Math.Max(_multiTotal, 1)) * 100.0R)
-                    ReportMultiProgress(overallPct, "층정보 Z 검토 실행 중", $"{safeName} · {msg}")
+                    ReportMultiProgress(overallPct, "층정보 검토 실행 중", $"{safeName} · {msg}")
                 End Sub)
 
             If _multiFloorInfoRows Is Nothing Then _multiFloorInfoRows = New List(Of FloorInfoReviewService.ReviewRow)()
@@ -163,22 +160,20 @@ Namespace UI.Hub
             Next
 
             Dim parameterName As String = ""
-            Dim baseLevelName As String = ""
             Dim ruleCount As Integer = 0
             If _multiRequest IsNot Nothing AndAlso _multiRequest.FloorInfo IsNot Nothing Then
                 parameterName = If(_multiRequest.FloorInfo.ParameterName, "")
-                baseLevelName = If(_multiRequest.FloorInfo.BaseLevelName, "")
-                ruleCount = If(_multiRequest.FloorInfo.LevelRules, New List(Of FloorInfoReviewService.LevelRule)()).Count
+                Dim activeRules = If(_multiRequest.FloorInfo.LevelRules, New List(Of FloorInfoReviewService.LevelRule)())
+                ruleCount = activeRules.Where(Function(rule) rule IsNot Nothing AndAlso rule.UseAsBoundary).Count()
             End If
 
             Dim warningCount As Integer = If(_multiFloorInfoWarnings, New List(Of String)()).Count
             Return New With {
                 .key = "floorinfo",
-                .label = "층정보 파라미터 Z 검토",
+                .label = "층정보 파라미터 검토",
                 .lines = New String() {
                     $"선택 파일 수: {GetRequestedMultiFileCount()}개",
                     $"검토 파라미터: {If(String.IsNullOrWhiteSpace(parameterName), "(미설정)", parameterName)}",
-                    $"주 레벨: {If(String.IsNullOrWhiteSpace(baseLevelName), "(미설정)", baseLevelName)}",
                     $"레벨 규칙 수: {ruleCount}개",
                     $"평가된 객체 수: {totalEvaluated}개",
                     $"이슈 행 수: {rows.Count}행",

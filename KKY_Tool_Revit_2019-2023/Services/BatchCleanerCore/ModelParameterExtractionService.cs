@@ -13,6 +13,12 @@ namespace KKY_Tool_Revit.Services
 {
     public static class ModelParameterExtractionService
     {
+        public static int CountExtractableElements(Document doc)
+        {
+            if (doc == null) throw new ArgumentNullException(nameof(doc));
+            return CollectExtractableElements(doc).Count;
+        }
+
         public static string ExportModelParameters(UIApplication uiapp, BatchPrepareSession session, string outputFolder, string parameterNamesCsv, Action<string> log)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
@@ -27,10 +33,10 @@ namespace KKY_Tool_Revit.Services
                 .Where(x => !string.IsNullOrWhiteSpace(x) && File.Exists(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            if (paths.Count == 0) throw new InvalidOperationException("추출할 파일이 없습니다.");
+            if (paths.Count == 0) throw new InvalidOperationException("?곕뗄??????뵬????곷뮸??덈뼄.");
 
             List<string> parameterNames = SplitParameterNames(parameterNamesCsv);
-            if (parameterNames.Count == 0) throw new InvalidOperationException("추출할 파라미터 이름을 하나 이상 입력해야 합니다.");
+            if (parameterNames.Count == 0) throw new InvalidOperationException("?곕뗄??????뵬沃섎챸苑???已????롪돌 ??곴맒 ??낆젾??곷튊 ??몃빍??");
 
             if (string.IsNullOrWhiteSpace(outputFolder))
             {
@@ -40,7 +46,7 @@ namespace KKY_Tool_Revit.Services
 
             string csvPath = Path.Combine(outputFolder, "ModelParameterExport_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".csv");
             var sb = new StringBuilder();
-            var header = new List<string> { "파일명", "요소ID", "카테고리", "패밀리이름", "타입이름" };
+            var header = new List<string> { "FileName", "ElementId", "Category", "FamilyName", "TypeName" };
             header.AddRange(parameterNames);
             sb.AppendLine(string.Join(",", header.Select(Csv)));
 
@@ -49,18 +55,10 @@ namespace KKY_Tool_Revit.Services
                 Document doc = null;
                 try
                 {
-                    log?.Invoke("속성값 추출 파일 열기: " + path);
+                    log?.Invoke("??욧쉐揶??곕뗄?????뵬 ??용┛: " + path);
                     ModelPath modelPath = ModelPathUtils.ConvertUserVisiblePathToModelPath(path);
                     doc = uiapp.Application.OpenDocumentFile(modelPath, new OpenOptions());
-                    HashSet<int> schedulableCategoryIds = GetSchedulableCategoryIds(doc);
-
-                    IList<Element> elements = new FilteredElementCollector(doc)
-                        .WhereElementIsNotElementType()
-                        .Cast<Element>()
-                        .Where(x => x != null)
-                        .Where(x => IsEligibleModelElement(x, schedulableCategoryIds))
-                        .OrderBy(x => x.Id.IntegerValue)
-                        .ToList();
+                    IList<Element> elements = CollectExtractableElements(doc);
 
                     int rowCount = 0;
                     string fileName = Path.GetFileName(path);
@@ -80,7 +78,7 @@ namespace KKY_Tool_Revit.Services
                         rowCount++;
                     }
 
-                    log?.Invoke("속성값 추출 완료: " + fileName + " / 행 " + rowCount);
+                    log?.Invoke("??욧쉐揶??곕뗄???袁⑥┷: " + fileName + " / ??" + rowCount);
                 }
                 finally
                 {
@@ -98,48 +96,20 @@ namespace KKY_Tool_Revit.Services
             }
 
             File.WriteAllText(csvPath, sb.ToString(), new UTF8Encoding(true));
-            log?.Invoke("속성값 추출 CSV 저장: " + csvPath);
+            log?.Invoke("??욧쉐揶??곕뗄??CSV ???? " + csvPath);
             return csvPath;
         }
 
-        private static bool IsEligibleModelElement(Element element)
+        private static IList<Element> CollectExtractableElements(Document doc)
         {
-            if (element == null) return false;
-            if (element.ViewSpecific) return false;
-            if (element.Category == null) return false;
-            if (element.Category.CategoryType != CategoryType.Model) return false;
-            if (element is View) return false;
-            if (element is CurveElement) return false;
-            if (element is ReferencePlane) return false;
-            if (element is Group) return false;
-            if (element is AssemblyInstance) return false;
-            if (element is Level) return false;
-            if (element is Grid) return false;
-            if (element is Room) return false;
-            if (element is Area) return false;
-
-            try
-            {
-                int categoryId = element.Category.Id != null ? element.Category.Id.IntegerValue : 0;
-                if (categoryId == (int)BuiltInCategory.OST_Lines) return false;
-                if (categoryId == (int)BuiltInCategory.OST_CLines) return false;
-                if (categoryId == (int)BuiltInCategory.OST_IOSModelGroups) return false;
-                if (categoryId == (int)BuiltInCategory.OST_Assemblies) return false;
-                if (categoryId == (int)BuiltInCategory.OST_Levels) return false;
-                if (categoryId == (int)BuiltInCategory.OST_Grids) return false;
-                if (categoryId == (int)BuiltInCategory.OST_Rooms) return false;
-                if (categoryId == (int)BuiltInCategory.OST_Areas) return false;
-            }
-            catch
-            {
-            }
-
-            string categoryName = string.Empty;
-            try { categoryName = element.Category.Name ?? string.Empty; } catch { }
-            if (string.Equals(categoryName, "Lines", StringComparison.OrdinalIgnoreCase)) return false;
-            if (string.Equals(categoryName, "Reference Planes", StringComparison.OrdinalIgnoreCase)) return false;
-            if (string.Equals(categoryName, "참조 평면", StringComparison.OrdinalIgnoreCase)) return false;
-            return true;
+            HashSet<int> schedulableCategoryIds = GetSchedulableCategoryIds(doc);
+            return new FilteredElementCollector(doc)
+                .WhereElementIsNotElementType()
+                .Cast<Element>()
+                .Where(x => x != null)
+                .Where(x => IsEligibleModelElement(x, schedulableCategoryIds))
+                .OrderBy(x => x.Id.IntegerValue)
+                .ToList();
         }
 
         private static bool IsEligibleModelElement(Element element, ISet<int> schedulableCategoryIds)
@@ -147,8 +117,17 @@ namespace KKY_Tool_Revit.Services
             if (element == null) return false;
             if (element.ViewSpecific) return false;
             if (element.Category == null) return false;
+            if (element.Category.CategoryType != CategoryType.Model) return false;
             if (element is View) return false;
             if (element is ReferencePlane) return false;
+            if (element is CurveElement) return false;
+            if (element is Grid) return false;
+            if (element is Level) return false;
+            if (element is Group) return false;
+            if (element is AssemblyInstance) return false;
+            if (element is Room) return false;
+            if (element is Area) return false;
+            if (element is MEPSystem) return false;
 
             int categoryId;
             try
@@ -160,7 +139,8 @@ namespace KKY_Tool_Revit.Services
                 return false;
             }
 
-            return schedulableCategoryIds != null && schedulableCategoryIds.Contains(categoryId);
+            if (schedulableCategoryIds == null || !schedulableCategoryIds.Contains(categoryId)) return false;
+            return !IsExplicitlyExcludedCategory(element.Category);
         }
 
         private static HashSet<int> GetSchedulableCategoryIds(Document doc)
@@ -193,6 +173,8 @@ namespace KKY_Tool_Revit.Services
         private static bool IsSchedulableCategory(Document doc, Category category)
         {
             if (doc == null || category == null || category.Id == null) return false;
+            if (category.CategoryType != CategoryType.Model) return false;
+            if (IsExplicitlyExcludedCategory(category)) return false;
 
             bool? directCheck = TryIsValidCategoryForSchedule(doc, category);
             if (directCheck.HasValue) return directCheck.Value;
@@ -203,7 +185,124 @@ namespace KKY_Tool_Revit.Services
                 return validIds.Contains(category.Id.IntegerValue);
             }
 
-            return category.CategoryType == CategoryType.Model;
+            return true;
+        }
+
+        private static bool IsExplicitlyExcludedCategory(Category category)
+        {
+            if (category == null) return true;
+
+            string name = string.Empty;
+            try { name = category.Name ?? string.Empty; } catch { }
+            string normalized = name.Trim();
+            if (string.IsNullOrWhiteSpace(normalized)) return true;
+
+            string[] blockedKeywords =
+            {
+                "Analytical",
+                "Load",
+                "Placeholder",
+                "Zone",
+                "Area",
+                "Grid",
+                "Level",
+                "Reference",
+                "Center Line",
+                "Centerline",
+                "Annotation",
+                "Space",
+                "System",
+                "Material",
+                "Project Information",
+                "Sun Path",
+                "Pipe Segment",
+                "Primary Contour",
+                "Legend Component",
+                "Systems",
+                "Boundary",
+                "Separation"
+            };
+
+            if (blockedKeywords.Any(keyword => normalized.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                return true;
+            }
+
+            return MatchesBuiltInCategoryNames(category,
+                "OST_AnalyticalNodes",
+                "OST_AnalyticalLinks",
+                "OST_AnalyticalPipeNodes",
+                "OST_AnalyticalPipeConnections",
+                "OST_AnalyticalSpaces",
+                "OST_GridChains",
+                "OST_Grids",
+                "OST_Levels",
+                "OST_Rooms",
+                "OST_Areas",
+                "OST_Lines",
+                "OST_CLines",
+                "OST_IOSModelGroups",
+                "OST_Assemblies",
+                "OST_MEPSpaces",
+                "OST_HVAC_Zones",
+                "OST_AreaSchemeLines",
+                "OST_RoomSeparationLines",
+                "OST_MEPAnalyticalAirLoop",
+                "OST_MEPAnalyticalWaterLoop",
+                "OST_ElectricalLoadAreas",
+                "OST_ElectricalLoadClassifications",
+                "OST_LoadCases",
+                "OST_LoadCombinations",
+                "OST_Loads",
+                "OST_PointLoadTags",
+                "OST_LineLoadTags",
+                "OST_AreaLoadTags",
+                "OST_PlaceHolderDucts",
+                "OST_PlaceHolderPipes",
+                "OST_PlaceHolderCableTray",
+                "OST_PlaceHolderConduits",
+                "OST_ProjectInformation",
+                "OST_SunPath",
+                "OST_PipeSegments",
+                "OST_PrimaryContour",
+                "OST_LegendComponents",
+                "OST_Materials");
+        }
+
+        private static bool MatchesBuiltInCategoryNames(Category category, params string[] builtInCategoryNames)
+        {
+            if (category == null || category.Id == null || builtInCategoryNames == null || builtInCategoryNames.Length == 0)
+            {
+                return false;
+            }
+
+            int categoryId;
+            try
+            {
+                categoryId = category.Id.IntegerValue;
+            }
+            catch
+            {
+                return false;
+            }
+
+            foreach (string name in builtInCategoryNames)
+            {
+                if (string.IsNullOrWhiteSpace(name)) continue;
+
+                try
+                {
+                    if (Enum.TryParse(name, out BuiltInCategory builtInCategory) && categoryId == (int)builtInCategory)
+                    {
+                        return true;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return false;
         }
 
         private static bool? TryIsValidCategoryForSchedule(Document doc, Category category)

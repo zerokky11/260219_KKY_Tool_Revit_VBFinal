@@ -529,6 +529,70 @@
     resize: vertical;
 }
 
+.floorinfo-config {
+    width: 100%;
+    min-width: 0;
+}
+
+.floorinfo-config__controls {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+}
+
+.floorinfo-config__controls .field,
+.floorinfo-config__rules,
+.floorinfo-config__table {
+    min-width: 0;
+}
+
+.floorinfo-config__controls .field input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.floorinfo-config__control-note,
+.floorinfo-config__warning {
+    grid-column: 1 / -1;
+}
+
+.floorinfo-config__header {
+    align-items: flex-start;
+}
+
+.floorinfo-config__table {
+    min-height: 260px;
+    max-height: 420px;
+}
+
+.floorinfo-config__table .paramprop-table {
+    table-layout: fixed;
+}
+
+.floorinfo-config__table .paramprop-table th:nth-child(1),
+.floorinfo-config__table .paramprop-table td:nth-child(1) {
+    width: 96px;
+    text-align: center;
+}
+
+.floorinfo-config__table .paramprop-table th:nth-child(2),
+.floorinfo-config__table .paramprop-table td:nth-child(2) {
+    width: 148px;
+}
+
+.floorinfo-config__table .paramprop-table th:nth-child(3),
+.floorinfo-config__table .paramprop-table td:nth-child(3) {
+    width: 148px;
+}
+
+.floorinfo-config__table .paramprop-table th:nth-child(4),
+.floorinfo-config__table .paramprop-table td:nth-child(4) {
+    width: 220px;
+}
+
+.floorinfo-config__table .paramprop-table tr.is-inactive td {
+    opacity: 0.68;
+}
+
 .checklist {
     max-height: 180px;
     overflow: auto;

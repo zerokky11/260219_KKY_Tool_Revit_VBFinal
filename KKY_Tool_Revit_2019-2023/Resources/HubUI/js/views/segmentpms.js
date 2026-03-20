@@ -1,4 +1,5 @@
 import { clear, div, toast, setBusy, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
+import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
@@ -310,7 +311,11 @@ export function renderSegmentPms(root) {
         const files = Array.isArray(msg.payload?.paths) ? msg.payload.paths : [];
         files.forEach(f => { if (!state.rvtList.some(x => x.toLowerCase() === String(f).toLowerCase())) state.rvtList.push(f); });
         state.rvtChecked = new Set(files);
-        persistRvt(); renderRvtList(); updateButtons();
+        persistRvt();
+        refreshUiAfterHostDialog(() => {
+          renderRvtList();
+          updateButtons();
+        });
         break;
       }
       case 'segmentpms:extract-saved':

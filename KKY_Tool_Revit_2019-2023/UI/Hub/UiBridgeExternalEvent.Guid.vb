@@ -58,7 +58,7 @@ Namespace UI.Hub
                 For Each p In dlg.FileNames
                     If Not String.IsNullOrWhiteSpace(p) Then files.Add(p)
                 Next
-                SendToWeb("guid:files", New With {.paths = files})
+                SendToWebAfterDialog("guid:files", New With {.paths = files})
             End Using
         End Sub
 
@@ -360,7 +360,7 @@ Namespace UI.Hub
                     If unique.Add(f) Then deduped.Add(f)
                 Next
 
-                SendToWeb("guid:files", New With {.paths = deduped})
+                SendToWebAfterDialog("guid:files", New With {.paths = deduped})
             End Using
         End Sub
 

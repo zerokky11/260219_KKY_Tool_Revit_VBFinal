@@ -41,6 +41,7 @@ namespace KKY_Tool_Revit.Services
 
                     PreparedDocumentEntry prepared = PrepareSingle(uiapp, filePath, settings, designOptionAuditRows, log);
                     session.PreparedDocuments.Add(prepared);
+                    session.CleanCountComparisons.Add(BuildCleanCountComparison(prepared, true, null));
                     result.OutputPath = prepared.OutputPath;
                     result.Success = true;
                     result.Message = "정리 완료 / 저장 대기";
@@ -49,6 +50,7 @@ namespace KKY_Tool_Revit.Services
                 }
                 catch (Exception ex)
                 {
+                    session.CleanCountComparisons.Add(BuildCleanCountComparison(filePath, null, false, ex.Message));
                     result.Success = false;
                     result.Message = ex.Message;
                     log?.Invoke("실패: " + ex.Message);
@@ -115,6 +117,7 @@ namespace KKY_Tool_Revit.Services
                     log?.Invoke("[STEP] 저장 시작");
                     SaveCleanDocument(prepared.Document, prepared.TargetViewId, prepared.OutputPath, log);
                     session.CleanedOutputPaths.Add(prepared.OutputPath);
+                    session.CleanCountComparisons.Add(BuildCleanCountComparison(prepared, true, null));
 
                     result.Success = true;
                     result.Message = "정리 및 저장 완료";
@@ -122,6 +125,7 @@ namespace KKY_Tool_Revit.Services
                 }
                 catch (Exception ex)
                 {
+                    session.CleanCountComparisons.Add(BuildCleanCountComparison(filePath, prepared, false, ex.Message));
                     result.Success = false;
                     result.Message = ex.Message;
                     log?.Invoke("실패: " + ex.Message);
@@ -260,6 +264,7 @@ namespace KKY_Tool_Revit.Services
                 doc = OpenDetachedOrNormal(uiapp, filePath, log);
                 if (doc == null) throw new InvalidOperationException("문서를 열지 못했습니다.");
 
+                int beforeObjectCount = ModelParameterExtractionService.CountExtractableElements(doc);
                 CollectDesignOptionAuditRows(doc, filePath, designOptionAuditRows, log);
 
                 log?.Invoke("[STEP] Manage Links 정리 시작");
@@ -299,13 +304,18 @@ namespace KKY_Tool_Revit.Services
 
                 log?.Invoke("[STEP] Legacy Purge 제거됨 - 정리 단계에서는 Purge를 실행하지 않음");
 
+                int afterObjectCount = ModelParameterExtractionService.CountExtractableElements(doc);
+                log?.Invoke("[STEP] 객체수 비교 / 정리 전 " + beforeObjectCount + ", 정리 후 " + afterObjectCount);
+
                 return new PreparedDocumentEntry
                 {
                     SourcePath = filePath,
                     OutputPath = BuildOutputPath(filePath, settings.OutputFolder),
                     Document = doc,
                     TargetViewId = targetViewId,
-                    KeptFilterId = keptFilterId
+                    KeptFilterId = keptFilterId,
+                    BeforeObjectCount = beforeObjectCount,
+                    AfterObjectCount = afterObjectCount
                 };
             }
             catch
@@ -833,7 +843,7 @@ namespace KKY_Tool_Revit.Services
         {
             if (assignments == null) return;
 
-            foreach (ViewParameterAssignment item in assignments.Where(x => x != null && x.Enabled && !string.IsNullOrWhiteSpace(x.ParameterName)))
+            foreach (ViewParameterAssignment item in assignments.Where(x => x != null && !string.IsNullOrWhiteSpace(x.ParameterName)))
             {
                 Parameter parameter = view.LookupParameter(item.ParameterName);
                 if (parameter == null || parameter.IsReadOnly)
@@ -1376,6 +1386,39 @@ namespace KKY_Tool_Revit.Services
 
             File.WriteAllText(path, sb.ToString(), new UTF8Encoding(true));
             return path;
+        }
+
+        private static ModelObjectCountComparison BuildCleanCountComparison(PreparedDocumentEntry prepared, bool success, string note)
+        {
+            if (prepared == null)
+            {
+                return BuildCleanCountComparison(string.Empty, null, success, note);
+            }
+
+            return new ModelObjectCountComparison
+            {
+                FileName = Path.GetFileName(prepared.OutputPath ?? prepared.SourcePath ?? string.Empty),
+                SourcePath = prepared.SourcePath,
+                OutputPath = prepared.OutputPath,
+                BeforeCount = prepared.BeforeObjectCount,
+                AfterCount = prepared.AfterObjectCount,
+                Status = success ? "O" : "X",
+                Note = note ?? string.Empty
+            };
+        }
+
+        private static ModelObjectCountComparison BuildCleanCountComparison(string sourcePath, PreparedDocumentEntry prepared, bool success, string note)
+        {
+            return new ModelObjectCountComparison
+            {
+                FileName = Path.GetFileName((prepared != null ? prepared.OutputPath : null) ?? sourcePath ?? string.Empty),
+                SourcePath = sourcePath,
+                OutputPath = prepared?.OutputPath,
+                BeforeCount = prepared != null ? (int?)prepared.BeforeObjectCount : null,
+                AfterCount = prepared != null ? (int?)prepared.AfterObjectCount : null,
+                Status = success ? "O" : "X",
+                Note = note ?? string.Empty
+            };
         }
 
         private static string EscapeCsv(string value)

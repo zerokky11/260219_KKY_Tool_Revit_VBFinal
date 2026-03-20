@@ -19,7 +19,6 @@ namespace KKY_Tool_Revit.Models
 
         public bool IsConfigured()
         {
-            if (!Enabled) return false;
             if (string.IsNullOrWhiteSpace(ParameterName)) return false;
 
             switch (Operator)
@@ -46,6 +45,7 @@ namespace KKY_Tool_Revit.Models
         public override string ToString()
         {
             if (!IsConfigured()) return string.Empty;
+
             switch (Operator)
             {
                 case FilterRuleOperator.HasValue:
@@ -65,7 +65,7 @@ namespace KKY_Tool_Revit.Models
 
         public bool IsConfigured()
         {
-            return Enabled && !string.IsNullOrWhiteSpace(ParameterName);
+            return !string.IsNullOrWhiteSpace(ParameterName);
         }
 
         public ElementParameterAssignment Clone()
@@ -93,7 +93,6 @@ namespace KKY_Tool_Revit.Models
 
         public bool IsConfigured()
         {
-            if (!Enabled) return false;
             return Conditions.Any(x => x != null && x.IsConfigured())
                    && Assignments.Any(x => x != null && x.IsConfigured());
         }
@@ -111,8 +110,18 @@ namespace KKY_Tool_Revit.Models
 
         public string BuildSummary()
         {
-            var conditions = Conditions.Where(x => x != null && x.IsConfigured()).Select(x => x.ToString()).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
-            var assignments = Assignments.Where(x => x != null && x.IsConfigured()).Select(x => x.ToString()).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+            var conditions = Conditions
+                .Where(x => x != null && x.IsConfigured())
+                .Select(x => x.ToString())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
+            var assignments = Assignments
+                .Where(x => x != null && x.IsConfigured())
+                .Select(x => x.ToString())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+
             if (conditions.Count == 0 && assignments.Count == 0)
             {
                 return "설정 없음";

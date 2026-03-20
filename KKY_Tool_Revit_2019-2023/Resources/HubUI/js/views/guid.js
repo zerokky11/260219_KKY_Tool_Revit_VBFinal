@@ -1,4 +1,5 @@
 import { clear, div, toast, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
+import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
@@ -193,13 +194,11 @@ export function renderGuid(root) {
             state.rvtChecked.add(path);
         });
         state.rvtList = dedupPaths(state.rvtList);
-        if (added) {
-            persistRvts();
+        if (added) persistRvts();
+        refreshUiAfterHostDialog(() => {
             renderRvtList();
-        } else {
-            renderRvtList();
-        }
-        syncRvtActionState();
+            syncRvtActionState();
+        });
     });
 
     onHost('guid:progress', (payload) => {

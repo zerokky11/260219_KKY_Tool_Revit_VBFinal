@@ -1,11 +1,12 @@
 ﻿import { clear, div, toast, setBusy, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
+import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { post, onHost } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 
 const FEATURE_META = {
     connector: { label: '커넥터 파라미터 연속성 검토', desc: 'BQC 핵심 검토 · 연결 객체들의 파라미터 값 연속성을 확인합니다.', requiresSharedParams: false },
-    floorinfo: { label: '층정보 파라미터 Z 검토', desc: 'BQC Sub · 레벨 절대 Z 기준으로 층정보 파라미터 값을 검토합니다.', requiresSharedParams: false },
+    floorinfo: { label: '층정보 파라미터 검토', desc: 'BQC Sub · 레벨 절대 Z 기준으로 층정보 파라미터 값을 검토합니다.', requiresSharedParams: false },
     guid: {
         label: '공유파라미터 GUID 검토', desc: '프로젝트/패밀리 내 공유 파라미터 GUID 검토', requiresSharedParams: true },
   familylink: { label: '패밀리 공유파라미터 연동 검토', desc: '복합 패밀리의 하위 패밀리 파라미터 연동 상태를 검토합니다.', requiresSharedParams: true },
@@ -42,7 +43,7 @@ export function renderMulti(root) {
     }),
     features: {
       connector: createFeatureState({ tol: 1.0, unit: 'inch', param: 'Comments', paramItems: ['Comments'] }),
-      floorinfo: createFeatureState({ parameterName: '', baseLevelName: '', levelRules: [], documentTitle: '', warnings: [] }),
+    floorinfo: createFeatureState({ parameterName: '', levelRules: [], documentTitle: '', warnings: [] }),
       guid: createFeatureState({ includeFamily: false, includeAnnotation: false }),
       familylink: createFeatureState({ targetsText: '', selectedTargets: [], targets: [] }),
       points: createFeatureState({ unit: 'ft' })
@@ -189,7 +190,7 @@ export function renderMulti(root) {
     });
     if (changed) {
       markAllStale();
-      renderRvtList();
+      refreshUiAfterHostDialog(() => renderRvtList());
     }
   });
 
@@ -1039,18 +1040,51 @@ export function renderMulti(root) {
 
   function buildFloorInfoConfig() {
     const panel = div('multi-config');
-    panel.style.display = 'grid';
+    const levelInputState = new Map();
+    panel.classList.add('floorinfo-config');
+    panel.style.display = 'flex';
+    panel.style.flexDirection = 'column';
+    panel.style.alignItems = 'stretch';
+    panel.style.justifyContent = 'flex-start';
     panel.style.gap = '12px';
+    panel.style.width = '100%';
+    panel.style.maxWidth = 'none';
+    panel.style.minWidth = '0';
+    panel.style.padding = '0';
+    panel.style.border = '0';
+    panel.style.background = 'transparent';
+    panel.style.boxShadow = 'none';
+    panel.style.boxSizing = 'border-box';
 
     const param = makeField('층정보 파라미터명', 'floorinfo-param', '예: FloorInfo', 'text');
+    param.field.style.margin = '0';
+    param.field.style.alignSelf = 'stretch';
+    param.field.style.width = '100%';
+    param.field.style.minWidth = '0';
     param.input.value = state.features.floorinfo.configDraft.parameterName || '';
-    param.input.addEventListener('change', () => {
+    param.input.addEventListener('input', () => {
       state.features.floorinfo.configDraft.parameterName = param.input.value || '';
       markFeatureDirty('floorinfo');
       refreshFloorInfoFeatureSummary();
     });
 
-    const sourceCard = div('feature-row__summary');
+    const controlsCard = div('feature-row__summary floorinfo-config__controls');
+    controlsCard.style.display = 'grid';
+    controlsCard.style.gap = '12px';
+    controlsCard.style.padding = '12px';
+    controlsCard.style.borderRadius = '16px';
+    controlsCard.style.border = '1px solid var(--border-accent-soft)';
+    controlsCard.style.background = 'var(--surface-elevated)';
+    controlsCard.style.boxShadow = 'var(--shadow-soft)';
+    controlsCard.style.width = '100%';
+    controlsCard.style.minWidth = '0';
+    controlsCard.style.boxSizing = 'border-box';
+
+    const controlsMeta = document.createElement('div');
+    controlsMeta.className = 'floorinfo-config__control-note feature-note';
+    controlsMeta.textContent = '층정보 영역을 구분할 레벨만 체크하세요. 체크하지 않은 중간 레벨은 구간 계산에서 무시되며, 관통 객체는 시작하는 가장 아래 구간의 기대 층정보 값으로 판정합니다.';
+
+    const sourceCard = div('feature-row__summary floorinfo-config__rules');
     sourceCard.style.display = 'grid';
     sourceCard.style.gap = '8px';
     sourceCard.style.padding = '12px';
@@ -1058,12 +1092,17 @@ export function renderMulti(root) {
     sourceCard.style.border = '1px solid var(--border-accent-soft)';
     sourceCard.style.background = 'var(--surface-elevated)';
     sourceCard.style.boxShadow = 'var(--shadow-soft)';
+    sourceCard.style.width = '100%';
+    sourceCard.style.minWidth = '0';
+    sourceCard.style.boxSizing = 'border-box';
 
     const sourceHead = document.createElement('div');
+    sourceHead.className = 'floorinfo-config__header';
     sourceHead.style.display = 'flex';
     sourceHead.style.justifyContent = 'space-between';
     sourceHead.style.alignItems = 'center';
     sourceHead.style.gap = '10px';
+    sourceHead.style.flexWrap = 'wrap';
     const sourceTitle = document.createElement('strong');
     sourceTitle.textContent = '활성 문서 레벨 기준';
     const refreshBtn = document.createElement('button');
@@ -1077,35 +1116,23 @@ export function renderMulti(root) {
     documentMeta.style.fontSize = '12px';
     documentMeta.style.color = 'var(--muted,#64748b)';
 
-    const baseWrap = div('paramprop-opt paramprop-opt-group');
-    const baseLbl = document.createElement('span');
-    baseLbl.className = 'feature-note';
-    baseLbl.textContent = '주 레벨';
-    const baseSelect = document.createElement('select');
-    baseSelect.className = 'paramprop-select';
-    baseSelect.addEventListener('change', () => {
-      state.features.floorinfo.configDraft.baseLevelName = baseSelect.value || '';
-      markFeatureDirty('floorinfo');
-      refreshFloorInfoFeatureSummary();
-      renderRules();
-    });
-    baseWrap.append(baseLbl, baseSelect);
-
     const warningBox = div('feature-note');
+    warningBox.classList.add('floorinfo-config__warning');
     warningBox.style.display = 'none';
     warningBox.style.whiteSpace = 'pre-wrap';
 
-    const tableWrap = div('paramprop-table-wrap');
-    tableWrap.style.maxHeight = '280px';
+    const tableWrap = div('paramprop-table-wrap floorinfo-config__table');
+    tableWrap.style.maxHeight = '420px';
     tableWrap.style.border = '1px solid var(--border-soft)';
     tableWrap.style.borderRadius = '14px';
     tableWrap.style.background = 'var(--surface-control)';
+    tableWrap.style.overflow = 'auto';
     const table = document.createElement('table');
     table.className = 'paramprop-table';
     table.innerHTML = `
       <thead>
         <tr>
-          <th>기준</th>
+          <th>영역 기준</th>
           <th>레벨명</th>
           <th>절대 Z(mm)</th>
           <th>기대 층정보 값</th>
@@ -1115,32 +1142,9 @@ export function renderMulti(root) {
     const tbody = table.querySelector('tbody');
     tableWrap.append(table);
 
-    sourceCard.append(sourceHead, documentMeta, baseWrap, warningBox, tableWrap);
-    panel.append(param.field, sourceCard);
-
-    function updateBaseSelect() {
-      const draft = state.features.floorinfo.configDraft;
-      const rules = normalizeFloorInfoRules(draft.levelRules);
-      baseSelect.innerHTML = '';
-      if (!rules.length) {
-        const empty = document.createElement('option');
-        empty.value = '';
-        empty.textContent = '레벨을 먼저 불러오세요';
-        baseSelect.append(empty);
-        baseSelect.value = '';
-        return;
-      }
-      rules.forEach((rule) => {
-        const option = document.createElement('option');
-        option.value = rule.levelName;
-        option.textContent = `${rule.levelName} · ${Number(rule.absoluteZMm || 0).toLocaleString('ko-KR', { maximumFractionDigits: 1 })} mm`;
-        baseSelect.append(option);
-      });
-      if (!draft.baseLevelName || !rules.some((rule) => rule.levelName === draft.baseLevelName)) {
-        draft.baseLevelName = rules[0].levelName;
-      }
-      baseSelect.value = draft.baseLevelName || '';
-    }
+    controlsCard.append(param.field, controlsMeta);
+    sourceCard.append(sourceHead, documentMeta, warningBox, tableWrap);
+    panel.append(controlsCard, sourceCard);
 
     function updateWarnings() {
       const warnings = Array.isArray(state.features.floorinfo.configDraft.warnings)
@@ -1153,10 +1157,10 @@ export function renderMulti(root) {
     function renderRules() {
       const draft = state.features.floorinfo.configDraft;
       const rules = normalizeFloorInfoRules(draft.levelRules);
+      levelInputState.clear();
       documentMeta.textContent = draft.documentTitle
         ? `활성 문서: ${draft.documentTitle}`
         : '활성 문서 기준으로 레벨과 절대 Z를 불러옵니다.';
-      updateBaseSelect();
       updateWarnings();
       tbody.innerHTML = '';
 
@@ -1173,21 +1177,24 @@ export function renderMulti(root) {
 
       rules.forEach((rule) => {
         const row = document.createElement('tr');
-        if (draft.baseLevelName === rule.levelName) row.classList.add('is-selected');
+        row.classList.toggle('is-selected', rule.useAsBoundary !== false);
+        row.classList.toggle('is-inactive', rule.useAsBoundary === false);
 
-        const baseCell = document.createElement('td');
-        const radio = document.createElement('input');
-        radio.type = 'radio';
-        radio.name = 'floorinfo-base-level';
-        radio.checked = draft.baseLevelName === rule.levelName;
-        radio.addEventListener('change', () => {
-          draft.baseLevelName = rule.levelName;
-          baseSelect.value = draft.baseLevelName;
+        const boundaryCell = document.createElement('td');
+        boundaryCell.style.textAlign = 'center';
+        const toggle = document.createElement('input');
+        toggle.type = 'checkbox';
+        toggle.checked = rule.useAsBoundary !== false;
+        toggle.title = '이 레벨을 층정보 영역 경계로 사용';
+        toggle.addEventListener('change', () => {
+          draft.levelRules = rules.map((item) => item.levelName === rule.levelName
+            ? { ...item, useAsBoundary: toggle.checked }
+            : item);
           markFeatureDirty('floorinfo');
-          refreshFloorInfoFeatureSummary();
           renderRules();
+          refreshFloorInfoFeatureSummary();
         });
-        baseCell.append(radio);
+        boundaryCell.append(toggle);
 
         const nameCell = document.createElement('td');
         nameCell.textContent = rule.levelName;
@@ -1202,8 +1209,9 @@ export function renderMulti(root) {
         input.style.width = '100%';
         input.style.minWidth = '160px';
         input.value = rule.expectedValue || '';
-        input.placeholder = '예: 1F';
-        input.addEventListener('change', () => {
+        input.placeholder = rule.useAsBoundary === false ? '영역 기준 아님' : '예: 1F';
+        input.disabled = rule.useAsBoundary === false;
+        input.addEventListener('input', () => {
           draft.levelRules = rules.map((item) => item.levelName === rule.levelName
             ? { ...item, expectedValue: input.value || '' }
             : item);
@@ -1211,13 +1219,47 @@ export function renderMulti(root) {
           refreshFloorInfoFeatureSummary();
         });
         valueCell.append(input);
+        levelInputState.set(rule.levelName.toLowerCase(), {
+          levelName: rule.levelName,
+          absoluteZFt: rule.absoluteZFt,
+          absoluteZMm: rule.absoluteZMm,
+          toggle,
+          input
+        });
 
-        row.append(baseCell, nameCell, zCell, valueCell);
+        row.append(boundaryCell, nameCell, zCell, valueCell);
         tbody.append(row);
       });
     }
 
+    function collectDraft() {
+      const draft = state.features.floorinfo.configDraft;
+      const currentRules = normalizeFloorInfoRules(draft.levelRules);
+      const currentMap = new Map(currentRules.map((rule) => [rule.levelName.toLowerCase(), rule]));
+      const nextRules = [];
+
+      levelInputState.forEach((entry, key) => {
+        const existing = currentMap.get(key);
+        nextRules.push({
+          levelName: entry.levelName,
+          absoluteZFt: Number(entry.absoluteZFt ?? existing?.absoluteZFt) || 0,
+          absoluteZMm: Number(entry.absoluteZMm ?? existing?.absoluteZMm) || 0,
+          useAsBoundary: !!entry.toggle?.checked,
+          expectedValue: String(entry.input?.value || '')
+        });
+      });
+
+      draft.parameterName = String(param.input?.value || '');
+      if (nextRules.length) {
+        draft.levelRules = normalizeFloorInfoRules(nextRules);
+      } else {
+        draft.levelRules = normalizeFloorInfoRules(draft.levelRules);
+      }
+      return draft;
+    }
+
     function applySnapshot(payload) {
+      collectDraft();
       const draft = state.features.floorinfo.configDraft;
       if (payload?.ok === false) {
         draft.documentTitle = '';
@@ -1230,16 +1272,13 @@ export function renderMulti(root) {
       draft.documentTitle = payload?.documentTitle || '';
       draft.levelRules = mergeFloorInfoRules(draft.levelRules, levels);
       draft.warnings = Array.isArray(payload?.warnings) ? payload.warnings : [];
-      if (!draft.baseLevelName || !draft.levelRules.some((rule) => rule.levelName === draft.baseLevelName)) {
-        draft.baseLevelName = draft.levelRules[0]?.levelName || '';
-      }
       renderRules();
       refreshFloorInfoFeatureSummary();
     }
 
     buildFloorInfoConfig.applySnapshot = applySnapshot;
     renderRules();
-    return { panel, controls: { param, baseSelect, renderRules, updateWarnings } };
+    return { panel, controls: { param, renderRules, updateWarnings, collectDraft } };
   }
 
   function buildGuidConfig() {
@@ -2520,11 +2559,12 @@ export function renderMulti(root) {
     if (state.features.floorinfo.enabled) {
       const config = state.features.floorinfo.configCommitted || {};
       const rules = normalizeFloorInfoRules(config.levelRules);
-      const configuredCount = rules.filter((rule) => String(rule.expectedValue || '').trim()).length;
+      const selectedRules = rules.filter((rule) => rule.useAsBoundary !== false);
+      const configuredCount = selectedRules.filter((rule) => String(rule.expectedValue || '').trim()).length;
       if (!String(config.parameterName || '').trim()) return '층정보 검토 파라미터명을 입력하세요.';
-      if (!String(config.baseLevelName || '').trim()) return '층정보 검토의 주 레벨을 선택하세요.';
       if (!rules.length) return '활성 문서에서 레벨 목록을 불러와 층정보 검토 규칙을 설정하세요.';
-      if (!configuredCount) return '최소 1개 이상의 레벨에 기대 층정보 값을 입력하세요.';
+      if (!selectedRules.length) return '층정보 영역을 구분할 레벨을 최소 1개 이상 선택하세요.';
+      if (!configuredCount) return '선택한 영역 기준 레벨에 기대 층정보 값을 최소 1개 이상 입력하세요.';
     }
     if (options.requireRvt && !state.rvtList.length) return 'RVT 파일을 추가하세요.';
     return '';
@@ -2676,6 +2716,36 @@ export function renderMulti(root) {
         buildSettingsModal.help.style.margin = '0';
         buildSettingsModal.help.style.justifySelf = 'stretch';
         buildSettingsModal.help.style.alignSelf = 'start';
+      } else if (key === 'floorinfo') {
+        buildSettingsModal.modal.style.width = 'min(1280px, 95vw)';
+        buildSettingsModal.modal.style.maxWidth = '1280px';
+        buildSettingsModal.body.style.display = 'grid';
+        buildSettingsModal.body.style.gridTemplateColumns = 'minmax(0, 2.05fr) minmax(300px, 0.82fr)';
+        buildSettingsModal.body.style.alignItems = 'start';
+        buildSettingsModal.body.style.gap = '12px';
+        buildSettingsModal.body.style.columnGap = '12px';
+        buildSettingsModal.form.style.display = 'grid';
+        buildSettingsModal.form.style.gridTemplateColumns = 'minmax(0, 1fr)';
+        buildSettingsModal.form.style.gridAutoFlow = 'row';
+        buildSettingsModal.form.style.gap = '12px';
+        buildSettingsModal.form.style.alignContent = 'start';
+        buildSettingsModal.form.style.justifyItems = 'stretch';
+        buildSettingsModal.form.style.flex = '';
+        buildSettingsModal.form.style.minWidth = '0';
+        buildSettingsModal.form.style.width = '100%';
+        buildSettingsModal.form.style.maxWidth = 'none';
+        buildSettingsModal.form.style.margin = '0';
+        buildSettingsModal.form.style.justifySelf = 'stretch';
+        buildSettingsModal.help.style.display = 'grid';
+        buildSettingsModal.help.style.gap = '10px';
+        buildSettingsModal.help.style.alignContent = 'start';
+        buildSettingsModal.help.style.flex = '';
+        buildSettingsModal.help.style.minWidth = '0';
+        buildSettingsModal.help.style.width = '100%';
+        buildSettingsModal.help.style.maxWidth = '380px';
+        buildSettingsModal.help.style.margin = '0';
+        buildSettingsModal.help.style.justifySelf = 'stretch';
+        buildSettingsModal.help.style.alignSelf = 'start';
       } else if (key === 'common') {
         buildSettingsModal.modal.style.width = 'min(980px, 92vw)';
         buildSettingsModal.modal.style.maxWidth = '980px';
@@ -2762,6 +2832,24 @@ export function renderMulti(root) {
           child.style.margin = '0';
           child.style.boxSizing = 'border-box';
         });
+      } else if (key === 'floorinfo') {
+        panel.style.display = 'flex';
+        panel.style.flexDirection = 'column';
+        panel.style.alignItems = 'stretch';
+        panel.style.justifyContent = 'flex-start';
+        panel.style.width = '100%';
+        panel.style.maxWidth = 'none';
+        panel.style.minWidth = '0';
+        panel.style.margin = '0';
+        panel.style.boxSizing = 'border-box';
+        Array.from(panel.children || []).forEach((child) => {
+          if (!child || !child.style) return;
+          child.style.width = '100%';
+          child.style.maxWidth = 'none';
+          child.style.minWidth = '0';
+          child.style.margin = '0';
+          child.style.boxSizing = 'border-box';
+        });
       }
       buildSettingsModal.form.append(panel);
     }
@@ -2791,6 +2879,9 @@ export function renderMulti(root) {
       emitCommonOptionsChanged();
       markStale('connector');
     } else {
+      if (key === 'floorinfo' && state.ui.controls.floorinfo?.collectDraft) {
+        state.ui.controls.floorinfo.collectDraft();
+      }
       commitConfig(state.features[key]);
       markStale(key);
     }
@@ -2975,7 +3066,8 @@ export function renderMulti(root) {
     }
     if (key === 'floorinfo') {
       return [
-        '활성 문서의 레벨과 절대 Z를 기준으로 레벨 구간별 기대 층정보 값을 설정합니다.',
+        '활성 문서의 레벨 중 층정보 영역을 구분할 레벨만 선택하고, 그 구간별 기대 층정보 값을 설정합니다.',
+        '체크하지 않은 중간 레벨은 무시되므로 1F, 1.5F, 2F 중 1F와 2F만 선택해 1F~2F 구간을 1F로 판정할 수 있습니다.',
         '객체가 여러 레벨 구간을 관통하면 가장 아래 구간의 층정보를 기대값으로 사용합니다.',
         'BQC Sub 기능이라 필요한 프로젝트에서만 선택해 보조 검토로 활용하면 됩니다.'
       ];
@@ -3103,6 +3195,7 @@ export function renderMulti(root) {
         levelName,
         absoluteZFt: Number(item?.absoluteZFt) || 0,
         absoluteZMm: Number(item?.absoluteZMm) || 0,
+        useAsBoundary: item?.useAsBoundary !== false,
         expectedValue: String(item?.expectedValue || '')
       });
     });
@@ -3115,6 +3208,7 @@ export function renderMulti(root) {
       levelName: level.levelName,
       absoluteZFt: Number(level.absoluteZFt) || 0,
       absoluteZMm: Number(level.absoluteZMm) || 0,
+      useAsBoundary: existingMap.get(level.levelName.toLowerCase())?.useAsBoundary !== false,
       expectedValue: existingMap.get(level.levelName.toLowerCase())?.expectedValue || ''
     }));
   }
@@ -3151,13 +3245,13 @@ export function renderMulti(root) {
     const committedRules = normalizeFloorInfoRules(feature.configCommitted?.levelRules);
     const draftRules = normalizeFloorInfoRules(feature.configDraft?.levelRules);
     const rules = draftRules.length ? draftRules : committedRules;
-    const configuredCount = rules.filter((rule) => String(rule.expectedValue || '').trim()).length;
-    const baseLevelName = feature.configDraft?.baseLevelName || feature.configCommitted?.baseLevelName || '';
+    const selectedRules = rules.filter((rule) => rule.useAsBoundary !== false);
+    const configuredCount = selectedRules.filter((rule) => String(rule.expectedValue || '').trim()).length;
     const parameterName = feature.configDraft?.parameterName || feature.configCommitted?.parameterName || '(미입력)';
     target.top.textContent = feature.enabled
-      ? '체크됨 · 설정창에서 기준 레벨과 레벨별 기대 층정보 값을 관리할 수 있습니다.'
+      ? '체크됨 · 설정창에서 영역 기준 레벨과 기대 층정보 값을 관리할 수 있습니다.'
       : 'Sub 기능입니다. 필요할 때만 켜서 층정보 파라미터의 레벨/Z 일치 여부를 검토하세요.';
-    target.sub.textContent = `파라미터 ${parameterName} · 기준 레벨 ${baseLevelName || '(미선택)'} · 규칙 ${configuredCount}/${rules.length || 0}개`;
+    target.sub.textContent = `파라미터 ${parameterName} · 영역 기준 ${selectedRules.length || 0}개 · 규칙 ${configuredCount}/${selectedRules.length || 0}개`;
     target.row.classList.toggle('is-active', !!feature.enabled);
   }
 
@@ -3234,6 +3328,8 @@ export function renderMulti(root) {
     }
     renderModalFeatureSummary();
     updateBqcSidebar();
+    updateCurrentDocBtnState();
+    updateMultiRunBtnState();
   }
 
   function getSelectedFeatureStatus(key) {
@@ -3250,8 +3346,9 @@ export function renderMulti(root) {
     }
     if (key === 'floorinfo') {
       const rules = normalizeFloorInfoRules(feature.configCommitted.levelRules);
-      const configuredCount = rules.filter((rule) => String(rule.expectedValue || '').trim()).length;
-      if (!String(feature.configCommitted.parameterName || '').trim() || !String(feature.configCommitted.baseLevelName || '').trim() || !configuredCount) {
+      const selectedRules = rules.filter((rule) => rule.useAsBoundary !== false);
+      const configuredCount = selectedRules.filter((rule) => String(rule.expectedValue || '').trim()).length;
+      if (!String(feature.configCommitted.parameterName || '').trim() || !selectedRules.length || !configuredCount) {
         return { label: '설정 필요', className: 'status-chip--warn' };
       }
     }
@@ -3450,7 +3547,7 @@ export function renderMulti(root) {
       const committed = deepCopy(feature.configCommitted || {});
       committed.levelRules = normalizeFloorInfoRules(committed.levelRules);
       committed.parameterName = String(committed.parameterName || '').trim();
-      committed.baseLevelName = String(committed.baseLevelName || '').trim();
+      delete committed.baseLevelName;
       return {
         enabled: feature.enabled,
         ...committed
@@ -3484,8 +3581,8 @@ export function renderMulti(root) {
     }
     if (state.ui.activeFeatureKey === 'floorinfo') {
       target.configDraft.parameterName = String(target.configDraft.parameterName || '').trim();
-      target.configDraft.baseLevelName = String(target.configDraft.baseLevelName || '').trim();
       target.configDraft.levelRules = normalizeFloorInfoRules(target.configDraft.levelRules);
+      delete target.configDraft.baseLevelName;
     }
     target.configCommitted = deepCopy(target.configDraft);
     target.applied = true;
@@ -3511,7 +3608,7 @@ export function renderMulti(root) {
     if (key === 'floorinfo') {
       feature.configDraft.levelRules = normalizeFloorInfoRules(feature.configDraft.levelRules);
       feature.configDraft.parameterName = String(feature.configDraft.parameterName || '').trim();
-      feature.configDraft.baseLevelName = String(feature.configDraft.baseLevelName || '').trim();
+      delete feature.configDraft.baseLevelName;
     }
     if (key === 'familylink') {
       feature.configDraft.targetsText = buildTargetsText(feature.configDraft.selectedTargets);

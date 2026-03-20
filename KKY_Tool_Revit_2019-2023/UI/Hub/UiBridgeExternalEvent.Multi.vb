@@ -138,7 +138,7 @@ Namespace UI.Hub
                 dlg.RestoreDirectory = True
                 If dlg.ShowDialog() <> DialogResult.OK Then Return
                 Dim files As String() = dlg.FileNames
-                SendToWeb("hub:rvt-picked", New With {.paths = files})
+                SendToWebAfterDialog("hub:rvt-picked", New With {.paths = files})
             End Using
         End Sub
 
@@ -395,9 +395,9 @@ NextItem:
 
             If _multiRequest.FloorInfo.Enabled Then
                 stepIndex += 1
-                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "층정보 Z 검토 실행 중", safeName)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "층정보 검토 실행 중", safeName)
                 RunFloorInfoMultiForDocument(doc, safeName, basePct)
-                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "층정보 Z 검토 완료", safeName)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "층정보 검토 완료", safeName)
             End If
 
             If _multiRequest.Pms.Enabled Then

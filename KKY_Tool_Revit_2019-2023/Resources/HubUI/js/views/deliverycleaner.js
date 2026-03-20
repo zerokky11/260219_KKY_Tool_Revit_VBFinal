@@ -1,4 +1,4 @@
-import { clear, div, toast, setBusy } from '../core/dom.js';
+﻿import { clear, div, toast, setBusy, showCompletionSummaryDialog, showExcelSavedDialog } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
@@ -11,6 +11,63 @@ const FILTER_OPERATORS = [
 
 const TAB_KEYS = ['view', 'element', 'filter'];
 const EXCEL_PHASE_WEIGHT = { EXCEL_INIT: 0.05, EXCEL_WRITE: 0.85, EXCEL_SAVE: 0.08, AUTOFIT: 0.02, DONE: 1, ERROR: 1 };
+
+function refreshUiAfterHostDialog(render, delay = 120) {
+  if (typeof render !== 'function') return;
+
+  const run = () => {
+    try { render(); } catch { }
+  };
+
+  run();
+
+  if (typeof window === 'undefined') return;
+
+  let released = false;
+  let raf1 = 0;
+  let raf2 = 0;
+  let timerRun = 0;
+  let timerFinalize = 0;
+
+  const cleanup = () => {
+    if (released) return;
+    released = true;
+    window.removeEventListener('focus', onFocus, true);
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisible, true);
+    }
+    if (raf1 && typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(raf1);
+    if (raf2 && typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(raf2);
+    if (timerRun) window.clearTimeout(timerRun);
+    if (timerFinalize) window.clearTimeout(timerFinalize);
+  };
+
+  const rerender = () => {
+    cleanup();
+    run();
+  };
+
+  const onFocus = () => rerender();
+  const onVisible = () => {
+    if (document.visibilityState === 'visible') rerender();
+  };
+
+  window.addEventListener('focus', onFocus, true);
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onVisible, true);
+  }
+
+  if (typeof window.requestAnimationFrame === 'function') {
+    raf1 = window.requestAnimationFrame(() => {
+      run();
+      raf2 = window.requestAnimationFrame(run);
+    });
+  } else {
+    timerRun = window.setTimeout(run, 0);
+  }
+
+  timerFinalize = window.setTimeout(rerender, Math.max(0, Number(delay) || 0));
+}
 
 export function renderDeliveryCleaner(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');
@@ -34,6 +91,7 @@ export function renderDeliveryCleaner(root) {
     session: null,
     busy: false,
     purgeSnapshot: null,
+    purgeResultShown: false,
     filterDocItems: [],
     progressPercent: 0,
     ui: {}
@@ -45,7 +103,7 @@ export function renderDeliveryCleaner(root) {
       <div class="feature-heading">
         <span class="feature-kicker">납품시 BQC검토 · 별도 워크플로우</span>
         <h2 class="feature-title">RVT 정리 (납품용)</h2>
-        <p class="feature-sub">링크 정리, 뷰·객체 파라미터 입력, 뷰 필터 적용, 검토, 속성 추출, Purge를 허브 안에서 이어서 실행합니다.</p>
+        <p class="feature-sub">링크 정리, 뷰/객체 파라미터 입력, 뷰 필터 적용, 검토, 속성 추출, Purge를 허브 안에서 이어서 실행합니다.</p>
       </div>
     </div>
   `;
@@ -71,27 +129,33 @@ export function renderDeliveryCleaner(root) {
       state.checked.add(path);
     });
 
-    syncStateToInputs(state);
-    renderRvtList(state);
-    updateActionState(state);
+    refreshUiAfterHostDialog(() => {
+      syncStateToInputs(state);
+      renderRvtList(state);
+      updateActionState(state);
+    });
   });
   onHost('deliverycleaner:output-folder-picked', (payload) => {
     if (!payload?.path) return;
     state.outputFolder = payload.path;
-    syncStateToInputs(state);
-    updateActionState(state);
+    refreshUiAfterHostDialog(() => {
+      syncStateToInputs(state);
+      updateActionState(state);
+    });
   });
   onHost('deliverycleaner:filter-loaded', (payload) => {
     if (!payload?.profile) return;
     state.filterProfile = normalizeFilterProfile(payload.profile);
     state.useFilter = true;
-    syncStateToInputs(state);
-    renderFilterPreview(state);
-    updateActionState(state);
-    if (payload?.source) toast(`필터를 불러왔습니다: ${payload.source}`, 'ok');
+    refreshUiAfterHostDialog(() => {
+      syncStateToInputs(state);
+      renderFilterPreview(state);
+      updateActionState(state);
+    });
+    if (payload?.source) toast(`필터 설정을 불러왔습니다: ${payload.source}`, 'ok');
   });
   onHost('deliverycleaner:filter-saved', (payload) => {
-    if (payload?.path) toast(`필터 XML 저장 완료: ${payload.path}`, 'ok');
+    if (payload?.path) toast(`필터 XML을 저장했습니다: ${payload.path}`, 'ok');
   });
   onHost('deliverycleaner:filter-doc-list', (payload) => {
     state.filterDocItems = Array.isArray(payload?.items) ? payload.items : [];
@@ -105,13 +169,15 @@ export function renderDeliveryCleaner(root) {
     setPageBusy(state, false);
     applyHostState(state, payload?.state || {});
     const summary = payload?.summary || {};
-    toast(`정리 완료 · 성공 ${summary.successCount ?? 0} / 실패 ${summary.failCount ?? 0}`, summary.failCount ? 'err' : 'ok', 3200);
+    toast(`정리 완료: 성공 ${summary.successCount ?? 0} / 실패 ${summary.failCount ?? 0}`, summary.failCount ? 'err' : 'ok', 3200);
+    showDeliveryCleanerRunDialog(state, payload || {});
   });
   onHost('deliverycleaner:verify-done', (payload) => {
     resetDeliveryCleanerProgress(state);
     setPageBusy(state, false);
     applyHostState(state, payload?.state || {});
-    toast(payload?.path ? `정리 결과 검토 엑셀 생성: ${payload.path}` : '정리 결과 검토가 완료되었습니다.', 'ok', 3200);
+    toast(payload?.path ? `정리 결과 검토 파일 생성: ${payload.path}` : '정리 결과 검토가 완료되었습니다.', 'ok', 3200);
+    showDeliveryCleanerVerifyDialog(state, payload || {});
   });
   onHost('deliverycleaner:extract-done', (payload) => {
     resetDeliveryCleanerProgress(state);
@@ -122,17 +188,20 @@ export function renderDeliveryCleaner(root) {
       state.extractParameterNamesCsv = payload.parameterNamesCsv;
       syncStateToInputs(state);
     }
-    toast(payload?.path ? `속성값 추출 엑셀 생성: ${payload.path}` : '속성값 추출이 완료되었습니다.', 'ok', 3200);
+    toast(payload?.path ? `속성값 추출 파일 생성: ${payload.path}` : '속성값 추출이 완료되었습니다.', 'ok', 3200);
+    showDeliveryCleanerExtractDialog(state, payload || {});
   });
   onHost('deliverycleaner:purge-started', (payload) => {
     applyHostState(state, payload?.state || {});
     state.purgeSnapshot = payload?.snapshot || state.purgeSnapshot;
+    state.purgeResultShown = false;
     renderPurgeStatus(state);
     startPurgePolling(state);
     updateActionState(state);
     toast('Purge 일괄처리를 시작했습니다.', 'ok');
   });
   onHost('deliverycleaner:purge-status', (payload) => {
+    applyHostState(state, payload?.state || {});
     state.purgeSnapshot = payload?.snapshot || null;
     renderPurgeStatus(state);
     updateActionState(state);
@@ -143,14 +212,38 @@ export function renderDeliveryCleaner(root) {
       resetDeliveryCleanerProgress(state);
       setPageBusy(state, false);
       if (snapshot.isCompleted) toast('Purge 일괄처리가 완료되었습니다.', 'ok', 3200);
-      if (snapshot.isFaulted) toast(snapshot.message || 'Purge 진행 중 오류가 발생했습니다.', 'err', 3600);
+      if (snapshot.isFaulted) toast(snapshot.message || 'Purge 처리 중 오류가 발생했습니다.', 'err', 3600);
+      if (snapshot.isCompleted && !state.purgeResultShown) {
+        state.purgeResultShown = true;
+        showDeliveryCleanerPurgeDialog(state, payload || {});
+      }
     }
   });
   onHost('deliverycleaner:log-exported', (payload) => {
     resetDeliveryCleanerProgress(state);
     setPageBusy(state, false);
     applyHostState(state, payload?.state || {});
-    if (payload?.path) toast(`로그 엑셀 저장 완료: ${payload.path}`, 'ok', 3200);
+    if (payload?.path) toast(`로그 엑셀을 저장했습니다: ${payload.path}`, 'ok', 3200);
+  });
+  onHost('deliverycleaner:verify-exported', (payload) => {
+    if (payload?.path) {
+      showExcelSavedDialog('정리 결과 검토 엑셀을 저장했습니다.', payload.path, (path) => post('excel:open', { path }));
+    }
+  });
+  onHost('deliverycleaner:extract-exported', (payload) => {
+    if (payload?.path) {
+      showExcelSavedDialog('속성값 추출 엑셀을 저장했습니다.', payload.path, (path) => post('excel:open', { path }));
+    }
+  });
+  onHost('deliverycleaner:designoption-exported', (payload) => {
+    if (payload?.path) {
+      showExcelSavedDialog('Design Option 검토 엑셀을 저장했습니다.', payload.path, (path) => post('excel:open', { path }));
+    }
+  });
+  onHost('deliverycleaner:purge-exported', (payload) => {
+    if (payload?.path) {
+      showExcelSavedDialog('Purge 객체수 비교 엑셀을 저장했습니다.', payload.path, (path) => post('excel:open', { path }));
+    }
   });
   onHost('deliverycleaner:folder-opened', (payload) => {
     if (payload?.ok) toast('결과 폴더를 열었습니다.', 'ok');
@@ -184,7 +277,7 @@ function buildControlCard(state) {
     <div class="deliverycleaner-card__head">
       <div>
         <h3>실행 및 결과</h3>
-        <p>작업 버튼, 현재 상태, Purge 진행, 로그 저장을 한 자리에서 확인합니다.</p>
+        <p>정리 실행, 결과 검토, 속성값 추출, Purge 진행과 엑셀 내보내기를 한 자리에서 확인합니다.</p>
       </div>
     </div>
   `;
@@ -243,7 +336,7 @@ function buildFilesCard(state) {
     <div class="deliverycleaner-card__head">
       <div>
         <h3>대상 RVT</h3>
-        <p>정리할 납품 대상 모델을 선택합니다.</p>
+        <p>정리와 검토를 수행할 납품 대상 RVT를 선택합니다.</p>
       </div>
       <div class="deliverycleaner-chip">필수</div>
     </div>
@@ -283,13 +376,13 @@ function buildSettingsModal(state) {
       <div class="deliverycleaner-modal__head">
         <div>
           <h3>설정하기 (기본/세부)</h3>
-          <p>기본 설정과 세부 설정을 한 창에서 정리합니다.</p>
+          <p>기본 설정과 세부 설정을 한 화면에서 정리합니다.</p>
         </div>
         <button type="button" class="deliverycleaner-modal__close" data-close>&times;</button>
       </div>
       <div class="deliverycleaner-modal__body" data-settings-body></div>
       <div class="deliverycleaner-modal__foot">
-        <button type="button" class="btn btn--secondary" data-cancel>닫기</button>
+        <button type="button" class="btn btn--primary" data-cancel>적용</button>
       </div>
     </div>
   `;
@@ -317,7 +410,7 @@ function buildBasicsCard(state) {
     <div class="deliverycleaner-card__head">
       <div>
         <h3>기본 설정</h3>
-        <p>결과 폴더와 납품 정리 기준이 되는 기본 항목을 지정합니다.</p>
+        <p>결과 폴더와 정리용 3D 뷰 이름 등 기본 항목을 지정합니다.</p>
       </div>
     </div>
   `;
@@ -346,7 +439,7 @@ function buildBasicsCard(state) {
   });
   viewNameField.append(viewNameInput);
 
-  const extractField = fieldBlock('속성값 추출 파라미터');
+  const extractField = fieldBlock('속성값 추출 기본 파라미터');
   const extractInput = document.createElement('textarea');
   extractInput.rows = 2;
   extractInput.placeholder = '예: Comments, Mark, Type Comments';
@@ -369,7 +462,7 @@ function buildWorkspaceCard(state) {
     <div class="deliverycleaner-card__head">
       <div>
         <h3>세부 설정</h3>
-        <p>탭을 전환하면서 뷰 파라미터, 객체 파라미터, 뷰 필터를 정리합니다.</p>
+        <p>뷰 파라미터, 객체 파라미터, 뷰 필터를 탭으로 전환하며 설정합니다.</p>
       </div>
     </div>
   `;
@@ -395,7 +488,7 @@ function buildWorkspaceCard(state) {
   const viewTable = document.createElement('table');
   viewTable.className = 'deliverycleaner-grid-table deliverycleaner-grid-table--view';
   viewTable.innerHTML = `
-    <thead><tr><th>사용</th><th>파라미터 이름</th><th>입력값</th></tr></thead>
+    <thead><tr><th>파라미터 이름</th><th>값</th></tr></thead>
     <tbody></tbody>
   `;
   viewScroll.append(viewTable);
@@ -404,7 +497,7 @@ function buildWorkspaceCard(state) {
   const elementPanel = div('deliverycleaner-panel');
   elementPanel.innerHTML = `
     <div class="deliverycleaner-section-callout">
-      <label class="deliverycleaner-checkline"><input type="checkbox" data-element-enabled> 객체 파라미터 일괄 입력 사용</label>
+      <div class="deliverycleaner-note">조건과 입력을 채우면 자동으로 객체 파라미터 입력에 반영됩니다.</div>
       <div class="deliverycleaner-inline-select">
         <span>조건 결합</span>
         <select data-combination-mode>
@@ -421,7 +514,7 @@ function buildWorkspaceCard(state) {
         </div>
         <div class="deliverycleaner-table-scroll deliverycleaner-table-scroll--grid">
           <table class="deliverycleaner-grid-table deliverycleaner-grid-table--conditions">
-            <thead><tr><th>사용</th><th>파라미터</th><th>연산자</th><th>값</th></tr></thead>
+            <thead><tr><th>파라미터</th><th>연산자</th><th>값</th></tr></thead>
             <tbody data-condition-body></tbody>
           </table>
         </div>
@@ -433,7 +526,7 @@ function buildWorkspaceCard(state) {
         </div>
         <div class="deliverycleaner-table-scroll deliverycleaner-table-scroll--grid">
           <table class="deliverycleaner-grid-table deliverycleaner-grid-table--assignments">
-            <thead><tr><th>사용</th><th>파라미터</th><th>값</th></tr></thead>
+            <thead><tr><th>파라미터</th><th>값</th></tr></thead>
             <tbody data-assignment-body></tbody>
           </table>
         </div>
@@ -447,7 +540,7 @@ function buildWorkspaceCard(state) {
     <div class="deliverycleaner-filter-top">
       <label class="deliverycleaner-checkline"><input type="checkbox" data-use-filter> 필터 사용</label>
       <label class="deliverycleaner-checkline"><input type="checkbox" data-apply-filter> 최초 열기 시 적용</label>
-      <label class="deliverycleaner-checkline"><input type="checkbox" data-auto-enable-filter> 뷰가 비면 자동 활성화</label>
+      <label class="deliverycleaner-checkline"><input type="checkbox" data-auto-enable-filter>  뷰가 비면 자동 활성화</label>
     </div>
     <div class="deliverycleaner-inline-actions">
       <button type="button" class="btn btn--secondary" data-filter-import>XML 가져오기</button>
@@ -458,14 +551,14 @@ function buildWorkspaceCard(state) {
       <section class="deliverycleaner-subsection deliverycleaner-subsection--compact">
         <div class="deliverycleaner-subsection__head">
           <h4>카테고리</h4>
-          <p>필터에 포함된 카테고리</p>
+          <p>필터에 포함할 카테고리</p>
         </div>
         <div class="deliverycleaner-category-list" data-category-list></div>
       </section>
       <section class="deliverycleaner-subsection">
         <div class="deliverycleaner-subsection__head">
           <h4>조건</h4>
-          <p>Revit 필터 설정창과 비슷한 구조로 표시합니다.</p>
+          <p>Revit 필터 설정창과 비슷한 구조로 조건을 표시합니다.</p>
         </div>
         <div class="deliverycleaner-table-scroll deliverycleaner-table-scroll--grid deliverycleaner-table-scroll--filter">
           <table class="deliverycleaner-grid-table deliverycleaner-grid-table--filter-preview">
@@ -484,7 +577,6 @@ function buildWorkspaceCard(state) {
   state.ui.tabButtons = Array.from(tabBar.querySelectorAll('.deliverycleaner-tab'));
   state.ui.panels = { view: viewPanel, element: elementPanel, filter: filterPanel };
   state.ui.viewParamBody = viewTable.querySelector('tbody');
-  state.ui.elementEnabled = elementPanel.querySelector('[data-element-enabled]');
   state.ui.combinationMode = elementPanel.querySelector('[data-combination-mode]');
   state.ui.conditionBody = elementPanel.querySelector('[data-condition-body]');
   state.ui.assignmentBody = elementPanel.querySelector('[data-assignment-body]');
@@ -499,10 +591,6 @@ function buildWorkspaceCard(state) {
   state.ui.filterConditionBody = filterPanel.querySelector('[data-filter-condition-body]');
   state.ui.filterSummary = filterPanel.querySelector('[data-filter-summary]');
 
-  state.ui.elementEnabled.addEventListener('change', () => {
-    state.elementParameterUpdate.enabled = state.ui.elementEnabled.checked;
-    renderElementUpdateSummary(state);
-  });
   state.ui.combinationMode.addEventListener('change', () => {
     state.elementParameterUpdate.combinationMode = state.ui.combinationMode.value;
     renderElementUpdateSummary(state);
@@ -530,7 +618,7 @@ function buildFilterDocModal(state) {
     <div class="deliverycleaner-modal__dialog">
       <div class="deliverycleaner-modal__head">
         <div>
-          <h3>현재 문서 필터 추출</h3>
+          <h3>문서 필터 추출</h3>
           <p data-doc-title></p>
         </div>
         <button type="button" class="deliverycleaner-modal__close" data-close>&times;</button>
@@ -563,15 +651,15 @@ function buildExtractModal(state) {
       <div class="deliverycleaner-modal__head">
         <div>
           <h3>속성값 추출</h3>
-          <p>추출할 파라미터를 입력한 뒤 이 창에서 바로 엑셀 추출을 실행합니다.</p>
+          <p>추출할 파라미터를 입력한 뒤 선택한 RVT의 객체 속성 정보를 추출합니다.</p>
         </div>
         <button type="button" class="deliverycleaner-modal__close" data-close>&times;</button>
       </div>
       <div class="deliverycleaner-modal__body">
         <div class="deliverycleaner-field-stack">
           <div class="deliverycleaner-note">
-            New Schedule/Quantities에서 리스트업 가능한 카테고리의 객체만 추출 대상으로 사용합니다.
-            Centerline, 주석, 일반 선처럼 스케줄 대상이 아닌 객체는 제외됩니다.
+            New Schedule/Quantities에서 리스트업 가능한 실제 시공 객체 중심으로만 추출합니다.
+            Centerline, 주석, 일반 선, 분석용 객체 등 스케줄 대상이 아닌 요소는 제외됩니다.
           </div>
           <div class="deliverycleaner-field">
             <label>추출 파라미터</label>
@@ -603,12 +691,12 @@ function buildExtractModal(state) {
 
   runBtn.addEventListener('click', () => {
     if (!getDeliveryCleanerExtractionTargetCount(state)) {
-      toast('추출 대상 RVT가 없습니다. 먼저 RVT를 추가하거나 정리 결과를 준비해주세요.', 'err', 3200);
+      toast('속성값 추출 대상 RVT가 없습니다. 먼저 RVT를 추가하거나 정리 결과 파일을 준비해주세요.', 'err', 3200);
       return;
     }
 
     if (!state.extractParameterNamesCsv.trim()) {
-      toast('추출할 파라미터 이름을 입력해주세요.', 'err', 3200);
+      toast('추출할 파라미터를 하나 이상 입력해주세요.', 'err', 3200);
       return;
     }
 
@@ -696,9 +784,8 @@ function renderViewParameterRows(state) {
   state.viewParameters.forEach((row, index) => {
     const tr = document.createElement('tr');
     tr.append(
-      tdWithCheck(row.enabled, (checked) => { state.viewParameters[index].enabled = checked; }),
       tdWithInput(row.parameterName, '파라미터 이름', (value) => { state.viewParameters[index].parameterName = value; }),
-      tdWithInput(row.parameterValue, '입력값', (value) => { state.viewParameters[index].parameterValue = value; })
+      tdWithInput(row.parameterValue, '값', (value) => { state.viewParameters[index].parameterValue = value; })
     );
     body.append(tr);
   });
@@ -710,7 +797,6 @@ function renderElementUpdateRows(state) {
   state.elementParameterUpdate.conditions.forEach((row, index) => {
     const tr = document.createElement('tr');
     tr.append(
-      tdWithCheck(row.enabled, (checked) => { state.elementParameterUpdate.conditions[index].enabled = checked; renderElementUpdateSummary(state); }),
       tdWithInput(row.parameterName, '파라미터 이름', (value) => { state.elementParameterUpdate.conditions[index].parameterName = value; renderElementUpdateSummary(state); }),
       tdWithSelect(row.operatorName, FILTER_OPERATORS, (value) => { state.elementParameterUpdate.conditions[index].operatorName = value; renderElementUpdateSummary(state); }),
       tdWithInput(row.value, '값', (value) => { state.elementParameterUpdate.conditions[index].value = value; renderElementUpdateSummary(state); })
@@ -723,7 +809,6 @@ function renderElementUpdateRows(state) {
   state.elementParameterUpdate.assignments.forEach((row, index) => {
     const tr = document.createElement('tr');
     tr.append(
-      tdWithCheck(row.enabled, (checked) => { state.elementParameterUpdate.assignments[index].enabled = checked; renderElementUpdateSummary(state); }),
       tdWithInput(row.parameterName, '파라미터 이름', (value) => { state.elementParameterUpdate.assignments[index].parameterName = value; renderElementUpdateSummary(state); }),
       tdWithInput(row.value, '값', (value) => { state.elementParameterUpdate.assignments[index].value = value; renderElementUpdateSummary(state); })
     );
@@ -734,22 +819,21 @@ function renderElementUpdateRows(state) {
 }
 
 function renderElementUpdateSummary(state) {
-  const enabled = state.elementParameterUpdate.enabled;
-  const conds = state.elementParameterUpdate.conditions.filter((row) => row.enabled && row.parameterName.trim());
-  const assigns = state.elementParameterUpdate.assignments.filter((row) => row.enabled && row.parameterName.trim());
+  const conds = state.elementParameterUpdate.conditions.filter((row) => row.parameterName.trim());
+  const assigns = state.elementParameterUpdate.assignments.filter((row) => row.parameterName.trim());
   const joiner = state.elementParameterUpdate.combinationMode === 'Or' ? ' OR ' : ' AND ';
   const conditionText = conds.length
     ? conds.map((row) => (row.operatorName === 'HasValue' || row.operatorName === 'HasNoValue')
       ? `${row.parameterName} ${row.operatorName}`
       : `${row.parameterName} ${row.operatorName} ${row.value || ''}`).join(joiner)
-    : '조건 없음';
+    : '조건 미입력';
   const assignmentText = assigns.length
     ? assigns.map((row) => `${row.parameterName} = ${row.value || ''}`).join(' / ')
-    : '입력 없음';
+    : '입력값 미지정';
 
-  state.ui.elementSummary.textContent = enabled
+  state.ui.elementSummary.textContent = (conds.length || assigns.length)
     ? `조건: ${conditionText}\n입력: ${assignmentText}`
-    : '사용 안 함';
+    : '조건과 입력을 작성하면 자동으로 객체 파라미터 입력에 반영됩니다.';
 }
 
 function renderFilterPreview(state) {
@@ -854,7 +938,7 @@ function renderPurgeStatus(state) {
   const snap = state.purgeSnapshot || {};
 
   if (!snap || (!snap.isRunning && !snap.isCompleted && !snap.isFaulted)) {
-    box.textContent = 'Purge 대기 중\n정리된 결과 파일을 대상으로 일괄 처리합니다.';
+    box.textContent = 'Purge 대기 중입니다. 정리 결과 또는 선택한 RVT를 기준으로 Purge를 실행하면 진행 상태가 여기에 표시됩니다.';
     return;
   }
 
@@ -862,8 +946,8 @@ function renderPurgeStatus(state) {
   const iterText = snap.totalIterations ? `${snap.currentIteration || 0}/${snap.totalIterations}` : '-';
   const chunks = [
     `Purge 상태: ${snap.stateName || '대기'}`,
-    `파일 ${fileText}`,
-    `반복 ${iterText}`
+    `파일 진행: ${fileText}`,
+    `반복 진행: ${iterText}`
   ];
   if (snap.currentFileName) chunks.push(snap.currentFileName);
   if (snap.message) chunks.push(snap.message);
@@ -877,29 +961,29 @@ function renderResultSummary(state) {
   const successCount = Array.isArray(session.results) ? session.results.filter((item) => item?.success).length : 0;
   const failCount = Array.isArray(session.results) ? session.results.filter((item) => item && item.success === false).length : 0;
 
-  if (!cleanedCount && !session.verificationCsvPath && !state.lastLogExportPath) {
-    lines.push('정리 시작');
-    lines.push('선택한 RVT를 정리해 결과 폴더에 저장합니다.');
+  if (!cleanedCount && !session.verificationCsvPath && !session.designOptionAuditCsvPath && !state.lastLogExportPath) {
+    lines.push('아직 실행 결과가 없습니다.');
+    lines.push('정리 시작, 정리 결과 검토, Design Option 검토, 로그 엑셀 저장 결과가 여기에 정리됩니다.');
+    lines.push('');
+    lines.push('정리 실행');
+    lines.push('정리 완료 후에는 결과 파일 수와 성공/실패 파일 수가 표시되고, Design Option 검토 결과도 함께 확인할 수 있습니다.');
+    lines.push('Design Option 검토 결과는 결과창에서 원하는 경로로 엑셀 저장할 수 있습니다.');
     lines.push('');
     lines.push('정리 결과 검토');
-    lines.push('정리된 결과를 검토해서 엑셀 파일로 대상 폴더에 저장합니다.');
-    lines.push('Design Option 유무 검토 결과도 같은 대상 폴더에 함께 저장됩니다.');
+    lines.push('정리 결과 검토를 실행하면 파일별 검토 결과를 확인할 수 있고, 결과창에서 엑셀로 저장할 수 있습니다.');
+    lines.push('속성값 추출은 별도 설정창에서 파라미터를 지정한 뒤 실행하며, 완료 후 결과창에서 원하는 경로로 엑셀 저장할 수 있습니다.');
     lines.push('');
-    lines.push('속성값 추출');
-    lines.push('선택한 RVT에 존재하는 모든 모델 객체의 속성 정보를 추출합니다.');
-    lines.push('추출 결과 엑셀도 대상 폴더에 저장됩니다.');
-    lines.push('');
-    lines.push('로그 엑셀 저장');
-    lines.push('실행 로그를 결과 폴더에 엑셀 파일로 저장합니다.');
+    lines.push('로그 엑셀');
+    lines.push('로그 엑셀 저장은 필요할 때만 수동으로 저장하며, 작업별 성공/실패가 요약되어 기록됩니다.');
   } else {
-    lines.push(`정리 결과: ${cleanedCount ? `${cleanedCount}개 파일 준비` : '아직 없음'}`);
+    lines.push(`정리 결과 파일: ${cleanedCount ? `${cleanedCount}개 생성` : '아직 없음'}`);
     if (Array.isArray(session.results) && session.results.length) {
-      lines.push(`최근 실행 요약: 성공 ${successCount} / 실패 ${failCount}`);
+      lines.push(`정리 결과: 성공 ${successCount} / 실패 ${failCount}`);
     }
-    lines.push(`정리 결과 검토 엑셀: ${session.verificationCsvPath || '없음'}`);
-    lines.push(`Design Option 검토 엑셀: ${session.designOptionAuditCsvPath || '없음'}`);
-    lines.push('Design Option 유무 검토 결과는 대상 폴더에 함께 저장됩니다.');
-    lines.push('속성값 추출은 선택한 RVT에 존재하는 모든 모델 객체의 속성 정보를 엑셀로 저장합니다.');
+    lines.push(`정리 결과 검토 파일: ${session.verificationCsvPath || '아직 없음'}`);
+    lines.push(`Design Option 검토 파일: ${session.designOptionAuditCsvPath || '아직 없음'}`);
+    lines.push('정리 완료 후에는 Design Option 검토와 객체 수 비교 결과를 결과창에서 바로 내보낼 수 있습니다.');
+    lines.push('정리 결과 검토와 속성값 추출도 각각 완료 후 결과창에서 엑셀 저장이 가능합니다.');
     lines.push(`로그 엑셀: ${state.lastLogExportPath || '아직 저장 안 함'}`);
   }
 
@@ -957,10 +1041,12 @@ function buildProgressSnapshot(state) {
     const line = stripLogStamp(rawLine);
     if (!line) return;
 
-    if (line.startsWith('정리 시작: ') || line.startsWith('대상 시작: ')) {
+    const fileMatch = line.match(/([^\\\/\s]+\.rvt)\b/i);
+    if (fileMatch) snapshot.currentFile = fileMatch[1];
+
+    if (line.includes('정리 시작') || line.includes('Prepare start')) {
       snapshot.mode = 'clean';
-      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
-      snapshot.currentTask = '정리 준비 중';
+      snapshot.currentTask = '정리 시작';
       return;
     }
 
@@ -970,58 +1056,53 @@ function buildProgressSnapshot(state) {
       return;
     }
 
-    if (line.startsWith('정리 및 저장 완료: ') || line.startsWith('저장 완료: ')) {
+    if (line.includes('정리 완료') || line.includes('Prepare completed')) {
       snapshot.mode = 'clean';
-      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
-      snapshot.currentTask = '정리 저장 완료';
+      snapshot.currentTask = '정리 완료';
       snapshot.completedCount += 1;
       return;
     }
 
-    if (line.startsWith('실패: ')) {
+    if (line.includes('오류') || line.includes('실패')) {
       snapshot.currentTask = '오류 확인 필요';
       return;
     }
 
-    if (line.startsWith('검토 파일 열기: ')) {
+    if (line.includes('검토 시작') || line.includes('Verify start')) {
       snapshot.mode = 'verify';
-      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
-      snapshot.currentTask = '정리 결과 검토 중';
+      snapshot.currentTask = '정리 결과 검토 시작';
       return;
     }
 
-    if (line.startsWith('검토 완료: ')) {
+    if (line.includes('검토 완료') || line.includes('Verify completed')) {
       snapshot.mode = 'verify';
       snapshot.currentTask = '정리 결과 검토 완료';
       snapshot.completedCount += 1;
       return;
     }
 
-    if (line.startsWith('속성값 추출 파일 열기: ')) {
+    if (line.includes('속성값 추출 시작') || line.includes('Extraction start')) {
       snapshot.mode = 'extract';
-      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
-      snapshot.currentTask = '속성값 추출 중';
+      snapshot.currentTask = '속성값 추출 시작';
       return;
     }
 
-    if (line.startsWith('속성값 추출 완료: ')) {
+    if (line.includes('속성값 추출 완료') || line.includes('Extraction completed')) {
       snapshot.mode = 'extract';
       snapshot.currentTask = '속성값 추출 완료';
       snapshot.completedCount += 1;
       return;
     }
 
-    if (line.startsWith('Purge 실행: ')) {
+    if (line.includes('Purge 시작') || line.includes('Purge file start')) {
       snapshot.mode = 'purge';
-      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
-      snapshot.currentTask = 'Purge 일괄처리 중';
+      snapshot.currentTask = 'Purge 시작';
       return;
     }
 
-    if (line.startsWith('Purge 후 저장 완료: ')) {
+    if (line.includes('Purge 완료') || line.includes('Purge file completed')) {
       snapshot.mode = 'purge';
-      snapshot.currentFile = getFileNameOnly(extractValueAfterColonText(line));
-      snapshot.currentTask = 'Purge 후 저장 완료';
+      snapshot.currentTask = 'Purge 완료';
       snapshot.completedCount += 1;
     }
   });
@@ -1037,27 +1118,27 @@ function renderStatusBox(state, hasFiles, isConfigured, hasSessionTargets, isPur
   if (state.busy || isPurging) {
     tone = 'active';
     lines.push('작업 진행 중');
-    lines.push(progress.currentTask ? `현재 작업: ${progress.currentTask}` : '현재 작업: 진행 정보 확인 중');
-    lines.push(progress.currentFile ? `현재 파일: ${progress.currentFile}` : '현재 파일: 대기 중');
-    if (progress.totalCount > 0) lines.push(`진행 파일: ${Math.min(progress.completedCount, progress.totalCount)}/${progress.totalCount}`);
+    lines.push(progress.currentTask ? `현재 작업: ${progress.currentTask}` : '현재 작업: 진행 정보를 수집하는 중입니다.');
+    lines.push(progress.currentFile ? `현재 파일: ${progress.currentFile}` : '현재 파일: 확인 중');
+    if (progress.totalCount > 0) lines.push(`진행 파일 수: ${Math.min(progress.completedCount, progress.totalCount)}/${progress.totalCount}`);
   } else if (!hasFiles) {
     tone = 'idle';
-    lines.push('대상 RVT를 먼저 추가해 주세요.');
-    lines.push('RVT를 추가하면 설정 버튼이 강조되고, 설정 완료 후 정리 시작이 활성화됩니다.');
+    lines.push('대상 RVT가 아직 없습니다.');
+    lines.push('RVT를 추가한 뒤 설정하기에서 기본 설정을 완료하면 정리 시작이 활성화됩니다.');
   } else if (!isConfigured) {
     tone = 'required';
     lines.push(`대상 RVT ${state.filePaths.length}개가 준비되었습니다.`);
-    lines.push('다음 단계: 설정하기 (기본/세부)에서 결과 폴더를 지정해 주세요.');
-    lines.push('설정이 완료되면 정리 시작 버튼이 활성화됩니다.');
+    lines.push('설정하기에서 결과 폴더를 지정하면 정리 시작 버튼이 활성화됩니다.');
+    lines.push('설정 버튼이 강조되어 있으면 아직 필수 설정이 남아 있다는 뜻입니다.');
   } else {
     tone = 'ready';
-    lines.push(`대상 RVT ${state.filePaths.length}개와 결과 폴더 설정이 준비되었습니다.`);
-    lines.push('정리 시작을 눌러 납품용 정리를 실행할 수 있습니다.');
-    if (hasSessionTargets) lines.push(`최근 정리 결과 ${state.session.cleanedOutputPaths.length}개 파일이 준비되어 있습니다.`);
+    lines.push(`대상 RVT ${state.filePaths.length}개가 준비되었고 필수 설정도 완료되었습니다.`);
+    lines.push('정리 시작을 눌러 정리 작업을 실행할 수 있습니다.');
+    if (hasSessionTargets) lines.push(`최근 정리 결과 파일 ${state.session.cleanedOutputPaths.length}개가 세션에 연결되어 있습니다.`);
   }
 
   if (state.useFilter && state.filterProfile && isFilterConfigured(state.filterProfile) && !(state.busy || isPurging)) {
-    lines.push('뷰 필터 설정도 적용 가능한 상태입니다.');
+    lines.push('현재 뷰 필터 설정이 준비되어 있어 정리 시 함께 적용됩니다.');
   }
 
   state.ui.status.classList.remove('is-idle', 'is-required', 'is-ready', 'is-active');
@@ -1127,7 +1208,6 @@ function syncStateToInputs(state) {
   state.ui.outputFolderInput.value = state.outputFolder || '';
   state.ui.viewNameInput.value = state.target3DViewName || '';
   if (state.ui.extractInput) state.ui.extractInput.value = state.extractParameterNamesCsv || '';
-  state.ui.elementEnabled.checked = !!state.elementParameterUpdate.enabled;
   state.ui.combinationMode.value = state.elementParameterUpdate.combinationMode || 'And';
 }
 
@@ -1153,23 +1233,150 @@ function normalizeElementUpdate(source) {
 }
 
 function buildPayload(state) {
+  const normalizedViewParameters = state.viewParameters.map((row) => ({
+    ...row,
+    enabled: !!String(row.parameterName || '').trim()
+  }));
+  const normalizedConditions = state.elementParameterUpdate.conditions.map((row) => ({
+    ...row,
+    enabled: !!String(row.parameterName || '').trim()
+  }));
+  const normalizedAssignments = state.elementParameterUpdate.assignments.map((row) => ({
+    ...row,
+    enabled: !!String(row.parameterName || '').trim()
+  }));
+  const hasConditions = normalizedConditions.some((row) => row.enabled);
+  const hasAssignments = normalizedAssignments.some((row) => row.enabled);
+
   return {
     filePaths: [...state.filePaths],
     outputFolder: state.outputFolder,
     target3DViewName: state.target3DViewName,
     extractParameterNamesCsv: state.extractParameterNamesCsv,
-    viewParameters: state.viewParameters.map((row) => ({ ...row })),
+    viewParameters: normalizedViewParameters,
     useFilter: state.useFilter,
     applyFilterInitially: state.applyFilterInitially,
     autoEnableFilterIfEmpty: state.autoEnableFilterIfEmpty,
     filterProfile: state.filterProfile ? { ...state.filterProfile } : null,
     elementParameterUpdate: {
-      enabled: state.elementParameterUpdate.enabled,
+      enabled: hasConditions && hasAssignments,
       combinationMode: state.elementParameterUpdate.combinationMode,
-      conditions: state.elementParameterUpdate.conditions.map((row) => ({ ...row })),
-      assignments: state.elementParameterUpdate.assignments.map((row) => ({ ...row }))
+      conditions: normalizedConditions,
+      assignments: normalizedAssignments
     }
   };
+}
+
+function countDeliveryCleanerExtractParameters(state) {
+  return (state.extractParameterNamesCsv || '')
+    .split(/[\,\n;\r]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .length;
+}
+
+function buildDeliveryCleanerCountNotes(items = [], emptyText = '객체수 비교 결과가 없습니다.') {
+  if (!Array.isArray(items) || !items.length) return [emptyText];
+  return items.map((item) => {
+    const fileName = item?.fileName || getFileNameOnly(item?.outputPath || item?.sourcePath || '이름 없음');
+    const beforeText = Number.isFinite(Number(item?.beforeCount)) ? `${Number(item.beforeCount)}개` : '-';
+    const afterText = Number.isFinite(Number(item?.afterCount)) ? `${Number(item.afterCount)}개` : '-';
+    const status = item?.status || '';
+    const note = item?.note ? ` · ${item.note}` : '';
+    if (beforeText !== '-' && afterText !== '-') {
+      const delta = Number(item.afterCount) - Number(item.beforeCount);
+      const deltaText = delta === 0 ? '변화 없음' : `${delta > 0 ? '+' : ''}${delta}개`;
+      return `${fileName} · ${beforeText} -> ${afterText} (${deltaText})${status ? ` · ${status}` : ''}${note}`;
+    }
+    return `${fileName}${status ? ` · ${status}` : ''}${note}`;
+  });
+}
+
+function showDeliveryCleanerRunDialog(state, payload = {}) {
+  const summary = payload?.summary || {};
+  const cleanedCount = summary.cleanedCount ?? (Array.isArray(state.session?.cleanedOutputPaths) ? state.session.cleanedOutputPaths.length : 0);
+  const targetCount = state.filePaths.length || cleanedCount || (Array.isArray(state.session?.results) ? state.session.results.length : 0);
+  const comparisons = Array.isArray(state.session?.cleanCountComparisons) ? state.session.cleanCountComparisons : [];
+  const notes = [
+    `정리 전 객체수 합계 ${summary.beforeObjectCount ?? 0}개 · 정리 후 객체수 합계 ${summary.afterObjectCount ?? 0}개`,
+    ...buildDeliveryCleanerCountNotes(comparisons, '정리 객체수 비교 결과가 없습니다.'),
+    'Design Option 검토와 정리 전후 객체수 비교 결과가 같은 엑셀에 함께 저장됩니다.'
+  ];
+
+  showCompletionSummaryDialog({
+    title: 'RVT 정리 완료',
+    message: '정리 작업이 완료되었습니다. 아래 요약을 확인하고 필요하면 결과 엑셀을 저장하세요.',
+    summaryItems: [
+      { label: '대상 파일', value: `${targetCount}개` },
+      { label: '성공', value: `${summary.successCount ?? 0}개` },
+      { label: '실패', value: `${summary.failCount ?? 0}개` },
+      { label: '정리 결과', value: `${cleanedCount}개` }
+    ],
+    notes,
+    exportLabel: 'Design Option + 객체수 비교 엑셀',
+    showExport: payload?.canExportDesignOption === true,
+    onExport: () => post('deliverycleaner:export-designoption', {})
+  });
+}
+
+function showDeliveryCleanerVerifyDialog(state, payload = {}) {
+  const verifiedCount = Number(payload?.rowCount) || 0;
+  const targetCount = (Array.isArray(state.session?.cleanedOutputPaths) ? state.session.cleanedOutputPaths.length : 0) || state.filePaths.length || 0;
+  showCompletionSummaryDialog({
+    title: '정리 결과 검토 완료',
+    message: '정리 결과 검토가 완료되었습니다. 필요하면 검토 결과 엑셀을 저장하세요.',
+    summaryItems: [
+      { label: '검토 대상', value: `${targetCount}개 파일` },
+      { label: '검토 행 수', value: `${verifiedCount}행` }
+    ],
+    notes: [
+      '정리 결과 검토 엑셀은 저장 경로를 직접 지정해서 보관할 수 있습니다.',
+      '검토 결과에서 CHECK 항목이 있으면 사용자가 직접 파일을 확인해 수정하면 됩니다.'
+    ],
+    exportLabel: '정리 결과 검토 엑셀',
+    showExport: payload?.canExport === true,
+    onExport: () => post('deliverycleaner:export-verify', {})
+  });
+}
+
+function showDeliveryCleanerExtractDialog(state, payload = {}) {
+  const rowCount = Number(payload?.rowCount) || 0;
+  const targetCount = getDeliveryCleanerExtractionTargetCount(state);
+  const parameterCount = countDeliveryCleanerExtractParameters(state);
+  showCompletionSummaryDialog({
+    title: '속성값 추출 완료',
+    message: '속성값 추출이 완료되었습니다. 필요하면 결과 엑셀을 저장하세요.',
+    summaryItems: [
+      { label: '대상 RVT', value: `${targetCount}개` },
+      { label: '추출 파라미터', value: `${parameterCount}개` },
+      { label: '추출 행 수', value: `${rowCount}행` }
+    ],
+    notes: [
+      '속성값 추출은 스케줄 가능한 실제 시공 객체 기준으로 집계됩니다.',
+      '결과 엑셀은 저장 경로를 직접 지정해서 보관할 수 있습니다.'
+    ],
+    exportLabel: '속성값 추출 엑셀',
+    showExport: payload?.canExport === true,
+    onExport: () => post('deliverycleaner:export-extract', {})
+  });
+}
+
+function showDeliveryCleanerPurgeDialog(state, payload = {}) {
+  const comparisons = Array.isArray(state.session?.purgeCountComparisons) ? state.session.purgeCountComparisons : [];
+  const targetCount = comparisons.length || (Array.isArray(state.session?.cleanedOutputPaths) ? state.session.cleanedOutputPaths.length : 0);
+  const rowCount = Number(payload?.rowCount) || comparisons.filter((item) => Number.isFinite(Number(item?.beforeCount)) || Number.isFinite(Number(item?.afterCount))).length;
+  showCompletionSummaryDialog({
+    title: 'Purge 완료',
+    message: 'Purge가 완료되었습니다. 파일별 객체수 비교를 확인하고 필요하면 엑셀을 저장하세요.',
+    summaryItems: [
+      { label: '대상 파일', value: `${targetCount}개` },
+      { label: '비교 완료', value: `${rowCount}개` }
+    ],
+    notes: buildDeliveryCleanerCountNotes(comparisons, 'Purge 객체수 비교 결과가 없습니다.'),
+    exportLabel: 'Purge 객체수 비교 엑셀',
+    showExport: payload?.canExport === true,
+    onExport: () => post('deliverycleaner:export-purge', {})
+  });
 }
 
 function handleDeliveryCleanerProgress(state, payload) {
@@ -1183,8 +1390,8 @@ function handleDeliveryCleanerProgress(state, payload) {
     const subtitle = buildDeliveryCleanerExcelSubtitle(phase, current, total);
     const detail = payload?.message || '';
 
-    ProgressDialog.show(payload?.title || 'RVT 정리 (납품용)', subtitle || '진행 중...');
-    ProgressDialog.update(percent, subtitle || '진행 중...', detail);
+    ProgressDialog.show(payload?.title || 'RVT 정리 (납품용)', subtitle || '작업을 처리하는 중입니다.');
+    ProgressDialog.update(percent, subtitle || '작업을 처리하는 중입니다.', detail);
 
     if (phase === 'DONE' || phase === 'ERROR') {
       window.setTimeout(() => resetDeliveryCleanerProgress(state), 260);
@@ -1193,7 +1400,7 @@ function handleDeliveryCleanerProgress(state, payload) {
   }
 
   const title = payload?.title || 'RVT 정리 (납품용)';
-  const message = payload?.message || '진행 중...';
+  const message = payload?.message || '작업을 처리하는 중입니다.';
   const detail = payload?.detail || '';
   const percent = clampDeliveryCleanerPercent(payload?.percent);
   state.progressPercent = Math.max(state.progressPercent || 0, percent);
@@ -1252,19 +1459,19 @@ function computeDeliveryCleanerExcelPercent(state, phase, current, total, phaseP
 
 function buildDeliveryCleanerExcelSubtitle(phase, current, total) {
   switch (normalizeDeliveryCleanerExcelPhase(phase)) {
-    case 'EXCEL_INIT': return '엑셀 저장 준비 중...';
-    case 'EXCEL_WRITE': return `엑셀 데이터 작성 중... (${current}/${Math.max(total, current || 1)})`;
-    case 'EXCEL_SAVE': return '엑셀 파일 저장 중...';
-    case 'AUTOFIT': return '열 너비 자동 조정 중...';
-    case 'DONE': return '내보내기 완료';
-    case 'ERROR': return '내보내기 오류';
-    default: return '진행 중...';
+    case 'EXCEL_INIT': return '엑셀 저장을 준비하는 중입니다.';
+    case 'EXCEL_WRITE': return `엑셀 데이터를 작성하는 중입니다. (${current}/${Math.max(total, current || 1)})`;
+    case 'EXCEL_SAVE': return '엑셀 파일을 저장하는 중입니다.';
+    case 'AUTOFIT': return '열 너비와 스타일을 정리하는 중입니다.';
+    case 'DONE': return '엑셀 저장이 완료되었습니다.';
+    case 'ERROR': return '엑셀 저장 중 오류가 발생했습니다.';
+    default: return '작업을 처리하는 중입니다.';
   }
 }
 
 function setPageBusy(state, on) {
   state.busy = !!on;
-  setBusy(on, on ? 'RVT 정리 (납품용) 작업 중' : '');
+  setBusy(on, on ? 'RVT 정리 작업을 처리하는 중입니다.' : '');
   updateActionState(state);
 }
 
@@ -1301,19 +1508,19 @@ function closeExtractModal(state) {
 }
 
 function openFilterDocModal(state, docTitle) {
-  state.ui.filterDocTitle.textContent = docTitle ? `현재 문서: ${docTitle}` : '현재 문서 필터 목록';
+  state.ui.filterDocTitle.textContent = docTitle ? `현재 문서 필터: ${docTitle}` : '현재 문서의 필터를 선택하세요.';
   state.ui.filterDocList.innerHTML = '';
 
   if (!state.filterDocItems.length) {
     const empty = div('deliverycleaner-empty');
-    empty.textContent = '추출할 문서 필터가 없습니다.';
+    empty.textContent = '현재 문서에서 추출 가능한 필터가 없습니다.';
     state.ui.filterDocList.append(empty);
   } else {
     state.filterDocItems.forEach((item) => {
       const row = document.createElement('button');
       row.type = 'button';
       row.className = 'deliverycleaner-doclist__item';
-      row.textContent = item.name || '이름 없음';
+      row.textContent = item.name || '이름 없는 필터';
       row.addEventListener('click', () => {
         closeFilterDocModal(state);
         post('deliverycleaner:filter-doc-extract', { filterId: item.id });
@@ -1333,19 +1540,14 @@ function renderExtractModalSummary(state) {
   if (!state.ui.extractSummary) return;
 
   const targetCount = getDeliveryCleanerExtractionTargetCount(state);
-  const outputFolder = state.outputFolder || state.session?.outputFolder || '';
-  const parameterCount = (state.extractParameterNamesCsv || '')
-    .split(/[,\n;\r]+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .length;
+  const parameterCount = countDeliveryCleanerExtractParameters(state);
 
   const lines = [
-    `대상 RVT: ${targetCount ? `${targetCount}개` : '없음'}`,
-    `추출 파라미터: ${parameterCount ? `${parameterCount}개` : '입력 필요'}`,
-    `결과 저장 폴더: ${outputFolder || '설정 필요'}`,
+    `대상 RVT: ${targetCount ? `${targetCount}개` : '아직 없음'}`,
+    `추출 파라미터 수: ${parameterCount ? `${parameterCount}개` : '입력 필요'}`,
     '',
-    '추출 결과는 대상 폴더에 엑셀로 저장됩니다.'
+    '추출 대상은 스케줄로 리스트업 가능한 실제 시공 객체 중심으로 제한됩니다.',
+    '추출이 완료되면 결과창에서 행 수를 확인하고 원하는 경로로 엑셀 저장할 수 있습니다.'
   ];
 
   state.ui.extractSummary.textContent = lines.join('\n');
@@ -1403,3 +1605,5 @@ function tdWithSelect(value, options, onChange) {
   td.append(select);
   return td;
 }
+
+

@@ -1,4 +1,5 @@
 import { clear, div, tdText, toast, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
+import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
@@ -105,7 +106,7 @@ export function renderExport(root) {
         const root = folder || commonDir(list);
         state.folder = root || '';
         state.files = toFileItems(list, state.folder);
-        renderFiles();
+        refreshUiAfterHostDialog(() => renderFiles());
     });
 
     onHost('export:rvt-files', ({ files }) => {
@@ -114,7 +115,7 @@ export function renderExport(root) {
         if (!state.folder) state.folder = commonDir(list) || state.folder || '';
         const merged = [...state.files, ...toFileItems(list, state.folder)];
         state.files = dedupFiles(merged);
-        renderFiles();
+        refreshUiAfterHostDialog(() => renderFiles());
     });
 
     // === 미리보기 결과 ===

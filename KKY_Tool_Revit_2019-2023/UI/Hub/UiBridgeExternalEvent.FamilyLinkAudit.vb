@@ -98,7 +98,7 @@ Namespace UI.Hub
                     If dedup.Add(p) Then files.Add(p)
                 Next
 
-                SendToWeb("familylink:rvts-picked", New With {.paths = files})
+                SendToWebAfterDialog("familylink:rvts-picked", New With {.paths = files})
             End Using
         End Sub
 

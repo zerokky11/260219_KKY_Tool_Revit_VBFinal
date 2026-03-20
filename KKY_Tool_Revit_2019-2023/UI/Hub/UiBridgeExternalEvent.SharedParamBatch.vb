@@ -3,8 +3,6 @@ Option Strict On
 
 Imports System
 Imports System.Collections.Generic
-Imports System.Diagnostics
-Imports System.IO
 Imports System.Web.Script.Serialization
 Imports Autodesk.Revit.UI
 Imports KKY_Tool_Revit.Services
@@ -29,7 +27,7 @@ Namespace UI.Hub
         Private Sub HandleSharedParamBatchBrowseRvts(app As UIApplication, payload As Object)
             Try
                 Dim res = SharedParamBatchService.BrowseRvts()
-                SendToWeb("sharedparambatch:rvts-picked", res)
+                SendToWebAfterDialog("sharedparambatch:rvts-picked", res)
             Catch ex As Exception
                 SendToWeb("sharedparambatch:rvts-picked", New With {.ok = False, .message = ex.Message})
                 SendToWeb("revit:error", New With {.message = ex.Message})
@@ -39,7 +37,7 @@ Namespace UI.Hub
         Private Sub HandleSharedParamBatchBrowseFolder(app As UIApplication, payload As Object)
             Try
                 Dim res = SharedParamBatchService.BrowseRvtFolder()
-                SendToWeb("sharedparambatch:rvts-picked", res)
+                SendToWebAfterDialog("sharedparambatch:rvts-picked", res)
             Catch ex As Exception
                 SendToWeb("sharedparambatch:rvts-picked", New With {.ok = False, .message = ex.Message})
                 SendToWeb("revit:error", New With {.message = ex.Message})
@@ -57,9 +55,6 @@ Namespace UI.Hub
                                                                               End Sub)
 
                 Dim res As SharedParamBatchService.RunResult = TryCast(SharedParamBatchService.Run(app, payloadJson, progress), SharedParamBatchService.RunResult)
-                If res IsNot Nothing Then
-                    res.Logs = FilterSharedParamBatchIssueLogs(res.Logs)
-                End If
                 _lastSharedParamBatchResult = res
 
                 If res Is Nothing Then
@@ -75,8 +70,7 @@ Namespace UI.Hub
                         .level = l.Level,
                         .file = l.File,
                         .msg = l.Message
-                    }).ToList(),
-                    .logTextPath = res.LogTextPath
+                    }).ToList()
                 }
 
                 SendToWeb("sharedparambatch:done", responsePayload)
@@ -89,42 +83,6 @@ Namespace UI.Hub
                 SendToWeb("revit:error", New With {.message = "Shared Parameter Batch 실패: " & ex.Message})
             End Try
         End Sub
-
-        Private Shared Function FilterSharedParamBatchIssueLogs(logs As List(Of SharedParamBatchService.LogEntry)) As List(Of SharedParamBatchService.LogEntry)
-            Dim source As List(Of SharedParamBatchService.LogEntry) = If(logs, New List(Of SharedParamBatchService.LogEntry)())
-            Dim dt As New Data.DataTable("SharedParamBatchLogs")
-            dt.Columns.Add("__idx", GetType(Integer))
-            dt.Columns.Add("성공여부")
-            dt.Columns.Add("메시지")
-
-            Dim index As Integer = 0
-            For Each l In source
-                Dim row = dt.NewRow()
-                row("__idx") = index
-                row("성공여부") = If(l Is Nothing, "", If(l.Level, ""))
-                row("메시지") = If(l Is Nothing, "", If(l.Message, ""))
-                dt.Rows.Add(row)
-                index += 1
-            Next
-
-            Dim filtered As Data.DataTable = FilterIssueRowsCopy("sharedparambatch", dt)
-            Dim result As New List(Of SharedParamBatchService.LogEntry)()
-            If filtered Is Nothing Then Return result
-
-            For Each row As Data.DataRow In filtered.Rows
-                Dim sourceIdx As Integer = -1
-                Try
-                    sourceIdx = Convert.ToInt32(row("__idx"))
-                Catch
-                    sourceIdx = -1
-                End Try
-                If sourceIdx >= 0 AndAlso sourceIdx < source.Count Then
-                    result.Add(source(sourceIdx))
-                End If
-            Next
-
-            Return result
-        End Function
 
         Private Sub HandleSharedParamBatchExportExcel(app As UIApplication, payload As Object)
             Try
@@ -175,37 +133,6 @@ Namespace UI.Hub
             Catch ex As Exception
                 SendToWeb("sharedparambatch:exported", New With {.ok = False, .message = ex.Message})
                 SendToWeb("revit:error", New With {.message = "엑셀 내보내기 실패: " & ex.Message})
-            End Try
-        End Sub
-
-        Private Sub HandleSharedParamBatchOpenFolder(app As UIApplication, payload As Object)
-            Dim inputPath As String = TryCast(GetProp(payload, "path"), String)
-            If String.IsNullOrWhiteSpace(inputPath) Then
-                SendToWeb("sharedparambatch:open-folder", New With {.ok = False, .message = "경로가 비어 있습니다."})
-                Return
-            End If
-
-            Dim targetPath As String = inputPath
-            Try
-                If File.Exists(inputPath) Then
-                    targetPath = Path.GetDirectoryName(inputPath)
-                End If
-            Catch
-            End Try
-
-            If String.IsNullOrWhiteSpace(targetPath) Then
-                SendToWeb("sharedparambatch:open-folder", New With {.ok = False, .message = "폴더 경로를 확인할 수 없습니다."})
-                Return
-            End If
-
-            Try
-                Dim targetPathText As String = targetPath.ToString()
-                Dim psi As New ProcessStartInfo("explorer.exe", """" & targetPathText & """")
-                psi.UseShellExecute = True
-                Process.Start(psi)
-                SendToWeb("sharedparambatch:open-folder", New With {.ok = True, .path = targetPathText})
-            Catch ex As Exception
-                SendToWeb("sharedparambatch:open-folder", New With {.ok = False, .message = ex.Message})
             End Try
         End Sub
 

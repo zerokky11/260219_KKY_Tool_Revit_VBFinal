@@ -39,7 +39,6 @@ Namespace Services
             Public Property Message As String = String.Empty
             Public Property Summary As RunSummary
             Public Property Logs As List(Of LogEntry)
-            Public Property LogTextPath As String = String.Empty
         End Class
 
         Public Class ParamGroupOption
@@ -312,7 +311,6 @@ Namespace Services
             End If
 
             Dim logs As New List(Of LogEntry)()
-            Dim logLines As New List(Of String)()
             Dim okCount As Integer = 0
             Dim failCount As Integer = 0
             Dim skipCount As Integer = 0
@@ -350,13 +348,13 @@ Namespace Services
 
                     If String.IsNullOrWhiteSpace(rvtPath) OrElse Not File.Exists(rvtPath) Then
                         skipCount += 1
-                        AddLog(logs, logLines, "SKIP", rvtPath, "파일 없음")
+                        AddLog(logs, "SKIP", rvtPath, "파일 없음")
                         Continue For
                     End If
 
                     If IsAlreadyOpen(app, rvtPath) Then
                         skipCount += 1
-                        AddLog(logs, logLines, "SKIP", rvtPath, "이미 열려있음")
+                        AddLog(logs, "SKIP", rvtPath, "이미 열려있음")
                         Continue For
                     End If
 
@@ -366,13 +364,13 @@ Namespace Services
 
                         If doc Is Nothing Then
                             failCount += 1
-                            AddLog(logs, logLines, "FAIL", rvtPath, "열기 실패(Unknown)")
+                            AddLog(logs, "FAIL", rvtPath, "열기 실패(Unknown)")
                             Continue For
                         End If
 
                         If doc.IsFamilyDocument Then
                             skipCount += 1
-                            AddLog(logs, logLines, "SKIP", rvtPath, "패밀리 문서")
+                            AddLog(logs, "SKIP", rvtPath, "패밀리 문서")
                             SafeClose(doc, False)
                             Continue For
                         End If
@@ -382,7 +380,7 @@ Namespace Services
 
                         If Not applied Then
                             failCount += 1
-                            AddLog(logs, logLines, "FAIL", rvtPath, perDocNotes)
+                            AddLog(logs, "FAIL", rvtPath, perDocNotes)
                             SafeClose(doc, False)
                             Continue For
                         End If
@@ -390,7 +388,7 @@ Namespace Services
                         If Not String.IsNullOrWhiteSpace(perDocNotes) Then
                             Dim lines As String() = perDocNotes.Split(New String() {vbCrLf}, StringSplitOptions.RemoveEmptyEntries)
                             For Each ln As String In lines
-                                AddLog(logs, logLines, "WARN", rvtPath, ln)
+                                AddLog(logs, "WARN", rvtPath, ln)
                             Next
                         End If
 
@@ -399,36 +397,29 @@ Namespace Services
                             Dim synced As Boolean = SyncWithCentral(doc, settings.SyncComment, syncLog)
                             If Not synced Then
                                 failCount += 1
-                                AddLog(logs, logLines, "FAIL", rvtPath, "Sync 실패 :: " & syncLog)
+                                AddLog(logs, "FAIL", rvtPath, "Sync 실패 :: " & syncLog)
                                 SafeClose(doc, False)
                                 Continue For
                             End If
 
                             okCount += 1
-                            AddLog(logs, logLines, "OK", rvtPath, "적용(" & settings.Parameters.Count & "개) + Sync 완료 (Comment: " & settings.SyncComment & ")")
+                            AddLog(logs, "OK", rvtPath, "적용(" & settings.Parameters.Count & "개) + Sync 완료 (Comment: " & settings.SyncComment & ")")
                             SafeClose(doc, False)
                         Else
                             doc.Save()
                             okCount += 1
-                            AddLog(logs, logLines, "OK", rvtPath, "적용(" & settings.Parameters.Count & "개) + Save 완료")
+                            AddLog(logs, "OK", rvtPath, "적용(" & settings.Parameters.Count & "개) + Save 완료")
                             SafeClose(doc, False)
                         End If
 
                     Catch ex As Exception
                         failCount += 1
-                        AddLog(logs, logLines, "FAIL", rvtPath, "예외: " & ex.Message)
+                        AddLog(logs, "FAIL", rvtPath, "예외: " & ex.Message)
                         If doc IsNot Nothing Then
                             SafeClose(doc, False)
                         End If
                     End Try
                 Next
-
-                Dim logPath As String = Path.Combine(Path.GetTempPath(),
-                                                    "KKY_SharedParamBatch_" & DateTime.Now.ToString("yyyyMMdd_HHmmss") & ".txt")
-                Try
-                    File.WriteAllLines(logPath, logLines.ToArray(), Encoding.UTF8)
-                Catch
-                End Try
 
                 Dim summary As New RunSummary With {
                     .OkCount = okCount,
@@ -442,8 +433,7 @@ Namespace Services
                     .Ok = True,
                     .Message = "완료",
                     .Summary = summary,
-                    .Logs = logs,
-                    .LogTextPath = logPath
+                    .Logs = logs
                 }
 
             Catch exTop As Exception
@@ -472,10 +462,8 @@ Namespace Services
 
             Dim logs As List(Of LogEntry) = ParseLogEntries(payload)
 
-            Dim rvtPaths As List(Of String) = ParseStringList(payload, "rvtPaths")
-            Dim parameters As List(Of ParamToBind) = ParseParamList(payload)
-            If rvtPaths.Count = 0 OrElse parameters.Count = 0 Then
-                Return New With {.ok = False, .message = "내보낼 RVT/파라미터 정보가 없습니다."}
+            If logs.Count = 0 Then
+                Return New With {.ok = False, .message = "내보낼 실행 결과가 없습니다."}
             End If
 
             Dim doAutoFit As Boolean = False
@@ -490,14 +478,9 @@ Namespace Services
 
             Dim dt As New DataTable("SharedParamBatch")
             Dim headers As String() = {
-                "파일명",
-                "파라미터명",
-                "GUID",
-                "바인딩",
-                "파라미터 그룹",
-                "성공여부",
-                "메시지",
-                "BoundCategories"
+                "Level",
+                "RVT",
+                "Message"
             }
             For Each h As String In headers
                 dt.Columns.Add(h)
@@ -507,37 +490,14 @@ Namespace Services
                 Return New With {.ok = False, .message = "엑셀 스키마가 올바르지 않습니다."}
             End If
 
-            Dim statusMap As Dictionary(Of String, LogEntry) = BuildStatusMap(logs)
-
-            For Each rvtPath As String In rvtPaths
-                Dim rvtFileName As String = If(String.IsNullOrWhiteSpace(rvtPath), "", Path.GetFileName(rvtPath))
-                Dim statusEntry As LogEntry = Nothing
-                Dim status As String = "SKIP"
-                Dim message As String = ""
-
-                If Not String.IsNullOrWhiteSpace(rvtPath) AndAlso statusMap.TryGetValue(rvtPath, statusEntry) Then
-                    status = NormalizeStatus(statusEntry.Level)
-                    If String.Equals(status, "FAIL", StringComparison.OrdinalIgnoreCase) OrElse String.Equals(status, "SKIP", StringComparison.OrdinalIgnoreCase) Then
-                        message = If(statusEntry.Message, String.Empty)
-                    End If
-                End If
-
-                For Each p As ParamToBind In parameters
-                    Dim row = dt.NewRow()
-                    row("파일명") = rvtFileName
-                    row("파라미터명") = If(p.ParamName, String.Empty)
-                    row("GUID") = p.GuidString
-                    row("바인딩") = If(p.Settings IsNot Nothing AndAlso p.Settings.IsInstanceBinding, "Instance", "Type")
-                    row("파라미터 그룹") = GetParamGroupLabel(If(p.Settings IsNot Nothing, p.Settings.ParamGroup, GetDefaultParamGroup()))
-                    row("BoundCategories") = FormatCategoryRefs(If(p.Settings IsNot Nothing, p.Settings.Categories, Nothing))
-                    row("성공여부") = status
-                    row("메시지") = message
-                    dt.Rows.Add(row)
-                Next
+            For Each entry As LogEntry In logs
+                If entry Is Nothing Then Continue For
+                Dim row = dt.NewRow()
+                row("Level") = If(entry.Level, String.Empty)
+                row("RVT") = If(entry.File, String.Empty)
+                row("Message") = If(entry.Message, String.Empty)
+                dt.Rows.Add(row)
             Next
-
-            Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("sharedparambatch", dt)
-            ExcelCore.EnsureNoDataRow(dt, "오류가 없습니다.")
 
             Dim fileName As String = $"SharedParamBatch_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
             Dim saved As String = String.Empty
@@ -603,99 +563,6 @@ Namespace Services
             Return suffix.All(Function(ch) Char.IsDigit(ch))
         End Function
 
-        Private Shared Function BuildStatusMap(logs As List(Of LogEntry)) As Dictionary(Of String, LogEntry)
-            Dim map As New Dictionary(Of String, LogEntry)(StringComparer.OrdinalIgnoreCase)
-            If logs Is Nothing Then Return map
-
-            For Each l As LogEntry In logs
-                If l Is Nothing Then Continue For
-                Dim path As String = If(l.File, String.Empty)
-                If String.IsNullOrWhiteSpace(path) Then Continue For
-                Dim status As String = NormalizeStatus(l.Level)
-                If status = "" Then Continue For
-
-                Dim existing As LogEntry = Nothing
-                If map.TryGetValue(path, existing) Then
-                    Dim currentRank As Integer = GetStatusRank(status)
-                    Dim existingRank As Integer = GetStatusRank(existing.Level)
-                    If currentRank > existingRank Then
-                        map(path) = New LogEntry With {.Level = status, .File = path, .Message = l.Message}
-                    End If
-                Else
-                    map.Add(path, New LogEntry With {.Level = status, .File = path, .Message = l.Message})
-                End If
-            Next
-
-            Return map
-        End Function
-
-        Private Shared Function FormatCategoryRefs(categories As List(Of CategoryRef)) As String
-            If categories Is Nothing OrElse categories.Count = 0 Then Return ""
-            Dim names = categories.
-                Select(Function(c)
-                           If c Is Nothing Then Return ""
-                           Dim raw As String = If(Not String.IsNullOrWhiteSpace(c.Name), c.Name, c.Path)
-                           Return NormalizeRepresentativeCategoryName(raw)
-                       End Function).
-                Where(Function(x) Not String.IsNullOrWhiteSpace(x)).
-                Select(Function(x) $"[{x}]").
-                Distinct(StringComparer.OrdinalIgnoreCase).
-                OrderBy(Function(x) x, StringComparer.OrdinalIgnoreCase).
-                ToArray()
-            Return String.Join(",", names)
-        End Function
-
-        Private Shared Function NormalizeStatus(level As String) As String
-            If String.IsNullOrWhiteSpace(level) Then Return ""
-            Dim upper As String = level.Trim().ToUpperInvariant()
-            Select Case upper
-                Case "OK", "FAIL", "SKIP"
-                    Return upper
-                Case Else
-                    Return ""
-            End Select
-        End Function
-
-        Private Shared Function GetStatusRank(level As String) As Integer
-            Dim normalized As String = NormalizeStatus(level)
-            Select Case normalized
-                Case "FAIL"
-                    Return 3
-                Case "SKIP"
-                    Return 2
-                Case "OK"
-                    Return 1
-                Case Else
-                    Return 0
-            End Select
-        End Function
-
-        Private Shared Function GetDefaultParamGroup() As BuiltInParameterGroup
-#If REVIT2025 = 1 Then
-            Return BuiltInParameterGroup.PG_DATA
-#Else
-            Return BuiltInParameterGroup.INVALID
-#End If
-        End Function
-
-        Private Shared Function GetParamGroupLabel(groupValue As BuiltInParameterGroup) As String
-#If REVIT2025 = 1 Then
-            Try
-                Dim gId As ForgeTypeId = BuiltInParameterGroupCompat.ToGroupTypeId(groupValue)
-                Return LabelUtils.GetLabelForGroup(gId)
-            Catch
-                Return groupValue.ToString()
-            End Try
-#Else
-            If groupValue = BuiltInParameterGroup.INVALID Then Return ""
-            Try
-                Return LabelUtils.GetLabelFor(groupValue)
-            Catch
-                Return groupValue.ToString()
-            End Try
-#End If
-        End Function
-
         Private Shared Function ValidateExportSchema(dt As DataTable, headers As String()) As Boolean
             If dt Is Nothing OrElse headers Is Nothing Then Return False
             If dt.Columns.Count <> headers.Length Then Return False
@@ -705,6 +572,14 @@ Namespace Services
                 End If
             Next
             Return True
+        End Function
+
+        Private Shared Function GetDefaultParamGroup() As BuiltInParameterGroup
+#If REVIT2025 = 1 Then
+            Return BuiltInParameterGroup.PG_DATA
+#Else
+            Return BuiltInParameterGroup.INVALID
+#End If
         End Function
 
         Private Shared Sub ReportProgress(progress As IProgress(Of Object), stepIndex As Integer, total As Integer, text As String)
@@ -829,13 +704,12 @@ Namespace Services
 #End If
         End Function
 
-        Private Shared Sub AddLog(logs As List(Of LogEntry), lines As List(Of String), level As String, filePath As String, message As String)
+        Private Shared Sub AddLog(logs As List(Of LogEntry), level As String, filePath As String, message As String)
             logs.Add(New LogEntry With {
                 .Level = level,
                 .File = filePath,
                 .Message = message
             })
-            lines.Add("[" & level & "] " & filePath & " :: " & message)
         End Sub
 
         Private Shared Function ParseBatchSettings(payload As Dictionary(Of String, Object)) As BatchSettings

@@ -24,13 +24,16 @@ export function createRvtTable() {
   const thIndex = document.createElement('th');
   thIndex.textContent = '#';
   thIndex.style.textAlign = 'center';
+
   const thName = document.createElement('th');
   thName.textContent = '파일명';
+
   const thPath = document.createElement('th');
   thPath.textContent = '파일 경로';
 
   headRow.append(thCheck, thIndex, thName, thPath);
   thead.append(headRow);
+
   const tbody = document.createElement('tbody');
   table.append(thead, tbody);
 
@@ -53,6 +56,7 @@ export function renderRvtRows(tbody, rows, emptyMessage = '등록된 RVT가 없�
 
   rows.forEach((row, idx) => {
     const tr = document.createElement('tr');
+
     const ckCell = document.createElement('td');
     ckCell.style.textAlign = 'center';
     const ck = document.createElement('input');
@@ -69,12 +73,12 @@ export function renderRvtRows(tbody, rows, emptyMessage = '등록된 RVT가 없�
 
     const nameCell = document.createElement('td');
     nameCell.className = 'segmentpms-path-cell';
-    nameCell.textContent = row.name || '—';
+    nameCell.textContent = row.name || '-';
     nameCell.title = row.name || '';
 
     const pathCell = document.createElement('td');
     pathCell.className = 'segmentpms-path-cell';
-    pathCell.textContent = row.path || '—';
+    pathCell.textContent = row.path || '-';
     pathCell.title = row.title || row.path || '';
 
     tr.append(ckCell, idxCell, nameCell, pathCell);

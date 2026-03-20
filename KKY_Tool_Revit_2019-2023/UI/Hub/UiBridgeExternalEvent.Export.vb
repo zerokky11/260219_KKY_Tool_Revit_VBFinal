@@ -32,7 +32,7 @@ Namespace UI.Hub
                 Dim r = dlg.ShowDialog()
                 If r = System.Windows.Forms.DialogResult.OK Then
                     Dim files As String() = Directory.GetFiles(dlg.SelectedPath, "*.rvt", SearchOption.AllDirectories)
-                    _host?.SendToWeb("export:files", New With {.files = files})
+                    SendToWebAfterDialog("export:files", New With {.files = files})
                 End If
             End Using
         End Sub
@@ -55,7 +55,7 @@ Namespace UI.Hub
                 Next
 
                 If files.Count > 0 Then
-                    _host?.SendToWeb("export:rvt-files", New With {.files = files})
+                    SendToWebAfterDialog("export:rvt-files", New With {.files = files})
                 End If
             End Using
         End Sub

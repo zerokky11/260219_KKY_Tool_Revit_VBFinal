@@ -4,6 +4,7 @@ using System.Data;
 using System.Globalization;
 using System.Linq;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Architecture;
 
 namespace KKY_Tool_Revit.Services
 {
@@ -15,7 +16,6 @@ namespace KKY_Tool_Revit.Services
         public sealed class Settings
         {
             public string ParameterName { get; set; } = string.Empty;
-            public string BaseLevelName { get; set; } = string.Empty;
             public List<LevelRule> LevelRules { get; set; } = new List<LevelRule>();
         }
 
@@ -23,6 +23,7 @@ namespace KKY_Tool_Revit.Services
         {
             public string LevelName { get; set; } = string.Empty;
             public double AbsoluteZFt { get; set; }
+            public bool UseAsBoundary { get; set; } = true;
             public string ExpectedValue { get; set; } = string.Empty;
         }
 
@@ -32,7 +33,6 @@ namespace KKY_Tool_Revit.Services
             public string LevelName { get; set; } = string.Empty;
             public double AbsoluteZFt { get; set; }
             public double AbsoluteZMm { get; set; }
-            public bool IsBaseLevel { get; set; }
         }
 
         public sealed class ConfigSnapshot
@@ -51,7 +51,6 @@ namespace KKY_Tool_Revit.Services
             public string TypeName { get; set; } = string.Empty;
             public string ElementName { get; set; } = string.Empty;
             public string ParameterName { get; set; } = string.Empty;
-            public string BaseLevelName { get; set; } = string.Empty;
             public string LowerLevelName { get; set; } = string.Empty;
             public string UpperLevelName { get; set; } = string.Empty;
             public string ExpectedValue { get; set; } = string.Empty;
@@ -81,7 +80,6 @@ namespace KKY_Tool_Revit.Services
         {
             public string File { get; set; } = string.Empty;
             public string ParameterName { get; set; } = string.Empty;
-            public string BaseLevelName { get; set; } = string.Empty;
             public int TotalElements { get; set; }
             public int EvaluatedElements { get; set; }
             public int IssueCount { get; set; }
@@ -122,11 +120,6 @@ namespace KKY_Tool_Revit.Services
             }
 
             snapshot.Warnings.AddRange(BuildDuplicateLevelWarnings(snapshot.Levels));
-            if (snapshot.Levels.Count > 0)
-            {
-                snapshot.Levels[0].IsBaseLevel = true;
-            }
-
             return snapshot;
         }
 
@@ -148,18 +141,16 @@ namespace KKY_Tool_Revit.Services
                 throw new InvalidOperationException("층정보 검토 대상 파라미터명이 비어 있습니다.");
             }
 
-            string baseLevelName = (settings.BaseLevelName ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(baseLevelName))
-            {
-                baseLevelName = levels.First().Name ?? string.Empty;
-            }
-
             var ruleMap = BuildRuleMap(settings.LevelRules, levels);
+            List<Level> zoneLevels = BuildZoneLevels(settings.LevelRules, levels);
+            if (zoneLevels.Count == 0)
+            {
+                throw new InvalidOperationException("층정보 영역을 구분할 레벨을 최소 1개 이상 선택해야 합니다.");
+            }
             var result = new ReviewResult
             {
                 File = safeFileLabel,
-                ParameterName = parameterName,
-                BaseLevelName = baseLevelName
+                ParameterName = parameterName
             };
 
             result.Warnings.AddRange(BuildDuplicateLevelWarnings(levels.Select(level => new LevelOption
@@ -183,7 +174,7 @@ namespace KKY_Tool_Revit.Services
                 {
                     result.MissingGeometryCount++;
                     result.IssueCount++;
-                    result.Rows.Add(BuildIssueRow(safeFileLabel, element, parameterName, baseLevelName, null, null, null, string.Empty, string.Empty, 0d, 0d, 0d, false, "NO_GEOMETRY", "BoundingBox를 가져오지 못했습니다."));
+                    result.Rows.Add(BuildIssueRow(safeFileLabel, element, parameterName, null, null, null, string.Empty, string.Empty, 0d, 0d, 0d, false, "NO_GEOMETRY", "BoundingBox를 가져오지 못했습니다."));
                     continue;
                 }
 
@@ -191,14 +182,14 @@ namespace KKY_Tool_Revit.Services
 
                 double bottomZ = Math.Min(bbox.Min.Z, bbox.Max.Z);
                 double topZ = Math.Max(bbox.Min.Z, bbox.Max.Z);
-                int bottomZone = FindZoneIndex(levels, bottomZ);
-                int topZone = FindZoneIndex(levels, Math.Max(bottomZ, topZ - BoundaryEpsilonFt));
+                int bottomZone = FindZoneIndex(zoneLevels, bottomZ);
+                int topZone = FindZoneIndex(zoneLevels, Math.Max(bottomZ, topZ - BoundaryEpsilonFt));
                 bool spansMultipleZones = bottomZone != topZone;
                 double representativeZ = ResolveRepresentativeZ(element, bbox, spansMultipleZones);
-                int reviewZone = spansMultipleZones ? bottomZone : FindZoneIndex(levels, representativeZ);
+                int reviewZone = spansMultipleZones ? bottomZone : FindZoneIndex(zoneLevels, representativeZ);
 
-                Level lowerLevel = levels[Math.Max(0, Math.Min(reviewZone, levels.Count - 1))];
-                Level upperLevel = reviewZone + 1 < levels.Count ? levels[reviewZone + 1] : null;
+                Level lowerLevel = zoneLevels[Math.Max(0, Math.Min(reviewZone, zoneLevels.Count - 1))];
+                Level upperLevel = reviewZone + 1 < zoneLevels.Count ? zoneLevels[reviewZone + 1] : null;
 
                 string expectedValue = string.Empty;
                 if (!ruleMap.TryGetValue(NormalizeKey(lowerLevel.Name), out expectedValue))
@@ -209,7 +200,6 @@ namespace KKY_Tool_Revit.Services
                         safeFileLabel,
                         element,
                         parameterName,
-                        baseLevelName,
                         lowerLevel,
                         upperLevel,
                         bbox,
@@ -233,7 +223,6 @@ namespace KKY_Tool_Revit.Services
                         safeFileLabel,
                         element,
                         parameterName,
-                        baseLevelName,
                         lowerLevel,
                         upperLevel,
                         bbox,
@@ -258,7 +247,6 @@ namespace KKY_Tool_Revit.Services
                         safeFileLabel,
                         element,
                         parameterName,
-                        baseLevelName,
                         lowerLevel,
                         upperLevel,
                         bbox,
@@ -298,7 +286,6 @@ namespace KKY_Tool_Revit.Services
             table.Columns.Add("TypeName");
             table.Columns.Add("ElementName");
             table.Columns.Add("ParameterName");
-            table.Columns.Add("BaseLevel");
             table.Columns.Add("LowerLevel");
             table.Columns.Add("UpperLevel");
             table.Columns.Add("ExpectedValue");
@@ -329,7 +316,6 @@ namespace KKY_Tool_Revit.Services
                 dataRow["TypeName"] = row.TypeName ?? string.Empty;
                 dataRow["ElementName"] = row.ElementName ?? string.Empty;
                 dataRow["ParameterName"] = row.ParameterName ?? string.Empty;
-                dataRow["BaseLevel"] = row.BaseLevelName ?? string.Empty;
                 dataRow["LowerLevel"] = row.LowerLevelName ?? string.Empty;
                 dataRow["UpperLevel"] = row.UpperLevelName ?? string.Empty;
                 dataRow["ExpectedValue"] = row.ExpectedValue ?? string.Empty;
@@ -375,12 +361,19 @@ namespace KKY_Tool_Revit.Services
 
             string categoryName = element.Category.Name ?? string.Empty;
             if (element is Level) return false;
+            if (element is ReferencePlane) return false;
+            if (element is CurveElement) return false;
             if (element is Grid) return false;
+            if (element is Group) return false;
+            if (element is AssemblyInstance) return false;
             if (element is RevitLinkInstance) return false;
             if (element is ImportInstance) return false;
             if (element is View) return false;
             if (element is ElementType) return false;
             if (element is BasePoint) return false;
+            if (element is Room) return false;
+            if (element is Area) return false;
+            if (element is MEPSystem) return false;
             if (string.IsNullOrWhiteSpace(categoryName)) return false;
 
             int categoryId = element.Category.Id.IntegerValue;
@@ -390,7 +383,114 @@ namespace KKY_Tool_Revit.Services
             if (categoryId == (int)BuiltInCategory.OST_Cameras) return false;
             if (categoryId == (int)BuiltInCategory.OST_SectionBox) return false;
             if (categoryId == (int)BuiltInCategory.OST_VolumeOfInterest) return false;
-            return true;
+            return !IsExplicitlyExcludedCategory(element.Category);
+        }
+
+        private static bool IsExplicitlyExcludedCategory(Category category)
+        {
+            if (category == null) return true;
+
+            string normalized = (category.Name ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(normalized)) return true;
+
+            string[] blockedKeywords =
+            {
+                "Analytical",
+                "Load",
+                "Placeholder",
+                "Zone",
+                "Area",
+                "Grid",
+                "Level",
+                "Reference",
+                "Center Line",
+                "Centerline",
+                "Annotation",
+                "Space",
+                "System",
+                "Material",
+                "Project Information",
+                "Sun Path",
+                "Pipe Segment",
+                "Primary Contour",
+                "Legend Component",
+                "Systems",
+                "Boundary",
+                "Separation"
+            };
+
+            if (blockedKeywords.Any(keyword => normalized.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                return true;
+            }
+
+            return MatchesBuiltInCategoryNames(category,
+                "OST_AnalyticalNodes",
+                "OST_AnalyticalLinks",
+                "OST_AnalyticalPipeNodes",
+                "OST_AnalyticalPipeConnections",
+                "OST_AnalyticalSpaces",
+                "OST_GridChains",
+                "OST_Grids",
+                "OST_Levels",
+                "OST_Rooms",
+                "OST_Areas",
+                "OST_Lines",
+                "OST_CLines",
+                "OST_IOSModelGroups",
+                "OST_Assemblies",
+                "OST_MEPSpaces",
+                "OST_HVAC_Zones",
+                "OST_AreaSchemeLines",
+                "OST_RoomSeparationLines",
+                "OST_MEPAnalyticalAirLoop",
+                "OST_MEPAnalyticalWaterLoop",
+                "OST_ElectricalLoadAreas",
+                "OST_ElectricalLoadClassifications",
+                "OST_LoadCases",
+                "OST_LoadCombinations",
+                "OST_Loads",
+                "OST_PointLoadTags",
+                "OST_LineLoadTags",
+                "OST_AreaLoadTags",
+                "OST_PlaceHolderDucts",
+                "OST_PlaceHolderPipes",
+                "OST_PlaceHolderCableTray",
+                "OST_PlaceHolderConduits",
+                "OST_ProjectInformation",
+                "OST_SunPath",
+                "OST_PipeSegments",
+                "OST_PrimaryContour",
+                "OST_LegendComponents",
+                "OST_Materials",
+                "OST_IOSDatumPlane",
+                "OST_VolumeOfInterest",
+                "OST_SectionBox");
+        }
+
+        private static bool MatchesBuiltInCategoryNames(Category category, params string[] builtInCategoryNames)
+        {
+            if (category == null || builtInCategoryNames == null || builtInCategoryNames.Length == 0)
+            {
+                return false;
+            }
+
+            string actualName;
+            try
+            {
+                actualName = Enum.GetName(typeof(BuiltInCategory), category.Id.IntegerValue) ?? string.Empty;
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(actualName))
+            {
+                return false;
+            }
+
+            return builtInCategoryNames.Any(name => string.Equals(actualName, name, StringComparison.OrdinalIgnoreCase));
         }
 
         private static Dictionary<string, string> BuildRuleMap(IEnumerable<LevelRule> rules, IList<Level> levels)
@@ -416,6 +516,40 @@ namespace KKY_Tool_Revit.Services
             }
 
             return map;
+        }
+
+        private static List<Level> BuildZoneLevels(IEnumerable<LevelRule> rules, IList<Level> levels)
+        {
+            List<Level> source = (levels ?? Array.Empty<Level>())
+                .Where(level => level != null)
+                .OrderBy(level => GetAbsoluteLevelZ(level))
+                .ThenBy(level => level.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            List<LevelRule> configuredRules = (rules ?? Enumerable.Empty<LevelRule>())
+                .Where(rule => rule != null)
+                .ToList();
+
+            if (configuredRules.Count == 0)
+            {
+                return source;
+            }
+
+            var selected = new HashSet<string>(
+                configuredRules
+                    .Where(rule => rule.UseAsBoundary)
+                    .Select(rule => NormalizeKey(rule.LevelName))
+                    .Where(name => !string.IsNullOrWhiteSpace(name)),
+                StringComparer.OrdinalIgnoreCase);
+
+            if (selected.Count == 0)
+            {
+                return new List<Level>();
+            }
+
+            return source
+                .Where(level => selected.Contains(NormalizeKey(level.Name)))
+                .ToList();
         }
 
         private static IEnumerable<string> BuildDuplicateLevelWarnings(IList<LevelOption> levels)
@@ -619,7 +753,6 @@ namespace KKY_Tool_Revit.Services
             string file,
             Element element,
             string parameterName,
-            string baseLevelName,
             Level lowerLevel,
             Level upperLevel,
             BoundingBoxXYZ bbox,
@@ -669,7 +802,6 @@ namespace KKY_Tool_Revit.Services
                 TypeName = typeName,
                 ElementName = element?.Name ?? string.Empty,
                 ParameterName = parameterName ?? string.Empty,
-                BaseLevelName = baseLevelName ?? string.Empty,
                 LowerLevelName = lowerLevel?.Name ?? string.Empty,
                 UpperLevelName = upperLevel?.Name ?? string.Empty,
                 ExpectedValue = expectedValue ?? string.Empty,

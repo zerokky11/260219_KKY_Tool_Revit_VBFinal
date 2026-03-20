@@ -1,5 +1,6 @@
 // Resources/HubUI/js/views/familylink.js
 import { clear, div, toast, debounce, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
+import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { ProgressDialog } from '../core/progress.js';
 import { onHost, post } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
@@ -216,8 +217,10 @@ export function renderFamilyLink(root) {
         state.rvtPaths.push(p);
       }
     });
-    renderRvtList();
-    syncRunState();
+    refreshUiAfterHostDialog(() => {
+      renderRvtList();
+      syncRunState();
+    });
   }
 
   function handleProgress(payload) {

@@ -5,6 +5,8 @@ Imports System.Diagnostics
 Imports System.IO
 Imports System.Reflection
 Imports System.Threading
+Imports System.Windows
+Imports System.Windows.Threading
 Imports Autodesk.Revit.UI
 
 ' 네임스페이스는 프로젝트와 일치시켜 주세요.
@@ -151,7 +153,6 @@ Namespace UI.Hub
             map.Add("sharedparambatch:browse-folder", "HandleSharedParamBatchBrowseFolder")
             map.Add("sharedparambatch:run", "HandleSharedParamBatchRun")
             map.Add("sharedparambatch:export-excel", "HandleSharedParamBatchExportExcel")
-            map.Add("sharedparambatch:open-folder", "HandleSharedParamBatchOpenFolder")
             ' 공통 Excel 동작
             map.Add("excel:open", "HandleExcelOpen")
             ' Segment ↔ PMS Check
@@ -194,6 +195,10 @@ Namespace UI.Hub
             map.Add("deliverycleaner:extract", "HandleDeliveryCleanerExtract")
             map.Add("deliverycleaner:purge", "HandleDeliveryCleanerPurge")
             map.Add("deliverycleaner:purge-status", "HandleDeliveryCleanerPurgeStatus")
+            map.Add("deliverycleaner:export-verify", "HandleDeliveryCleanerExportVerify")
+            map.Add("deliverycleaner:export-extract", "HandleDeliveryCleanerExportExtract")
+            map.Add("deliverycleaner:export-designoption", "HandleDeliveryCleanerExportDesignOption")
+            map.Add("deliverycleaner:export-purge", "HandleDeliveryCleanerExportPurge")
             map.Add("deliverycleaner:export-log", "HandleDeliveryCleanerExportLog")
             map.Add("deliverycleaner:open-folder", "HandleDeliveryCleanerOpenFolder")
 
@@ -259,6 +264,51 @@ Namespace UI.Hub
                 End If
             Catch
                 ' Host 없는 초기 구간 등에서는 조용히 무시
+            End Try
+        End Sub
+
+        Friend Shared Sub SendToWebAfterDialog(channel As String, payload As Object)
+            Dim host = _host
+            If host Is Nothing Then
+                SendToWeb(channel, payload)
+                Return
+            End If
+
+            Dim dispatch As Action =
+                Sub()
+                    Try
+                        If host.WindowState = WindowState.Minimized Then
+                            host.WindowState = WindowState.Normal
+                        End If
+                    Catch
+                    End Try
+
+                    Try
+                        host.Activate()
+                        host.Focus()
+                    Catch
+                    End Try
+
+                    Try
+                        host.SendToWeb(channel, payload)
+                    Catch
+                    End Try
+                End Sub
+
+            Try
+                Dim dispatcher = host.Dispatcher
+                If dispatcher Is Nothing Then
+                    dispatch()
+                    Return
+                End If
+
+                If dispatcher.CheckAccess() Then
+                    dispatcher.BeginInvoke(dispatch, DispatcherPriority.ApplicationIdle)
+                Else
+                    dispatcher.BeginInvoke(dispatch, DispatcherPriority.ApplicationIdle)
+                End If
+            Catch
+                dispatch()
             End Try
         End Sub
 

@@ -254,7 +254,7 @@ Namespace UI.Hub
                 For Each f As String In dlg.FileNames
                     files.Add(f)
                 Next
-                SendToWeb("segmentpms:rvt-picked-files", New With {.paths = files})
+                SendToWebAfterDialog("segmentpms:rvt-picked-files", New With {.paths = files})
             End Using
         End Sub
 
@@ -272,7 +272,7 @@ Namespace UI.Hub
                     Next
                 Catch
                 End Try
-                SendToWeb("segmentpms:rvt-picked-folder", New With {.paths = files})
+                SendToWebAfterDialog("segmentpms:rvt-picked-folder", New With {.paths = files})
             End Using
         End Sub
 

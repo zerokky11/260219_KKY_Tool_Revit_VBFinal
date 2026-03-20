@@ -854,7 +854,7 @@ input[type="checkbox"]:disabled {
     backdrop-filter: blur(2px);
     display: grid;
     place-items: center;
-    z-index: 360;
+    z-index: 4000;
 }
 
 .excel-dialog {

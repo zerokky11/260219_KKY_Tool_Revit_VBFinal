@@ -9,5 +9,7 @@ namespace KKY_Tool_Revit.Models
         public Document Document { get; set; }
         public ElementId TargetViewId { get; set; }
         public ElementId KeptFilterId { get; set; }
+        public int BeforeObjectCount { get; set; }
+        public int AfterObjectCount { get; set; }
     }
 }
