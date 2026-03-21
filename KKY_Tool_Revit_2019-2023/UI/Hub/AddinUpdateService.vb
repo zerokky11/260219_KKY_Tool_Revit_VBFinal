@@ -1,4 +1,4 @@
-Option Explicit On
+﻿Option Explicit On
 Option Strict On
 
 Imports System
@@ -11,6 +11,7 @@ Imports System.Net
 Imports System.Reflection
 Imports System.Text
 Imports System.Text.RegularExpressions
+Imports System.Threading
 Imports System.Web.Script.Serialization
 
 Namespace UI.Hub
@@ -75,7 +76,7 @@ Namespace UI.Hub
 
             If feedUrls.Count = 0 Then
                 info.IsConfigured = False
-                info.Message = "업데이트 피드가 설정되지 않았습니다. Resources\update-config.json 파일에 feedUrl 또는 feedUrls 를 입력해 주세요."
+                info.Message = "업데이트 피드가 설정되지 않았습니다. Resources\update-config.json 파일에 feedUrl 또는 feedUrls를 입력해 주세요."
                 Return info
             End If
 
@@ -121,7 +122,7 @@ Namespace UI.Hub
             Return info
         End Function
 
-        Friend Shared Function PrepareInstaller(info As UpdateInfo) As String
+        Friend Shared Function PrepareInstallerLegacy(info As UpdateInfo) As String
             If info Is Nothing Then Throw New ArgumentNullException(NameOf(info))
             If String.IsNullOrWhiteSpace(info.DownloadUrl) Then
                 Throw New InvalidOperationException("다운로드할 설치파일 주소가 없습니다.")
@@ -157,44 +158,98 @@ Namespace UI.Hub
             Return localPath
         End Function
 
+        Friend Shared Function PrepareInstaller(info As UpdateInfo, Optional progressCallback As Action(Of Integer, String) = Nothing) As String
+            If info Is Nothing Then Throw New ArgumentNullException(NameOf(info))
+            If String.IsNullOrWhiteSpace(info.DownloadUrl) Then
+                Throw New InvalidOperationException("다운로드할 설치 파일 주소가 없습니다.")
+            End If
+
+            Dim cfg = LoadConfig()
+            Dim downloadRoot = ResolveDownloadRoot(cfg)
+            Dim versionFolder = Path.Combine(downloadRoot, SanitizePathSegment(If(info.LatestVersion, "latest")))
+            Directory.CreateDirectory(versionFolder)
+
+            Dim source = info.DownloadUrl.Trim()
+            Dim fileName = DetermineFileName(source, info.LatestVersion)
+            Dim localPath = Path.Combine(versionFolder, fileName)
+
+            If IsHttpUrl(source) Then
+                progressCallback?.Invoke(0, "최신 설치 파일을 다운로드하는 중입니다.")
+                DownloadHttpFile(source, localPath, progressCallback)
+            Else
+                Dim sourcePath = ResolveLocalPath(source)
+                If Not File.Exists(sourcePath) Then
+                    Throw New FileNotFoundException("업데이트 설치 파일을 찾을 수 없습니다.", sourcePath)
+                End If
+
+                If Not String.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(localPath), StringComparison.OrdinalIgnoreCase) Then
+                    File.Copy(sourcePath, localPath, True)
+                Else
+                    localPath = sourcePath
+                End If
+
+                progressCallback?.Invoke(100, "설치 파일 준비가 완료되었습니다.")
+            End If
+
+            Return localPath
+        End Function
+
         Friend Shared Function QueueInstallerAfterProcessExit(installerPath As String) As String
             If String.IsNullOrWhiteSpace(installerPath) Then Throw New ArgumentNullException(NameOf(installerPath))
             If Not File.Exists(installerPath) Then Throw New FileNotFoundException("설치파일을 찾을 수 없습니다.", installerPath)
 
-            Dim scriptDir = Path.Combine(Path.GetTempPath(), "KKY_Tool_Revit", "UpdateQueue")
-            Directory.CreateDirectory(scriptDir)
-
             Dim stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture)
-            Dim scriptPath = Path.Combine(scriptDir, "run_update_" & stamp & ".cmd")
+            Dim queueDir = Path.Combine(Path.GetTempPath(), "KKY_Tool_Revit", "UpdateQueue", stamp)
+            Directory.CreateDirectory(queueDir)
+
+            Dim updaterSourcePath = GetUpdaterExecutablePath()
+            If Not File.Exists(updaterSourcePath) Then
+                Throw New FileNotFoundException("업데이트 적용 프로그램을 찾을 수 없습니다.", updaterSourcePath)
+            End If
+
+            Dim updaterCopyPath = Path.Combine(queueDir, Path.GetFileName(updaterSourcePath))
+            File.Copy(updaterSourcePath, updaterCopyPath, True)
+
             Dim pidText = Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture)
-            Dim command = BuildInstallerLaunchCommand(installerPath)
-
-            Dim lines As New List(Of String) From {
-                "@echo off",
-                "setlocal",
-                "set PID=" & pidText,
-                ":wait_loop",
-                "tasklist /FI ""PID eq %PID%"" 2>NUL | find ""%PID%"" >NUL",
-                "if not errorlevel 1 (",
-                "  timeout /t 2 /nobreak >NUL",
-                "  goto wait_loop",
-                ")",
-                "timeout /t 1 /nobreak >NUL",
-                command,
-                "endlocal"
-            }
-
-            File.WriteAllLines(scriptPath, lines.ToArray(), Encoding.ASCII)
+            Dim logRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KKY_Tool_Revit", "UpdateLogs")
+            Directory.CreateDirectory(logRoot)
+            Dim logPath = Path.Combine(logRoot, "updater-" & stamp & ".log")
 
             Dim psi As New ProcessStartInfo()
-            psi.FileName = "cmd.exe"
-            psi.Arguments = "/c start """" """ & scriptPath & """"
-            psi.UseShellExecute = False
-            psi.CreateNoWindow = True
+            psi.FileName = updaterCopyPath
+            psi.Arguments = BuildUpdaterArguments(installerPath, pidText, logPath)
+            psi.UseShellExecute = True
+            psi.Verb = "runas"
             psi.WindowStyle = ProcessWindowStyle.Hidden
+            psi.WorkingDirectory = queueDir
 
             Process.Start(psi)
-            Return scriptPath
+            Return updaterCopyPath
+        End Function
+
+        Private Shared Function GetUpdaterExecutablePath() As String
+            Dim assemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)
+            If String.IsNullOrWhiteSpace(assemblyDir) Then
+                assemblyDir = AppDomain.CurrentDomain.BaseDirectory
+            End If
+
+            Return Path.Combine(assemblyDir, "KKY_Tool_Revit_Updater.exe")
+        End Function
+
+        Private Shared Function BuildUpdaterArguments(sourcePath As String, pidText As String, logPath As String) As String
+            Dim mode = If(String.Equals(Path.GetExtension(sourcePath), ".zip", StringComparison.OrdinalIgnoreCase), "zip", "installer")
+
+            Return String.Join(" ", New String() {
+                "--mode", QuoteProcessArgument(mode),
+                "--source", QuoteProcessArgument(Path.GetFullPath(sourcePath)),
+                "--wait-pid", pidText,
+                "--log", QuoteProcessArgument(Path.GetFullPath(logPath))
+            })
+        End Function
+
+        Private Shared Function QuoteProcessArgument(value As String) As String
+            If value Is Nothing Then Return """"""
+            Return """" & value & """"
         End Function
 
         Friend Shared Function GetCurrentVersionDisplay() As String
@@ -406,13 +461,114 @@ Namespace UI.Hub
             Return False
         End Function
 
-        Private Shared Function BuildInstallerLaunchCommand(installerPath As String) As String
+        Private Shared Function BuildInstallerLaunchScript(installerPath As String, pidText As String) As List(Of String)
+            Dim launchCommand As String
             Dim ext = Path.GetExtension(installerPath)
             If String.Equals(ext, ".msi", StringComparison.OrdinalIgnoreCase) Then
-                Return "start """" msiexec /i """ & installerPath & """"
+                launchCommand = "Start-Process -FilePath 'msiexec.exe' -ArgumentList @('/i', " & ToPowerShellString(installerPath) & ")"
+            Else
+                launchCommand = "Start-Process -FilePath " & ToPowerShellString(installerPath)
             End If
 
-            Return "start """" """ & installerPath & """"
+            Return New List(Of String) From {
+                "$ErrorActionPreference = 'Stop'",
+                "$pidToWait = " & pidText,
+                "while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 2 }",
+                "Start-Sleep -Milliseconds 800",
+                launchCommand
+            }
+        End Function
+
+        Private Shared Function BuildZipUpdateScript(packagePath As String, pidText As String, stamp As String) As List(Of String)
+            Dim extractRoot = Path.Combine(Path.GetTempPath(), "KKY_Tool_Revit", "UpdateExtract", stamp)
+            Dim logRoot = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "KKY_Tool_Revit",
+                "UpdateLogs")
+            Dim logPath = Path.Combine(logRoot, "zip-update-" & stamp & ".log")
+
+            Return New List(Of String) From {
+                "param([switch]$Elevated)",
+                "$ErrorActionPreference = 'Stop'",
+                "$pidToWait = " & pidText,
+                "$packagePath = " & ToPowerShellString(packagePath),
+                "$extractRoot = " & ToPowerShellString(extractRoot),
+                "$logRoot = " & ToPowerShellString(logRoot),
+                "$logPath = " & ToPowerShellString(logPath),
+                "if (-not (Test-Path $logRoot)) { New-Item -ItemType Directory -Path $logRoot -Force | Out-Null }",
+                "function Write-UpdateLog([string]$message) {",
+                "  $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'",
+                "  Add-Content -LiteralPath $logPath -Value ('[' + $timestamp + '] ' + $message) -Encoding UTF8",
+                "}",
+                "function Test-IsAdmin {",
+                "  $identity = [Security.Principal.WindowsIdentity]::GetCurrent()",
+                "  $principal = New-Object Security.Principal.WindowsPrincipal($identity)",
+                "  return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)",
+                "}",
+                "function Test-RevitInstalled([string]$year) {",
+                "  $programData = [Environment]::GetFolderPath('CommonApplicationData')",
+                "  $addinPath = Join-Path $programData ('Autodesk\Revit\Addins\' + $year)",
+                "  $pf64 = Join-Path ${env:ProgramFiles} ('Autodesk\Revit ' + $year)",
+                "  $pf32 = Join-Path ${env:ProgramFiles(x86)} ('Autodesk\Revit ' + $year)",
+                "  return (Test-Path $addinPath) -or (Test-Path $pf64) -or (Test-Path $pf32)",
+                "}",
+                "Write-UpdateLog ('Queued package: ' + $packagePath)",
+                "while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 2 }",
+                "while (Get-Process -Name 'Revit' -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 2 }",
+                "Start-Sleep -Milliseconds 800",
+                "if (-not $Elevated) {",
+                "  Write-UpdateLog 'Requesting elevated update process.'",
+                "  try {",
+                "    Start-Process -FilePath 'powershell.exe' -Verb RunAs -WindowStyle Hidden -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-WindowStyle','Hidden','-File',$PSCommandPath,'-Elevated')",
+                "  } catch {",
+                "    Write-UpdateLog ('Failed to request elevated process: ' + $_.Exception.Message)",
+                "    exit 1",
+                "  }",
+                "  exit 0",
+                "}",
+                "Write-UpdateLog 'Running elevated update process.'",
+                "Write-UpdateLog ('Is admin: ' + [string](Test-IsAdmin))",
+                "if (-not (Test-IsAdmin)) {",
+                "  Write-UpdateLog 'Update process is not elevated. Aborting update.'",
+                "  exit 1",
+                "}",
+                "try {",
+                "  if (Test-Path $extractRoot) { Remove-Item $extractRoot -Recurse -Force }",
+                "  New-Item -ItemType Directory -Path $extractRoot -Force | Out-Null",
+                "  Expand-Archive -LiteralPath $packagePath -DestinationPath $extractRoot -Force",
+                "  Write-UpdateLog ('Expanded package to ' + $extractRoot)",
+                "  $programData = [Environment]::GetFolderPath('CommonApplicationData')",
+                "  $addinsRoot = Join-Path $programData 'Autodesk\Revit\Addins'",
+                "  foreach ($year in @('2019','2021','2023','2025')) {",
+                "    if (-not (Test-RevitInstalled $year)) { continue }",
+                "    $yearSource = Join-Path $extractRoot $year",
+                "    if (-not (Test-Path $yearSource)) { continue }",
+                "    $destYearDir = Join-Path $addinsRoot $year",
+                "    New-Item -ItemType Directory -Path $destYearDir -Force | Out-Null",
+                "    $sourceAddin = Join-Path $yearSource 'KKY_Tool_Revit.addin'",
+                "    $sourcePayload = Join-Path $yearSource 'KKY_Tool_Revit'",
+                "    $destPayload = Join-Path $destYearDir 'KKY_Tool_Revit'",
+                "    Write-UpdateLog ('Updating Revit ' + $year + ' at ' + $destYearDir)",
+                "    if (Test-Path $destPayload) { Remove-Item $destPayload -Recurse -Force }",
+                "    if (Test-Path $sourcePayload) {",
+                "      New-Item -ItemType Directory -Path $destPayload -Force | Out-Null",
+                "      Copy-Item -Path (Join-Path $sourcePayload '*') -Destination $destPayload -Recurse -Force",
+                "    }",
+                "    if (Test-Path $sourceAddin) { Copy-Item $sourceAddin (Join-Path $destYearDir 'KKY_Tool_Revit.addin') -Force }",
+                "  }",
+                "  Write-UpdateLog 'ZIP update completed successfully.'",
+                "  exit 0",
+                "} catch {",
+                "  Write-UpdateLog ('ZIP update failed: ' + $_.Exception.Message)",
+                "  Write-UpdateLog ('Failed command: ' + $_.InvocationInfo.Line)",
+                "  exit 1",
+                "}"
+            }
+        End Function
+
+        Private Shared Function ToPowerShellString(value As String) As String
+            Dim safeValue = If(value, String.Empty).Replace("'", "''")
+            Return "'" & safeValue & "'"
         End Function
 
         Private Shared Function DetermineFileName(source As String, latestVersion As String) As String
@@ -426,10 +582,59 @@ Namespace UI.Hub
             End If
 
             If String.IsNullOrWhiteSpace(candidateName) Then
-                candidateName = "KKY_Tool_Revit_" & SanitizePathSegment(latestVersion) & ".exe"
+                candidateName = "KKY_Tool_Revit_" & SanitizePathSegment(latestVersion) & ".bin"
             End If
 
             Return candidateName
+        End Function
+
+        Private Shared Sub DownloadHttpFile(source As String, localPath As String, progressCallback As Action(Of Integer, String))
+            Dim completed As New ManualResetEvent(False)
+            Dim downloadError As Exception = Nothing
+
+            Using wc As New WebClient()
+                wc.Headers(HttpRequestHeader.UserAgent) = "KKY_Tool_Revit/" & GetCurrentVersionDisplay()
+
+                AddHandler wc.DownloadProgressChanged,
+                    Sub(sender, e)
+                        progressCallback?.Invoke(
+                            Math.Max(0, Math.Min(100, e.ProgressPercentage)),
+                            BuildDownloadProgressMessage(e.BytesReceived, e.TotalBytesToReceive))
+                    End Sub
+
+                AddHandler wc.DownloadFileCompleted,
+                    Sub(sender, e)
+                        If e IsNot Nothing Then
+                            If e.Error IsNot Nothing Then
+                                downloadError = e.Error
+                            ElseIf e.Cancelled Then
+                                downloadError = New OperationCanceledException("업데이트 다운로드가 취소되었습니다.")
+                            End If
+                        End If
+                        completed.Set()
+                    End Sub
+
+                wc.DownloadFileAsync(New Uri(source), localPath)
+                completed.WaitOne()
+            End Using
+
+            If downloadError IsNot Nothing Then Throw downloadError
+            progressCallback?.Invoke(100, "설치 파일 다운로드가 완료되었습니다.")
+        End Sub
+
+        Private Shared Function BuildDownloadProgressMessage(bytesReceived As Long, totalBytes As Long) As String
+            If totalBytes <= 0 Then
+                Return String.Format(
+                    CultureInfo.InvariantCulture,
+                    "다운로드 중... {0} MB",
+                    (bytesReceived / 1024.0 / 1024.0).ToString("0.0", CultureInfo.InvariantCulture))
+            End If
+
+            Return String.Format(
+                CultureInfo.InvariantCulture,
+                "다운로드 중... {0} / {1} MB",
+                (bytesReceived / 1024.0 / 1024.0).ToString("0.0", CultureInfo.InvariantCulture),
+                (totalBytes / 1024.0 / 1024.0).ToString("0.0", CultureInfo.InvariantCulture))
         End Function
 
         Private Shared Function CleanVersionDisplay(raw As String) As String

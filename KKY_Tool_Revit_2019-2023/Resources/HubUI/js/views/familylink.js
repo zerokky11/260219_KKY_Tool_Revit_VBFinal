@@ -1,4 +1,4 @@
-// Resources/HubUI/js/views/familylink.js
+﻿// Resources/HubUI/js/views/familylink.js
 import { clear, div, toast, debounce, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
@@ -274,7 +274,7 @@ export function renderFamilyLink(root) {
 
     if (!state.busy && exporting) setBusy(true);
 
-    ProgressDialog.show('?묒? ?대낫?닿린', subtitle || '?묒? ?대낫?닿린 以묅?');
+    ProgressDialog.show('엑셀 내보내기', subtitle || '엑셀 내보내기 진행중');
     ProgressDialog.update(percent, subtitle, detail);
 
     if (!exporting) {
@@ -351,8 +351,8 @@ export function renderFamilyLink(root) {
       const selected = mode || 'fast';
       lastExcelPct = 0;
       setBusy(true);
-      ProgressDialog.show('?묒? ?대낫?닿린', '以鍮?以?..');
-      ProgressDialog.update(0, '以鍮?以?..', '');
+      ProgressDialog.show('엑셀 내보내기', '준비 중...');
+      ProgressDialog.update(0, '준비 중...', '');
       post('familylink:export', {
         fastExport: selected === 'fast',
         autoFit: selected === 'normal'
@@ -522,19 +522,19 @@ export function renderFamilyLink(root) {
   function buildExcelSubtitle(phase, current, total) {
     const norm = normalizeExcelPhase(phase);
     switch (norm) {
-      case 'EXCEL_INIT': return '?묒? ?뚰겕遺?以鍮?以?';
-      case 'EXCEL_WRITE': return `?묒? ?곗씠???묒꽦 以?(${current}/${Math.max(total, current || 1)})`;
-      case 'EXCEL_SAVE': return '?묒? ?대낫?닿린 以?';
-      case 'AUTOFIT': return '???덈퉬 ?먮룞 議곗젙 以묅?';
-      case 'DONE': return '?묒? ?대낫?닿린 ?꾨즺';
-      case 'ERROR': return '?묒? ?대낫?닿린 ?ㅻ쪟';
-      default: return '?묒? ?대낫?닿린 以묅?';
+      case 'EXCEL_INIT': return '엑셀 워크북 준비 중';
+      case 'EXCEL_WRITE': return `엑셀 데이터 작성 중 (${current}/${Math.max(total, current || 1)})`;
+      case 'EXCEL_SAVE': return '엑셀 저장 중';
+      case 'AUTOFIT': return '열 너비 자동 조정 중';
+      case 'DONE': return '엑셀 내보내기 완료';
+      case 'ERROR': return '엑셀 내보내기 오류';
+      default: return '엑셀 내보내기 진행중';
     }
   }
 
   function formatExcelDetail(phase, message) {
     if (message) return message;
-    return normalizeExcelPhase(phase) === 'DONE' ? '?묒? ?대낫?닿린 ?꾨즺' : '';
+    return normalizeExcelPhase(phase) === 'DONE' ? '엑셀 내보내기 완료' : '';
   }
 
   function renderRvtList() {

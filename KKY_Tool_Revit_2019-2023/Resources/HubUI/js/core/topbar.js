@@ -1,12 +1,62 @@
-// Resources/HubUI/js/core/topbar.js
+﻿// Resources/HubUI/js/core/topbar.js
 import { div, toast } from './dom.js';
 import { toggleTheme } from './theme.js';
 import { setConn, ping, post } from './bridge.js';
 
-const APP_VERSION_FALLBACK = 'v2.03';
+const APP_VERSION_FALLBACK = 'v2.07';
+const STARTUP_NOTICE_DURATION_MS = 4800;
 
-let _docNameEl = null;
-let _docSelectEl = null;
+const TEXT = {
+    tagline: '\u0052\u0065\u0076\u0069\u0074 \uc6cc\ud06c\ud50c\ub85c\uc6b0\ub97c \ud558\ub098\uc758 \ud5c8\ube0c\uc5d0\uc11c \uad00\ub9ac\ud558\uc138\uc694.',
+    home: '\ud5c8\ube0c \ud648\uc73c\ub85c',
+    back: '\ub4a4\ub85c\uac00\uae30',
+    subtitle: '\u0052\u0065\u0076\u0069\u0074 \uc791\uc5c5 \ubcf4\uc870 \ud1b5\ud569 \ub3c4\uad6c',
+    connected: '\uc5f0\uacb0\ub428',
+    connectedNone: '\uc5f0\uacb0 \uc548\ub428',
+    pin: '\ud56d\uc0c1 \uc704',
+    theme: '\ud14c\ub9c8',
+    settings: '\uc124\uc815',
+    updateCheck: '\u0054\u006f\u006f\u006c \ubc84\uc804 \uccb4\ud06c',
+    updateChecking: '\u0054\u006f\u006f\u006c \ubc84\uc804 \ud655\uc778 \uc911',
+    updateHint: '\u0054\u006f\u006f\u006c \ubc84\uc804 \uccb4\ud06c\ub97c \ub20c\ub7ec \ucd5c\uc2e0 \ubc84\uc804\uc744 \uc124\uce58\ud558\uc138\uc694.',
+    startupToast: '\uc0c8 \u0054\u006f\u006f\u006c \ubc84\uc804\uc774 \uc788\uc2b5\ub2c8\ub2e4. \u0054\u006f\u006f\u006c \ubc84\uc804 \uccb4\ud06c\ub97c \ub20c\ub7ec \ud655\uc778\ud574 \uc8fc\uc138\uc694.',
+    currentVersion: '\ud604\uc7ac \ubc84\uc804',
+    latestVersion: '\ucd5c\uc2e0 \ubc84\uc804',
+    feedUrl: '\uc5c5\ub370\uc774\ud2b8 \ud655\uc778 \uc8fc\uc18c',
+    publishedAt: '\ubc30\ud3ec\uc77c',
+    releaseNotes: '\ubcc0\uacbd \uc0ac\ud56d',
+    dialogTitle: '\u0054\u006f\u006f\u006c \ubc84\uc804 \ud655\uc778',
+    dialogErrorTitle: '\u0054\u006f\u006f\u006c \ubc84\uc804 \ud655\uc778 \uc2e4\ud328',
+    dialogUpdateTitle: '\uc0c8 \u0054\u006f\u006f\u006c \ubc84\uc804\uc774 \uc788\uc2b5\ub2c8\ub2e4',
+    dialogLatestTitle: '\ud604\uc7ac \ucd5c\uc2e0 \ubc84\uc804\uc785\ub2c8\ub2e4',
+    dialogDownloadTitle: '\ucd5c\uc2e0 \uc124\uce58 \ud30c\uc77c \ub2e4\uc6b4\ub85c\ub4dc \uc911',
+    dialogReadyTitle: '\uc124\uce58 \uc900\ube44 \uc644\ub8cc',
+    statusDone: '\ud655\uc778 \uc644\ub8cc',
+    statusError: '\ud655\uc778 \uc2e4\ud328',
+    statusLatest: '\ucd5c\uc2e0 \uc0c1\ud0dc',
+    statusUpdate: '\uc5c5\ub370\uc774\ud2b8 \ud544\uc694',
+    statusDownloading: '\ub2e4\uc6b4\ub85c\ub4dc \uc9c4\ud589 \uc911',
+    statusReady: '\uc124\uce58 \uc900\ube44\ub428',
+    currentLatestSummary: '\ud604\uc7ac \ubc84\uc804 {current}\uc774 \ucd5c\uc2e0 \ubc84\uc804\uc785\ub2c8\ub2e4.',
+    updateSummary: '\ud604\uc7ac \ubc84\uc804 {current}\uc5d0\uc11c \ucd5c\uc2e0 \ubc84\uc804 {latest}\ub85c \uc5c5\ub370\uc774\ud2b8\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',
+    downloadSummary: '\ucd5c\uc2e0 \uc5c5\ub370\uc774\ud2b8 \ud328\ud0a4\uc9c0\ub97c \uc784\uc2dc \ud3f4\ub354\ub85c \ub2e4\uc6b4\ub85c\ub4dc\ud558\uace0 \uc788\uc2b5\ub2c8\ub2e4.',
+    readySummary: '\uc5c5\ub370\uc774\ud2b8 \ud328\ud0a4\uc9c0 \ub2e4\uc6b4\ub85c\ub4dc\uac00 \uc644\ub8cc\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \ud604\uc7ac \uc2e4\ud589 \uc911\uc778 \u0052\u0065\u0076\u0069\u0074\uc744 \ubaa8\ub450 \uc885\ub8cc\ud558\uba74 \uc5c5\ub370\uc774\ud2b8\uac00 \uc801\uc6a9\ub429\ub2c8\ub2e4. \uc801\uc6a9 \ud6c4 \u0052\u0065\u0076\u0069\u0074\uc744 \ub2e4\uc2dc \uc2e4\ud589\ud574 \uc8fc\uc138\uc694.',
+    preparingDownload: '\uc5c5\ub370\uc774\ud2b8 \ud328\ud0a4\uc9c0 \ub2e4\uc6b4\ub85c\ub4dc\ub97c \uc900\ube44\ud558\ub294 \uc911\uc785\ub2c8\ub2e4.',
+    installing: '\uc124\uce58\ud558\uae30',
+    close: '\ub2eb\uae30',
+    shortcutsTitle: '\ub3c4\uc6c0\ub9d0 - \u004b\u004b\u0059 \u0054\u006f\u006f\u006c \u0048\u0075\u0062',
+    shortcutsHtml: `
+        <div><strong>\ub2e8\ucd95\ud0a4</strong></div>
+        <ul>
+            <li><code>/</code> \uac80\uc0c9 \ud3ec\ucee4\uc2a4</li>
+            <li>\uce74\ub4dc \uc120\ud0dd \ud6c4 <code>Enter</code> \uc2e4\ud589, <code>F</code> \uc990\uaca8\ucc3e\uae30</li>
+            <li><code>Ctrl</code>+<code>Shift</code>+<code>L</code> \ud14c\ub9c8 \uc804\ud658</li>
+            <li><code>Ctrl</code>+<code>Shift</code>+<code>T</code> \ud56d\uc0c1 \uc704</li>
+            <li><code>F1</code> \ub610\ub294 <code>?</code> \ub3c4\uc6c0\ub9d0</li>
+        </ul>
+    `
+};
+
 let _docList = [];
 let _activeDoc = { name: '', path: '' };
 let _topbarEl = null;
@@ -20,7 +70,12 @@ let _progressText = null;
 let _progressPct = null;
 let _versionEl = null;
 let _updateBtn = null;
+let _updateHintEl = null;
 let _updateDialogBackdrop = null;
+let _updateStartupNoticeShown = false;
+let _updateNeedsAttention = false;
+let _updateDismissTimer = 0;
+let _lastReadyNoticeKey = '';
 let _updateState = {
     currentVersion: APP_VERSION_FALLBACK.replace(/^v/i, ''),
     currentVersionDisplay: APP_VERSION_FALLBACK.replace(/^v/i, ''),
@@ -32,23 +87,38 @@ let _updateState = {
     message: '',
     kind: 'info',
     configPath: '',
-    feedUrl: ''
+    feedUrl: '',
+    notes: '',
+    publishedAt: ''
 };
+
+function readUpdateField(payload, camelName, pascalName = '') {
+    if (!payload || typeof payload !== 'object') return undefined;
+    if (Object.prototype.hasOwnProperty.call(payload, camelName)) return payload[camelName];
+    if (pascalName && Object.prototype.hasOwnProperty.call(payload, pascalName)) return payload[pascalName];
+    return undefined;
+}
 
 export function renderTopbar(root, withBack = false, onBack = null, canGoBack = false, onNavBack = null) {
     const host = document.getElementById('topbar-root') || root;
     if (!host) return;
+
     if (_topbarEl) {
         if (!_topbarEl.parentElement) host.append(_topbarEl);
     } else {
         _topbarEl = div('topbar');
         const left = div('topbar-left');
         const center = div('topbar-center');
-        center.innerHTML = '<p class="topbar-tagline">Revit 워크플로우를 하나의 허브에서 관리하세요.</p>';
-
         const right = div('topbar-right');
+
+        const tagline = document.createElement('p');
+        tagline.className = 'topbar-tagline';
+        tagline.textContent = TEXT.tagline;
+        center.append(tagline);
+
         _topbarEl.append(left, center, right);
         host.append(_topbarEl);
+
         _navWrap = div('topbar-nav');
         left.append(_navWrap);
         buildBrand(left);
@@ -59,62 +129,47 @@ export function renderTopbar(root, withBack = false, onBack = null, canGoBack = 
         _progressText = div('topbar-progress-text');
         _progressPct = div('topbar-progress-pct');
         progRow.append(_progressText, _progressPct);
+
         const progBar = div('topbar-progress-bar');
-        _progressFill = div('topbar-progress-fill'); _progressFill.style.width = '0%';
+        _progressFill = div('topbar-progress-fill');
+        _progressFill.style.width = '0%';
         progBar.append(_progressFill);
+
         _progressWrap.append(progRow, progBar);
         _topbarEl.append(_progressWrap);
     }
 
     configureBackButton(withBack, onBack, canGoBack, onNavBack);
     setConn(true);
+    applyActiveDocumentState();
+    applyUpdateVisualState();
 }
 
 function configureBackButton(withBack, onBack, canGoBack, onNavBack) {
     const left = _topbarEl?.querySelector('.topbar-left');
     if (!left) return;
+
     if (!_navWrap) {
         _navWrap = div('topbar-nav');
         left.prepend(_navWrap);
     }
+
     if (!_backBtn) {
-        _backBtn = document.createElement('button');
-        _backBtn.className = 'btn btn-ghost';
-        _backBtn.type = 'button';
-        const icon = document.createElement('img');
-        icon.className = 'back-btn-icon';
-        icon.src = 'assets/icons/HubHome_24.png';
-        icon.alt = '';
-        const label = document.createElement('span');
-        label.className = 'back-btn-label';
-        label.textContent = '허브 홈으로';
-        _backBtn.append(icon, label);
+        _backBtn = createNavButton(TEXT.home);
         _navWrap.append(_backBtn);
-    } else {
-        const label = _backBtn.querySelector('.back-btn-label');
-        if (label) label.textContent = '허브 홈으로';
     }
 
     if (!_navBackBtn) {
-        _navBackBtn = document.createElement('button');
-        _navBackBtn.className = 'btn btn-ghost';
-        _navBackBtn.type = 'button';
-        const icon = document.createElement('img');
-        icon.className = 'back-btn-icon';
-        icon.src = 'assets/icons/HubHome_24.png';
-        icon.alt = '';
-        const label = document.createElement('span');
-        label.className = 'back-btn-label';
-        label.textContent = '뒤로가기';
-        _navBackBtn.append(icon, label);
+        _navBackBtn = createNavButton(TEXT.back);
         _navWrap.append(_navBackBtn);
     }
 
     _backHandler = onBack;
+
     const smartGoHome = () => {
-        try { window.dispatchEvent(new CustomEvent('kkyt:go-home')); } catch (_) { /* noop */ }
+        try { window.dispatchEvent(new CustomEvent('kkyt:go-home')); } catch (_) { }
         const before = location.href;
-        try { history.back(); } catch (_) { /* ignore */ }
+        try { history.back(); } catch (_) { }
         setTimeout(() => {
             if (location.href === before) {
                 const url = new URL(location.href);
@@ -125,6 +180,7 @@ function configureBackButton(withBack, onBack, canGoBack, onNavBack) {
             }
         }, 80);
     };
+
     _backBtn.onclick = () => {
         if (typeof _backHandler === 'function') {
             try { _backHandler(); } catch (_) { smartGoHome(); }
@@ -134,18 +190,35 @@ function configureBackButton(withBack, onBack, canGoBack, onNavBack) {
     };
     _backBtn.classList.toggle('hidden', !withBack);
 
-    if (_navBackBtn) {
-        _navBackBtn.disabled = !canGoBack;
-        _navBackBtn.classList.toggle('is-disabled', !canGoBack);
-        _navBackBtn.onclick = () => {
-            if (!canGoBack) return;
-            if (typeof onNavBack === 'function') onNavBack();
-        };
-    }
+    _navBackBtn.disabled = !canGoBack;
+    _navBackBtn.classList.toggle('is-disabled', !canGoBack);
+    _navBackBtn.onclick = () => {
+        if (!canGoBack) return;
+        if (typeof onNavBack === 'function') onNavBack();
+    };
+}
+
+function createNavButton(labelText) {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-ghost';
+    btn.type = 'button';
+
+    const icon = document.createElement('img');
+    icon.className = 'back-btn-icon';
+    icon.src = 'assets/icons/HubHome_24.png';
+    icon.alt = '';
+
+    const label = document.createElement('span');
+    label.className = 'back-btn-label';
+    label.textContent = labelText;
+
+    btn.append(icon, label);
+    return btn;
 }
 
 function buildBrand(host) {
     const wrap = div('topbar-brand');
+
     const logo = document.createElement('span');
     logo.className = 'topbar-logo';
     const logoImg = document.createElement('img');
@@ -155,52 +228,55 @@ function buildBrand(host) {
 
     const text = document.createElement('div');
     text.className = 'topbar-brand-text';
-    text.innerHTML = '<strong>KKY Tool Hub</strong><span>Revit 작업 보조 통합 도구</span>';
+    text.innerHTML = `<strong>KKY Tool Hub</strong><span>${TEXT.subtitle}</span>`;
 
-    const ver = document.createElement('span');
-    ver.className = 'topbar-version';
-    _versionEl = ver;
-    ver.textContent = APP_VERSION_FALLBACK;
-
-    wrap.append(logo, text, ver);
+    wrap.append(logo, text);
     host.append(wrap);
-    applyUpdateVisualState();
 }
 
 export function renderTopbarChips() {
     const actions = document.querySelector('.topbar-right');
     if (!actions) return;
+
     actions.innerHTML = '';
-
-    const docCtrl = createDocControl();
-    actions.append(docCtrl);
-
-    const chipRow = document.createElement('div');
-    chipRow.className = 'chip-row';
 
     const conn = createControlButton({
         id: 'connChip',
-        label: '연결됨',
+        label: TEXT.connected,
         icon: 'plug',
         classes: 'chip-toggle chip-connection',
         statusDot: true
     });
     conn.addEventListener('click', ping);
-    chipRow.append(conn);
+    actions.append(conn);
 
-    const pin = createControlButton({
-        id: 'pinChip',
-        label: '항상 위',
-        icon: 'pin',
-        classes: 'chip-toggle pin-chip'
+    const chipRow = document.createElement('div');
+    chipRow.className = 'chip-row';
+
+    const versionChip = document.createElement('span');
+    versionChip.className = 'topbar-version topbar-version--inline';
+    versionChip.textContent = APP_VERSION_FALLBACK;
+    _versionEl = versionChip;
+    chipRow.append(versionChip);
+
+    const updateWrap = div('update-chip-wrap');
+    const updateBtn = createControlButton({
+        id: 'updateChip',
+        label: TEXT.updateCheck,
+        icon: 'update',
+        classes: 'chip-btn update-chip'
     });
-    pin.setAttribute('aria-pressed', 'false');
-    pin.classList.add('is-off');
-    pin.onclick = () => { try { post('ui:toggle-topmost'); } catch (e) { console.error(e); } };
-    chipRow.append(pin);
+    updateBtn.addEventListener('click', onUpdateButtonClick);
+    _updateBtn = updateBtn;
+
+    const updateHint = div('update-chip-hint hidden');
+    updateHint.textContent = TEXT.updateHint;
+    _updateHintEl = updateHint;
+    updateWrap.append(updateBtn, updateHint);
+    chipRow.append(updateWrap);
 
     const themeBtn = createControlButton({
-        label: '테마',
+        label: TEXT.theme,
         icon: 'theme',
         classes: 'chip-btn theme-chip'
     });
@@ -211,22 +287,28 @@ export function renderTopbarChips() {
         themeBtn.classList.toggle('is-active', cur === 'dark');
         themeBtn.setAttribute('aria-pressed', cur === 'dark' ? 'true' : 'false');
     };
-    themeBtn.onclick = () => { toggleTheme(); applyThemeState(); };
+    themeBtn.onclick = () => {
+        toggleTheme();
+        applyThemeState();
+    };
     applyThemeState();
     chipRow.append(themeBtn);
 
-    const updateBtn = createControlButton({
-        id: 'updateChip',
-        label: 'Tool 버전 체크',
-        icon: 'update',
-        classes: 'chip-btn update-chip'
+    const pin = createControlButton({
+        id: 'pinChip',
+        label: TEXT.pin,
+        icon: 'pin',
+        classes: 'chip-toggle pin-chip'
     });
-    updateBtn.addEventListener('click', onUpdateButtonClick);
-    _updateBtn = updateBtn;
-    chipRow.append(updateBtn);
+    pin.setAttribute('aria-pressed', 'false');
+    pin.classList.add('is-off');
+    pin.onclick = () => {
+        try { post('ui:toggle-topmost'); } catch (e) { console.error(e); }
+    };
+    chipRow.append(pin);
 
     const help = createControlButton({
-        label: '설정',
+        label: TEXT.settings,
         icon: 'gear',
         classes: 'chip-btn settings-chip'
     });
@@ -248,7 +330,7 @@ export function updateTopMost(on) {
     pin.classList.toggle('is-off', !active);
     pin.setAttribute('aria-pressed', active ? 'true' : 'false');
     const label = pin.querySelector('.chip-text');
-    if (label) label.textContent = '항상 위';
+    if (label) label.textContent = TEXT.pin;
 }
 
 export function setTopbarProgress(state) {
@@ -260,6 +342,7 @@ export function setTopbarProgress(state) {
         _progressPct.textContent = '';
         return;
     }
+
     const total = Math.max(0, Number(state.total) || 0);
     const idx = Math.max(0, Number(state.index) || 0);
     const pct = Math.max(0, Math.min(100, Number(state.percent) || 0));
@@ -272,99 +355,9 @@ export function setTopbarProgress(state) {
 }
 
 function applyActiveDocumentState() {
-    if (_docNameEl) {
-        const hasDoc = !!_activeDoc.name;
-        _docNameEl.textContent = hasDoc ? _activeDoc.name : '활성 문서 없음';
-        _docNameEl.title = _activeDoc.path || _activeDoc.name || '';
-        _docNameEl.classList.toggle('is-empty', !hasDoc);
-    }
-    updateConnectionChipLabel();
-    rebuildDocSelect();
-}
-
-function updateConnectionChipLabel() {
     const label = document.querySelector('#connChip .chip-text');
     if (!label) return;
-    label.textContent = _activeDoc.name ? `연결됨 · ${_activeDoc.name}` : '연결됨';
-}
-
-function normalizeDocs(payload) {
-    let list = [];
-    if (Array.isArray(payload?.docs)) list = payload.docs;
-    if (Array.isArray(payload)) list = payload;
-    return list
-        .map(doc => ({ name: doc?.name || '', path: doc?.path || '' }))
-        .filter(doc => !!doc.path);
-}
-
-function rebuildDocSelect() {
-    if (!_docSelectEl) return;
-    const activePath = (_activeDoc.path || '').toLowerCase();
-
-    _docSelectEl.innerHTML = '';
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = _docList.length ? '다른 문서로 전환' : '열린 Revit 문서가 없습니다';
-    placeholder.disabled = !_docList.length;
-    placeholder.selected = true;
-    _docSelectEl.append(placeholder);
-
-    let hasSelected = false;
-
-    for (const doc of _docList) {
-        const opt = document.createElement('option');
-        opt.value = doc?.path || '';
-        opt.textContent = doc?.name || doc?.path || '(이름 없는 문서)';
-        opt.title = doc?.path || opt.textContent;
-        if (opt.value && opt.value.toLowerCase() === activePath) {
-            opt.selected = true;
-            hasSelected = true;
-        }
-        _docSelectEl.append(opt);
-    }
-
-    if (hasSelected) placeholder.selected = false;
-    _docSelectEl.disabled = !_docList.length;
-}
-
-function createDocControl() {
-    const wrap = document.createElement('div');
-    wrap.className = 'doc-chip';
-
-    const glyph = document.createElement('span');
-    glyph.className = 'chip-glyph';
-    glyph.innerHTML = iconSvg('doc');
-
-    const meta = document.createElement('div');
-    meta.className = 'doc-meta';
-    const label = document.createElement('span');
-    label.className = 'doc-label';
-    label.textContent = '연결 문서';
-    const name = document.createElement('span');
-    name.className = 'doc-name';
-    name.textContent = '활성 문서 없음';
-    meta.append(label, name);
-
-    const select = document.createElement('select');
-    select.className = 'doc-select';
-    select.addEventListener('change', () => {
-        const path = select.value;
-        if (path && path !== _activeDoc.path) {
-            try { toast?.('문서 전환은 Revit에서 프로젝트를 선택해 주세요.'); } catch (_) { console.warn('문서 전환은 Revit에서 프로젝트를 선택해 주세요.'); }
-        }
-        if (_activeDoc.path) {
-            select.value = _activeDoc.path;
-        } else {
-            select.value = '';
-        }
-    });
-
-    _docNameEl = name;
-    _docSelectEl = select;
-    rebuildDocSelect();
-
-    wrap.append(glyph, meta, select);
-    return wrap;
+    label.textContent = _activeDoc.name ? `${TEXT.connected} \u00b7 ${_activeDoc.name}` : TEXT.connectedNone;
 }
 
 export function setActiveDocument(doc = {}) {
@@ -376,39 +369,106 @@ export function setActiveDocument(doc = {}) {
 }
 
 export function setDocList(payload) {
-    const list = normalizeDocs(payload);
+    let list = [];
+    if (Array.isArray(payload?.docs)) list = payload.docs;
+    if (Array.isArray(payload)) list = payload;
     _docList = list;
-    rebuildDocSelect();
 }
 
 export function setUpdateInfo(payload = {}) {
+    const incomingHasUpdate = !!readUpdateField(payload, 'hasUpdate', 'HasUpdate');
+    const currentVersion = readUpdateField(payload, 'currentVersion', 'CurrentVersion');
+    const currentVersionDisplay = readUpdateField(payload, 'currentVersionDisplay', 'CurrentVersionDisplay');
+    const latestVersion = readUpdateField(payload, 'latestVersion', 'LatestVersion');
+    const canInstall = readUpdateField(payload, 'canInstall', 'CanInstall');
+    const isConfigured = readUpdateField(payload, 'isConfigured', 'IsConfigured');
+    const configPath = readUpdateField(payload, 'configPath', 'ConfigPath');
+    const feedUrl = readUpdateField(payload, 'feedUrl', 'FeedUrl');
+    const notes = readUpdateField(payload, 'notes', 'Notes');
+    const publishedAt = readUpdateField(payload, 'publishedAt', 'PublishedAt');
+    const message = readUpdateField(payload, 'message', 'Message');
+
     _updateState = {
         ..._updateState,
-        currentVersion: payload?.currentVersion || _updateState.currentVersion,
-        currentVersionDisplay: payload?.currentVersionDisplay || payload?.currentVersion || _updateState.currentVersionDisplay,
-        latestVersion: payload?.latestVersion || '',
-        hasUpdate: !!payload?.hasUpdate,
-        canInstall: !!payload?.canInstall,
-        isConfigured: !!payload?.isConfigured,
-        configPath: payload?.configPath || '',
-        feedUrl: payload?.feedUrl || '',
-        message: payload?.message || _updateState.message
+        currentVersion: currentVersion || _updateState.currentVersion,
+        currentVersionDisplay: currentVersionDisplay || currentVersion || _updateState.currentVersionDisplay,
+        latestVersion: latestVersion || '',
+        hasUpdate: incomingHasUpdate,
+        canInstall: !!canInstall,
+        isConfigured: !!isConfigured,
+        configPath: configPath || '',
+        feedUrl: feedUrl || '',
+        notes: notes || '',
+        publishedAt: publishedAt || '',
+        message: message || _updateState.message
     };
+
+    if (!incomingHasUpdate) {
+        _updateStartupNoticeShown = false;
+        _updateNeedsAttention = false;
+        clearUpdateDismissTimer();
+    } else {
+        _updateNeedsAttention = true;
+    }
+
     applyUpdateVisualState();
 }
 
 export function setUpdateState(payload = {}) {
+    const hasUpdate = readUpdateField(payload, 'hasUpdate', 'HasUpdate');
+    const latestVersion = readUpdateField(payload, 'latestVersion', 'LatestVersion');
+    const currentVersionDisplay = readUpdateField(payload, 'currentVersionDisplay', 'CurrentVersionDisplay');
+    const message = readUpdateField(payload, 'message', 'Message');
+    const kind = readUpdateField(payload, 'kind', 'Kind');
+    const busy = readUpdateField(payload, 'busy', 'Busy');
+
     _updateState = {
         ..._updateState,
-        busy: !!payload?.busy,
-        message: payload?.message || _updateState.message,
-        kind: payload?.kind || _updateState.kind
+        busy: !!busy,
+        hasUpdate: typeof hasUpdate === 'boolean' ? hasUpdate : _updateState.hasUpdate,
+        latestVersion: latestVersion || _updateState.latestVersion,
+        currentVersionDisplay: currentVersionDisplay || _updateState.currentVersionDisplay,
+        message: message || _updateState.message,
+        kind: kind || _updateState.kind
     };
+
+    if (_updateState.hasUpdate && !_updateNeedsAttention) {
+        _updateNeedsAttention = true;
+    }
+
+    if (payload?.startupNotice && _updateState.hasUpdate) {
+        showUpdateStartupNotice();
+    }
+
     applyUpdateVisualState();
+
+    if (payload?.phase === 'download' || payload?.phase === 'ready') {
+        if (payload?.phase === 'ready') {
+            showReadyRestartNotice(payload);
+        }
+        showUpdateResultDialog(payload);
+        return;
+    }
 
     if (payload?.showToast && payload?.message) {
         showUpdateResultDialog(payload);
     }
+}
+
+function showReadyRestartNotice(payload = {}) {
+    const key = [
+        payload?.phase || '',
+        payload?.installerPath || '',
+        payload?.scriptPath || '',
+        _updateState.latestVersion || '',
+        _updateState.currentVersionDisplay || ''
+    ].join('|');
+
+    if (key && key === _lastReadyNoticeKey) return;
+    _lastReadyNoticeKey = key;
+
+    const message = payload?.message || TEXT.readySummary;
+    toast(message, 'warn', 5600);
 }
 
 function toggleHelpPanel(trigger) {
@@ -424,30 +484,25 @@ function toggleHelpPanel(trigger) {
 
     const backdrop = document.createElement('div');
     backdrop.className = 'settings-backdrop';
+
     const panel = document.createElement('section');
     panel.className = 'settings-panel';
 
     const header = document.createElement('header');
-    header.innerHTML = '<span>도움말 — KKY Tool Hub</span>';
+    const headerText = document.createElement('span');
+    headerText.textContent = TEXT.shortcutsTitle;
+    header.append(headerText);
 
     const body = document.createElement('div');
     body.className = 'body';
-    body.innerHTML = `
-        <div><strong>단축키</strong></div>
-        <ul>
-            <li><code>/</code> 검색 포커스</li>
-            <li>카드 선택 후 <code>Enter</code> 실행, <code>F</code> 즐겨찾기</li>
-            <li><code>Ctrl</code>+<code>Shift</code>+<code>L</code> 테마 전환</li>
-            <li><code>Ctrl</code>+<code>Shift</code>+<code>T</code> 항상 위</li>
-            <li><code>F1</code> 또는 <code>?</code> 도움말</li>
-        </ul>`;
+    body.innerHTML = TEXT.shortcutsHtml;
 
     const actions = document.createElement('div');
     actions.className = 'actions';
     const closeBtn = document.createElement('button');
     closeBtn.className = 'btn';
     closeBtn.type = 'button';
-    closeBtn.textContent = '닫기';
+    closeBtn.textContent = TEXT.close;
 
     const closePanel = () => {
         backdrop.remove();
@@ -455,7 +510,9 @@ function toggleHelpPanel(trigger) {
         document.removeEventListener('keydown', escListener);
     };
 
-    const escListener = (e) => { if (e.key === 'Escape') closePanel(); };
+    const escListener = (e) => {
+        if (e.key === 'Escape') closePanel();
+    };
 
     document.addEventListener('keydown', escListener);
     backdrop._escListener = escListener;
@@ -467,7 +524,9 @@ function toggleHelpPanel(trigger) {
     document.body.append(backdrop);
     trigger?.setAttribute('aria-expanded', 'true');
 
-    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closePanel(); });
+    backdrop.addEventListener('click', (e) => {
+        if (e.target === backdrop) closePanel();
+    });
 }
 
 function createControlButton({ id, label, icon, classes = '', statusDot = false }) {
@@ -475,6 +534,7 @@ function createControlButton({ id, label, icon, classes = '', statusDot = false 
     btn.type = 'button';
     btn.className = `control-chip ${classes}`.trim();
     if (id) btn.id = id;
+
     if (statusDot) {
         btn.classList.add('has-status-dot');
         const status = document.createElement('span');
@@ -482,13 +542,16 @@ function createControlButton({ id, label, icon, classes = '', statusDot = false 
         status.setAttribute('aria-hidden', 'true');
         btn.append(status);
     }
+
     const glyph = document.createElement('span');
     glyph.className = 'chip-glyph';
     glyph.setAttribute('aria-hidden', 'true');
     glyph.innerHTML = iconSvg(icon);
+
     const text = document.createElement('span');
     text.className = 'chip-text';
     text.textContent = label;
+
     btn.append(glyph, text);
     return btn;
 }
@@ -505,41 +568,16 @@ function iconSvg(name) {
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v6m0 0 2.5-2.5M12 10 9.5 7.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 12a5 5 0 1 0 1.46-3.54" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 20v-2" stroke-linecap="round"/></svg>';
         case 'gear':
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 13.5v-3l-2.1-.6a6.1 6.1 0 0 0-.6-1.4l1.2-1.8-2.1-2.1-1.8 1.2a6.1 6.1 0 0 0-1.4-.6L13.5 2h-3l-.6 2.1a6.1 6.1 0 0 0-1.4.6L6.7 3.5 4.6 5.6l1.2 1.8c-.26.44-.47.91-.6 1.4L3 10.5v3l2.1.6c.13.49.34.96.6 1.4l-1.2 1.8 2.1 2.1 1.8-1.2c.44.26.91.47 1.4.6l.6 2.1h3l.6-2.1c.49-.13.96-.34 1.4-.6l1.8 1.2 2.1-2.1-1.2-1.8c.26-.44.47-.91.6-1.4Z" fill="none"/><circle cx="12" cy="12" r="3.2" fill="none"/></svg>';
-        case 'help':
-            return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M10.89 9.05a1.11 1.11 0 0 1 2.22 0c0 1.11-1.67 1.11-1.67 2.78" stroke-linecap="round"/><circle cx="12" cy="15.5" r="0.5" fill="currentColor" stroke="none"/></svg>';
-        case 'doc':
-            return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 3h7l5 5v13H6z" fill="none"/><path d="M13 3v6h5" fill="none"/><path d="M9 13h6m-6 3h6" stroke-linecap="round"/></svg>';
         default:
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"/></svg>';
     }
 }
 
-function onUpdateButtonClickLegacy() {
-    if (_updateState.busy) return;
-
-    if (_updateState.hasUpdate && _updateState.canInstall) {
-        const current = formatVersionText(_updateState.currentVersionDisplay);
-        const latest = formatVersionText(_updateState.latestVersion);
-        const message = [
-            '새 Tool 버전이 있습니다.',
-            '',
-            `현재 버전: ${current}`,
-            `최신 버전: ${latest}`,
-            '',
-            '설치파일을 준비하고, Revit을 종료하면 자동으로 업데이트를 시작할까요?'
-        ].join('\n');
-
-        if (!window.confirm(message)) return;
-        post('update:install', { version: _updateState.latestVersion });
-        return;
-    }
-
-    post('update:check');
-}
-
-// Keep the click behavior consistent whether the tool is current or outdated.
 function onUpdateButtonClick() {
     if (_updateState.busy) return;
+    _updateNeedsAttention = false;
+    clearUpdateDismissTimer();
+    applyUpdateVisualState();
 
     if (_updateState.hasUpdate) {
         showUpdateResultDialog({
@@ -552,48 +590,16 @@ function onUpdateButtonClick() {
     post('update:check');
 }
 
-function applyUpdateVisualState() {
-    if (_versionEl) {
-        _versionEl.textContent = formatVersionText(_updateState.currentVersionDisplay);
-    }
-
-    if (!_updateBtn) return;
-
-    let label = 'Tool 버전 체크';
-    if (_updateState.busy) {
-        label = 'Tool 버전 확인 중';
-    } else if (_updateState.hasUpdate) {
-        label = `Tool 업데이트 ${formatVersionText(_updateState.latestVersion)}`;
-    } else if (_updateState.isConfigured) {
-        label = 'Tool 최신 버전';
-    }
-
-    const text = _updateBtn.querySelector('.chip-text');
-    if (text) text.textContent = label;
-
-    _updateBtn.disabled = !!_updateState.busy;
-    _updateBtn.classList.toggle('is-active', !!_updateState.hasUpdate);
-    _updateBtn.classList.toggle('is-busy', !!_updateState.busy);
-    _updateBtn.title = buildUpdateTooltip();
-}
-
 function buildUpdateTooltip() {
-    const lines = [
-        `Tool 현재 버전: ${formatVersionText(_updateState.currentVersionDisplay)}`
-    ];
-
+    const lines = [`${TEXT.currentVersion}: ${formatVersionText(_updateState.currentVersionDisplay)}`];
     if (_updateState.latestVersion) {
-        lines.push(`Tool 최신 버전: ${formatVersionText(_updateState.latestVersion)}`);
+        lines.push(`${TEXT.latestVersion}: ${formatVersionText(_updateState.latestVersion)}`);
     }
-
-    if (!_updateState.isConfigured && _updateState.configPath) {
-        lines.push(`설정 파일: ${_updateState.configPath}`);
+    if (_updateState.hasUpdate && _updateState.latestVersion) {
+        lines.push(`${formatVersionText(_updateState.latestVersion)} 업데이트가 있습니다.`);
+    } else if (!_updateState.hasUpdate) {
+        lines.push(TEXT.currentLatestSummary.replace('{current}', formatVersionText(_updateState.currentVersionDisplay)));
     }
-
-    if (_updateState.message) {
-        lines.push(_updateState.message);
-    }
-
     return lines.join('\n');
 }
 
@@ -605,30 +611,40 @@ function showUpdateResultDialog(payload = {}) {
     const hasUpdate = !!_updateState.hasUpdate;
     const installReady = !!payload?.installerPath || !!payload?.scriptPath;
     const isError = payload?.kind === 'err';
+    const phase = payload?.phase || '';
+    const isDownloading = phase === 'download';
+    const progressPercent = Math.max(0, Math.min(100, Number(payload?.progressPercent) || 0));
+    const progressMessage = TEXT.preparingDownload;
 
     let tone = 'info';
-    let title = 'Tool 버전 확인';
+    let title = TEXT.dialogTitle;
     let summary = payload?.message || '';
-    let statusText = '확인 완료';
+    let statusText = TEXT.statusDone;
 
     if (isError) {
         tone = 'err';
-        title = 'Tool 버전 확인 실패';
-        statusText = '확인 실패';
+        title = TEXT.dialogErrorTitle;
+        statusText = TEXT.statusError;
+    } else if (isDownloading) {
+        tone = 'info';
+        title = TEXT.dialogDownloadTitle;
+        statusText = TEXT.statusDownloading;
+        summary = TEXT.downloadSummary;
     } else if (installReady) {
         tone = 'ok';
-        title = '업데이트 준비 완료';
-        statusText = '업데이트 준비됨';
+        title = TEXT.dialogReadyTitle;
+        statusText = TEXT.statusReady;
+        summary = TEXT.readySummary;
     } else if (hasUpdate) {
         tone = 'warn';
-        title = '새 Tool 버전이 있습니다';
-        statusText = '업데이트 필요';
-        summary = summary || `현재 버전 ${current}에서 최신 버전 ${latest}로 업데이트할 수 있습니다.`;
+        title = TEXT.dialogUpdateTitle;
+        statusText = TEXT.statusUpdate;
+        summary = TEXT.updateSummary.replace('{current}', current).replace('{latest}', latest);
     } else {
         tone = 'ok';
-        title = '현재 최신 버전입니다';
-        statusText = '최신 상태';
-        summary = summary || `현재 버전 ${current}이 최신 버전입니다.`;
+        title = TEXT.dialogLatestTitle;
+        statusText = TEXT.statusLatest;
+        summary = TEXT.currentLatestSummary.replace('{current}', current);
     }
 
     const backdrop = document.createElement('div');
@@ -642,10 +658,7 @@ function showUpdateResultDialog(payload = {}) {
 
     const header = document.createElement('header');
     header.className = 'update-result-header';
-    header.innerHTML = `
-        <div class="update-result-badge ${tone}">${statusText}</div>
-        <h3>${title}</h3>
-    `;
+    header.innerHTML = `<div class="update-result-badge ${tone}">${statusText}</div><h3>${title}</h3>`;
 
     const body = document.createElement('div');
     body.className = 'update-result-body';
@@ -659,22 +672,41 @@ function showUpdateResultDialog(payload = {}) {
     grid.className = 'update-result-grid';
     grid.innerHTML = `
         <div class="update-result-item">
-            <span class="update-result-item-label">현재 버전</span>
+            <span class="update-result-item-label">${TEXT.currentVersion}</span>
             <strong class="update-result-item-value">${current}</strong>
         </div>
         <div class="update-result-item">
-            <span class="update-result-item-label">최신 버전</span>
+            <span class="update-result-item-label">${TEXT.latestVersion}</span>
             <strong class="update-result-item-value">${latest}</strong>
         </div>
     `;
     body.append(grid);
 
-    if (_updateState.feedUrl) {
-        const feed = document.createElement('div');
-        feed.className = 'update-result-note';
-        feed.textContent = `업데이트 확인 주소: ${_updateState.feedUrl}`;
-        body.append(feed);
+    if (isDownloading) {
+        const progress = document.createElement('div');
+        progress.className = 'update-result-progress';
+        progress.innerHTML = `
+            <div class="update-result-progress-meta">
+                <span>${progressMessage}</span>
+                <strong>${progressPercent}%</strong>
+            </div>
+            <div class="update-result-progress-bar">
+                <div class="update-result-progress-fill" style="width:${progressPercent}%"></div>
+            </div>
+        `;
+        body.append(progress);
     }
+
+    const notes = [];
+    if (_updateState.publishedAt) notes.push(`${TEXT.publishedAt}: ${_updateState.publishedAt}`);
+    if (_updateState.notes) notes.push(`${TEXT.releaseNotes}: ${_updateState.notes}`);
+    if (_updateState.feedUrl) notes.push(`${TEXT.feedUrl}: ${_updateState.feedUrl}`);
+    notes.forEach((noteText) => {
+        const note = document.createElement('div');
+        note.className = 'update-result-note';
+        note.textContent = noteText;
+        body.append(note);
+    });
 
     const footer = document.createElement('div');
     footer.className = 'update-result-footer';
@@ -682,17 +714,23 @@ function showUpdateResultDialog(payload = {}) {
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'btn btn-ghost';
-    closeBtn.textContent = '닫기';
+    closeBtn.textContent = TEXT.close;
     closeBtn.addEventListener('click', closeUpdateResultDialog);
     footer.append(closeBtn);
 
-    if (!isError && hasUpdate && _updateState.canInstall && !installReady) {
+    if (!isError && hasUpdate && _updateState.canInstall && !installReady && !isDownloading) {
         const installBtn = document.createElement('button');
         installBtn.type = 'button';
         installBtn.className = 'btn';
-        installBtn.textContent = '업데이트 진행';
+        installBtn.textContent = TEXT.installing;
         installBtn.addEventListener('click', () => {
-            closeUpdateResultDialog();
+            showUpdateResultDialog({
+                kind: 'info',
+                phase: 'download',
+                progressPercent: 0,
+                progressMessage: TEXT.preparingDownload,
+                message: TEXT.downloadSummary
+            });
             post('update:install', { version: _updateState.latestVersion });
         });
         footer.append(installBtn);
@@ -723,8 +761,68 @@ function closeUpdateResultDialog() {
     _updateDialogBackdrop = null;
 }
 
+function clearUpdateDismissTimer() {
+    if (_updateDismissTimer) {
+        window.clearTimeout(_updateDismissTimer);
+        _updateDismissTimer = 0;
+    }
+}
+
+function applyUpdateVisualState() {
+    if (_versionEl) {
+        _versionEl.textContent = formatVersionText(_updateState.currentVersionDisplay);
+    }
+
+    if (_updateHintEl) {
+        const hintVisible = _updateState.hasUpdate && !_updateState.busy && _updateNeedsAttention;
+        _updateHintEl.classList.toggle('hidden', !hintVisible);
+        if (hintVisible) {
+            const latest = _updateState.latestVersion ? formatVersionText(_updateState.latestVersion) : '';
+            _updateHintEl.textContent = latest
+                ? `${latest} 업데이트가 있습니다. Tool 버전 체크를 눌러 확인하세요.`
+                : TEXT.updateHint;
+        }
+    }
+
+    if (!_updateBtn) return;
+
+    const text = _updateBtn.querySelector('.chip-text');
+    if (text) {
+        text.textContent = _updateState.busy ? TEXT.updateChecking : TEXT.updateCheck;
+    }
+
+    _updateBtn.disabled = !!_updateState.busy;
+    _updateBtn.classList.toggle('is-busy', !!_updateState.busy);
+    _updateBtn.classList.toggle('has-update', !!_updateState.hasUpdate && !_updateState.busy);
+    _updateBtn.classList.toggle('needs-attention', !!_updateNeedsAttention && !!_updateState.hasUpdate && !_updateState.busy);
+    _updateBtn.title = buildUpdateTooltip();
+}
+
+function showUpdateStartupNotice() {
+    if (_updateStartupNoticeShown) return;
+    _updateStartupNoticeShown = true;
+    _updateNeedsAttention = true;
+    applyUpdateVisualState();
+    clearUpdateDismissTimer();
+    _updateDismissTimer = window.setTimeout(() => {
+        _updateNeedsAttention = true;
+        applyUpdateVisualState();
+    }, STARTUP_NOTICE_DURATION_MS);
+}
+
 function formatVersionText(versionText) {
     const value = String(versionText || '').trim();
     if (!value) return APP_VERSION_FALLBACK;
     return value.toLowerCase().startsWith('v') ? value : `v${value}`;
 }
+
+
+
+
+
+
+
+
+
+
+

@@ -28,6 +28,20 @@ Imports System.Runtime.InteropServices
 '      수정 버전
 '
 
-<Assembly: AssemblyVersion("2.3.0.0")>
-<Assembly: AssemblyFileVersion("2.3.0.0")>
-<Assembly: AssemblyInformationalVersion("2.03")>
+<Assembly: AssemblyVersion("2.7.0.0")>
+<Assembly: AssemblyFileVersion("2.7.0.0")>
+<Assembly: AssemblyInformationalVersion("2.07")>
+
+
+
+
+
+
+
+
+
+
+
+
+
+

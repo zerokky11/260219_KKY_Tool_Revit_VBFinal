@@ -1,11 +1,27 @@
-export const $  = (s, root=document) => root.querySelector(s);
-export const $$ = (s, root=document) => Array.from(root.querySelectorAll(s));
-export const clear = el => { while (el.firstChild) el.removeChild(el.firstChild); };
-export const div = cls => { const d=document.createElement('div'); d.className=cls||''; return d; };
-export const tdText = v => { const t=document.createElement('td'); t.textContent = v==null ? '' : String(v); return t; };
-export const debounce = (fn, delay=200) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), delay); }; };
+export const $ = (selector, root = document) => root.querySelector(selector);
+export const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+export const clear = (el) => {
+  while (el.firstChild) el.removeChild(el.firstChild);
+};
+export const div = (cls) => {
+  const el = document.createElement('div');
+  el.className = cls || '';
+  return el;
+};
+export const tdText = (value) => {
+  const td = document.createElement('td');
+  td.textContent = value == null ? '' : String(value);
+  return td;
+};
+export const debounce = (fn, delay = 200) => {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+};
 
-export function refreshUiAfterHostDialog(render, delay = 120){
+export function refreshUiAfterHostDialog(render, delay = 120) {
   if (typeof render !== 'function') return;
 
   const run = () => {
@@ -110,8 +126,7 @@ export function log(message, payload) {
   let text = `[${hh}:${mm}:${ss}] ${message}`;
   if (payload !== undefined) {
     try {
-      const json = JSON.stringify(payload);
-      text += ` ${json}`;
+      text += ` ${JSON.stringify(payload)}`;
     } catch { }
   }
 
@@ -120,39 +135,59 @@ export function log(message, payload) {
   logConsoleBody.scrollTop = logConsoleBody.scrollHeight;
 }
 
-let busyEl=null;
-export function setBusy(on, text='작업 중…'){
-  if (on){
-    if (busyEl) return;
-    busyEl=document.createElement('div'); busyEl.className='busy';
-    const sp=document.createElement('div'); sp.className='spinner'; sp.textContent=text;
-    busyEl.append(sp); document.body.append(busyEl);
-  } else { if (busyEl){ busyEl.remove(); busyEl=null; } }
+let busyEl = null;
+export function setBusy(on, text = '작업 중...') {
+  if (on) {
+    if (busyEl) {
+      const spinner = busyEl.querySelector('.spinner');
+      if (spinner) spinner.textContent = text;
+      return;
+    }
+    busyEl = document.createElement('div');
+    busyEl.className = 'busy';
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner';
+    spinner.textContent = text;
+    busyEl.append(spinner);
+    document.body.append(busyEl);
+    return;
+  }
+
+  if (busyEl) {
+    busyEl.remove();
+    busyEl = null;
+  }
 }
 
-export function toast(msg, kind='info', ms=2600){
+export function toast(msg, kind = 'info', ms = 2600) {
   const placement = kind === 'warn' ? 'top-center' : 'bottom-right';
   const selector = `.toast-wrap[data-placement="${placement}"]`;
   let wrap = $(selector);
-  if (!wrap){
-    wrap=document.createElement('div');
-    wrap.className='toast-wrap';
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.className = 'toast-wrap';
     wrap.dataset.placement = placement;
     document.body.append(wrap);
   }
-  const t = document.createElement('div');
-  t.className = 'toast' + (
-    kind==='ok' ? ' ok' :
-    kind==='err' ? ' err' :
-    kind==='warn' ? ' warn' : ''
-  );
-  t.textContent = msg; wrap.append(t);
+
+  const toastEl = document.createElement('div');
+  toastEl.className = `toast${
+    kind === 'ok' ? ' ok' :
+    kind === 'err' ? ' err' :
+    kind === 'warn' ? ' warn' : ''
+  }`;
+  toastEl.textContent = msg;
+  wrap.append(toastEl);
+
   const duration = kind === 'warn' && ms === 2600 ? 4200 : ms;
-  setTimeout(()=>{ t.remove(); if(!wrap.children.length) wrap.remove(); }, duration);
+  setTimeout(() => {
+    toastEl.remove();
+    if (!wrap.children.length) wrap.remove();
+  }, duration);
 }
 
-export function showExcelSavedDialog(message, filePath, onOpen){
-  toast(message || '엑셀로 내보냈습니다.', 'ok');
+export function showExcelSavedDialog(message, filePath, onOpen) {
+  toast(message || '엑셀 파일을 저장했습니다.', 'ok');
 
   const existing = document.querySelector('.excel-dialog-backdrop');
   if (existing) existing.remove();
@@ -165,11 +200,11 @@ export function showExcelSavedDialog(message, filePath, onOpen){
 
   const title = document.createElement('div');
   title.className = 'excel-dialog-title';
-  title.textContent = message || '엑셀 파일을 내보냈습니다.';
+  title.textContent = message || '엑셀 파일을 저장했습니다.';
 
   const desc = document.createElement('div');
   desc.className = 'excel-dialog-desc';
-  desc.textContent = '엑셀 파일을 바로 여시겠습니까?';
+  desc.textContent = '저장한 파일을 바로 여시겠습니까?';
 
   const path = document.createElement('div');
   path.className = 'excel-dialog-path';
@@ -181,7 +216,7 @@ export function showExcelSavedDialog(message, filePath, onOpen){
   const btnOpen = document.createElement('button');
   btnOpen.type = 'button';
   btnOpen.className = 'btn btn-primary';
-  btnOpen.textContent = '예, 엑셀 열기';
+  btnOpen.textContent = '파일 열기';
 
   const btnClose = document.createElement('button');
   btnClose.type = 'button';
@@ -195,74 +230,78 @@ export function showExcelSavedDialog(message, filePath, onOpen){
     if (typeof onOpen === 'function') onOpen(filePath);
   });
   btnClose.addEventListener('click', close);
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) close();
+  });
 
   actions.append(btnOpen, btnClose);
   dialog.append(title, desc, path, actions);
   backdrop.append(dialog);
   document.body.append(backdrop);
-
   btnOpen.focus();
 }
 
-window.addEventListener('error', e => toast(`에러: ${e.message}`,'err',4200));
-window.addEventListener('unhandledrejection', e => toast(`에러: ${e.reason}`,'err',4200));
+window.addEventListener('error', (e) => toast(`오류: ${e.message}`, 'err', 4200));
+window.addEventListener('unhandledrejection', (e) => toast(`오류: ${e.reason}`, 'err', 4200));
 
-// 엑셀 내보내기 모드 선택 (fast/normal)
-export function chooseExcelMode(onSelect){
+export function chooseExcelMode(onSelect) {
   return new Promise((resolve) => {
-  const existing = document.querySelector('.excelmode-backdrop');
-  if (existing) existing.remove();
-  const backdrop = document.createElement('div');
-  backdrop.className = 'excelmode-backdrop';
+    const existing = document.querySelector('.excelmode-backdrop');
+    if (existing) existing.remove();
 
-  const dialog = document.createElement('div');
-  dialog.className = 'excelmode-dialog';
+    const backdrop = document.createElement('div');
+    backdrop.className = 'excelmode-backdrop';
 
-  const title = document.createElement('div');
-  title.className = 'excelmode-title';
-  title.textContent = '엑셀 내보내기 옵션을 선택하세요';
+    const dialog = document.createElement('div');
+    dialog.className = 'excelmode-dialog';
 
-  const desc = document.createElement('div');
-  desc.className = 'excelmode-desc';
-  desc.textContent = '빠른 추출은 열 너비 자동 맞춤을 건너뛰고, 일반 추출은 저장 후 AutoFit을 수행합니다.';
+    const title = document.createElement('div');
+    title.className = 'excelmode-title';
+    title.textContent = '엑셀 내보내기 옵션을 선택해 주세요.';
 
-  const actions = document.createElement('div');
-  actions.className = 'excelmode-actions';
+    const desc = document.createElement('div');
+    desc.className = 'excelmode-desc';
+    desc.textContent = '빠른 추출은 열 너비 자동 맞춤을 건너뛰고, 일반 추출은 열 너비 AutoFit까지 수행합니다.';
 
-  const close = (mode) => {
-    backdrop.remove();
-    const picked = mode || 'fast';
-    if (typeof onSelect === 'function') onSelect(picked);
-    resolve(picked);
-  };
+    const actions = document.createElement('div');
+    actions.className = 'excelmode-actions';
 
-  const btnFast = document.createElement('button');
-  btnFast.type = 'button';
-  btnFast.className = 'btn btn-primary';
-  btnFast.textContent = '빠른 추출(기본)';
-  btnFast.addEventListener('click', () => { close('fast'); });
+    const close = (mode) => {
+      backdrop.remove();
+      const picked = mode || 'fast';
+      if (typeof onSelect === 'function') onSelect(picked);
+      resolve(picked);
+    };
 
-  const btnNormal = document.createElement('button');
-  btnNormal.type = 'button';
-  btnNormal.className = 'btn';
-  btnNormal.textContent = '일반 추출(열 너비 AutoFit)';
-  btnNormal.addEventListener('click', () => { close('normal'); });
+    const btnFast = document.createElement('button');
+    btnFast.type = 'button';
+    btnFast.className = 'btn btn-primary';
+    btnFast.textContent = '빠른 추출(기본)';
+    btnFast.addEventListener('click', () => close('fast'));
 
-  actions.append(btnFast, btnNormal);
-  dialog.append(title, desc, actions);
-  backdrop.append(dialog);
-  document.body.append(backdrop);
+    const btnNormal = document.createElement('button');
+    btnNormal.type = 'button';
+    btnNormal.className = 'btn';
+    btnNormal.textContent = '일반 추출(열 너비 AutoFit)';
+    btnNormal.addEventListener('click', () => close('normal'));
 
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close('fast'); });
+    actions.append(btnFast, btnNormal);
+    dialog.append(title, desc, actions);
+    backdrop.append(dialog);
+    document.body.append(backdrop);
+
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) close('fast');
+    });
   });
 }
-export function closeCompletionSummaryDialog(){
+
+export function closeCompletionSummaryDialog() {
   const existing = document.querySelector('.completion-summary-backdrop');
   if (existing) existing.remove();
 }
 
-export function showCompletionSummaryDialog(options = {}){
+export function showCompletionSummaryDialog(options = {}) {
   closeCompletionSummaryDialog();
 
   const {
@@ -299,9 +338,10 @@ export function showCompletionSummaryDialog(options = {}){
   body.append(messageEl);
 
   const normalizedItems = Array.isArray(summaryItems) ? summaryItems.filter(Boolean) : [];
-  if (normalizedItems.length){
+  if (normalizedItems.length) {
     const grid = document.createElement('div');
     grid.className = 'completion-summary-grid';
+
     normalizedItems.forEach((item) => {
       const row = document.createElement('div');
       row.className = 'completion-summary-item';
@@ -317,13 +357,14 @@ export function showCompletionSummaryDialog(options = {}){
       row.append(label, value);
       grid.append(row);
     });
+
     body.append(grid);
   }
 
   const normalizedNotes = Array.isArray(notes)
-    ? notes.map((note) => note == null ? '' : String(note).trim()).filter(Boolean)
+    ? notes.map((note) => (note == null ? '' : String(note).trim())).filter(Boolean)
     : [];
-  if (normalizedNotes.length){
+  if (normalizedNotes.length) {
     const noteWrap = document.createElement('div');
     noteWrap.className = 'completion-summary-notes';
     normalizedNotes.forEach((note) => {
@@ -348,7 +389,7 @@ export function showCompletionSummaryDialog(options = {}){
     if (typeof onClose === 'function') onClose();
   };
 
-  if (showExport){
+  if (showExport) {
     const exportBtn = document.createElement('button');
     exportBtn.type = 'button';
     exportBtn.className = 'btn';
@@ -377,7 +418,7 @@ export function showCompletionSummaryDialog(options = {}){
   backdrop.append(dialog);
   document.body.append(backdrop);
 
-  if (!showExport || exportDisabled){
+  if (!showExport || exportDisabled) {
     confirmBtn.focus();
   }
 

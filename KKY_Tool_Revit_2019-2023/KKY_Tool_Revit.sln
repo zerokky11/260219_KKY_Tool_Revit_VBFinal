@@ -7,6 +7,8 @@ Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "KKY_Tool_Revit", "KKY_Tool_
 EndProject
 Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "KKY_Tool_Revit_2025", "..\KKY_Tool_Revit_2025\KKY_Tool_Revit_2025.vbproj", "{E6E38211-2DD2-4CC3-B85B-9AE6C5BE85CC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KKY_Tool_Revit_Updater", "..\KKY_Tool_Revit_Updater\KKY_Tool_Revit_Updater.csproj", "{8C85FCA5-CB39-4A40-84C4-EDB763713A37}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -31,6 +33,14 @@ Global
 		{E6E38211-2DD2-4CC3-B85B-9AE6C5BE85CC}.Release|Any CPU.Build.0 = Release|Any CPU
 		{E6E38211-2DD2-4CC3-B85B-9AE6C5BE85CC}.Release|x64.ActiveCfg = Release|Any CPU
 		{E6E38211-2DD2-4CC3-B85B-9AE6C5BE85CC}.Release|x64.Build.0 = Release|Any CPU
+		{8C85FCA5-CB39-4A40-84C4-EDB763713A37}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8C85FCA5-CB39-4A40-84C4-EDB763713A37}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8C85FCA5-CB39-4A40-84C4-EDB763713A37}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{8C85FCA5-CB39-4A40-84C4-EDB763713A37}.Debug|x64.Build.0 = Debug|Any CPU
+		{8C85FCA5-CB39-4A40-84C4-EDB763713A37}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8C85FCA5-CB39-4A40-84C4-EDB763713A37}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8C85FCA5-CB39-4A40-84C4-EDB763713A37}.Release|x64.ActiveCfg = Release|Any CPU
+		{8C85FCA5-CB39-4A40-84C4-EDB763713A37}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

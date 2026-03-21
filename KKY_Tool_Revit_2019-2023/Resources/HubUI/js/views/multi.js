@@ -7,7 +7,7 @@ import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 
 const FEATURE_META = {
     connector: { label: '커넥터 파라미터 연속성 검토', desc: 'BQC 핵심 검토 · 연결 객체들의 파라미터 값 연속성을 확인합니다.', requiresSharedParams: false },
-    floorinfo: { label: '층정보 파라미터 검토', desc: 'BQC Sub · 레벨 절대 Z 기준으로 층정보 파라미터 값을 검토합니다.', requiresSharedParams: false },
+    floorinfo: { label: '층정보 파라미터 검토', desc: 'BQC Sub · 레벨의 절대 Z 좌표 기준으로 층정보 파라미터 값을 검토합니다.', requiresSharedParams: false },
     guid: {
         label: '공유파라미터 GUID 검토', desc: '프로젝트/패밀리 내 공유 파라미터 GUID 검토', requiresSharedParams: true },
   familylink: { label: '패밀리 공유파라미터 연동 검토', desc: '복합 패밀리의 하위 패밀리 파라미터 연동 상태를 검토합니다.', requiresSharedParams: true },

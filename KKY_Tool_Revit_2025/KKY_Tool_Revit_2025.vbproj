@@ -194,4 +194,25 @@
 		<WriteLinesToFile File="$(AddinFile)" Lines="@(AddinXml)" Overwrite="true" Encoding="UTF-8" />
 		<Message Text="Created: $(AddinFile) -> $(BuiltDll)" Importance="high" />
 	</Target>
+
+	<Target Name="BuildAndCopyUpdater" AfterTargets="Build" Condition="'$(SkipUpdaterBuild)'!='true'">
+		<PropertyGroup>
+			<UpdaterProjectPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\KKY_Tool_Revit_Updater\KKY_Tool_Revit_Updater.csproj'))</UpdaterProjectPath>
+			<UpdaterProjectDir>$([System.IO.Path]::GetDirectoryName('$(UpdaterProjectPath)'))</UpdaterProjectDir>
+			<UpdaterBuildDir>$([System.IO.Path]::GetFullPath('$(UpdaterProjectDir)\bin\Generated\$(Configuration)\2025\'))</UpdaterBuildDir>
+			<UpdaterExePath>$(UpdaterBuildDir)KKY_Tool_Revit_Updater.exe</UpdaterExePath>
+			<UpdaterDestDir>$([System.IO.Path]::GetFullPath('$(OutputPath)'))</UpdaterDestDir>
+			<UpdaterDestPath>$([System.IO.Path]::Combine('$(UpdaterDestDir)', 'KKY_Tool_Revit_Updater.exe'))</UpdaterDestPath>
+		</PropertyGroup>
+
+		<MSBuild Projects="$(UpdaterProjectPath)"
+				 Targets="Build"
+				 Properties="Configuration=$(Configuration);Platform=AnyCPU;OutputPath=$(UpdaterBuildDir);AppendTargetFrameworkToOutputPath=false"
+				 BuildInParallel="false" />
+
+		<Message Importance="high" Text="Copying updater: $(UpdaterExePath) -> $(UpdaterDestPath)" />
+		<Copy SourceFiles="$(UpdaterExePath)"
+			  DestinationFiles="$(UpdaterDestPath)"
+			  SkipUnchangedFiles="true" />
+	</Target>
 </Project>

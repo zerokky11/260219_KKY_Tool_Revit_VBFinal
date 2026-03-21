@@ -112,7 +112,7 @@ namespace KKY_Tool_Revit.Services
             {
                 if (_running)
                 {
-                    log?.Invoke("Purge ?쇨큵泥섎━媛 ?대? ?ㅽ뻾 以묒엯?덈떎.");
+                    log?.Invoke("Purge 일괄처리가 이미 실행 중입니다.");
                     return false;
                 }
 
@@ -123,14 +123,14 @@ namespace KKY_Tool_Revit.Services
 
                 if (targetPaths.Count == 0)
                 {
-                    log?.Invoke("Purge ???????뚯씪???놁뒿?덈떎.");
+                    log?.Invoke("Purge 대상 저장 파일이 없습니다.");
                     return false;
                 }
 
                 Document activeDoc = GetActiveDocument(uiapp);
                 if (activeDoc == null)
                 {
-                    log?.Invoke("Purge瑜??쒖옉?섎젮硫?湲곗????섎뒗 ?쒖꽦 Revit 臾몄꽌媛 ?섎굹 ?대젮 ?덉뼱???⑸땲??");
+                    log?.Invoke("Purge를 시작하려면 기준이 되는 활성 Revit 문서가 하나 열려 있어야 합니다.");
                     return false;
                 }
 
@@ -153,7 +153,7 @@ namespace KKY_Tool_Revit.Services
                 _lastEnterUtc = DateTime.MinValue;
                 _dialogEnterAttempts = 0;
                 _docSwitchAttempts = 0;
-                _lastStatusMessage = "Purge start queued";
+                _lastStatusMessage = "Purge 시작 준비";
                 _completedSuccessfully = false;
                 _faulted = false;
                 _mainWindowHandle = GetMainWindowHandle(uiapp);
@@ -169,7 +169,7 @@ namespace KKY_Tool_Revit.Services
 
                 if (_purgeCommandId == null)
                 {
-                    WriteLog("Purge Unused 紐낅졊 ID瑜?李얠? 紐삵뻽?듬땲?? ?먮룞 ?쇱?瑜??쒖옉?????놁뒿?덈떎.");
+                    WriteLog("Purge Unused 명령 ID를 찾지 못했습니다. 자동 퍼지를 시작할 수 없습니다.");
                     StopLocked(false);
                     return false;
                 }
@@ -178,7 +178,7 @@ namespace KKY_Tool_Revit.Services
                 StartDialogWatcherLocked();
             }
 
-            log?.Invoke("Purge ?쇨큵泥섎━ ?쒖옉 - ??λ맂 ?뺣━ 寃곌낵 ?뚯씪???섎굹???ㅼ떆 ?댁뼱 ?쒖감 ?ㅽ뻾?⑸땲??");
+            log?.Invoke("Purge 일괄처리 시작 - 저장된 정리 결과 파일을 하나씩 다시 열어 순차 실행합니다.");
             WriteLog("Purge batch start / target files " + GetRemainingFileCount() + " / iterations " + (_maxIterations > 0 ? _maxIterations : DefaultIterations));
             return true;
         }
@@ -223,9 +223,9 @@ namespace KKY_Tool_Revit.Services
                     lock (SyncRoot)
                     {
                         _currentDocument = activeDoc;
-                        _lastStatusMessage = "?쇱? ????쒖꽦 ?닿린 ?꾨즺";
+                        _lastStatusMessage = "퍼지 대상 활성 열기 완료";
                     }
-                    WriteLog("?쇱? ????쒖꽦 ?닿린 ?꾨즺(?대? ?쒖꽦): " + targetPath);
+                    WriteLog("퍼지 대상 활성 열기 완료(이미 활성): " + targetPath);
                     return;
                 }
 
@@ -233,20 +233,20 @@ namespace KKY_Tool_Revit.Services
                 lock (SyncRoot)
                 {
                     _currentDocument = activated != null ? activated.Document : null;
-                    _lastStatusMessage = "?쇱? ????쒖꽦 ?닿린 ?꾨즺";
+                    _lastStatusMessage = "퍼지 대상 활성 열기 완료";
                 }
-                WriteLog("?쇱? ????쒖꽦 ?닿린 ?꾨즺: " + targetPath);
+                WriteLog("퍼지 대상 활성 열기 완료: " + targetPath);
             }
             catch (Exception ex)
             {
                 lock (SyncRoot)
                 {
-                    _lastStatusMessage = "?쇱? ????쒖꽦 ?닿린 ?ㅽ뙣: " + ex.Message;
+                    _lastStatusMessage = "퍼지 대상 활성 열기 실패: " + ex.Message;
                     _faulted = true;
                     _state = PurgeBatchState.Faulted;
                     _nextActionUtc = DateTime.UtcNow.AddMilliseconds(100);
                 }
-                WriteLog("?쇱? ????쒖꽦 ?닿린 ?ㅽ뙣: " + targetPath + " / " + ex.Message);
+                WriteLog("퍼지 대상 활성 열기 실패: " + targetPath + " / " + ex.Message);
             }
         }
 
@@ -306,7 +306,7 @@ namespace KKY_Tool_Revit.Services
                             CloseCurrentDocumentLocked();
                             break;
                         case PurgeBatchState.Completed:
-                            WriteLog("Purge ?쇨큵泥섎━ ?꾨즺");
+                            WriteLog("Purge 일괄처리 완료");
                             StopLocked(true);
                             break;
                         case PurgeBatchState.Faulted:
@@ -340,7 +340,7 @@ namespace KKY_Tool_Revit.Services
             if (IsCurrentDocumentActiveLocked())
             {
                 EnsureCurrentFileBeforeCountLocked();
-                WriteLog("?쇱? ????쒖꽦 臾몄꽌 ?뺤씤: " + Path.GetFileName(_currentPath));
+                WriteLog("퍼지 대상 활성 문서 확인: " + Path.GetFileName(_currentPath));
                 _state = PurgeBatchState.WaitBeforePostingCommand;
                 _nextActionUtc = DateTime.UtcNow.AddMilliseconds(350);
                 return;
@@ -363,7 +363,7 @@ namespace KKY_Tool_Revit.Services
             }
 
             _externalEventHandler.PendingOpenPath = _currentPath;
-            RefocusRevitForPurgeLocked("?쇱? ????쒖꽦 ?닿린 ?붿껌");
+            RefocusRevitForPurgeLocked("퍼지 대상 활성 열기 요청");
             _externalEvent.Raise();
             WriteLog("?쇱? ????뚯씪 ?쒖꽦 ?닿린 ?붿껌: " + _currentPath);
             _state = PurgeBatchState.ActivateCurrentDocument;
@@ -375,7 +375,7 @@ namespace KKY_Tool_Revit.Services
             if (IsCurrentDocumentActiveLocked())
             {
                 EnsureCurrentFileBeforeCountLocked();
-                WriteLog("?쇱? ????쒖꽦 ?꾨즺: " + Path.GetFileName(_currentPath));
+                WriteLog("퍼지 대상 활성 열기 완료: " + Path.GetFileName(_currentPath));
                 _state = PurgeBatchState.WaitBeforePostingCommand;
                 _nextActionUtc = DateTime.UtcNow.AddMilliseconds(350);
                 return;
@@ -398,7 +398,7 @@ namespace KKY_Tool_Revit.Services
 
             RefocusRevitForPurgeLocked("Retry activate current purge file");
             SendCtrlTab();
-            WriteLog("?쇱? ????쒖꽦 ?ъ떆??Ctrl+Tab): " + _docSwitchAttempts + "/" + MaxDocSwitchAttempts);
+            WriteLog("퍼지 대상 활성 재시도(Ctrl+Tab): " + _docSwitchAttempts + "/" + MaxDocSwitchAttempts);
             _nextActionUtc = DateTime.UtcNow.AddMilliseconds(650);
         }
 
@@ -817,7 +817,7 @@ namespace KKY_Tool_Revit.Services
             {
                 try
                 {
-                    TaskDialog.Show("KKY RVT Cleaner", "Purge ?쇨큵泥섎━媛 ?앸궗?듬땲?? 媛??뚯씪? ?대? ???諛?諛깆뾽 ?뺣━媛 ?앸궗?듬땲??" + Environment.NewLine + "?ㅼ떆 ?좊뱶?몄쓣 ?대㈃ 吏곸쟾 ?ㅼ젙怨?寃곌낵 紐⑸줉??蹂듭썝?⑸땲??");
+                    TaskDialog.Show("KKY RVT Cleaner", "Purge 일괄처리가 종료되었습니다. 각 파일 저장과 백업 정리가 완료되었습니다." + Environment.NewLine + "다시 로드하면 직전 설정과 결과 목록을 복원합니다.");
                 }
                 catch
                 {

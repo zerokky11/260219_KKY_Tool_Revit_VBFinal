@@ -91,7 +91,7 @@ Namespace UI.Hub
         Public Shared Sub NotifyDocumentListChanged()
             Dim inst = _instance
             If inst Is Nothing OrElse inst.IsClosing Then Return
-            inst.BroadcastDocumentList()
+            inst.RefreshDocumentContext()
         End Sub
 
         Public Sub New(uiApp As UIApplication)
@@ -137,8 +137,7 @@ Namespace UI.Hub
 
         Public Sub AttachTo(uiApp As UIApplication)
             _uiApp = uiApp
-            UpdateActiveDocument(GetActiveDocument())
-            BroadcastDocumentList()
+            RefreshDocumentContext()
         End Sub
 
         Private Function GetActiveDocument() As Document
@@ -168,6 +167,17 @@ Namespace UI.Hub
 
             UpdateWindowTitle()
             SendActiveDocument()
+        End Sub
+
+        Private Sub RefreshDocumentContext()
+            UpdateActiveDocument(GetActiveDocument())
+            BroadcastDocumentList()
+        End Sub
+
+        Private Sub SendHostState()
+            SendToWeb("host:topmost", New With {.on = Me.Topmost})
+            SendActiveDocument()
+            BroadcastDocumentList()
         End Sub
 
         Private Sub UpdateWindowTitle()
@@ -236,15 +246,14 @@ Namespace UI.Hub
                 ' 메시지 브리지
                 AddHandler core.WebMessageReceived, AddressOf OnWebMessage
                 AddHandler core.NavigationStarting, AddressOf OnNavigationStarting
+                AddHandler core.NavigationCompleted, AddressOf OnNavigationCompleted
                 AddHandler core.NewWindowRequested, AddressOf OnNewWindowRequested
 
                 ' 허브 진입
                 _web.Source = New Uri("https://hub.local/index.html")
 
                 ' 초기 상태 알림
-                SendToWeb("host:topmost", New With {.on = Me.Topmost})
-                SendActiveDocument()
-                BroadcastDocumentList()
+                SendHostState()
 
             Catch ex As Exception
                 Dim hr As Integer = Runtime.InteropServices.Marshal.GetHRForException(ex)
@@ -307,6 +316,10 @@ Namespace UI.Hub
                 Select Case name
                     Case "ui:ping"
                         SendToWeb("host:pong", New With {.t = Date.Now.Ticks})
+
+                    Case "ui:sync-context"
+                        RefreshDocumentContext()
+                        SendToWeb("host:topmost", New With {.on = Me.Topmost})
 
                     Case "ui:toggle-topmost"
                         Me.Topmost = Not Me.Topmost
@@ -384,6 +397,11 @@ Namespace UI.Hub
             Catch ex As Exception
                 SendToWeb("host:error", New With {ex.Message})
             End Try
+        End Sub
+
+        Private Sub OnNavigationCompleted(sender As Object, e As CoreWebView2NavigationCompletedEventArgs)
+            If Not e.IsSuccess Then Return
+            SendHostState()
         End Sub
 
         Private Sub HandlePreviewDragEnter(sender As Object, e As DragEventArgs)
