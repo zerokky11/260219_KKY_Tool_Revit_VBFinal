@@ -349,7 +349,7 @@ namespace KKY_Tool_Revit.Services
             if (_currentDocument != null && _currentDocument.IsValidObject)
             {
                 SendCtrlTab();
-                WriteLog("?대? ?대┛ ?쇱? ???臾몄꽌 ?쒖꽦???쒕룄(Ctrl+Tab): " + Path.GetFileName(_currentPath));
+                WriteLog("이미 열린 퍼지 대상 문서 활성화 시도(Ctrl+Tab): " + Path.GetFileName(_currentPath));
                 _state = PurgeBatchState.ActivateCurrentDocument;
                 _nextActionUtc = DateTime.UtcNow.AddMilliseconds(700);
                 return;
@@ -357,7 +357,7 @@ namespace KKY_Tool_Revit.Services
 
             if (_externalEvent == null || _externalEventHandler == null)
             {
-                WriteLog("?쇱? ?몃? ?대깽?멸? 以鍮꾨릺吏 ?딆븯?듬땲??");
+                WriteLog("외부 파일 열기 이벤트가 준비되지 않았습니다.");
                 SetFaultedLocked();
                 return;
             }
@@ -391,7 +391,7 @@ namespace KKY_Tool_Revit.Services
 
             if (_docSwitchAttempts >= MaxDocSwitchAttempts)
             {
-                WriteLog("?쇱? ????뚯씪???쒖꽦?뷀븯吏 紐삵빐 嫄대꼫?곷땲?? " + (_currentPath ?? string.Empty));
+                WriteLog("퍼지 대상 파일을 활성화하지 못해 건너뜁니다. " + (_currentPath ?? string.Empty));
                 SkipCurrentDocumentLocked(false);
                 return;
             }
@@ -418,7 +418,7 @@ namespace KKY_Tool_Revit.Services
             }
 
             RefocusRevitForPurgeLocked("Purge 紐낅졊 ?ㅽ뻾");
-            WriteLog("Purge ?ㅽ뻾: " + Path.GetFileName(_currentPath) + " / 諛섎났 " + _currentIteration + "/" + _maxIterations);
+            WriteLog("Purge 실행: " + Path.GetFileName(_currentPath) + " / 반복 " + _currentIteration + "/" + _maxIterations);
             _uiapp.PostCommand(_purgeCommandId);
             _commandPostedUtc = DateTime.UtcNow;
             _dialogEnterAttempts = 0;
@@ -446,16 +446,16 @@ namespace KKY_Tool_Revit.Services
             Document doc = GetCurrentDocumentLocked();
             if (doc == null)
             {
-                WriteLog("??????臾몄꽌瑜?李얠? 紐삵뻽?듬땲?? " + (_currentPath ?? string.Empty));
+                WriteLog("저장 대상 문서를 찾지 못했습니다. " + (_currentPath ?? string.Empty));
                 SkipCurrentDocumentLocked(false);
                 return;
             }
 
-            WriteLog("Purge ??????쒖옉: " + _currentPath);
+            WriteLog("Purge 저장 시작: " + _currentPath);
             doc.Save();
             DeleteBackupFiles(_currentPath);
             CaptureCurrentFileAfterCountLocked(doc);
-            WriteLog("Purge ??????꾨즺: " + _currentPath);
+            WriteLog("Purge 저장 완료: " + _currentPath);
 
             RefocusRevitForPurgeLocked("Return from purge save");
 
@@ -467,9 +467,9 @@ namespace KKY_Tool_Revit.Services
             }
 
             _docSwitchAttempts = 0;
-            RefocusRevitForPurgeLocked("湲곗? 臾몄꽌 蹂듦?");
+            RefocusRevitForPurgeLocked("기준 문서 복귀");
             SendCtrlTab();
-            WriteLog("湲곗? 臾몄꽌濡?蹂듦? ?쒕룄(Ctrl+Tab)");
+            WriteLog("기준 문서로 복귀 시도(Ctrl+Tab)");
             _state = PurgeBatchState.ReturnToAnchor;
             _nextActionUtc = DateTime.UtcNow.AddMilliseconds(650);
         }
@@ -480,7 +480,7 @@ namespace KKY_Tool_Revit.Services
 
             if (IsAnchorActiveLocked())
             {
-                WriteLog("湲곗? 臾몄꽌 蹂듦? ?꾨즺");
+                WriteLog("기준 문서 복귀 완료");
                 _state = PurgeBatchState.CloseCurrentDocument;
                 _nextActionUtc = DateTime.UtcNow.AddMilliseconds(400);
                 return;
@@ -496,14 +496,14 @@ namespace KKY_Tool_Revit.Services
 
             if (_docSwitchAttempts >= MaxDocSwitchAttempts)
             {
-                WriteLog("湲곗? 臾몄꽌濡?蹂듦??섏? 紐삵빐 ?먮룞 ?쇱?瑜?以묐떒?⑸땲??");
+                WriteLog("기준 문서로 복귀하지 못해 자동 퍼지를 중단합니다.");
                 SetFaultedLocked();
                 return;
             }
 
             RefocusRevitForPurgeLocked("Retry return to anchor document");
             SendCtrlTab();
-            WriteLog("湲곗? 臾몄꽌 蹂듦? ?ъ떆??Ctrl+Tab): " + _docSwitchAttempts + "/" + MaxDocSwitchAttempts);
+            WriteLog("기준 문서 복귀 재시도(Ctrl+Tab): " + _docSwitchAttempts + "/" + MaxDocSwitchAttempts);
             _nextActionUtc = DateTime.UtcNow.AddMilliseconds(650);
         }
 
@@ -514,13 +514,13 @@ namespace KKY_Tool_Revit.Services
             {
                 if (IsCurrentDocumentActiveLocked())
                 {
-                    WriteLog("?쇱? ???臾몄꽌媛 ?꾩쭅 ?쒖꽦 ?곹깭?ъ꽌 ?レ? 紐삵뻽?듬땲??");
+                    WriteLog("퍼지 대상 문서가 아직 활성 상태여서 닫지 못했습니다.");
                     SetFaultedLocked();
                     return;
                 }
 
                 doc.Close(false);
-                WriteLog("Purge ?꾨즺 臾몄꽌 ?リ린: " + (_currentPath ?? string.Empty));
+                WriteLog("Purge 완료 문서 닫기: " + (_currentPath ?? string.Empty));
             }
 
             if (_remainingPaths != null && _remainingPaths.Count > 0)
@@ -714,7 +714,7 @@ namespace KKY_Tool_Revit.Services
 
             if (_commandPostedUtc != DateTime.MinValue && DateTime.UtcNow - _commandPostedUtc > TimeSpan.FromSeconds(DialogAppearTimeoutSeconds))
             {
-                WriteLog("Purge ??붿긽?먭? ?섑??섏? ?딆븘 ?ㅼ쓬 ?④퀎濡??대룞?⑸땲??");
+                WriteLog("Purge 대상창이 나타나지 않아 다음 단계로 이동합니다.");
                 AdvanceIterationLocked();
             }
         }
@@ -752,7 +752,7 @@ namespace KKY_Tool_Revit.Services
 
             if (_commandPostedUtc != DateTime.MinValue && DateTime.UtcNow - _commandPostedUtc > TimeSpan.FromSeconds(DialogCloseTimeoutSeconds))
             {
-                WriteLog("Purge ??붿긽??醫낅즺 ?湲??쒓컙??珥덇낵?섏뼱 ?ㅼ쓬 ?④퀎濡??대룞?⑸땲??");
+                WriteLog("Purge 대상창 종료 대기 시간이 초과되어 다음 단계로 이동합니다.");
                 AdvanceIterationLocked();
             }
         }
@@ -937,18 +937,18 @@ namespace KKY_Tool_Revit.Services
                         try
                         {
                             File.Delete(candidate);
-                            WriteLog("諛깆뾽 ?뚯씪 ??젣: " + candidate);
+                            WriteLog("백업 파일 삭제: " + candidate);
                         }
                         catch (Exception ex)
                         {
-                            WriteLog("諛깆뾽 ?뚯씪 ??젣 ?ㅽ뙣(臾댁떆): " + candidate + " / " + ex.Message);
+                            WriteLog("백업 파일 삭제 실패(무시): " + candidate + " / " + ex.Message);
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                WriteLog("諛깆뾽 ?뚯씪 ?뺣━ ?ㅽ뙣(臾댁떆): " + ex.Message);
+                WriteLog("백업 파일 정리 실패(무시): " + ex.Message);
             }
         }
 
@@ -1031,7 +1031,7 @@ namespace KKY_Tool_Revit.Services
                 BringWindowToTop(_mainWindowHandle);
                 SetForegroundWindow(_mainWindowHandle);
                 _lastRevitRefocusUtc = DateTime.UtcNow;
-                _lastStatusMessage = string.IsNullOrWhiteSpace(reason) ? "Revit ?ъ빱??蹂듦뎄" : reason;
+                _lastStatusMessage = string.IsNullOrWhiteSpace(reason) ? "Revit 창 포커스 복구" : reason;
             }
             catch
             {

@@ -64,13 +64,7 @@ export function renderSharedParamBatch(root) {
   const btnRun = cardBtn('실행', onRun);
   const btnExport = cardBtn('엑셀 내보내기', onExport, 'btn--secondary');
   btnExport.disabled = true;
-  /*
-
-  const btnViewResult = cardBtn('寃곌낵 蹂닿린', openResultModal, 'btn--secondary');
-  btnViewResult.disabled = true;
-
-  */
-  const btnViewResult = cardBtn('\uACB0\uACFC \uBCF4\uAE30', openResultModal, 'btn--secondary');
+  const btnViewResult = cardBtn('결과 보기', openResultModal, 'btn--secondary');
   btnViewResult.disabled = true;
 
   header.append(heading);
@@ -774,21 +768,14 @@ export function renderSharedParamBatch(root) {
     const modal = div('sharedparambatch-modal spb-modalLarge');
     const header = div('sharedparambatch-modal__header');
     const title = div('sharedparambatch-modal__title');
-    /*
-    title.textContent = '寃곌낵 蹂닿린';
-    const closeBtn = actionBtn('?リ린', closeResultModal, 'btn--ghost');
-    */
-    title.textContent = '\uACB0\uACFC \uBCF4\uAE30';
-    const closeBtn = actionBtn('\uB2EB\uAE30', closeResultModal, 'btn--ghost');
+    title.textContent = '결과 보기';
+    const closeBtn = actionBtn('닫기', closeResultModal, 'btn--ghost');
     header.append(title, closeBtn);
 
     const body = div('sharedparambatch-modal__body');
     const footer = div('sharedparambatch-modal__footer');
     const spacer = document.createElement('span');
-    /*
-    const closeFooterBtn = cardBtn('?リ린', closeResultModal, 'btn--secondary');
-    */
-    const closeFooterBtn = cardBtn('\uB2EB\uAE30', closeResultModal, 'btn--secondary');
+    const closeFooterBtn = cardBtn('닫기', closeResultModal, 'btn--secondary');
     footer.append(spacer, closeFooterBtn);
 
     modal.append(header, body, footer);
@@ -801,10 +788,7 @@ export function renderSharedParamBatch(root) {
 
   function openResultModal() {
     if (!hasRunResults()) {
-      /*
-      toast('理쒓렐 ?ㅽ뻾 寃곌낵媛 ?놁뒿?덈떎.', 'err');
-      */
-      toast('\uCD5C\uADFC \uC2E4\uD589 \uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.', 'err');
+      toast('최근 실행 결과가 없습니다.', 'err');
       return;
     }
     if (resultModal.overlay) resultModal.overlay.classList.add('is-open');

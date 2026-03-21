@@ -26,6 +26,7 @@ const LS_TOL_MM  = 'kky_dup_tol_mm';
 const LS_TOL_UNIT = 'kky_dup_tol_unit';
 const LS_SCOPE   = 'kky_dup_scope_mode';
 const LS_EXCL_KW = 'kky_dup_excl_kw';
+const LS_EXPORT_PARAMS = 'kky_dup_export_params';
 const LS_META    = 'kky_dup_meta_v1';
 const LS_RULECFG = 'kky_dup_ruleset_v1';
 const LS_RULELIB = 'kky_dup_rulelib_v1';
@@ -208,6 +209,7 @@ function upsertRuleLibraryItem(fileName, parsed){
       tolUnit: normalizeTolUnit(parsed.tolUnit || 'mm'),
       scopeMode: asStr(parsed.scopeMode, 'all'),
       excludeKeywords: asStr(parsed.excludeKeywords, ''),
+      exportParams: asStr(parsed.exportParams, ''),
       ruleConfig: normalizeRuleConfig(parsed.ruleConfig)
     }
   };
@@ -228,6 +230,7 @@ function applyRuleLibraryItem(id){
   try{ localStorage.setItem(LS_TOL_UNIT, normalizeTolUnit(item.parsed.tolUnit || 'mm')); } catch(e1){}
   try{ localStorage.setItem(LS_SCOPE, asStr(item.parsed.scopeMode, 'all')); } catch(e2){}
   try{ localStorage.setItem(LS_EXCL_KW, asStr(item.parsed.excludeKeywords, '')); } catch(e3){}
+  try{ localStorage.setItem(LS_EXPORT_PARAMS, asStr(item.parsed.exportParams, '')); } catch(e4){}
   saveRuleConfig(item.parsed.ruleConfig);
   setSelectedRuleLibraryId(item.id);
   return true;
@@ -304,6 +307,20 @@ function loadMeta(){
     }
     return (v && typeof v === 'object') ? v : {};
   } catch(e){ return {}; }
+}
+
+function getExportParamText(){
+  try{
+    return String(localStorage.getItem(LS_EXPORT_PARAMS) || '').trim();
+  } catch(e){
+    return '';
+  }
+}
+
+function getExportParamNames(){
+  var raw = getExportParamText();
+  if (!raw) return [];
+  return uniq(raw.split(/[\r\n,;|]+/).map(function(x){ return String(x || '').trim(); }).filter(Boolean));
 }
 
 // ---- Exclude Picker (패밀리/시스템) ----
@@ -1079,9 +1096,13 @@ export function renderDup(root){
 
     exporting = true;
     exportBtn.disabled = true;
+    var exportParamNames = getExportParamNames();
 
     chooseExcelMode(function(excelMode){
-      post(EV_EXPORT_REQ, { excelMode: excelMode || 'fast' });
+      post(EV_EXPORT_REQ, {
+        excelMode: excelMode || 'fast',
+        exportParamNames: exportParamNames
+      });
     });
   });
 
@@ -1679,6 +1700,7 @@ export function renderDup(root){
     var exSetCount = (cfg.excludeSetIds && cfg.excludeSetIds.length) ? cfg.excludeSetIds.length : 0;
     var exFamCount = (cfg.excludeFamilies && cfg.excludeFamilies.length) ? cfg.excludeFamilies.length : 0;
     var exCatCount = (cfg.excludeCategories && cfg.excludeCategories.length) ? cfg.excludeCategories.length : 0;
+    var exportParams = getExportParamNames();
     var scopeTxt = (readScopeMode() === 'scope') ? '선택만' : (readScopeMode() === 'exclude') ? '선택 제외' : '전체';
     var modeTxt = (mode === 'clash') ? '자체간섭' : '중복검토';
     var selectedFile = getSelectedRuleLibraryItem();
@@ -1707,6 +1729,7 @@ export function renderDup(root){
     addChip('Exclude Set ' + exSetCount);
     addChip('Exclude 목록 ' + (exFamCount + exCatCount));
     addChip('키워드 ' + merged.length);
+    addChip('속성 추출 ' + exportParams.length);
     appliedBar.appendChild(wrap);
 
     var lines = [];
@@ -1720,6 +1743,9 @@ export function renderDup(root){
         if (names.length >= 2) break;
       }
       if (names.length) lines.push('활성 Pair: ' + names.join(' · ') + (pairEnabled > 2 ? ' …' : ''));
+    }
+    if (exportParams.length){
+      lines.push('추출 파라미터: ' + exportParams.slice(0, 3).join(', ') + (exportParams.length > 3 ? ' ...' : ''));
     }
     if (lines.length){
       var sub = document.createElement('div');
@@ -1761,6 +1787,7 @@ export function renderDup(root){
               '<div class="rp-label">범위(Selection)</div>' +
               '<select class="rp-select" data-bind="scopeMode"><option value="all">전체</option><option value="scope">선택한 요소만 검사</option><option value="exclude">선택한 요소는 제외</option></select>' +
               '<div class="rp-label">제외 키워드</div><input class="rp-input" type="text" placeholder="예: Dummy, Temp (콤마 구분)" data-bind="excludeKeywords"/>' +
+              '<div class="rp-label">속성 추출</div><input class="rp-input" type="text" placeholder="예: Mark, Comments (콤마 구분)" data-bind="exportParamNames"/>' +
             '</div>' +
             '<div class="rp-hint">이 창을 열면 프로젝트에 실제로 존재하는 파라미터/패밀리/시스템 목록을 자동으로 최신 상태로 가져옵니다.</div>' +
           '</section>' +
@@ -1924,6 +1951,12 @@ export function renderDup(root){
         try{ localStorage.setItem(LS_EXCL_KW, kw); } catch(e5){}
         return;
       }
+      if (t.dataset.bind === 'exportParamNames'){
+        var exportParamText = asStr(t.value,'').trim();
+        try{ localStorage.setItem(LS_EXPORT_PARAMS, exportParamText); } catch(e6){}
+        renderAppliedBar();
+        return;
+      }
 
       if (t.dataset.setName){
         var si = asNum(t.dataset.setName, -1);
@@ -2036,6 +2069,11 @@ export function renderDup(root){
         var kw = asStr(t.value,'').trim();
         try{ localStorage.setItem(LS_EXCL_KW, kw); } catch(e2){}
       }
+      if (t.dataset.bind === 'exportParamNames'){
+        var exportParamText2 = asStr(t.value,'').trim();
+        try{ localStorage.setItem(LS_EXPORT_PARAMS, exportParamText2); } catch(e3){}
+        renderAppliedBar();
+      }
       if (t.dataset.clVal){
         var parts = String(t.dataset.clVal).split(':');
         var si = asNum(parts[0],-1), gi=asNum(parts[1],-1), ci=asNum(parts[2],-1);
@@ -2071,7 +2109,7 @@ export function renderDup(root){
     var lines = [];
     lines.push('<?xml version="1.0" encoding="utf-8"?>');
     lines.push('<DuplicateInspectorRuleSet version="2">');
-    lines.push('  <Settings tolMm="' + xmlEsc(String(readTolMm())) + '" tolUnit="' + xmlEsc(readTolUnit()) + '" scopeMode="' + xmlEsc(readScopeMode()) + '" excludeKeywords="' + xmlEsc(getExcludeKeywords().join(', ')) + '" />');
+    lines.push('  <Settings tolMm="' + xmlEsc(String(readTolMm())) + '" tolUnit="' + xmlEsc(readTolUnit()) + '" scopeMode="' + xmlEsc(readScopeMode()) + '" excludeKeywords="' + xmlEsc(getExcludeKeywords().join(', ')) + '" exportParams="' + xmlEsc(getExportParamNames().join(', ')) + '" />');
     lines.push('  <Sets>');
     for (var i=0;i<(cfg.sets||[]).length;i++){
       var s = cfg.sets[i] || {};
@@ -2141,6 +2179,7 @@ export function renderDup(root){
           tolUnit: normalizeTolUnit(j.tolUnit || readTolUnit()),
           scopeMode: asStr(j.scopeMode, readScopeMode()),
           excludeKeywords: asStr(j.excludeKeywords, getExcludeKeywords().join(', ')),
+          exportParams: asStr(j.exportParams, getExportParamText()),
           ruleConfig: normalizeRuleConfig(j.ruleConfig)
         };
       }
@@ -2149,6 +2188,7 @@ export function renderDup(root){
         tolUnit: normalizeTolUnit(j.tolUnit || readTolUnit()),
         scopeMode: readScopeMode(),
         excludeKeywords: getExcludeKeywords().join(', '),
+        exportParams: asStr(j.exportParams, getExportParamText()),
         ruleConfig: normalizeRuleConfig(j)
       };
     }
@@ -2170,6 +2210,7 @@ export function renderDup(root){
       tolUnit: normalizeTolUnit(readAttr(settings, 'tolUnit', readTolUnit())),
       scopeMode: asStr(readAttr(settings, 'scopeMode', readScopeMode()), readScopeMode()),
       excludeKeywords: asStr(readAttr(settings, 'excludeKeywords', getExcludeKeywords().join(', ')), ''),
+      exportParams: asStr(readAttr(settings, 'exportParams', getExportParamText()), ''),
       ruleConfig: defaultRuleConfig()
     };
 
@@ -2283,8 +2324,12 @@ export function renderDup(root){
     if (scopeEl) scopeEl.value = scopeMode;
 
     var kwEl = rulePanel.querySelector('[data-bind="excludeKeywords"]');
+    var exportParamEl = rulePanel.querySelector('[data-bind="exportParamNames"]');
     if (kwEl){
       try{ kwEl.value = String(localStorage.getItem(LS_EXCL_KW) || ''); } catch(e){ kwEl.value = ''; }
+    }
+    if (exportParamEl){
+      try{ exportParamEl.value = String(localStorage.getItem(LS_EXPORT_PARAMS) || ''); } catch(e2){ exportParamEl.value = ''; }
     }
 
     function buildExcludeSummaryHtml(){
@@ -2677,6 +2722,7 @@ export function renderDup(root){
     var tolUnitEl = rulePanel.querySelector('[data-bind="tolUnit"]');
     var scopeEl = rulePanel.querySelector('[data-bind="scopeMode"]');
     var kwEl = rulePanel.querySelector('[data-bind="excludeKeywords"]');
+    var exportParamEl = rulePanel.querySelector('[data-bind="exportParamNames"]');
 
     var tolUnit = normalizeTolUnit(tolUnitEl ? tolUnitEl.value : readTolUnit());
     var mm = getTolMmFromDisplay(tolEl ? tolEl.value : DEFAULT_TOL_MM, tolUnit);
@@ -2688,10 +2734,12 @@ export function renderDup(root){
 
     var kw = asStr(kwEl ? kwEl.value : '', '').trim();
     try{ localStorage.setItem(LS_EXCL_KW, kw); } catch(e3){}
+    var exportParamText = asStr(exportParamEl ? exportParamEl.value : '', '').trim();
+    try{ localStorage.setItem(LS_EXPORT_PARAMS, exportParamText); } catch(e4){}
 
     toast('설정을 적용했습니다.', 'ok', 1200);
-    try{ renderRulePanel(); }catch(e4){}
-    try{ renderAppliedBar(); }catch(e5){}
+    try{ renderRulePanel(); }catch(e5){}
+    try{ renderAppliedBar(); }catch(e6){}
   }
 
   function addSet(){

@@ -310,6 +310,21 @@ optgroup {
     object-fit: contain;
 }
 
+.back-btn-glyph {
+    width: 20px;
+    height: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--brand-600);
+}
+
+.back-btn-glyph svg {
+    width: 20px;
+    height: 20px;
+    display: block;
+}
+
 .chip-row {
     display: inline-flex;
     flex-wrap: wrap;

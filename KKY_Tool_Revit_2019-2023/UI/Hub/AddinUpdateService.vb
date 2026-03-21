@@ -220,7 +220,7 @@ Namespace UI.Hub
             psi.Arguments = BuildUpdaterArguments(installerPath, pidText, logPath)
             psi.UseShellExecute = True
             psi.Verb = "runas"
-            psi.WindowStyle = ProcessWindowStyle.Hidden
+            psi.WindowStyle = ProcessWindowStyle.Normal
             psi.WorkingDirectory = queueDir
 
             Process.Start(psi)

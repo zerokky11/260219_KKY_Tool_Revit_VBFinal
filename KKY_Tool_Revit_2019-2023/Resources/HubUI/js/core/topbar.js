@@ -155,12 +155,16 @@ function configureBackButton(withBack, onBack, canGoBack, onNavBack) {
     }
 
     if (!_backBtn) {
-        _backBtn = createNavButton(TEXT.home);
+        _backBtn = createNavButton(TEXT.home, {
+            iconSvg: homeIconSvg()
+        });
         _navWrap.append(_backBtn);
     }
 
     if (!_navBackBtn) {
-        _navBackBtn = createNavButton(TEXT.back);
+        _navBackBtn = createNavButton(TEXT.back, {
+            iconSvg: backIconSvg()
+        });
         _navWrap.append(_navBackBtn);
     }
 
@@ -198,15 +202,23 @@ function configureBackButton(withBack, onBack, canGoBack, onNavBack) {
     };
 }
 
-function createNavButton(labelText) {
+function createNavButton(labelText, { iconSrc = '', iconAlt = '', iconSvg = '' } = {}) {
     const btn = document.createElement('button');
     btn.className = 'btn btn-ghost';
     btn.type = 'button';
 
-    const icon = document.createElement('img');
-    icon.className = 'back-btn-icon';
-    icon.src = 'assets/icons/HubHome_24.png';
-    icon.alt = '';
+    let icon = null;
+    if (iconSvg) {
+        icon = document.createElement('span');
+        icon.className = 'back-btn-glyph';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.innerHTML = iconSvg;
+    } else {
+        icon = document.createElement('img');
+        icon.className = 'back-btn-icon';
+        icon.src = iconSrc;
+        icon.alt = iconAlt;
+    }
 
     const label = document.createElement('span');
     label.className = 'back-btn-label';
@@ -214,6 +226,27 @@ function createNavButton(labelText) {
 
     btn.append(icon, label);
     return btn;
+}
+
+function homeIconSvg() {
+    return `
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4.75 11.25L12 5.25L19.25 11.25V18.25C19.25 18.8023 18.8023 19.25 18.25 19.25H5.75C5.19772 19.25 4.75 18.8023 4.75 18.25V11.25Z" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/>
+            <path d="M9.25 19.25V13.9C9.25 13.3477 9.69772 12.9 10.25 12.9H13.75C14.3023 12.9 14.75 13.3477 14.75 13.9V19.25" stroke="currentColor" stroke-width="2.1" stroke-linejoin="round"/>
+            <path d="M7.2 10.2H8.8" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"/>
+            <circle cx="17.6" cy="7.2" r="1.6" fill="currentColor" opacity="0.22"/>
+            <circle cx="17.6" cy="7.2" r="0.85" fill="currentColor"/>
+        </svg>
+    `;
+}
+
+function backIconSvg() {
+    return `
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M10 6L4 12L10 18" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M5 12H20" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+    `;
 }
 
 function buildBrand(host) {
@@ -815,6 +848,9 @@ function formatVersionText(versionText) {
     if (!value) return APP_VERSION_FALLBACK;
     return value.toLowerCase().startsWith('v') ? value : `v${value}`;
 }
+
+
+
 
 
 

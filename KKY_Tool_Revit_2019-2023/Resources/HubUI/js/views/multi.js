@@ -117,6 +117,7 @@ export function renderMulti(root) {
   group3.section.id = 'utilities';
 
   buildGroup1Options();
+  group1.section.append(buildDupWorkflowRow());
   group1.section.append(buildDeliveryCleanerWorkflowRow());
   group1.section.append(buildToggleRow('connector', buildConnectorConfig()));
   group1.section.append(buildToggleRow('floorinfo', buildFloorInfoConfig()));
@@ -629,6 +630,16 @@ export function renderMulti(root) {
       desc: 'Segment ↔ PMS 매핑 및 사이즈 검토',
       summary: '추출 → PMS 등록 → 매핑 준비 → 비교 실행 → 결과 내보내기',
       route: 'segmentpms'
+    });
+  }
+
+  function buildDupWorkflowRow() {
+    return buildWorkflowLaunchRow({
+      iconLabel: 'DUP',
+      title: '중복/자체검토',
+      desc: '중복 요소 그룹 검토와 자체간섭 검토를 한 화면에서 전환해 확인합니다.',
+      summary: '중복검토 ↔ 자체간섭 전환 → 규칙 설정 → 검토 실행 → 결과 확인/엑셀 내보내기',
+      route: 'dup'
     });
   }
 

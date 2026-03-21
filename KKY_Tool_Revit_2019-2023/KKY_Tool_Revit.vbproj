@@ -93,12 +93,16 @@
 		</Content>
 	</ItemGroup>
 	<ItemGroup>
+	  <Content Remove="Resources\icons\hub_16.png" />
 	  <Content Remove="Resources\icons\hub_32.png" />
 	  <Content Remove="Resources\icons\KKY_Tool_32.png" />
+	  <Content Remove="Resources\icons\KKY_TOOL_64_source.png" />
 	</ItemGroup>
 	<ItemGroup>
+	  <EmbeddedResource Include="Resources\icons\hub_16.png" />
 	  <EmbeddedResource Include="Resources\icons\hub_32.png" />
 	  <EmbeddedResource Include="Resources\icons\KKY_Tool_32.png" />
+	  <EmbeddedResource Include="Resources\icons\KKY_TOOL_64_source.png" />
 	</ItemGroup>
 
 	<!-- ✅ 1회 빌드로 2019/2021/2023 출력 폴더 + ProgramData addin 파일 생성 -->

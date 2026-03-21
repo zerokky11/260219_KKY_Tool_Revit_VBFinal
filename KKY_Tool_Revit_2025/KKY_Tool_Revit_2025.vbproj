@@ -119,13 +119,13 @@
 
 	<!-- 리소스 / HubUI -->
 	<ItemGroup>
-		<EmbeddedResource Include="Resources\icons\hub_16.png" Link="Resources\icons\hub_16.png" Condition="Exists('Resources\icons\hub_16.png')">
+		<EmbeddedResource Include="..\KKY_Tool_Revit_2019-2023\Resources\icons\hub_16.png" Link="Resources\icons\hub_16.png" Condition="Exists('..\KKY_Tool_Revit_2019-2023\Resources\icons\hub_16.png')">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</EmbeddedResource>
-		<EmbeddedResource Include="Resources\icons\hub_32.png" Link="Resources\icons\hub_32.png" Condition="Exists('Resources\icons\hub_32.png')">
+		<EmbeddedResource Include="..\KKY_Tool_Revit_2019-2023\Resources\icons\hub_32.png" Link="Resources\icons\hub_32.png" Condition="Exists('..\KKY_Tool_Revit_2019-2023\Resources\icons\hub_32.png')">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</EmbeddedResource>
-		<EmbeddedResource Include="Resources\icons\hub_64.png" Link="Resources\icons\hub_64.png" Condition="Exists('Resources\icons\hub_64.png')">
+		<EmbeddedResource Include="..\KKY_Tool_Revit_2019-2023\Resources\icons\KKY_TOOL_64_source.png" Link="Resources\icons\KKY_TOOL_64_source.png" Condition="Exists('..\KKY_Tool_Revit_2019-2023\Resources\icons\KKY_TOOL_64_source.png')">
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 		</EmbeddedResource>
 

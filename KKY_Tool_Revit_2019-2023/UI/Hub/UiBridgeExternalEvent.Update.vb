@@ -245,7 +245,7 @@ Namespace UI.Hub
                             .showToast = True,
                             .kind = "ok",
                             .phase = "ready",
-                            .message = "업데이트 패키지 다운로드가 완료되었습니다. 현재 실행 중인 Revit을 모두 종료하면 업데이트가 적용됩니다. 적용 후 Revit을 다시 실행해 주세요.",
+                            .message = "업데이트 패키지 다운로드가 완료되었습니다. 현재 실행 중인 Revit을 모두 종료하면 업데이트가 자동 실행됩니다. Revit을 다시 실행해 주세요.",
                             .installerPath = installerPath,
                             .scriptPath = scriptPath
                         })

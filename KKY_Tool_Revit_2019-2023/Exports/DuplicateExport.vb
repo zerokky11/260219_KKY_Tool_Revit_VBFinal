@@ -12,6 +12,7 @@ Namespace Exports
         Public Property Family As String
         Public Property Type As String
         Public Property ConnectedIds As System.Collections.Generic.List(Of String)
+        Public Property ExtraParams As System.Collections.Generic.Dictionary(Of String, String)
 
         ' 상위호환: 그룹키(Host가 만들어 내려줌)
         Public Property GroupKey As String
@@ -31,6 +32,8 @@ Public Class PairRowDto
     Public Property BFamily As String
     Public Property BType As String
     Public Property Comment As String
+    Public Property AExtraParams As System.Collections.Generic.Dictionary(Of String, String)
+    Public Property BExtraParams As System.Collections.Generic.Dictionary(Of String, String)
 End Class
 
 
@@ -40,9 +43,10 @@ End Class
         Public Function Save(rows As System.Collections.IEnumerable,
                              Optional doAutoFit As Boolean = False,
                              Optional progressChannel As String = Nothing,
-                             Optional reportTitle As String = Nothing) As String
+                             Optional reportTitle As String = Nothing,
+                             Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing) As String
             Dim mapped = MapRows(rows)
-            Dim dt = BuildSimpleTable(mapped)
+            Dim dt = BuildSimpleTable(mapped, extraParamNames)
             Dim title = If(String.IsNullOrWhiteSpace(reportTitle), "Duplicates (Simple)", reportTitle)
             Return ExcelCore.PickAndSaveXlsx(title, dt, "Duplicates.xlsx", doAutoFit, progressChannel)
         End Function
@@ -52,17 +56,19 @@ End Class
                         rows As System.Collections.IEnumerable,
                         Optional doAutoFit As Boolean = False,
                         Optional progressChannel As String = Nothing,
-                        Optional reportTitle As String = Nothing)
-            Export(outPath, rows, doAutoFit, progressChannel, reportTitle)
+                        Optional reportTitle As String = Nothing,
+                        Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing)
+            Export(outPath, rows, doAutoFit, progressChannel, reportTitle, extraParamNames)
         End Sub
 
         Public Sub Export(outPath As String,
                           rows As System.Collections.IEnumerable,
                           Optional doAutoFit As Boolean = False,
                           Optional progressChannel As String = Nothing,
-                          Optional reportTitle As String = Nothing)
+                          Optional reportTitle As String = Nothing,
+                          Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing)
             Dim mapped = MapRows(rows)
-            Dim dt = BuildSimpleTable(mapped)
+            Dim dt = BuildSimpleTable(mapped, extraParamNames)
             Dim title = If(String.IsNullOrWhiteSpace(reportTitle), "Duplicates (Simple)", reportTitle)
             ExcelCore.SaveStyledSimple(outPath, title, dt, "Group", doAutoFit, progressChannel)
         End Sub
@@ -73,9 +79,10 @@ End Class
 Public Function SavePairs(pairs As System.Collections.IEnumerable,
                           Optional doAutoFit As Boolean = False,
                           Optional progressChannel As String = Nothing,
-                          Optional reportTitle As String = Nothing) As String
+                          Optional reportTitle As String = Nothing,
+                          Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing) As String
     Dim mapped = MapPairs(pairs)
-    Dim dt = BuildPairTable(mapped)
+    Dim dt = BuildPairTable(mapped, extraParamNames)
     Dim title = If(String.IsNullOrWhiteSpace(reportTitle), "Self Clash Pairs", reportTitle)
     Return ExcelCore.PickAndSaveXlsx(title, dt, "ClashPairs.xlsx", doAutoFit, progressChannel)
 End Function
@@ -84,9 +91,10 @@ Public Sub ExportPairs(outPath As String,
                        pairs As System.Collections.IEnumerable,
                        Optional doAutoFit As Boolean = False,
                        Optional progressChannel As String = Nothing,
-                       Optional reportTitle As String = Nothing)
+                       Optional reportTitle As String = Nothing,
+                       Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing)
     Dim mapped = MapPairs(pairs)
-    Dim dt = BuildPairTable(mapped)
+    Dim dt = BuildPairTable(mapped, extraParamNames)
     Dim title = If(String.IsNullOrWhiteSpace(reportTitle), "Self Clash Pairs", reportTitle)
     ExcelCore.SaveStyledSimple(outPath, title, dt, "Group", doAutoFit, progressChannel)
 End Sub
@@ -110,6 +118,8 @@ Private Function MapPairs(pairs As System.Collections.IEnumerable) As System.Col
         it.BFamily = ReadProp(o, "BFamily", "bFamily", "FamilyB")
         it.BType = ReadProp(o, "BType", "bType", "TypeB")
         it.Comment = ReadProp(o, "Comment", "comment", "Note", "note", "Reason", "reason")
+        it.AExtraParams = ReadStringMap(o, "AExtraParams", "aExtraParams")
+        it.BExtraParams = ReadStringMap(o, "BExtraParams", "bExtraParams")
 
         list.Add(it)
     Next
@@ -117,8 +127,10 @@ Private Function MapPairs(pairs As System.Collections.IEnumerable) As System.Col
     Return list
 End Function
 
-Private Function BuildPairTable(pairs As System.Collections.Generic.List(Of PairRowDto)) As DataTable
+Private Function BuildPairTable(pairs As System.Collections.Generic.List(Of PairRowDto),
+                                Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing) As DataTable
     Dim dt As New DataTable("pairs")
+    Dim orderedExtraNames = BuildOrderedExtraParamNames(extraParamNames, pairs.Select(Function(p) p.AExtraParams), pairs.Select(Function(p) p.BExtraParams))
     dt.Columns.Add("File")
     dt.Columns.Add("Group")
 
@@ -126,11 +138,17 @@ Private Function BuildPairTable(pairs As System.Collections.Generic.List(Of Pair
     dt.Columns.Add("A_Category")
     dt.Columns.Add("A_Family")
     dt.Columns.Add("A_Type")
+    For Each paramName In orderedExtraNames
+        dt.Columns.Add("A_" & paramName)
+    Next
 
     dt.Columns.Add("B_ID")
     dt.Columns.Add("B_Category")
     dt.Columns.Add("B_Family")
     dt.Columns.Add("B_Type")
+    For Each paramName In orderedExtraNames
+        dt.Columns.Add("B_" & paramName)
+    Next
     dt.Columns.Add("Comment")
 
     If pairs IsNot Nothing AndAlso pairs.Count > 0 Then
@@ -143,11 +161,17 @@ Private Function BuildPairTable(pairs As System.Collections.Generic.List(Of Pair
             dr("A_Category") = Nz(p.ACategory)
             dr("A_Family") = Nz(p.AFamily)
             dr("A_Type") = Nz(p.AType)
+            For Each paramName In orderedExtraNames
+                dr("A_" & paramName) = GetMapValue(p.AExtraParams, paramName)
+            Next
 
             dr("B_ID") = Nz(p.BId)
             dr("B_Category") = Nz(p.BCategory)
             dr("B_Family") = Nz(p.BFamily)
             dr("B_Type") = Nz(p.BType)
+            For Each paramName In orderedExtraNames
+                dr("B_" & paramName) = GetMapValue(p.BExtraParams, paramName)
+            Next
             dr("Comment") = Nz(p.Comment)
 
             dt.Rows.Add(dr)
@@ -173,6 +197,7 @@ Private Function MapRows(rows As System.Collections.IEnumerable) As System.Colle
                 it.Family = ReadProp(o, "Family", "family")
                 it.Type = ReadProp(o, "Type", "type")
                 it.ConnectedIds = ReadList(o, "ConnectedIds", "connectedIds", "Links", "links", "connected", "Connected", "ConnectedElements")
+                it.ExtraParams = ReadStringMap(o, "ExtraParams", "extraParams")
 
                 it.GroupKey = ReadProp(o, "GroupKey", "groupKey", "Group", "group")
 
@@ -182,14 +207,19 @@ Private Function MapRows(rows As System.Collections.IEnumerable) As System.Colle
             Return list
         End Function
 
-        Private Function BuildSimpleTable(rows As System.Collections.Generic.List(Of DupRowDto)) As DataTable
+        Private Function BuildSimpleTable(rows As System.Collections.Generic.List(Of DupRowDto),
+                                          Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing) As DataTable
             Dim dt As New DataTable("simple")
+            Dim orderedExtraNames = BuildOrderedExtraParamNames(extraParamNames, rows.Select(Function(r) r.ExtraParams))
             dt.Columns.Add("File")
             dt.Columns.Add("Group")
             dt.Columns.Add("ID")
             dt.Columns.Add("Category")
             dt.Columns.Add("Family")
             dt.Columns.Add("Type")
+            For Each paramName In orderedExtraNames
+                dt.Columns.Add(paramName)
+            Next
 
             Dim groupList = GroupByLogic(rows)
 
@@ -210,6 +240,9 @@ Private Function MapRows(rows As System.Collections.IEnumerable) As System.Colle
                     dr("Category") = Nz(r.Category)
                     dr("Family") = Nz(famOut)
                     dr("Type") = Nz(r.Type)
+                    For Each paramName In orderedExtraNames
+                        dr(paramName) = GetMapValue(r.ExtraParams, paramName)
+                    Next
                     dt.Rows.Add(dr)
                 Next
             Next
@@ -316,6 +349,69 @@ Private Function MapRows(rows As System.Collections.IEnumerable) As System.Colle
             Next
 
             Return res
+        End Function
+
+        Private Function ReadStringMap(obj As Object, ParamArray names() As String) As System.Collections.Generic.Dictionary(Of String, String)
+            Dim res As New System.Collections.Generic.Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+            If obj Is Nothing Then Return res
+
+            For Each nm In names
+                If String.IsNullOrWhiteSpace(nm) Then Continue For
+                Dim p = obj.GetType().GetProperty(nm)
+                If p Is Nothing Then Continue For
+
+                Dim v = p.GetValue(obj, Nothing)
+                If v Is Nothing Then Continue For
+
+                Dim dict = TryCast(v, System.Collections.IDictionary)
+                If dict Is Nothing Then Continue For
+
+                For Each de As System.Collections.DictionaryEntry In dict
+                    Dim key As String = If(de.Key, "").ToString().Trim()
+                    If String.IsNullOrWhiteSpace(key) Then Continue For
+                    res(key) = If(de.Value, "").ToString()
+                Next
+                Exit For
+            Next
+
+            Return res
+        End Function
+
+        Private Function BuildOrderedExtraParamNames(requested As System.Collections.Generic.IList(Of String),
+                                                     ParamArray maps() As IEnumerable(Of System.Collections.Generic.Dictionary(Of String, String))) As System.Collections.Generic.List(Of String)
+            Dim result As New System.Collections.Generic.List(Of String)()
+            Dim seen As New System.Collections.Generic.HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            If requested IsNot Nothing Then
+                For Each name In requested
+                    Dim clean = Nz(name).Trim()
+                    If String.IsNullOrWhiteSpace(clean) Then Continue For
+                    If seen.Add(clean) Then result.Add(clean)
+                Next
+            End If
+
+            If maps IsNot Nothing Then
+                For Each mapGroup In maps
+                    If mapGroup Is Nothing Then Continue For
+                    For Each map In mapGroup
+                        If map Is Nothing Then Continue For
+                        For Each key In map.Keys
+                            Dim clean = Nz(key).Trim()
+                            If String.IsNullOrWhiteSpace(clean) Then Continue For
+                            If seen.Add(clean) Then result.Add(clean)
+                        Next
+                    Next
+                Next
+            End If
+
+            Return result
+        End Function
+
+        Private Function GetMapValue(map As System.Collections.Generic.Dictionary(Of String, String), key As String) As String
+            If map Is Nothing OrElse String.IsNullOrWhiteSpace(key) Then Return ""
+            Dim value As String = Nothing
+            If map.TryGetValue(key, value) Then Return Nz(value)
+            Return ""
         End Function
 
     End Module

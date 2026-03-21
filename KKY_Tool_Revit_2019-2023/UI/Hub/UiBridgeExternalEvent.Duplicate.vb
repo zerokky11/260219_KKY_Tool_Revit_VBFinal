@@ -1412,6 +1412,7 @@ End Try
         End If
 
         Dim token As String = TryCast(GetProp(payload, "token"), String)
+        Dim exportParamNames As List(Of String) = ExtractStringList(GetProp(payload, "exportParamNames"))
 
         Try
             Dim groupsCount As Integer = CountGroups(_lastRows)
@@ -1443,36 +1444,46 @@ End Try
                                           "Duplicates (Refined)")
 
             
-Dim rvtFile As String = ""
-Try
-    If app.ActiveUIDocument IsNot Nothing AndAlso app.ActiveUIDocument.Document IsNot Nothing Then
-        rvtFile = app.ActiveUIDocument.Document.Title
-    End If
-Catch
-End Try
+            Dim activeDoc As Document = Nothing
+            Dim rvtFile As String = ""
+            Try
+                If app.ActiveUIDocument IsNot Nothing AndAlso app.ActiveUIDocument.Document IsNot Nothing Then
+                    activeDoc = app.ActiveUIDocument.Document
+                    rvtFile = activeDoc.Title
+                End If
+            Catch
+            End Try
 
-If String.Equals(_lastMode, "clash", StringComparison.OrdinalIgnoreCase) AndAlso _lastPairs IsNot Nothing AndAlso _lastPairs.Count > 0 Then
-    Dim exportPairs = _lastPairs.Select(Function(p) New With {
-        .FileName = p.FileName,
-        .GroupKey = p.GroupKey,
-        .AId = p.AId,
-        .ACategory = p.ACategory,
-        .AFamily = p.AFamily,
-        .AType = p.AType,
-        .BId = p.BId,
-        .BCategory = p.BCategory,
-        .BFamily = p.BFamily,
-        .BType = p.BType,
-        .Comment = p.Comment
-    }).Cast(Of Object)().ToList()
-    Exports.DuplicateExport.ExportPairs(outPath, exportPairs, doAutoFit, "dup:progress", sheetTitle)
-Else
-    ' FileName 컬럼(A열) 채움
-    For Each r In _lastRows
-        If r IsNot Nothing Then r.FileName = rvtFile
-    Next
-    Exports.DuplicateExport.Save(outPath, _lastRows.Cast(Of Object)(), doAutoFit, "dup:progress", sheetTitle)
-End If
+            If String.Equals(_lastMode, "clash", StringComparison.OrdinalIgnoreCase) AndAlso _lastPairs IsNot Nothing AndAlso _lastPairs.Count > 0 Then
+                Dim exportPairs = _lastPairs.Select(Function(p) New With {
+                    .FileName = p.FileName,
+                    .GroupKey = p.GroupKey,
+                    .AId = p.AId,
+                    .ACategory = p.ACategory,
+                    .AFamily = p.AFamily,
+                    .AType = p.AType,
+                    .AExtraParams = ReadElementParameterMap(activeDoc, SafeToInt(p.AId), exportParamNames),
+                    .BId = p.BId,
+                    .BCategory = p.BCategory,
+                    .BFamily = p.BFamily,
+                    .BType = p.BType,
+                    .BExtraParams = ReadElementParameterMap(activeDoc, SafeToInt(p.BId), exportParamNames),
+                    .Comment = p.Comment
+                }).Cast(Of Object)().ToList()
+                Exports.DuplicateExport.ExportPairs(outPath, exportPairs, doAutoFit, "dup:progress", sheetTitle, exportParamNames)
+            Else
+                Dim exportRows = _lastRows.Select(Function(r) New With {
+                    .FileName = If(String.IsNullOrWhiteSpace(r.FileName), rvtFile, r.FileName),
+                    .Id = r.ElementId.ToString(),
+                    .Category = r.Category,
+                    .Family = r.Family,
+                    .Type = r.Type,
+                    .ConnectedIds = r.ConnectedIds,
+                    .GroupKey = r.GroupKey,
+                    .ExtraParams = ReadElementParameterMap(activeDoc, r.ElementId, exportParamNames)
+                }).Cast(Of Object)().ToList()
+                Exports.DuplicateExport.Save(outPath, exportRows, doAutoFit, "dup:progress", sheetTitle, exportParamNames)
+            End If
 
             SendToWeb("dup:exported", New With {.path = outPath, .ok = True, .token = token})
         Catch ioEx As IOException
@@ -2971,6 +2982,132 @@ Private Shared Function SafeCategoryName(e As Element, cache As Dictionary(Of In
         Catch
         End Try
         Return 0
+    End Function
+
+    Private Shared Function ExtractStringList(value As Object) As List(Of String)
+        Dim result As New List(Of String)()
+        Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+        If value Is Nothing Then Return result
+
+        Dim rawText As String = TryCast(value, String)
+        If rawText IsNot Nothing Then
+            For Each token In rawText.Split(New Char() {","c, ";"c, "|"c, ControlChars.Cr, ControlChars.Lf}, StringSplitOptions.RemoveEmptyEntries)
+                Dim clean = token.Trim()
+                If String.IsNullOrWhiteSpace(clean) Then Continue For
+                If seen.Add(clean) Then result.Add(clean)
+            Next
+            Return result
+        End If
+
+        Dim enumerable = TryCast(value, System.Collections.IEnumerable)
+        If enumerable Is Nothing Then Return result
+
+        For Each item In enumerable
+            Dim clean = If(item, "").ToString().Trim()
+            If String.IsNullOrWhiteSpace(clean) Then Continue For
+            If seen.Add(clean) Then result.Add(clean)
+        Next
+
+        Return result
+    End Function
+
+    Private Shared Function ReadElementParameterMap(doc As Document,
+                                                    elementIdValue As Integer,
+                                                    paramNames As IList(Of String)) As Dictionary(Of String, String)
+        Dim result As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+        If doc Is Nothing OrElse elementIdValue <= 0 OrElse paramNames Is Nothing OrElse paramNames.Count = 0 Then Return result
+
+        Dim element As Element = Nothing
+        Try
+            element = doc.GetElement(New ElementId(elementIdValue))
+        Catch
+            element = Nothing
+        End Try
+        If element Is Nothing Then Return result
+
+        For Each paramName In paramNames
+            Dim clean = If(paramName, "").Trim()
+            If String.IsNullOrWhiteSpace(clean) Then Continue For
+            result(clean) = GetElementParameterDisplayValue(doc, element, clean)
+        Next
+
+        Return result
+    End Function
+
+    Private Shared Function GetElementParameterDisplayValue(doc As Document, element As Element, paramName As String) As String
+        If doc Is Nothing OrElse element Is Nothing OrElse String.IsNullOrWhiteSpace(paramName) Then Return ""
+
+        Dim instanceParam = FindParameterByName(element, paramName)
+        Dim instanceValue = GetParameterDisplayText(doc, instanceParam)
+        If Not String.IsNullOrWhiteSpace(instanceValue) Then Return instanceValue
+
+        Try
+            Dim typeId = element.GetTypeId()
+            If typeId IsNot Nothing AndAlso typeId <> ElementId.InvalidElementId Then
+                Dim typeElement = doc.GetElement(typeId)
+                Dim typeParam = FindParameterByName(typeElement, paramName)
+                Dim typeValue = GetParameterDisplayText(doc, typeParam)
+                If Not String.IsNullOrWhiteSpace(typeValue) Then Return typeValue
+            End If
+        Catch
+        End Try
+
+        Return ""
+    End Function
+
+    Private Shared Function FindParameterByName(element As Element, paramName As String) As Parameter
+        If element Is Nothing OrElse String.IsNullOrWhiteSpace(paramName) Then Return Nothing
+
+        Try
+            Dim direct = element.LookupParameter(paramName)
+            If direct IsNot Nothing Then Return direct
+        Catch
+        End Try
+
+        Try
+            For Each param As Parameter In element.Parameters
+                If param Is Nothing OrElse param.Definition Is Nothing Then Continue For
+                If String.Equals(param.Definition.Name, paramName, StringComparison.OrdinalIgnoreCase) Then Return param
+            Next
+        Catch
+        End Try
+
+        Return Nothing
+    End Function
+
+    Private Shared Function GetParameterDisplayText(doc As Document, param As Parameter) As String
+        If doc Is Nothing OrElse param Is Nothing Then Return ""
+
+        Try
+            Dim display = param.AsValueString()
+            If Not String.IsNullOrWhiteSpace(display) Then Return display
+        Catch
+        End Try
+
+        Try
+            Select Case param.StorageType
+                Case StorageType.String
+                    Return If(param.AsString(), "")
+                Case StorageType.Double
+                    Return param.AsDouble().ToString()
+                Case StorageType.Integer
+                    Return param.AsInteger().ToString()
+                Case StorageType.ElementId
+                    Dim refId = param.AsElementId()
+                    If refId Is Nothing OrElse refId = ElementId.InvalidElementId Then Return ""
+                    Dim refElement = doc.GetElement(refId)
+                    If refElement IsNot Nothing Then
+                        Try
+                            Return refElement.Name
+                        Catch
+                        End Try
+                    End If
+                    Return refId.IntegerValue.ToString()
+            End Select
+        Catch
+        End Try
+
+        Return ""
     End Function
 
     Private Function CountGroups(rows As IEnumerable(Of DupRowDto)) As Integer
