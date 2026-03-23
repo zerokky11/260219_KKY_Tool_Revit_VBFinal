@@ -888,6 +888,23 @@ optgroup {
     min-width: 86px;
 }
 
+.request-chip {
+    min-width: 94px;
+    border-color: color-mix(in srgb, #5f9278 30%, var(--border-soft));
+    background: linear-gradient(
+        180deg,
+        color-mix(in srgb, #5f9278 16%, var(--surface-control)),
+        color-mix(in srgb, #5f9278 8%, var(--surface-control))
+    );
+    color: color-mix(in srgb, #5f9278 74%, var(--text-main));
+}
+
+.request-chip:hover,
+.request-chip:focus-visible {
+    border-color: color-mix(in srgb, #5f9278 58%, var(--border-soft));
+    color: color-mix(in srgb, #5f9278 88%, var(--text-main));
+}
+
 /* -----------------------------
    Form controls / search
    ----------------------------- */
@@ -1210,7 +1227,7 @@ input[type="checkbox"]:disabled {
     backdrop-filter: blur(2px);
     display: grid;
     place-items: center;
-    z-index: 4000;
+    z-index: 10020;
 }
 
 .excel-dialog {
@@ -1259,7 +1276,7 @@ input[type="checkbox"]:disabled {
     backdrop-filter: blur(4px);
     display: grid;
     place-items: center;
-    z-index: 365;
+    z-index: 10030;
     padding: 24px;
 }
 

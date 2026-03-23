@@ -6,51 +6,12 @@ import { post, onHost } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 
 const FEATURE_META = {
-    connector: {
-      label: '파라미터 연속성 검토',
-      cardLabel: '파라미터 연속성 검토',
-      desc: 'BQC 핵심 검토 · 연결 객체들의 파라미터 값 연속성을 확인합니다.',
-      cardDesc: '연결 파라미터 흐름 검토',
-      categoryLabel: 'Parameter',
-      categoryTitle: '파라미터 검토/연속성 확인 기능',
-      requiresSharedParams: false
-    },
-    floorinfo: {
-      label: '층정보 파라미터 검토',
-      cardLabel: '층정보 파라미터 검토',
-      desc: 'BQC Sub · 레벨의 절대 Z 좌표 기준으로 층정보 파라미터 값을 검토합니다.',
-      cardDesc: '레벨 Z 기준 층정보 검토',
-      categoryLabel: 'Parameter',
-      categoryTitle: '파라미터 값 검토 기능',
-      requiresSharedParams: false
-    },
+    connector: { label: '파라미터 연속성 검토', desc: 'BQC 핵심 검토 · 연결 객체들의 파라미터 값 연속성을 확인합니다.', requiresSharedParams: false },
+    floorinfo: { label: '층정보 파라미터 검토', desc: 'BQC Sub · 레벨의 절대 Z 좌표 기준으로 층정보 파라미터 값을 검토합니다.', requiresSharedParams: false },
     guid: {
-        label: 'GUID 검토',
-        cardLabel: 'GUID 검토',
-        desc: '프로젝트/패밀리 내 공유 파라미터 GUID 검토',
-        cardDesc: '공유 파라미터 GUID 점검',
-        categoryLabel: 'Parameter',
-        categoryTitle: '파라미터 검토 기능',
-        requiresSharedParams: true
-    },
-  familylink: {
-    label: '패밀리 공유파라미터 연동 검토',
-    cardLabel: '패밀리 공유파라미터 연동 검토',
-    desc: '복합 패밀리의 하위 패밀리 파라미터 연동 상태를 검토합니다.',
-    cardDesc: '하위 패밀리 연동 상태 검토',
-    categoryLabel: 'Family',
-    categoryTitle: '패밀리 연동/관리 기능',
-    requiresSharedParams: true
-  },
-  points: {
-    label: 'Point 좌표 추출',
-    cardLabel: 'Point 좌표 추출',
-    desc: 'Project/Survey Point 좌표 추출',
-    cardDesc: 'Project/Survey Point 추출',
-    categoryLabel: 'Data',
-    categoryTitle: '데이터 추출/좌표 확인 기능',
-    requiresSharedParams: false
-  }
+        label: '공유파라미터 GUID 검토', desc: '프로젝트/패밀리 내 공유 파라미터 GUID 검토', requiresSharedParams: true },
+  familylink: { label: '패밀리 공유파라미터 연동 검토', desc: '복합 패밀리의 하위 패밀리 파라미터 연동 상태를 검토합니다.', requiresSharedParams: true },
+  points: { label: 'Point 추출', desc: 'Project/Survey Point 좌표 추출', requiresSharedParams: false }
 };
 const FEATURE_KEYS = Object.keys(FEATURE_META);
 const BQC_FEATURE_KEYS = ['connector', 'floorinfo'];
@@ -133,8 +94,7 @@ export function renderMulti(root) {
       modalRecentHint: null,
       modalRecentTableBody: null,
       modalRecentEmpty: null,
-      lastRunAt: null,
-      featureInfoPanels: {}
+      lastRunAt: null
     }
   };
 
@@ -146,13 +106,6 @@ export function renderMulti(root) {
   const hasLocalCommonOptions = loadCommonOptionsFromStorage();
   const header = div('feature-header multi-header');
   header.innerHTML = buildHeaderHtml(state.ui.multiMode);
-  const headerHeading = header.querySelector('.feature-heading');
-  const headerGuide = buildFeatureTypeGuide('header');
-  if (headerHeading) {
-    headerHeading.append(headerGuide);
-  } else {
-    header.append(headerGuide);
-  }
   page.append(header);
 
   const layout = div(`multi-layout HubBody ${state.ui.multiMode === 'utility' ? 'multi-layout--utility' : 'multi-layout--bqc'}`);
@@ -164,17 +117,9 @@ export function renderMulti(root) {
   group3.section.id = 'utilities';
 
   buildGroup1Options();
-  group1.section.append(buildDeliveryCleanerWorkflowRow({
-    chipLabel: '파일 정리',
-    chipTitle: '파일 정리 워크플로우 화면으로 이동합니다.'
-  }));
+  group1.section.append(buildDeliveryCleanerWorkflowRow());
   group1.section.append(buildToggleRow('connector', buildConnectorConfig()));
   group1.section.append(buildToggleRow('floorinfo', buildFloorInfoConfig()));
-  group1.section.append(buildDupWorkflowRow({
-    chipLabel: 'BQC Sub',
-    chipTitle: 'BQC 보조 검토 항목에서 중복/자체간섭 검토를 바로 엽니다.'
-  }));
-  organizeFeatureRows(group1.section);
   group3.section.append(buildDupWorkflowRow());
   group3.section.append(buildParamPropWorkflowRow());
   group3.section.append(buildPmsWorkflowRow());
@@ -183,7 +128,6 @@ export function renderMulti(root) {
   group3.section.append(buildToggleRow('familylink', buildFamilyLinkConfig()));
   group3.section.append(buildToggleRow('points', buildPointsConfig()));
   group3.section.append(buildSharedParamBatchRow());
-  organizeFeatureRows(group3.section);
   if (state.ui.multiMode === 'bqc' && group1.section.querySelectorAll('.feature-row').length === 0) {
     const empty = div('feature-note');
     empty.textContent = '등록된 BQC 검토 기능이 없습니다.';
@@ -193,7 +137,6 @@ export function renderMulti(root) {
   state.ui.groupFilter = state.ui.multiMode;
   saveGroupFilter(state.ui.multiMode);
   if (state.ui.multiMode === 'bqc') {
-    primeFeatureInfoPanel('bqc', group1.section);
     group1.wrap.classList.add('multi-section--bqc-hero');
     const group1Head = group1.wrap.querySelector('.multi-section-title');
     if (group1Head) {
@@ -213,7 +156,6 @@ export function renderMulti(root) {
     sideCol.append(bqcSidebar);
     layout.append(mainCol, sideCol);
   } else {
-    primeFeatureInfoPanel('utility', group3.section);
     group3.wrap.classList.add('multi-section--utility');
     const group3Head = group3.wrap.querySelector('.multi-section-title');
     if (group3Head) {
@@ -422,10 +364,10 @@ export function renderMulti(root) {
       <p class="feature-sub">납품시 BQC 검토 유틸리티 도구 모음입니다.</p>
     </div>`;
     }
-      return `
+    return `
     <div class="feature-heading">
       <span class="feature-kicker">Multi RVT Hub</span>
-      <h2 class="feature-title">납품 시 BQC 검토</h2>
+      <h2 class="feature-title">납품시 BQC 검토</h2>
       <p class="feature-sub">기능 영역을 눌러 선택한 뒤 검토 시작을 눌러주세요. 여러 기능을 한 번에 선택해 같은 RVT 목록으로 순차 검토할 수 있습니다.</p>
     </div>`;
   }
@@ -444,138 +386,8 @@ export function renderMulti(root) {
     head.style.borderRadius = '14px';
     head.style.border = '1px solid var(--border-soft)';
     head.style.background = 'var(--surface-help)';
-    const body = div('multi-feature-list');
-    if (groupId) body.dataset.group = groupId;
-    const info = buildFeatureInfoPanel(groupId, title, desc);
-    body.addEventListener('mouseover', (ev) => {
-      const row = ev.target.closest('.feature-row');
-      if (!row || !body.contains(row)) return;
-      updateFeatureInfoPanel(groupId, row);
-    });
-    body.addEventListener('focusin', (ev) => {
-      const row = ev.target.closest('.feature-row');
-      if (!row || !body.contains(row)) return;
-      updateFeatureInfoPanel(groupId, row);
-    });
-    body.addEventListener('mouseleave', () => {
-      updateFeatureInfoPanel(groupId, null);
-    });
-    body.addEventListener('focusout', () => {
-      window.setTimeout(() => {
-        if (!body.contains(document.activeElement)) updateFeatureInfoPanel(groupId, null);
-      }, 0);
-    });
-    wrap.append(head, body, info);
-    return { wrap, section: body };
-  }
-
-  function buildFeatureTypeGuide(variant = 'default') {
-    const guide = div(`multi-feature-guide multi-feature-guide--${variant}`.trim());
-    const selectable = document.createElement('span');
-    selectable.className = 'multi-feature-guide__chip multi-feature-guide__chip--selectable';
-    selectable.textContent = '선택형 카드';
-    const workflow = document.createElement('span');
-    workflow.className = 'multi-feature-guide__chip multi-feature-guide__chip--workflow';
-    workflow.textContent = '별도 워크플로우';
-    const text = document.createElement('span');
-    text.className = 'multi-feature-guide__text';
-    text.textContent = variant === 'header'
-      ? '선택형 카드는 함께 검토하고, 별도 워크플로우는 전용 화면으로 이동해 실행합니다.'
-      : '선택형 카드는 눌러 켠 뒤 함께 검토하고, 별도 워크플로우 카드는 전용 화면으로 이동해 실행합니다.';
-    guide.append(selectable, workflow, text);
-    return guide;
-  }
-
-  function buildFeatureGroupTitle(title, desc, variant) {
-    const card = div(`multi-feature-group-title multi-feature-group-title--${variant || 'default'}`.trim());
-    const heading = document.createElement('strong');
-    heading.textContent = title || '';
-    const body = document.createElement('span');
-    body.textContent = desc || '';
-    card.append(heading, body);
-    return card;
-  }
-
-  function buildFeatureGroupBlock(title, desc, variant, cards) {
-    const group = div(`multi-feature-group multi-feature-group--${variant || 'default'}`.trim());
-    const grid = div('multi-feature-group-grid');
-    group.append(buildFeatureGroupTitle(title, desc, variant), grid);
-    cards.forEach((card) => grid.append(card));
-    return group;
-  }
-
-  function organizeFeatureRows(section) {
-    if (!section) return;
-    const cards = Array.from(section.children).filter((el) => el.classList?.contains('feature-row'));
-    if (!cards.length) return;
-    const selectable = cards.filter((el) => !el.classList.contains('feature-row--launch'));
-    const workflow = cards.filter((el) => el.classList.contains('feature-row--launch'));
-    const others = Array.from(section.children).filter((el) => !el.classList?.contains('feature-row'));
-    section.replaceChildren();
-    if (selectable.length) {
-      section.append(buildFeatureGroupBlock('선택형 카드', '눌러서 켠 기능을 한 번에 함께 검토합니다.', 'selectable', selectable));
-    }
-    if (workflow.length) {
-      section.append(buildFeatureGroupBlock('별도 워크플로우', '전용 화면으로 이동해 개별 워크플로우를 실행합니다.', 'workflow', workflow));
-    }
-    others.forEach((node) => section.append(node));
-  }
-
-  function buildFeatureInfoPanel(groupId, title, desc) {
-    const panel = div('multi-feature-info');
-    const kicker = document.createElement('span');
-    kicker.className = 'multi-feature-info__kicker';
-    kicker.textContent = groupId === 'bqc' ? 'BQC 안내' : '기능 안내';
-    const heading = document.createElement('strong');
-    heading.className = 'multi-feature-info__title';
-    const body = document.createElement('span');
-    body.className = 'multi-feature-info__body';
-    panel.append(kicker, heading, body);
-    state.ui.featureInfoPanels[groupId || 'default'] = {
-      root: panel,
-      heading,
-      body,
-      defaultTitle: title || '기능 안내',
-      defaultDesc: desc || '카드에 마우스를 올리면 설명이 표시됩니다.'
-    };
-    updateFeatureInfoPanel(groupId, null);
-    return panel;
-  }
-
-  function updateFeatureInfoPanel(groupId, row) {
-    const panel = state.ui.featureInfoPanels[groupId || 'default'];
-    if (!panel) return;
-    const title = row?.dataset?.infoTitle || panel.defaultTitle;
-    const desc = row?.dataset?.infoDesc || panel.defaultDesc;
-    panel.heading.textContent = title;
-    panel.body.textContent = desc;
-  }
-
-  function primeFeatureInfoPanel(groupId, section) {
-    if (!section) return;
-    updateFeatureInfoPanel(groupId, section.querySelector('.feature-row'));
-  }
-
-  function buildFeatureTooltip(parts = []) {
-    return parts
-      .map((part) => String(part || '').trim())
-      .filter(Boolean)
-      .join(' · ');
-  }
-
-  function applyFeatureRowTooltip(row, parts = [], info = {}) {
-    if (!row) return;
-    const tooltip = buildFeatureTooltip(parts);
-    row.classList.add('feature-row--tooltip');
-    row.dataset.tooltip = tooltip;
-    row.dataset.infoTitle = String(info.title || '').trim();
-    row.dataset.infoDesc = String(info.desc || '').trim();
-    row.title = tooltip;
-    if (tooltip) {
-      row.setAttribute('aria-description', tooltip);
-    } else {
-      row.removeAttribute('aria-description');
-    }
+    wrap.append(head);
+    return { wrap, section: wrap };
   }
 
   function buildFeatureChecklistGuide() {
@@ -701,16 +513,21 @@ export function renderMulti(root) {
 
   function buildToggleRow(key, config) {
     const meta = FEATURE_META[key] || {};
-    const cardLabel = meta.cardLabel || meta.label || key;
-    const cardDesc = meta.cardDesc || meta.desc || '';
     const row = div('feature-row');
-    row.classList.add('feature-row--selectable');
     row.dataset.key = key;
+    row.style.borderRadius = '16px';
+    row.style.border = '1px solid var(--border-soft)';
+    row.style.background = 'var(--surface-elevated)';
+    row.style.boxShadow = 'var(--shadow-soft)';
     const header = div('feature-row__header');
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.className = 'feature-toggle';
     const setFeatureEnabled = (enabled, shouldOpenSettings) => {
       const feature = state.features[key];
       const nextEnabled = !!enabled;
       feature.enabled = nextEnabled;
+      toggle.checked = nextEnabled;
       if (!nextEnabled) {
         feature.applied = false;
         feature.dirty = false;
@@ -721,64 +538,47 @@ export function renderMulti(root) {
         if (shouldOpenSettings) openSettings(key, meta.label);
       }
       row.classList.toggle('is-active', nextEnabled);
-      row.setAttribute('aria-pressed', nextEnabled ? 'true' : 'false');
-      row.dataset.selected = nextEnabled ? 'true' : 'false';
       markStale(key);
       updateRunSummary();
       refreshConnectorFeatureSummary();
       refreshFloorInfoFeatureSummary();
       renderSelectedFeatures();
     };
+    toggle.addEventListener('change', () => {
+      setFeatureEnabled(toggle.checked, toggle.checked);
+    });
 
     const metaWrap = div('feature-row__left');
     const textWrap = div('feature-row__text');
     const metaTitle = document.createElement('strong');
-    metaTitle.textContent = cardLabel;
+    metaTitle.textContent = meta.label || key;
     const metaDesc = document.createElement('span');
-    metaDesc.textContent = cardDesc;
+    metaDesc.textContent = meta.desc || '';
     textWrap.append(metaTitle, metaDesc);
-    metaWrap.append(textWrap);
-    applyFeatureRowTooltip(row, [meta.label || key, meta.desc || '', cardDesc], {
-      title: meta.label || key,
-      desc: meta.desc || ''
-    });
+    metaWrap.append(toggle, textWrap);
 
     const right = div('feature-row__right');
     if (key === 'connector') {
       const badge = document.createElement('span');
       badge.className = 'chip chip--info';
       badge.textContent = 'BQC 핵심';
-      badge.title = 'BQC 핵심 검토 기능';
       right.append(badge);
+      row.classList.add('feature-row--workflow', 'feature-row--connector-hero');
+      row.style.border = '1px solid var(--border-accent-soft)';
+      row.style.boxShadow = 'var(--shadow-accent-soft)';
+      row.style.background = 'var(--surface-note)';
     } else if (key === 'floorinfo') {
       const badge = document.createElement('span');
       badge.className = 'chip chip--info';
       badge.textContent = 'BQC Sub';
-      badge.title = 'BQC 보조 검토 기능';
-      right.append(badge);
-    } else if (meta.categoryLabel) {
-      const badge = document.createElement('span');
-      badge.className = 'chip chip--info';
-      badge.textContent = meta.categoryLabel;
-      badge.title = meta.categoryTitle || `${meta.categoryLabel} 기능`;
       right.append(badge);
     }
 
     header.append(metaWrap, right);
     row.append(header);
     row.classList.add('is-clickable');
-    row.setAttribute('role', 'button');
-    row.setAttribute('aria-label', `${meta.label || key} 선택`);
-    row.setAttribute('aria-pressed', state.features[key]?.enabled ? 'true' : 'false');
-    row.tabIndex = 0;
     row.addEventListener('click', (ev) => {
       if (ev.target.closest('button, input, select, textarea, a, label')) return;
-      setFeatureEnabled(!state.features[key].enabled, !state.features[key].enabled);
-    });
-    row.addEventListener('keydown', (ev) => {
-      if (ev.target.closest('button, input, select, textarea, a, label')) return;
-      if (ev.key !== 'Enter' && ev.key !== ' ') return;
-      ev.preventDefault();
       setFeatureEnabled(!state.features[key].enabled, !state.features[key].enabled);
     });
 
@@ -822,7 +622,6 @@ export function renderMulti(root) {
     state.ui.panels[key] = config.panel;
     state.ui.controls[key] = config.controls || {};
     row.classList.toggle('is-active', !!state.features[key]?.enabled);
-    row.dataset.selected = state.features[key]?.enabled ? 'true' : 'false';
     return row;
   }
 
@@ -830,10 +629,7 @@ export function renderMulti(root) {
     return buildWorkflowLaunchRow({
       iconLabel: 'PMS',
       title: 'PMS 검토',
-      cardDesc: 'Segment-PMS 매핑·사이즈 검토',
-      infoDesc: 'Segment ↔ PMS 매핑 및 사이즈 검토',
-      categoryLabel: 'Data',
-      categoryTitle: '데이터 매핑/검토 기능',
+      desc: 'Segment ↔ PMS 매핑 및 사이즈 검토',
       summary: '추출 → PMS 등록 → 매핑 준비 → 비교 실행 → 결과 내보내기',
       route: 'segmentpms'
     });
@@ -843,10 +639,7 @@ export function renderMulti(root) {
     return buildWorkflowLaunchRow({
       iconLabel: 'PM',
       title: '파라미터 수정기',
-      cardDesc: '조건 기반 파라미터 일괄 입력',
-      infoDesc: '속성추출객체 대상에 필터와 조건을 적용해 파라미터 값을 일괄 입력합니다.',
-      categoryLabel: 'Parameter',
-      categoryTitle: '파라미터 입력/수정 기능',
+      desc: '속성추출객체 대상에 필터와 조건을 적용해 파라미터 값을 일괄 입력합니다.',
       summary: '활성 문서 또는 다중 RVT 선택 → 필터/조건/입력값 설정 → 실행 → 결과 엑셀/로그 저장',
       route: 'parammodifier'
     });
@@ -855,37 +648,28 @@ export function renderMulti(root) {
   function buildParamPropWorkflowRow() {
     return buildWorkflowLaunchRow({
       iconLabel: 'SP',
-      title: '복합패밀리 공유 파라미터 추가/연동',
-      cardDesc: '하위 패밀리 공유 파라미터 연동',
-      infoDesc: '복합 패밀리의 하위 패밀리에 공유 파라미터를 추가하고 연동 상태를 검토합니다.',
-      categoryLabel: 'Family',
-      categoryTitle: '패밀리 연동/공유 파라미터 기능',
+      title: '공유 파라미터 연동',
+      desc: '복합 패밀리의 하위 패밀리에 공유 파라미터를 추가하고 연동 상태를 검토합니다.',
       summary: '공유 파라미터 선택 → 대상 그룹/모드 설정 → 연동 실행 → 결과 확인/엑셀 내보내기',
       route: 'paramprop'
     });
   }
 
-  function buildDupWorkflowRow(options = {}) {
+  function buildDupWorkflowRow() {
     return buildWorkflowLaunchRow({
       iconLabel: 'DUP',
-      title: '중복 / 자체간섭 검토',
-      cardDesc: '중복 그룹·자체간섭 전환 검토',
-      infoDesc: '중복 요소 그룹 검토와 자체간섭 검토를 한 화면에서 전환해 확인합니다.',
-      categoryLabel: options.chipLabel || 'RVT 검토',
-      categoryTitle: options.chipTitle || '모델 검토/검사 기능',
-        summary: '중복 검토 ↔ 자체간섭 전환 → 규칙 설정 → 검토 실행 → 결과 확인/엑셀 내보내기',
+      title: '중복/자체간섭 검토',
+      desc: '중복 요소 그룹 검토와 자체간섭 검토를 한 화면에서 전환해 확인합니다.',
+      summary: '중복검토 ↔ 자체간섭 전환 → 규칙 설정 → 검토 실행 → 결과 확인/엑셀 내보내기',
       route: 'dup'
     });
   }
 
-  function buildDeliveryCleanerWorkflowRow(options = {}) {
+  function buildDeliveryCleanerWorkflowRow() {
     return buildWorkflowLaunchRow({
       iconLabel: 'RVT',
       title: 'RVT 정리 (납품용)',
-      cardDesc: '모델 정리와 납품 검토 흐름 실행',
-      infoDesc: '납품용 모델 정리, 필터 적용, 파라미터 입력, 검토, 추출, Purge를 한 흐름으로 실행합니다.',
-      categoryLabel: options.chipLabel || 'RVT 검토',
-      categoryTitle: options.chipTitle || '모델 검토/정리 기능',
+      desc: '납품용 모델 정리, 필터 적용, 파라미터 입력, 검토, 추출, Purge를 한 흐름으로 실행합니다.',
       summary: 'RVT 선택 → 정리 옵션 설정 → 정리 실행 → 검토/속성 추출 → Purge',
       route: 'deliverycleaner'
     });
@@ -895,43 +679,39 @@ export function renderMulti(root) {
     return buildWorkflowLaunchRow({
       iconLabel: 'SP',
       title: 'Project Parameter 추가 (Project/Shared)',
-      cardDesc: 'Project/Shared 파라미터 일괄 추가',
-      infoDesc: 'Project/Shared 파라미터를 여러 RVT에 일괄 추가/바인딩합니다.',
-      categoryLabel: 'Parameter',
-      categoryTitle: '파라미터 추가/바인딩 기능',
+      desc: 'Project/Shared 파라미터를 여러 RVT에 일괄 추가/바인딩합니다.',
       summary: '파라미터 선택 → 바인딩 설정 → RVT 실행 → 로그/엑셀',
       route: 'sharedparambatch'
     });
   }
 
   function buildWorkflowLaunchRow(options = {}) {
-    const row = div('feature-row feature-row--workflow feature-row--launch');
+    const row = div('feature-row feature-row--workflow');
     row.dataset.route = options.route || '';
     const header = div('feature-row__header');
     const left = div('feature-row__left');
+    const icon = document.createElement('span');
+    icon.className = 'feature-row__icon';
+    icon.textContent = options.iconLabel || 'WF';
     const text = div('feature-row__text');
     const title = document.createElement('strong');
     title.textContent = options.title || '';
     const desc = document.createElement('span');
-    desc.textContent = options.cardDesc || options.desc || options.infoDesc || '';
+    desc.textContent = options.desc || '';
     text.append(title, desc);
-    left.append(text);
+    left.append(icon, text);
 
     const right = div('feature-row__right');
     const chip = document.createElement('span');
     chip.className = 'chip chip--info';
-    chip.textContent = options.categoryLabel || '기능';
-    chip.title = options.categoryTitle || `${options.categoryLabel || '기능'} 분류`;
+    chip.textContent = '별도 워크플로우';
+    chip.title = '클릭하면 별도 워크플로우 화면으로 이동합니다.';
     right.append(chip);
 
     const summary = div('feature-row__summary');
     summary.textContent = options.summary || '';
     header.append(left, right);
     row.append(header, summary);
-    applyFeatureRowTooltip(row, [options.title || '', options.infoDesc || options.desc || '', options.summary || ''], {
-      title: options.title || '워크플로우',
-      desc: options.infoDesc || options.desc || options.summary || ''
-    });
     row.classList.add('is-clickable');
     row.setAttribute('role', 'button');
     row.setAttribute('aria-label', `${options.title || '워크플로우'} 열기`);
@@ -3530,15 +3310,6 @@ export function renderMulti(root) {
       : '체크 후 옵션을 열어 공유 파라미터 목록에서 검토 대상을 선택하세요.';
     target.sub.textContent = `선택 파라미터 ${selected.length}개 · ${selectedText} · 허용범위 ${tol} ${unit}`;
     target.row.classList.toggle('is-active', !!feature.enabled);
-    applyFeatureRowTooltip(target.row, [
-      FEATURE_META.connector?.label || '파라미터 값 연속성 검토',
-      FEATURE_META.connector?.desc || '',
-      target.top.textContent,
-      target.sub.textContent
-    ], {
-      title: FEATURE_META.connector?.label || '파라미터 값 연속성 검토',
-      desc: `${FEATURE_META.connector?.desc || ''} ${target.sub.textContent}`.trim()
-    });
   }
 
   function refreshFloorInfoFeatureSummary() {
@@ -3556,15 +3327,6 @@ export function renderMulti(root) {
       : 'Sub 기능입니다. 필요할 때만 켜서 층정보 파라미터의 레벨/Z 일치 여부를 검토하세요.';
     target.sub.textContent = `파라미터 ${parameterName} · 영역 기준 ${selectedRules.length || 0}개 · 규칙 ${configuredCount}/${selectedRules.length || 0}개`;
     target.row.classList.toggle('is-active', !!feature.enabled);
-    applyFeatureRowTooltip(target.row, [
-      FEATURE_META.floorinfo?.label || '층/레벨 정보 검토',
-      FEATURE_META.floorinfo?.desc || '',
-      target.top.textContent,
-      target.sub.textContent
-    ], {
-      title: FEATURE_META.floorinfo?.label || '층/레벨 정보 검토',
-      desc: `${FEATURE_META.floorinfo?.desc || ''} ${target.sub.textContent}`.trim()
-    });
   }
 
   function renderSelectedFeatures() {

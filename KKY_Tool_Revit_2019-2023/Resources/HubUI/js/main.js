@@ -12,8 +12,9 @@ import { renderSharedParamBatch } from './views/sharedparambatch.js';
 import { renderSegmentPms } from './views/segmentpms.js';
 import { renderGuid } from './views/guid.js';
 import { renderFamilyLink } from './views/familylink.js';
-import { renderMulti } from './views/multi.js';
+import { renderMulti } from './views/multi.js?v=20260323j';
 import { renderDeliveryCleaner } from './views/deliverycleaner.js';
+import { renderParamModifier } from './views/parammodifier.js';
 
 initTheme();
 
@@ -144,6 +145,7 @@ function route() {
     case 'familylink': return renderFamilyLink(targetRoot);
     case 'multi': return renderMulti(targetRoot);
     case 'deliverycleaner': return renderDeliveryCleaner(targetRoot);
+    case 'parammodifier': return renderParamModifier(targetRoot);
     case 'active-menu': return renderActiveMenu(targetRoot);
     default: return renderHome(targetRoot);
   }

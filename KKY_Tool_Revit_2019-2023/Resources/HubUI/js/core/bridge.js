@@ -137,6 +137,15 @@ export function post(ev, payload = {}) {
             _emitHost("host:topmost", { on: __devTopMost }, { __seq: seq });
             break;
         }
+        case "ui:open-external": {
+            try {
+                const url = payload && payload.url ? String(payload.url) : "";
+                if (url) window.open(url, "_blank", "noopener,noreferrer");
+            } catch (e) {
+                _logErr('post("ui:open-external")', e);
+            }
+            break;
+        }
         case "dup:run": {
             const rows = [
                 { id: "12345", category: "Pipes", family: "Pipe Fitting", type: "Elbow - 90deg", groupId: 1, connectedCount: 2, connectedIds: "12346,12347", candidate: true },

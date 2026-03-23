@@ -28,9 +28,9 @@ Imports System.Runtime.InteropServices
 '      수정 버전
 '
 
-<Assembly: AssemblyVersion("2.7.0.0")>
-<Assembly: AssemblyFileVersion("2.7.0.0")>
-<Assembly: AssemblyInformationalVersion("2.07")>
+<Assembly: AssemblyVersion("2.10.0.0")>
+<Assembly: AssemblyFileVersion("2.10.0.0")>
+<Assembly: AssemblyInformationalVersion("2.10")>
 
 
 

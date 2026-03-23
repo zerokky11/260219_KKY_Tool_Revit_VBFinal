@@ -64,6 +64,8 @@ export function renderConn(root) {
     paramItems: []
   };
   let exporting = false;
+  let acceptRunProgress = false;
+  let acceptExcelProgress = false;
   state.extraParams = parseExtraParams(opts.extraParams);
   const page = div('conn-page feature-shell');
 
@@ -71,7 +73,7 @@ export function renderConn(root) {
   const heading = div('feature-heading');
   heading.innerHTML = `
     <span class="feature-kicker">Connector Diagnostics</span>
-    <h2 class="feature-title">커넥터 파라미터 연속성 검토</h2>
+    <h2 class="feature-title">파라미터 연속성 검토</h2>
     <p class="feature-sub">공유 파라미터 txt 목록에서 검토 대상을 선택하고 파이프/덕트 연결 객체의 값 연속성을 확인합니다.</p>`;
 
   const run = cardBtn('검토 시작', onRun);
@@ -549,6 +551,8 @@ export function renderConn(root) {
   function onRun(){
     closeCompletionSummaryDialog();
     commit(); setBusy(true);
+    acceptRunProgress = true;
+    acceptExcelProgress = false;
     state.hasRun = true;
 
     // 결과 섹션 오픈 + 안내문 보이기
@@ -574,10 +578,11 @@ export function renderConn(root) {
 
   function onExport() {
     if (exporting) return;
-    exporting = true;
-    updateSaveDisabled();
-    run.disabled = true;
     chooseExcelMode((mode) => {
+      exporting = true;
+      acceptExcelProgress = true;
+      updateSaveDisabled();
+      run.disabled = true;
       const tab = state.tab || 'mismatch';
       const uiUnit = String(unit.value || 'inch');
       const finalParams = getFinalReviewParams();
@@ -605,7 +610,9 @@ export function renderConn(root) {
         applyIncomingRows(payload || {});
         break;
       case 'connector:done':
+        acceptRunProgress = false;
         setBusy(false);
+        ProgressDialog.hide();
         cardResults.style.display = 'block';
         applyIncomingRows(payload || {});
         if (payload?.ok !== false) {
@@ -632,6 +639,7 @@ export function renderConn(root) {
       case 'connector:saved': {
         lastExcelPct = 0;
         exporting = false;
+        acceptExcelProgress = false;
         run.disabled = false;
         ProgressDialog.hide();
         updateSaveDisabled();
@@ -648,6 +656,8 @@ export function renderConn(root) {
       case 'revit:error':
         setBusy(false);
         exporting = false;
+        acceptRunProgress = false;
+        acceptExcelProgress = false;
         lastExcelPct = 0;
         ProgressDialog.hide();
         run.disabled = false;
@@ -657,6 +667,8 @@ export function renderConn(root) {
       case 'host:error':
         setBusy(false);
         exporting = false;
+        acceptRunProgress = false;
+        acceptExcelProgress = false;
         lastExcelPct = 0;
         ProgressDialog.hide();
         run.disabled = false;
@@ -677,6 +689,7 @@ export function renderConn(root) {
   }
 
   function handleRunProgress(payload) {
+    if (!acceptRunProgress) return;
     const percent = typeof payload?.pct === 'number' ? payload.pct : 0;
     const message = payload?.text || '';
     if (percent <= 0 && !message) {
@@ -688,6 +701,7 @@ export function renderConn(root) {
   }
 
   function handleExcelProgress(payload) {
+    if (!acceptExcelProgress) return;
     if (!payload) {
       ProgressDialog.hide();
       exporting = false;

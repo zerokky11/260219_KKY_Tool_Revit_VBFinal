@@ -341,7 +341,6 @@ Namespace UI.Hub
 
             Try
                 Dim session = BatchCleanService.CleanAndSave(app, settings, logger)
-                session.DesignOptionAuditCsvPath = BuildDeliveryCleanerRunWorkbook(session)
                 SyncLock _deliveryCleanerLock
                     _deliveryCleanerSettings = settings.Clone()
                     _deliveryCleanerSession = session
@@ -352,7 +351,7 @@ Namespace UI.Hub
                     .ok = True,
                     .state = BuildDeliveryCleanerStatePayload(),
                     .summary = BuildDeliveryCleanerRunSummary(session),
-                    .canExportDesignOption = Not String.IsNullOrWhiteSpace(session.DesignOptionAuditCsvPath)
+                    .canExportDesignOption = CanExportDeliveryCleanerRunWorkbook(session)
                 })
             Catch ex As Exception
                 AppendDeliveryCleanerLog("정리 중 오류: " & ex.Message)
@@ -386,21 +385,19 @@ Namespace UI.Hub
             Try
                 Dim csvPath = VerificationService.VerifyPaths(app, targetPaths, outputFolder, settings, logger)
                 Dim rowCount = CountDeliveryCleanerExportRows(csvPath, "정리 결과 검토")
-                Dim exportPath = ConvertDeliveryCleanerCsvToXlsx(csvPath, "정리 결과 검토")
                 SyncLock _deliveryCleanerLock
                     If _deliveryCleanerSession Is Nothing Then _deliveryCleanerSession = New BatchPrepareSession()
-                    _deliveryCleanerSession.VerificationCsvPath = exportPath
+                    _deliveryCleanerSession.VerificationCsvPath = csvPath
                     If String.IsNullOrWhiteSpace(_deliveryCleanerSession.OutputFolder) Then _deliveryCleanerSession.OutputFolder = outputFolder
                     If _deliveryCleanerSettings Is Nothing Then _deliveryCleanerSettings = settings.Clone()
                 End SyncLock
 
-                SendDeliveryCleanerProgress(progress, "Completed", exportPath, complete:=True)
+                SendDeliveryCleanerProgress(progress, "Completed", csvPath, complete:=True)
                 SendToWeb("deliverycleaner:verify-done", New With {
                     .ok = True,
-                    .path = exportPath,
                     .rowCount = rowCount,
                     .state = BuildDeliveryCleanerStatePayload(),
-                    .canExport = Not String.IsNullOrWhiteSpace(exportPath)
+                    .canExport = Not String.IsNullOrWhiteSpace(csvPath)
                 })
             Catch ex As Exception
                 AppendDeliveryCleanerLog("검토 중 오류: " & ex.Message)
@@ -441,23 +438,21 @@ Namespace UI.Hub
             Try
                 Dim csvPath = ModelParameterExtractionService.ExportModelParameters(app, targetPaths, outputFolder, parameterNamesCsv, logger)
                 Dim rowCount = CountDeliveryCleanerExportRows(csvPath, "속성값 추출")
-                Dim exportPath = ConvertDeliveryCleanerCsvToXlsx(csvPath, "속성값 추출")
                 SyncLock _deliveryCleanerLock
                     _deliveryCleanerExtractParamsCsv = parameterNamesCsv
                     If _deliveryCleanerSession Is Nothing Then _deliveryCleanerSession = New BatchPrepareSession()
-                    _deliveryCleanerSession.ExtractionCsvPath = exportPath
+                    _deliveryCleanerSession.ExtractionCsvPath = csvPath
                     If String.IsNullOrWhiteSpace(_deliveryCleanerSession.OutputFolder) Then _deliveryCleanerSession.OutputFolder = outputFolder
                     If _deliveryCleanerSettings Is Nothing Then _deliveryCleanerSettings = settings.Clone()
                 End SyncLock
 
-                SendDeliveryCleanerProgress(progress, "Completed", exportPath, complete:=True)
+                SendDeliveryCleanerProgress(progress, "Completed", csvPath, complete:=True)
                 SendToWeb("deliverycleaner:extract-done", New With {
                     .ok = True,
-                    .path = exportPath,
                     .rowCount = rowCount,
                     .parameterNamesCsv = parameterNamesCsv,
                     .state = BuildDeliveryCleanerStatePayload(),
-                    .canExport = Not String.IsNullOrWhiteSpace(exportPath)
+                    .canExport = Not String.IsNullOrWhiteSpace(csvPath)
                 })
             Catch ex As Exception
                 AppendDeliveryCleanerLog("속성값 추출 중 오류: " & ex.Message)
@@ -513,10 +508,7 @@ Namespace UI.Hub
 
             SyncLock _deliveryCleanerLock
                 If _deliveryCleanerSession IsNot Nothing AndAlso snapshot IsNot Nothing AndAlso snapshot.IsCompleted Then
-                    If String.IsNullOrWhiteSpace(_deliveryCleanerSession.PurgeCountComparisonXlsxPath) Then
-                        _deliveryCleanerSession.PurgeCountComparisonXlsxPath = BuildDeliveryCleanerPurgeWorkbook(_deliveryCleanerSession)
-                    End If
-                    canExport = Not String.IsNullOrWhiteSpace(_deliveryCleanerSession.PurgeCountComparisonXlsxPath)
+                    canExport = CanExportDeliveryCleanerPurgeWorkbook(_deliveryCleanerSession)
                     rowCount = CountSuccessfulDeliveryCleanerComparisons(_deliveryCleanerSession.PurgeCountComparisons)
                 End If
             End SyncLock
@@ -534,34 +526,36 @@ Namespace UI.Hub
             ExportDeliveryCleanerCachedWorkbook(
                 Function(session) session?.VerificationCsvPath,
                 "CleanVerification.xlsx",
-                "deliverycleaner:verify-exported")
+                "deliverycleaner:verify-exported",
+                payload,
+                "정리 결과 검토")
         End Sub
 
         Private Sub HandleDeliveryCleanerExportExtract(app As UIApplication, payload As Object)
             ExportDeliveryCleanerCachedWorkbook(
                 Function(session) session?.ExtractionCsvPath,
                 "ModelParameterExport.xlsx",
-                "deliverycleaner:extract-exported")
+                "deliverycleaner:extract-exported",
+                payload,
+                "속성값 추출")
         End Sub
 
         Private Sub HandleDeliveryCleanerExportDesignOption(app As UIApplication, payload As Object)
-            ExportDeliveryCleanerCachedWorkbook(
-                Function(session) session?.DesignOptionAuditCsvPath,
-                "DesignOptionAudit.xlsx",
-                "deliverycleaner:designoption-exported")
+            ExportDeliveryCleanerRunWorkbook("DesignOptionAudit.xlsx", "deliverycleaner:designoption-exported", payload)
         End Sub
 
         Private Sub HandleDeliveryCleanerExportPurge(app As UIApplication, payload As Object)
-            ExportDeliveryCleanerCachedWorkbook(
-                Function(session) session?.PurgeCountComparisonXlsxPath,
-                "PurgeObjectCountComparison.xlsx",
-                "deliverycleaner:purge-exported")
+            ExportDeliveryCleanerPurgeWorkbook("PurgeObjectCountComparison.xlsx", "deliverycleaner:purge-exported", payload)
         End Sub
 
         Private Shared Sub ExportDeliveryCleanerCachedWorkbook(pathResolver As Func(Of BatchPrepareSession, String),
                                                                defaultFileName As String,
-                                                               completeEventName As String)
+                                                               completeEventName As String,
+                                                               payload As Object,
+                                                               Optional sheetName As String = Nothing)
             Dim sourcePath As String = String.Empty
+            Dim doAutoFit As Boolean = ParseExcelMode(payload)
+            Dim excelMode As String = If(doAutoFit, "normal", "fast")
 
             SyncLock _deliveryCleanerLock
                 If _deliveryCleanerSession IsNot Nothing AndAlso pathResolver IsNot Nothing Then
@@ -585,12 +579,173 @@ Namespace UI.Hub
                     Dim targetPath = dlg.FileName
                     Dim folder = Path.GetDirectoryName(targetPath)
                     If Not String.IsNullOrWhiteSpace(folder) Then Directory.CreateDirectory(folder)
-                    File.Copy(sourcePath, targetPath, True)
-                    SendToWeb(completeEventName, New With {.ok = True, .path = targetPath})
+                    SaveDeliveryCleanerExportToTarget(sourcePath, targetPath, doAutoFit, sheetName)
+                    SendToWeb(completeEventName, New With {.ok = True, .path = targetPath, .excelMode = excelMode})
                 Catch ex As Exception
                     SendToWeb("deliverycleaner:error", New With {.message = "엑셀 저장 중 오류가 발생했습니다: " & ex.Message})
                 End Try
             End Using
+        End Sub
+
+        Private Shared Sub ExportDeliveryCleanerRunWorkbook(defaultFileName As String,
+                                                            completeEventName As String,
+                                                            payload As Object)
+            Dim session As BatchPrepareSession = Nothing
+            Dim doAutoFit As Boolean = ParseExcelMode(payload)
+            Dim excelMode As String = If(doAutoFit, "normal", "fast")
+
+            SyncLock _deliveryCleanerLock
+                session = _deliveryCleanerSession
+            End SyncLock
+
+            If Not CanExportDeliveryCleanerRunWorkbook(session) Then
+                SendToWeb("deliverycleaner:error", New With {.message = "내보낼 Design Option/객체수 비교 결과가 없습니다. 먼저 정리 작업을 실행해주세요."})
+                Return
+            End If
+
+            Using dlg As New WinForms.SaveFileDialog()
+                dlg.Filter = "Excel (*.xlsx)|*.xlsx"
+                dlg.FileName = defaultFileName
+                dlg.AddExtension = True
+                dlg.RestoreDirectory = True
+                If dlg.ShowDialog() <> WinForms.DialogResult.OK Then Return
+
+                Try
+                    Dim targetPath = dlg.FileName
+                    Dim folder = Path.GetDirectoryName(targetPath)
+                    If Not String.IsNullOrWhiteSpace(folder) Then Directory.CreateDirectory(folder)
+                    SaveDeliveryCleanerRunWorkbookToPath(session, targetPath, doAutoFit)
+                    SendToWeb(completeEventName, New With {.ok = True, .path = targetPath, .excelMode = excelMode})
+                Catch ex As Exception
+                    SendToWeb("deliverycleaner:error", New With {.message = "엑셀 저장 중 오류가 발생했습니다: " & ex.Message})
+                End Try
+            End Using
+        End Sub
+
+        Private Shared Sub ExportDeliveryCleanerPurgeWorkbook(defaultFileName As String,
+                                                              completeEventName As String,
+                                                              payload As Object)
+            Dim session As BatchPrepareSession = Nothing
+            Dim doAutoFit As Boolean = ParseExcelMode(payload)
+            Dim excelMode As String = If(doAutoFit, "normal", "fast")
+
+            SyncLock _deliveryCleanerLock
+                session = _deliveryCleanerSession
+            End SyncLock
+
+            If Not CanExportDeliveryCleanerPurgeWorkbook(session) Then
+                SendToWeb("deliverycleaner:error", New With {.message = "내보낼 Purge 객체수 비교 결과가 없습니다. 먼저 Purge를 실행해주세요."})
+                Return
+            End If
+
+            Using dlg As New WinForms.SaveFileDialog()
+                dlg.Filter = "Excel (*.xlsx)|*.xlsx"
+                dlg.FileName = defaultFileName
+                dlg.AddExtension = True
+                dlg.RestoreDirectory = True
+                If dlg.ShowDialog() <> WinForms.DialogResult.OK Then Return
+
+                Try
+                    Dim targetPath = dlg.FileName
+                    Dim folder = Path.GetDirectoryName(targetPath)
+                    If Not String.IsNullOrWhiteSpace(folder) Then Directory.CreateDirectory(folder)
+                    SaveDeliveryCleanerPurgeWorkbookToPath(session, targetPath, doAutoFit)
+                    SendToWeb(completeEventName, New With {.ok = True, .path = targetPath, .excelMode = excelMode})
+                Catch ex As Exception
+                    SendToWeb("deliverycleaner:error", New With {.message = "엑셀 저장 중 오류가 발생했습니다: " & ex.Message})
+                End Try
+            End Using
+        End Sub
+
+        Private Shared Sub SaveDeliveryCleanerExportToTarget(sourcePath As String, targetPath As String, doAutoFit As Boolean, Optional sheetName As String = Nothing)
+            If String.Equals(Path.GetExtension(sourcePath), ".csv", StringComparison.OrdinalIgnoreCase) Then
+                SaveDeliveryCleanerCsvToTargetXlsx(sourcePath, targetPath, doAutoFit, sheetName)
+                Return
+            End If
+
+            File.Copy(sourcePath, targetPath, True)
+            RestyleDeliveryCleanerWorkbook(targetPath, doAutoFit)
+        End Sub
+
+        Private Shared Sub SaveDeliveryCleanerCsvToTargetXlsx(csvPath As String, targetPath As String, doAutoFit As Boolean, Optional sheetName As String = Nothing)
+            Dim actualSheetName = If(String.IsNullOrWhiteSpace(sheetName), Path.GetFileNameWithoutExtension(targetPath), sheetName)
+            If String.IsNullOrWhiteSpace(actualSheetName) Then actualSheetName = "Sheet1"
+            Dim table = LoadDeliveryCleanerCsvAsDataTable(csvPath, actualSheetName)
+            TrimDeliveryCleanerExportTable(table, actualSheetName)
+            ExcelCore.SaveStyledSimple(targetPath, actualSheetName, table, GetDeliveryCleanerGroupHeader(table), autoFit:=doAutoFit, progressKey:=DeliveryCleanerProgressChannel)
+            EnsureDeliveryCleanerWorkbookBorders(targetPath)
+        End Sub
+
+        Private Shared Sub RestyleDeliveryCleanerWorkbook(xlsxPath As String, doAutoFit As Boolean)
+            If String.IsNullOrWhiteSpace(xlsxPath) OrElse Not File.Exists(xlsxPath) Then Return
+
+            Dim workbook As XSSFWorkbook = Nothing
+
+            Using readStream As New FileStream(xlsxPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
+                workbook = New XSSFWorkbook(readStream)
+            End Using
+
+            If workbook Is Nothing Then Return
+
+            Try
+                For sheetIndex = 0 To workbook.NumberOfSheets - 1
+                    Dim sheet = workbook.GetSheetAt(sheetIndex)
+                    If sheet Is Nothing Then Continue For
+
+                    ApplyDeliveryCleanerHeaderStyle(workbook, sheet)
+                    ExcelCore.ApplyStandardSheetStyle(workbook, sheet, headerRowIndex:=0, autoFilter:=True, freezeTopRow:=True, borderAll:=True, autoFit:=doAutoFit)
+                Next
+
+                Using writeStream As New FileStream(xlsxPath, FileMode.Create, FileAccess.Write, FileShare.None)
+                    workbook.Write(writeStream)
+                End Using
+            Finally
+                workbook.Close()
+            End Try
+        End Sub
+
+        Private Shared Sub ApplyDeliveryCleanerHeaderStyle(workbook As IWorkbook, sheet As ISheet)
+            If workbook Is Nothing OrElse sheet Is Nothing Then Return
+
+            Dim headerRow = sheet.GetRow(0)
+            If headerRow Is Nothing OrElse headerRow.LastCellNum <= 0 Then Return
+
+            Dim headerStyle = ExcelStyleHelper.GetHeaderStyle(workbook)
+            If headerStyle Is Nothing Then Return
+
+            For columnIndex As Integer = 0 To CInt(headerRow.LastCellNum) - 1
+                Dim cell = headerRow.GetCell(columnIndex)
+                If cell Is Nothing Then
+                    cell = headerRow.CreateCell(columnIndex)
+                    cell.SetCellValue(String.Empty)
+                End If
+                cell.CellStyle = headerStyle
+            Next
+        End Sub
+
+        Private Shared Sub AutoFitDeliveryCleanerSheet(sheet As ISheet)
+            If sheet Is Nothing Then Return
+
+            Dim maxColumnIndex As Integer = -1
+            For rowIndex = sheet.FirstRowNum To sheet.LastRowNum
+                Dim row = sheet.GetRow(rowIndex)
+                If row Is Nothing OrElse row.LastCellNum <= 0 Then Continue For
+                maxColumnIndex = Math.Max(maxColumnIndex, CInt(row.LastCellNum) - 1)
+            Next
+
+            If maxColumnIndex < 0 Then Return
+
+            For columnIndex = 0 To maxColumnIndex
+                Try
+                    sheet.AutoSizeColumn(columnIndex)
+                Catch
+                End Try
+
+                Dim width = sheet.GetColumnWidth(columnIndex)
+                If width > 255 * 256 Then
+                    sheet.SetColumnWidth(columnIndex, 255 * 256)
+                End If
+            Next
         End Sub
 
         Private Sub HandleDeliveryCleanerExportLog(app As UIApplication, payload As Object)
@@ -1029,8 +1184,14 @@ Namespace UI.Hub
             Return If(text, String.Empty).Trim()
         End Function
 
-        Private Shared Function BuildDeliveryCleanerRunWorkbook(session As BatchPrepareSession) As String
-            If session Is Nothing Then Return String.Empty
+        Private Shared Function CanExportDeliveryCleanerRunWorkbook(session As BatchPrepareSession) As Boolean
+            If session Is Nothing Then Return False
+            If session.CleanCountComparisons IsNot Nothing AndAlso session.CleanCountComparisons.Count > 0 Then Return True
+            Return Not String.IsNullOrWhiteSpace(session.DesignOptionAuditCsvPath) AndAlso File.Exists(session.DesignOptionAuditCsvPath)
+        End Function
+
+        Private Shared Sub SaveDeliveryCleanerRunWorkbookToPath(session As BatchPrepareSession, targetPath As String, doAutoFit As Boolean)
+            If session Is Nothing Then Throw New InvalidOperationException("정리 세션이 없습니다.")
 
             Dim countTable = BuildDeliveryCleanerCountComparisonTable(session.CleanCountComparisons, "정리 객체수 비교")
             Dim sheets As New List(Of KeyValuePair(Of String, DataTable))()
@@ -1045,44 +1206,24 @@ Namespace UI.Hub
                 sheets.Add(New KeyValuePair(Of String, DataTable)("정리 객체수 비교", countTable))
             End If
 
-            If sheets.Count = 0 Then Return String.Empty
+            If sheets.Count = 0 Then Throw New InvalidOperationException("내보낼 Design Option/객체수 비교 결과가 없습니다.")
+            ExcelCore.SaveXlsxMulti(targetPath, sheets, autoFit:=doAutoFit, progressKey:=DeliveryCleanerProgressChannel)
+            EnsureDeliveryCleanerWorkbookBorders(targetPath)
+        End Sub
 
-            Dim outputFolder = ResolveDeliveryCleanerOutputFolder(_deliveryCleanerSettings, session.CleanedOutputPaths)
-            If String.IsNullOrWhiteSpace(outputFolder) Then outputFolder = session.OutputFolder
-            If String.IsNullOrWhiteSpace(outputFolder) Then Return String.Empty
-
-            Dim xlsxPath = Path.Combine(outputFolder, "DesignOptionAudit_" & DateTime.Now.ToString("yyyyMMdd_HHmmss") & ".xlsx")
-            ExcelCore.SaveXlsxMulti(xlsxPath, sheets, autoFit:=True, progressKey:=DeliveryCleanerProgressChannel)
-            EnsureDeliveryCleanerWorkbookBorders(xlsxPath)
-
-            Try
-                If Not String.IsNullOrWhiteSpace(session.DesignOptionAuditCsvPath) AndAlso File.Exists(session.DesignOptionAuditCsvPath) AndAlso
-                    String.Equals(Path.GetExtension(session.DesignOptionAuditCsvPath), ".csv", StringComparison.OrdinalIgnoreCase) Then
-                    File.Delete(session.DesignOptionAuditCsvPath)
-                End If
-            Catch
-            End Try
-
-            Return xlsxPath
+        Private Shared Function CanExportDeliveryCleanerPurgeWorkbook(session As BatchPrepareSession) As Boolean
+            Return session IsNot Nothing AndAlso session.PurgeCountComparisons IsNot Nothing AndAlso session.PurgeCountComparisons.Count > 0
         End Function
 
-        Private Shared Function BuildDeliveryCleanerPurgeWorkbook(session As BatchPrepareSession) As String
-            If session Is Nothing Then Return String.Empty
+        Private Shared Sub SaveDeliveryCleanerPurgeWorkbookToPath(session As BatchPrepareSession, targetPath As String, doAutoFit As Boolean)
+            If session Is Nothing Then Throw New InvalidOperationException("Purge 세션이 없습니다.")
 
             Dim table = BuildDeliveryCleanerCountComparisonTable(session.PurgeCountComparisons, "Purge 객체수 비교")
-            If table.Rows.Count = 0 Then Return String.Empty
+            If table.Rows.Count = 0 Then Throw New InvalidOperationException("내보낼 Purge 객체수 비교 결과가 없습니다.")
 
-            Dim outputFolder = session.OutputFolder
-            If String.IsNullOrWhiteSpace(outputFolder) Then
-                outputFolder = ResolveDeliveryCleanerOutputFolder(_deliveryCleanerSettings, session.CleanedOutputPaths)
-            End If
-            If String.IsNullOrWhiteSpace(outputFolder) Then Return String.Empty
-
-            Dim xlsxPath = Path.Combine(outputFolder, "PurgeObjectCountComparison_" & DateTime.Now.ToString("yyyyMMdd_HHmmss") & ".xlsx")
-            ExcelCore.SaveStyledSimple(xlsxPath, "Purge 객체수 비교", table, "파일명", autoFit:=True, progressKey:=DeliveryCleanerProgressChannel)
-            EnsureDeliveryCleanerWorkbookBorders(xlsxPath)
-            Return xlsxPath
-        End Function
+            ExcelCore.SaveStyledSimple(targetPath, "Purge 객체수 비교", table, "파일명", autoFit:=doAutoFit, progressKey:=DeliveryCleanerProgressChannel)
+            EnsureDeliveryCleanerWorkbookBorders(targetPath)
+        End Sub
 
         Private Shared Function BuildDeliveryCleanerCountComparisonTable(items As IEnumerable(Of ModelObjectCountComparison), tableName As String) As DataTable
             Dim table As New DataTable(If(String.IsNullOrWhiteSpace(tableName), "객체수 비교", tableName))

@@ -19,6 +19,32 @@ namespace KKY_Tool_Revit.Services
             return CollectExtractableElements(doc).Count;
         }
 
+        public static IList<Element> GetExtractableElements(Document doc)
+        {
+            if (doc == null) throw new ArgumentNullException(nameof(doc));
+            return CollectExtractableElements(doc);
+        }
+
+        public static string GetElementCategoryName(Element element)
+        {
+            return GetCategoryName(element);
+        }
+
+        public static string GetElementFamilyName(Document doc, Element element)
+        {
+            return GetFamilyName(doc, element);
+        }
+
+        public static string GetElementTypeName(Document doc, Element element)
+        {
+            return GetTypeName(doc, element);
+        }
+
+        public static string GetElementParameterValue(Document doc, Element element, string parameterName)
+        {
+            return GetParameterValue(doc, element, parameterName);
+        }
+
         public static string ExportModelParameters(UIApplication uiapp, BatchPrepareSession session, string outputFolder, string parameterNamesCsv, Action<string> log)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));

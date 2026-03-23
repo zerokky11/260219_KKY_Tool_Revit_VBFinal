@@ -96,6 +96,7 @@ function throttledUpdate(data) {
 export const ProgressDialog = {
     show(title, subtitle) {
         ensure();
+        if (root) root.style.display = 'flex';
         root.classList.remove('is-hidden');
         if (!isVisible) {
             isVisible = true;
@@ -110,13 +111,21 @@ export const ProgressDialog = {
         throttledUpdate({ percent, subtitle: subtitle ?? '', detail: detail ?? '' });
     },
     hide() {
-        if (root) root.classList.add('is-hidden');
+        if (root) {
+            root.classList.add('is-hidden');
+            root.style.display = 'none';
+        }
         if (isVisible) {
             isVisible = false;
             document.body.classList.remove('is-busy');
         }
         pendingData = null;
         if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; }
+        lastUpdate = 0;
+        if (barFillEl) barFillEl.style.width = '0%';
+        if (pctEl) pctEl.textContent = '';
+        if (detailEl) detailEl.textContent = '';
+        if (metaEl) metaEl.textContent = '';
         if (statusEl) statusEl.textContent = '';
         if (cancelBtn) cancelBtn.disabled = false;
         if (skipBtn) skipBtn.disabled = false;

@@ -46,6 +46,7 @@ export function renderFamilyLink(root) {
     busy: false
   };
   let lastExcelPct = 0;
+  let progressHideTimer = null;
 
   const page = div('familylink-page feature-shell');
 
@@ -53,7 +54,7 @@ export function renderFamilyLink(root) {
   const heading = div('feature-heading');
   heading.innerHTML = `
     <span class="feature-kicker">Nested Family Association</span>
-    <h2 class="feature-title">패밀리 연동 검토(복합/네스티드)</h2>
+    <h2 class="feature-title">패밀리 공유파라미터 연동 검토</h2>
     <p class="feature-sub">Shared GUID 기준으로 네스티드 패밀리 파라미터 연동 상태를 점검합니다.</p>`;
 
   const runBtn = cardBtn('검토 시작', onRun);
@@ -254,12 +255,13 @@ export function renderFamilyLink(root) {
       handleExcelProgress(payload);
       return;
     }
+    clearProgressHideTimer();
     const pct = Math.max(0, Math.min(100, Number(payload.percent) || 0));
     const msg = payload.message || '';
     ProgressDialog.show('패밀리 연동 검토', msg || '진행 중...');
     ProgressDialog.update(pct, msg || '진행 중...', '');
     if (pct >= 100) {
-      setTimeout(() => ProgressDialog.hide(), 350);
+      scheduleProgressHide(350);
     }
   }
 
@@ -273,20 +275,21 @@ export function renderFamilyLink(root) {
     const exporting = phase !== 'DONE' && phase !== 'ERROR';
 
     if (!state.busy && exporting) setBusy(true);
+    clearProgressHideTimer();
 
     ProgressDialog.show('엑셀 내보내기', subtitle || '엑셀 내보내기 진행중');
     ProgressDialog.update(percent, subtitle, detail);
 
     if (!exporting) {
-      setTimeout(() => {
-        ProgressDialog.hide();
+      scheduleProgressHide(260, () => {
         lastExcelPct = 0;
         setBusy(false);
-      }, 260);
+      });
     }
   }
 
   function handleResult(payload) {
+    clearProgressHideTimer();
     state.rows = Array.isArray(payload?.rows) ? payload.rows : [];
     state.schema = Array.isArray(payload?.schema) && payload.schema.length ? payload.schema : DEFAULT_SCHEMA.slice();
     renderResultTable();
@@ -296,6 +299,7 @@ export function renderFamilyLink(root) {
   }
 
   function handleError(payload) {
+    clearProgressHideTimer();
     setBusy(false);
     ProgressDialog.hide();
     lastExcelPct = 0;
@@ -304,16 +308,35 @@ export function renderFamilyLink(root) {
   }
 
   function handleExported(payload) {
+    clearProgressHideTimer();
     setBusy(false);
     ProgressDialog.hide();
     lastExcelPct = 0;
     const ok = payload?.ok !== false && payload?.path;
     exportBtn.disabled = state.rows.length === 0 || state.busy;
     if (ok) {
-      showExcelSavedDialog('엑셀 내보내기가 완료되었습니다.', payload.path, (p) => post('excel:open', { path: p }));
+      requestAnimationFrame(() => {
+        showExcelSavedDialog('엑셀 내보내기가 완료되었습니다.', payload.path, (p) => post('excel:open', { path: p }));
+      });
     } else {
       toast(payload?.message || '엑셀 내보내기 실패', 'err');
     }
+  }
+
+  function clearProgressHideTimer() {
+    if (progressHideTimer) {
+      clearTimeout(progressHideTimer);
+      progressHideTimer = null;
+    }
+  }
+
+  function scheduleProgressHide(delay = 260, afterHide) {
+    clearProgressHideTimer();
+    progressHideTimer = setTimeout(() => {
+      progressHideTimer = null;
+      ProgressDialog.hide();
+      if (typeof afterHide === 'function') afterHide();
+    }, delay);
   }
 
   function onRun() {

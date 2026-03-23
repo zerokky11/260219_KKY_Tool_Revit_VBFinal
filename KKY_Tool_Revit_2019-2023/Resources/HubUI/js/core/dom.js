@@ -309,6 +309,7 @@ export function showCompletionSummaryDialog(options = {}) {
     message = '검토가 완료되었습니다.',
     summaryItems = [],
     notes = [],
+    actions = [],
     exportLabel = '엑셀 내보내기',
     confirmLabel = '확인',
     showExport = true,
@@ -388,6 +389,21 @@ export function showCompletionSummaryDialog(options = {}) {
     backdrop.remove();
     if (typeof onClose === 'function') onClose();
   };
+
+  const normalizedActions = Array.isArray(actions) ? actions.filter(Boolean) : [];
+  normalizedActions.forEach((action) => {
+    const actionBtn = document.createElement('button');
+    actionBtn.type = 'button';
+    actionBtn.className = `btn ${action.variant === 'primary' ? 'btn--primary' : (action.variant === 'danger' ? 'btn--danger' : 'btn--secondary')}`;
+    actionBtn.textContent = action.label == null ? '' : String(action.label);
+    actionBtn.disabled = !!action.disabled;
+    actionBtn.addEventListener('click', () => {
+      if (actionBtn.disabled) return;
+      if (action.closeOnClick !== false) close();
+      if (typeof action.onClick === 'function') action.onClick();
+    });
+    footer.append(actionBtn);
+  });
 
   if (showExport) {
     const exportBtn = document.createElement('button');

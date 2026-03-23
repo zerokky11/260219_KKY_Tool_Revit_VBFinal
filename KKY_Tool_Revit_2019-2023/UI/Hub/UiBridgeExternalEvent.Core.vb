@@ -153,6 +153,17 @@ Namespace UI.Hub
             map.Add("sharedparambatch:browse-folder", "HandleSharedParamBatchBrowseFolder")
             map.Add("sharedparambatch:run", "HandleSharedParamBatchRun")
             map.Add("sharedparambatch:export-excel", "HandleSharedParamBatchExportExcel")
+            ' Parameter Modifier
+            map.Add("parammodifier:init", "HandleParameterModifierInit")
+            map.Add("parammodifier:pick-rvts", "HandleParameterModifierPickRvts")
+            map.Add("parammodifier:browse-output-folder", "HandleParameterModifierBrowseOutputFolder")
+            map.Add("parammodifier:filter-import", "HandleParameterModifierFilterImport")
+            map.Add("parammodifier:filter-save", "HandleParameterModifierFilterSave")
+            map.Add("parammodifier:filter-doc-list", "HandleParameterModifierFilterDocList")
+            map.Add("parammodifier:filter-doc-extract", "HandleParameterModifierFilterDocExtract")
+            map.Add("parammodifier:run", "HandleParameterModifierRun")
+            map.Add("parammodifier:export-results", "HandleParameterModifierExportResults")
+            map.Add("parammodifier:open-folder", "HandleParameterModifierOpenFolder")
             ' 공통 Excel 동작
             map.Add("excel:open", "HandleExcelOpen")
             ' Segment ↔ PMS Check

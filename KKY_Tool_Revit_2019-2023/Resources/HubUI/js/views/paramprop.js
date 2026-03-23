@@ -3,7 +3,7 @@ import { clear, div, toast, setBusy, showExcelSavedDialog, debounce, chooseExcel
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 
-const DEFAULT_GUIDE = '공유 파라미터 연동을 실행하면 결과가 이곳에 표시됩니다.';
+const DEFAULT_GUIDE = '복합패밀리 공유 파라미터 추가/연동을 실행하면 결과가 여기에 표시됩니다.';
 const PHASE_WEIGHT = {
     collect: 0.15,
     analyze: 0.25,
@@ -18,7 +18,7 @@ const PHASE_WEIGHT = {
 };
 const PHASE_ORDER = ['collect', 'analyze', 'apply', 'save', 'close', 'excel_init', 'excel_write', 'excel_save', 'autofit', 'done'];
 const PHASE_LABEL = {
-    collect: '스캔 중',
+    collect: '수집 중',
     analyze: '분석 중',
     apply: '적용 중',
     save: '저장 중',
@@ -48,7 +48,8 @@ function formatRevitParamGroupLabel(value) {
 export function renderParamProp(root) {
     const target = root || document.getElementById('view-root') || document.getElementById('app');
     clear(target);
-    const top = document.querySelector('#topbar-root .topbar') || document.querySelector('.topbar'); if (top) top.classList.add('hub-topbar');
+    const top = document.querySelector('#topbar-root .topbar') || document.querySelector('.topbar');
+    if (top) top.classList.add('hub-topbar');
 
     const state = {
         defs: [],
@@ -60,8 +61,9 @@ export function renderParamProp(root) {
         targetGroupId: null,
         isInstance: true,
         excludeDummy: true,
+        acceptProgress: false,
         lastReport: DEFAULT_GUIDE,
-        lastDetails: [],
+        lastDetails: []
     };
     let lastProgressPct = 0;
 
@@ -71,8 +73,8 @@ export function renderParamProp(root) {
     const heading = div('feature-heading');
     heading.innerHTML = `
       <span class="feature-kicker">Shared Parameter Propagator</span>
-      <h2 class="feature-title">공유 파라미터 연동</h2>
-      <p class="feature-sub">복합 패밀리의 하위 패밀리에 공유 파라미터를 추가하고 연동/검증합니다.</p>`;
+      <h2 class="feature-title">복합패밀리 공유 파라미터 추가/연동</h2>
+      <p class="feature-sub">복합 패밀리의 하위 패밀리에 공유 파라미터를 추가하고 연동 및 검증을 수행합니다.</p>`;
 
     const runBtn = cardBtn('연동 실행', onRun);
     runBtn.id = 'btnParamPropRun';
@@ -88,7 +90,6 @@ export function renderParamProp(root) {
     const layout = div('paramprop-layout');
     page.append(layout);
 
-    // ----- 선택 영역 -----
     const pickerCard = div('paramprop-card section paramprop-picker-card');
     pickerCard.innerHTML = '<div class="paramprop-title">공유 파라미터 선택</div>';
 
@@ -107,7 +108,6 @@ export function renderParamProp(root) {
     const selectGrid = div('paramprop-grid');
     pickerCard.append(selectGrid);
 
-    // 그룹 리스트
     const groupBox = div('paramprop-table-box paramprop-group-box');
     const groupHeader = div('paramprop-subtitle');
     groupHeader.textContent = '그룹 (다중 선택)';
@@ -122,7 +122,6 @@ export function renderParamProp(root) {
     groupBox.append(groupHeader, groupListWrap);
     selectGrid.append(groupBox);
 
-    // 파라미터 테이블
     const tableBox = div('paramprop-table-box');
     const tableHead = div('paramprop-subtitle');
     tableHead.textContent = '파라미터';
@@ -137,7 +136,6 @@ export function renderParamProp(root) {
     tableBox.append(tableHead, tableWrap);
     selectGrid.append(tableBox);
 
-    // 옵션 영역
     const optionRow = div('paramprop-row paramprop-options');
     const dummyWrap = div('paramprop-opt');
     const dummyChk = document.createElement('input');
@@ -147,7 +145,7 @@ export function renderParamProp(root) {
     dummyChk.addEventListener('change', () => { state.excludeDummy = !!dummyChk.checked; });
     const dummyLbl = document.createElement('label');
     dummyLbl.setAttribute('for', 'optDummy');
-    dummyLbl.textContent = "하위 패밀리 'Dummy' 포함 시 제외";
+    dummyLbl.textContent = "하위 패밀리 'Dummy' 포함 요소 제외";
     dummyWrap.append(dummyChk, dummyLbl);
 
     const instWrap = div('paramprop-opt radios');
@@ -166,7 +164,6 @@ export function renderParamProp(root) {
     optionRow.append(dummyWrap, instWrap, targetGroupWrap);
     pickerCard.append(optionRow);
 
-    // ----- 결과 영역 -----
     const resultCard = div('paramprop-card section paramprop-report-card');
     const resultTitle = div('paramprop-title');
     resultTitle.textContent = '결과';
@@ -196,19 +193,29 @@ export function renderParamProp(root) {
     layout.append(pickerCard, resultCard);
     target.append(page);
 
-    // 이벤트/호스트 응답
     onHost('sharedparam:list', handleList);
     onHost('sharedparam:done', handleDone);
     onHost('sharedparam:exported', handleExported);
     onHost('paramprop:progress', handleProgress);
-    onHost('revit:error', ({ message }) => { lastProgressPct = 0; ProgressDialog.hide(); setBusy(false); toast(message || 'Revit 오류가 발생했습니다.', 'err', 3200); });
-    onHost('host:error', ({ message }) => { lastProgressPct = 0; ProgressDialog.hide(); setBusy(false); toast(message || '호스트 오류가 발생했습니다.', 'err', 3200); });
+    onHost('revit:error', ({ message }) => {
+        state.acceptProgress = false;
+        lastProgressPct = 0;
+        ProgressDialog.hide();
+        setBusy(false);
+        toast(message || 'Revit 오류가 발생했습니다.', 'err', 3200);
+    });
+    onHost('host:error', ({ message }) => {
+        state.acceptProgress = false;
+        lastProgressPct = 0;
+        ProgressDialog.hide();
+        setBusy(false);
+        toast(message || '호스트 오류가 발생했습니다.', 'err', 3200);
+    });
 
     fetchDefinitions();
 
-    // -------- handlers --------
     function fetchDefinitions() {
-        setBusy(true, '공유 파라미터 불러오는 중…');
+        setBusy(true, '공유 파라미터를 불러오는 중...');
         post('sharedparam:list', {});
     }
 
@@ -216,7 +223,7 @@ export function renderParamProp(root) {
         setBusy(false);
         const ok = payload?.ok !== false;
         if (!ok) {
-            toast(payload?.message || '공유 파라미터 목록을 가져오지 못했습니다.', 'warn');
+            toast(payload?.message || '공유 파라미터 목록을 불러오지 못했습니다.', 'warn');
             state.defs = [];
             state.groups = [];
             renderGroups();
@@ -246,6 +253,7 @@ export function renderParamProp(root) {
     }
 
     function handleDone({ ok, status, message, report, details, rows }) {
+        state.acceptProgress = false;
         setBusy(false);
         const good = ok !== false && String(status || '').toLowerCase() !== 'failed';
         const text = report || DEFAULT_GUIDE;
@@ -255,13 +263,15 @@ export function renderParamProp(root) {
         paintDetails(getActiveFilterKey());
         exportBtn.disabled = state.lastDetails.length === 0;
 
-        const msg = message || (good ? '공유 파라미터 연동을 완료했습니다.' : '공유 파라미터 연동이 실패했습니다.');
+        const msg = message || (good ? '공유 파라미터 연동이 완료되었습니다.' : '공유 파라미터 연동에 실패했습니다.');
         toast(msg, good ? 'ok' : (status === 'cancelled' ? 'info' : 'err'), 2800);
-        ProgressDialog.update(100, '완료', '공유 파라미터 추가 연동이 완료되었습니다.');
+        ProgressDialog.update(100, '완료', '공유 파라미터 추가 및 연동이 완료되었습니다.');
         setTimeout(() => { lastProgressPct = 0; ProgressDialog.hide(); }, 400);
     }
 
     function handleExported({ ok, path, message }) {
+        state.acceptProgress = false;
+        ProgressDialog.hide();
         setBusy(false);
         exportBtn.disabled = state.lastDetails.length === 0;
         if (ok && path) {
@@ -274,17 +284,18 @@ export function renderParamProp(root) {
     function onRun() {
         const selected = Array.from(state.selectedParams);
         if (!selected.length) {
-            toast('하나 이상의 파라미터를 선택하세요.', 'warn');
+            toast('하나 이상의 파라미터를 선택해 주세요.', 'warn');
             return;
         }
         lastProgressPct = 0;
-        setBusy(true, '공유 파라미터 연동 중…');
-        ProgressDialog.show('공유 파라미터 추가 연동', '준비 중...');
+        state.acceptProgress = true;
+        setBusy(true, '공유 파라미터 연동 중...');
+        ProgressDialog.show('공유 파라미터 추가 및 연동', '준비 중...');
         ProgressDialog.update(0, '준비 중...', '');
         exportBtn.disabled = true;
         const payload = {
             paramNames: selected,
-            paramGuids: Array.from(new Set((state.defs || []).filter(d => selected.includes(d.name) && d.guid).map(d => d.guid))),
+            paramGuids: Array.from(new Set((state.defs || []).filter((d) => selected.includes(d.name) && d.guid).map((d) => d.guid))),
             group: state.targetGroupId,
             isInstance: !!state.isInstance,
             excludeDummy: !!state.excludeDummy
@@ -297,16 +308,16 @@ export function renderParamProp(root) {
             toast('최근 연동 결과가 없습니다.', 'info');
             return;
         }
-        setBusy(true, '엑셀 내보내기 중…');
+        state.acceptProgress = true;
+        setBusy(true, '엑셀 내보내기 중...');
         chooseExcelMode((mode) => post('sharedparam:export-excel', { excelMode: mode || 'fast' }));
     }
 
-    // ----- 렌더링 -----
     function renderGroups() {
         groupTbody.innerHTML = '';
         const allItem = makeGroupItem('(All Groups)');
         groupTbody.append(allItem);
-        state.groups.forEach(g => groupTbody.append(makeGroupItem(g)));
+        state.groups.forEach((g) => groupTbody.append(makeGroupItem(g)));
     }
 
     function makeGroupItem(name) {
@@ -349,14 +360,14 @@ export function renderParamProp(root) {
             tdEmpty.colSpan = 2;
             tdEmpty.textContent = state.defs.length
                 ? '조건에 맞는 항목이 없습니다.'
-                : 'Shared Parameter 등록이 필요합니다. Revit에서 Shared Parameter Text를 등록/연결 후 다시 시도하세요.';
+                : 'Shared Parameter 등록이 필요합니다. Revit에서 Shared Parameter Text를 등록/연결한 뒤 다시 시도해 주세요.';
             tdEmpty.className = 'paramprop-empty';
             tr.append(tdEmpty);
             tbody.append(tr);
             return;
         }
 
-        filtered.forEach(def => {
+        filtered.forEach((def) => {
             const key = def.name;
             const tr = document.createElement('tr');
             tr.dataset.key = key;
@@ -375,7 +386,7 @@ export function renderParamProp(root) {
             });
             tdChk.append(chk);
             const nameCell = td(def.name);
-            nameCell.title = `${def.groupName || ''} • ${def.paramType || ''} • ${def.visible ? 'Visible' : 'Hidden'}`.trim();
+            nameCell.title = `${def.groupName || ''} · ${def.paramType || ''} · ${def.visible ? 'Visible' : 'Hidden'}`.trim();
             tr.append(tdChk, nameCell);
             tr.addEventListener('click', () => {
                 if (state.selectedParams.has(key)) state.selectedParams.delete(key); else state.selectedParams.add(key);
@@ -388,7 +399,7 @@ export function renderParamProp(root) {
     function syncTargetGroupSelect() {
         groupSel.innerHTML = '';
         const opts = state.targetGroups || [];
-        opts.forEach(o => {
+        opts.forEach((o) => {
             const opt = document.createElement('option');
             opt.value = o.id;
             opt.textContent = formatRevitParamGroupLabel(o.name || o.label || o.id);
@@ -403,7 +414,7 @@ export function renderParamProp(root) {
     function filterDefs() {
         const groups = state.selectedGroups;
         const search = state.search.toLowerCase();
-        return state.defs.filter(d => {
+        return state.defs.filter((d) => {
             const inGroup = groups.has('(All Groups)') || groups.has(d.groupName);
             if (!inGroup) return false;
             if (!search) return true;
@@ -413,10 +424,10 @@ export function renderParamProp(root) {
 
     function deriveGroups(defs) {
         const set = new Set();
-        (Array.isArray(defs) ? defs : []).forEach(d => {
+        (Array.isArray(defs) ? defs : []).forEach((d) => {
             if (d?.groupName) set.add(d.groupName);
         });
-        return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko')); 
+        return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'));
     }
 
     function paintReport(text) {
@@ -426,7 +437,7 @@ export function renderParamProp(root) {
     function paintDetails(kind) {
         const body = detailTable.querySelector('tbody');
         body.innerHTML = '';
-        const rows = (state.lastDetails || []).filter(r => {
+        const rows = (state.lastDetails || []).filter((r) => {
             const t = r.type || r.kind || '';
             return kind === 'all' || t === kind;
         });
@@ -439,16 +450,16 @@ export function renderParamProp(root) {
             body.append(tr);
             return;
         }
-        rows.forEach(r => {
+        rows.forEach((r) => {
             const tr = document.createElement('tr');
             tr.append(td(r.type || r.kind), td(r.family), td(r.detail));
             body.append(tr);
         });
     }
 
-    filters.forEach(btn => {
+    filters.forEach((btn) => {
         btn.addEventListener('click', () => {
-            filters.forEach(b => b.classList.remove('is-active'));
+            filters.forEach((b) => b.classList.remove('is-active'));
             btn.classList.add('is-active');
             const key = btn.dataset.key || 'all';
             paintDetails(key);
@@ -456,7 +467,7 @@ export function renderParamProp(root) {
     });
 
     function getActiveFilterKey() {
-        return filters.find(f => f.classList.contains('is-active'))?.dataset.key || 'all';
+        return filters.find((f) => f.classList.contains('is-active'))?.dataset.key || 'all';
     }
 
     function labelSpan(text) {
@@ -505,13 +516,17 @@ export function renderParamProp(root) {
     }
 
     function handleProgress(payload) {
-        if (!payload) { ProgressDialog.hide(); return; }
+        if (!state.acceptProgress) return;
+        if (!payload) {
+            ProgressDialog.hide();
+            return;
+        }
         const phase = String(payload.phase || payload.Stage || '').toLowerCase();
         const phaseProgress = clamp01(payload.phaseProgress);
         const current = Number(payload.current || payload.Index || 0) || 0;
         const total = Number(payload.total || payload.Total || 0) || 0;
         const message = payload.message || payload.Message || '';
-        const target = payload.target || payload.Target || '';
+        const targetLabel = payload.target || payload.Target || '';
 
         const basePct = computeBasePercent(phase);
         const weight = PHASE_WEIGHT[phase] || 0;
@@ -520,9 +535,9 @@ export function renderParamProp(root) {
         lastProgressPct = percent;
 
         const subtitle = buildSubtitle(phase, current, total);
-        const detail = buildDetail(message, target);
+        const detail = buildDetail(message, targetLabel);
 
-        ProgressDialog.show('공유 파라미터 추가 연동', subtitle);
+        ProgressDialog.show('공유 파라미터 추가 및 연동', subtitle);
         ProgressDialog.update(percent, subtitle, detail);
 
         if (phase === 'done') {
@@ -552,10 +567,10 @@ export function renderParamProp(root) {
         return `${label}${count}`;
     }
 
-    function buildDetail(message, target) {
+    function buildDetail(message, targetLabel) {
         const parts = [];
         if (message) parts.push(message);
-        if (target) parts.push(target);
+        if (targetLabel) parts.push(targetLabel);
         return parts.join(' · ');
     }
 }

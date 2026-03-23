@@ -420,27 +420,22 @@ End Try
         End If
     End Sub
 
-    ' ====== 중복 스캔(개선: Curve는 EndPoint+Size 기반) ======
+    ' ====== 중복 스캔(간섭 후보 수집 로직 기반 + 완전 중복 페어만 그룹화) ======
     Private Sub RunDuplicate(doc As Document, tolFeet As Double, Optional scopeIds As HashSet(Of Integer) = Nothing, Optional excludeIds As HashSet(Of Integer) = Nothing, Optional excludeKeywords As List(Of String) = Nothing)
         Dim rows As New List(Of DupRowDto)()
         Dim total As Integer = 0
-        Dim groupsCount As Integer = 0
 
         Dim collector As New FilteredElementCollector(doc)
         collector.WhereElementIsNotElementType()
 
-        
         Dim estTotal As Integer = TryGetCollectorCount(collector)
         SendRunProgress("COLLECT", 5, "대상 수집 중…", 0, estTotal, True)
-Dim q = Function(x As Double) As Long
-                    Return CLng(Math.Round(x / tolFeet))
-                End Function
-
-        Dim buckets As New Dictionary(Of String, List(Of ElementId))(StringComparer.Ordinal)
 
         Dim catCache As New Dictionary(Of Integer, String)()
         Dim famCache As New Dictionary(Of Integer, String)()
         Dim typCache As New Dictionary(Of Integer, String)()
+
+        Dim infos As New Dictionary(Of Integer, ClashInfo)()
 
         For Each e As Element In collector
             total += 1
@@ -452,26 +447,6 @@ Dim q = Function(x As Double) As Long
                 SendRunProgress("COLLECT", pct, "대상 수집 중…", total, estTotal)
             End If
 
-            ' scope/exclude/keyword 필터
-            If scopeIds IsNot Nothing AndAlso scopeIds.Count > 0 Then
-    Try
-        If e Is Nothing OrElse Not scopeIds.Contains(e.Id.IntegerValue) Then Continue For
-    Catch
-        Continue For
-    End Try
-            End If
-
-            If excludeIds IsNot Nothing AndAlso excludeIds.Count > 0 Then
-    Try
-        If e IsNot Nothing AndAlso excludeIds.Contains(e.Id.IntegerValue) Then Continue For
-    Catch
-    End Try
-            End If
-
-            If excludeKeywords IsNot Nothing AndAlso excludeKeywords.Count > 0 Then
-    If ShouldExcludeByKeywords(e, excludeKeywords) Then Continue For
-            End If
-
             If scopeIds IsNot Nothing AndAlso scopeIds.Count > 0 Then
                 Try
                     If e Is Nothing OrElse Not scopeIds.Contains(e.Id.IntegerValue) Then Continue For
@@ -479,85 +454,237 @@ Dim q = Function(x As Double) As Long
                     Continue For
                 End Try
             End If
-            total += 1
+
+            If excludeIds IsNot Nothing AndAlso excludeIds.Count > 0 Then
+                Try
+                    If e IsNot Nothing AndAlso excludeIds.Contains(e.Id.IntegerValue) Then Continue For
+                Catch
+                End Try
+            End If
+
+            If excludeKeywords IsNot Nothing AndAlso excludeKeywords.Count > 0 Then
+                If ShouldExcludeByKeywords(e, excludeKeywords) Then Continue For
+            End If
 
             If ShouldSkipForQuantity(e) Then Continue For
             If e Is Nothing OrElse e.Category Is Nothing Then Continue For
 
-            Dim catName As String = SafeCategoryName(e, catCache)
-            Dim famName As String = SafeFamilyName(e, famCache)
-            Dim typName As String = SafeTypeName(e, typCache)
-            Dim lvl As Integer = TryGetLevelId(e)
+            Dim bb As BoundingBoxXYZ = GetBoundingBox(e)
+            If bb Is Nothing OrElse bb.Min Is Nothing OrElse bb.Max Is Nothing Then Continue For
 
-            Dim key As String = Nothing
+            Dim minX As Double = bb.Min.X - tolFeet
+            Dim minY As Double = bb.Min.Y - tolFeet
+            Dim minZ As Double = bb.Min.Z - tolFeet
+            Dim maxX As Double = bb.Max.X + tolFeet
+            Dim maxY As Double = bb.Max.Y + tolFeet
+            Dim maxZ As Double = bb.Max.Z + tolFeet
 
-            If TryBuildCurveDuplicateKey(e, tolFeet, catName, famName, typName, lvl, key) Then
-                ' key ok
-            Else
-                Dim center As XYZ = TryGetCenter(e)
-                If center Is Nothing Then Continue For
+            If maxX < minX OrElse maxY < minY OrElse maxZ < minZ Then Continue For
 
-                Dim oriKey As String = GetOrientationKey(e)
-                key =
-                    String.Concat(catName, "|", famName, "|", typName, "|",
-                                  "O", oriKey, "|", "L", lvl.ToString(), "|",
-                                  "Q(", q(center.X).ToString(), ",", q(center.Y).ToString(), ",", q(center.Z).ToString(), ")")
+            Dim id As Integer = e.Id.IntegerValue
+
+            Dim ci As New ClashInfo With {
+                .Id = id,
+                .MinX = minX, .MinY = minY, .MinZ = minZ,
+                .MaxX = maxX, .MaxY = maxY, .MaxZ = maxZ,
+                .Category = SafeCategoryName(e, catCache),
+                .Family = SafeFamilyName(e, famCache),
+                .TypeName = SafeTypeName(e, typCache),
+                .TypeIdInt = TryGetTypeIdInt(e),
+                .SizeKey = GetMEPSizeKey(e),
+                .RadiusHint = 0R,
+                .HasCurve = False,
+                .Radius = 0R,
+                .ProfileKind = CurveProfileKind.Unknown,
+                .ProfileWidth = 0R,
+                .ProfileHeight = 0R,
+                .UsesApproxProfile = True
+            }
+
+            ci.RadiusHint = ComputeRadiusHint(ci.MinX, ci.MinY, ci.MinZ, ci.MaxX, ci.MaxY, ci.MaxZ, tolFeet)
+
+            Dim p0 As XYZ = Nothing, p1 As XYZ = Nothing
+            If TryGetCurveEndpoints(e, p0, p1) Then
+                ci.HasCurve = True
+                ci.X0 = p0.X : ci.Y0 = p0.Y : ci.Z0 = p0.Z
+                ci.X1 = p1.X : ci.Y1 = p1.Y : ci.Z1 = p1.Z
+
+                Dim profileKind As CurveProfileKind = CurveProfileKind.Unknown
+                Dim r As Double = 0R
+                Dim w As Double = 0R
+                Dim h As Double = 0R
+                Dim exactProfile As Boolean = False
+                If TryGetCurveProfile(e, profileKind, r, w, h, exactProfile) Then
+                    ci.ProfileKind = profileKind
+                    ci.ProfileWidth = Math.Max(0R, w)
+                    ci.ProfileHeight = Math.Max(0R, h)
+                    ci.Radius = Math.Max(0R, r)
+                    ci.UsesApproxProfile = Not exactProfile
+                End If
             End If
 
-            Dim list As List(Of ElementId) = Nothing
-            If Not buckets.TryGetValue(key, list) Then
-                list = New List(Of ElementId)()
-                buckets.Add(key, list)
-            End If
-            list.Add(e.Id)
+            infos(id) = ci
         Next
 
-        Dim groupIndex As Integer = 0
+        Dim adjacency As New Dictionary(Of Integer, HashSet(Of Integer))()
+        Dim pairSeen As New HashSet(Of Long)()
 
-        Dim groupsTotal As Integer = 0
-        Try
-            For Each v In buckets.Values
-                If v IsNot Nothing AndAlso v.Count > 1 Then groupsTotal += 1
-            Next
-        Catch
-        End Try
-        SendRunProgress("GROUP", 50, "그룹 구성 중…", 0, groupsTotal, True)
+        Dim cellSize As Double = Math.Max(0.5R, tolFeet * 32.0R)
+        Dim cells As New Dictionary(Of Long, List(Of Integer))()
 
-        Dim gDone As Integer = 0
-        For Each kv In buckets
-            Dim ids As List(Of ElementId) = kv.Value
-            If ids.Count <= 1 Then Continue For
-            gDone += 1
-            If gDone Mod 20 = 0 Then
-                Dim pct As Integer = 50
-                If groupsTotal > 0 Then pct = 50 + CInt(Math.Min(50, Math.Round((gDone / CDbl(groupsTotal)) * 50)))
-                SendRunProgress("GROUP", pct, "그룹 구성 중…", gDone, groupsTotal)
+        Const MAX_CELLS_PER_ELEMENT As Integer = 2500
+        Dim hugeIds As New List(Of Integer)()
+
+        For Each kv In infos
+            Dim ci = kv.Value
+
+            Dim ix0 As Integer = CInt(Math.Floor(ci.MinX / cellSize))
+            Dim ix1 As Integer = CInt(Math.Floor(ci.MaxX / cellSize))
+            Dim iy0 As Integer = CInt(Math.Floor(ci.MinY / cellSize))
+            Dim iy1 As Integer = CInt(Math.Floor(ci.MaxY / cellSize))
+
+            Dim dx As Integer = ix1 - ix0
+            Dim dy As Integer = iy1 - iy0
+            Dim cellCount As Long = CLng(dx + 1) * CLng(dy + 1)
+
+            If cellCount > MAX_CELLS_PER_ELEMENT Then
+                hugeIds.Add(ci.Id)
+                Continue For
             End If
 
-            groupsCount += 1
+            For ix As Integer = ix0 To ix1
+                For iy As Integer = iy0 To iy1
+                    AddCell(cells, ix, iy, ci.Id)
+                Next
+            Next
+        Next
+
+        For Each kv In cells
+            Dim lst = kv.Value
+            If lst Is Nothing OrElse lst.Count < 2 Then Continue For
+
+            For i As Integer = 0 To lst.Count - 2
+                Dim aId As Integer = lst(i)
+                Dim a As ClashInfo = Nothing
+                If Not infos.TryGetValue(aId, a) Then Continue For
+
+                For j As Integer = i + 1 To lst.Count - 1
+                    Dim bId As Integer = lst(j)
+                    If aId = bId Then Continue For
+
+                    Dim pairKey As Long = MakePairKey(aId, bId)
+                    If pairSeen.Contains(pairKey) Then Continue For
+                    pairSeen.Add(pairKey)
+
+                    Dim b As ClashInfo = Nothing
+                    If Not infos.TryGetValue(bId, b) Then Continue For
+
+                    If Not BBoxIntersects(a, b) Then Continue For
+                    If IsExactDuplicateCandidate(a, b, tolFeet) Then
+                        AddEdge(adjacency, aId, bId)
+                    End If
+                Next
+            Next
+        Next
+
+        If hugeIds.Count > 0 Then
+            Dim allIds = infos.Keys.ToList()
+
+            For Each aId As Integer In hugeIds
+                Dim a As ClashInfo = Nothing
+                If Not infos.TryGetValue(aId, a) Then Continue For
+
+                For Each bId As Integer In allIds
+                    If aId = bId Then Continue For
+
+                    Dim pairKey As Long = MakePairKey(aId, bId)
+                    If pairSeen.Contains(pairKey) Then Continue For
+                    pairSeen.Add(pairKey)
+
+                    Dim b As ClashInfo = Nothing
+                    If Not infos.TryGetValue(bId, b) Then Continue For
+
+                    If Not BBoxIntersects(a, b) Then Continue For
+                    If IsExactDuplicateCandidate(a, b, tolFeet) Then
+                        AddEdge(adjacency, aId, bId)
+                    End If
+                Next
+            Next
+        End If
+
+        Dim groups As New List(Of List(Of Integer))()
+        Dim visited As New HashSet(Of Integer)()
+
+        For Each id As Integer In adjacency.Keys.ToList()
+            If visited.Contains(id) Then Continue For
+
+            Dim comp As New List(Of Integer)()
+            Dim q As New Queue(Of Integer)()
+            q.Enqueue(id)
+            visited.Add(id)
+
+            While q.Count > 0
+                Dim cur As Integer = q.Dequeue()
+                comp.Add(cur)
+
+                Dim nbSet As HashSet(Of Integer) = Nothing
+                If adjacency.TryGetValue(cur, nbSet) AndAlso nbSet IsNot Nothing Then
+                    For Each nb As Integer In nbSet
+                        If Not visited.Contains(nb) Then
+                            visited.Add(nb)
+                            q.Enqueue(nb)
+                        End If
+                    Next
+                End If
+            End While
+
+            If comp.Count >= 2 Then
+                groups.Add(comp)
+            End If
+        Next
+
+        groups = groups.OrderByDescending(Function(g) g.Count).ToList()
+        SendRunProgress("GROUP", 50, "그룹 구성 중…", 0, groups.Count, True)
+
+        Dim groupIndex As Integer = 0
+        Dim gDone As Integer = 0
+
+        For Each g In groups
             groupIndex += 1
+            gDone += 1
+
+            If gDone Mod 20 = 0 Then
+                Dim pct As Integer = 50
+                If groups.Count > 0 Then
+                    pct = 50 + CInt(Math.Min(50, Math.Round((gDone / CDbl(groups.Count)) * 50)))
+                End If
+                SendRunProgress("GROUP", pct, "그룹 구성 중…", gDone, groups.Count)
+            End If
+
             Dim gk As String = "D" & groupIndex.ToString("D4")
 
-            For Each id As ElementId In ids
-                Dim e As Element = doc.GetElement(id)
-                If e Is Nothing Then Continue For
+            For Each id As Integer In g
+                Dim ci As ClashInfo = Nothing
+                If Not infos.TryGetValue(id, ci) Then Continue For
 
-                Dim catName As String = SafeCategoryName(e, catCache)
-                Dim famName As String = SafeFamilyName(e, famCache)
-                Dim typName As String = SafeTypeName(e, typCache)
+                Dim nbSet As HashSet(Of Integer) = Nothing
+                Dim conn As String = ""
+                Dim connCnt As Integer = 0
 
-                Dim connIds = ids.Where(Function(x) x.IntegerValue <> id.IntegerValue).
-                    Select(Function(x) x.IntegerValue.ToString()).
-                    ToArray()
+                If adjacency.TryGetValue(id, nbSet) AndAlso nbSet IsNot Nothing AndAlso nbSet.Count > 0 Then
+                    Dim connArr = nbSet.OrderBy(Function(x) x).Select(Function(x) x.ToString()).ToArray()
+                    connCnt = connArr.Length
+                    conn = String.Join(", ", connArr)
+                End If
 
                 rows.Add(New DupRowDto With {
                     .FileName = doc.Title,
-.ElementId = id.IntegerValue,
-                    .Category = catName,
-                    .Family = famName,
-                    .Type = typName,
-                    .ConnectedCount = connIds.Length,
-                    .ConnectedIds = String.Join(", ", connIds),
+                    .ElementId = id,
+                    .Category = ci.Category,
+                    .Family = ci.Family,
+                    .Type = ci.TypeName,
+                    .ConnectedCount = connCnt,
+                    .ConnectedIds = conn,
                     .Candidate = True,
                     .Deleted = False,
                     .GroupKey = gk,
@@ -565,6 +692,7 @@ Dim q = Function(x As Double) As Long
                 })
             Next
         Next
+
         _lastPairs = New List(Of PairRowDto)()
         Try
             SendToWeb("dup:pairs", New Object() {})
@@ -573,7 +701,6 @@ Dim q = Function(x As Double) As Long
 
         _lastRows = rows
 
-        ' UI 표시 제한
         Dim truncated As Boolean = False
         Dim shownRows As List(Of DupRowDto) = rows
         If rows.Count > MAX_UI_ROWS Then
@@ -600,7 +727,7 @@ Dim q = Function(x As Double) As Long
         SendToWeb("dup:result", New With {
             .mode = "duplicate",
             .scan = total,
-            .groups = groupsCount,
+            .groups = groups.Count,
             .candidates = rows.Count,
             .tolFeet = tolFeet,
             .shown = shownRows.Count,
@@ -1974,6 +2101,12 @@ Private Shared Function IsExactBBoxDuplicate(a As ClashInfo, b As ClashInfo, tol
     If Math.Abs(a.MaxZ - b.MaxZ) > t Then Return False
 
     Return True
+End Function
+
+Private Shared Function IsExactDuplicateCandidate(a As ClashInfo, b As ClashInfo, tolFeet As Double) As Boolean
+    If IsExactDuplicateCurvePair(a, b, tolFeet) Then Return True
+    If IsExactBBoxDuplicate(a, b, tolFeet) Then Return True
+    Return False
 End Function
 
 Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashInfo, tolFeet As Double, opt As Options, solidCache As Dictionary(Of Integer, List(Of Solid)), connCache As Dictionary(Of Integer, HashSet(Of Integer))) As Boolean

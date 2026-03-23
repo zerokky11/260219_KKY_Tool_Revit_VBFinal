@@ -1061,7 +1061,7 @@ NextItem:
 
             Return New With {
                 .key = "connector",
-                .label = "커넥터 파라미터 연속성 검토",
+                .label = "파라미터 연속성 검토",
                 .lines = New String() {
                     $"선택 파일 수: {fileCount}개",
                     $"전체 결과 건수: {rows.Count}건",

@@ -185,6 +185,70 @@ namespace KKY_Tool_Revit.Services
             return created.Id;
         }
 
+        public static ElementFilter CreateElementFilter(Document doc, ViewFilterProfile profile, Action<string> log)
+        {
+            if (doc == null) throw new ArgumentNullException(nameof(doc));
+            if (profile == null) throw new ArgumentNullException(nameof(profile));
+            if (!profile.IsConfigured()) throw new InvalidOperationException("?꾪꽣 ?꾨줈?꾩씠 ?꾩쟾?섏? ?딆뒿?덈떎.");
+
+            ICollection<ElementId> categoryIds = ResolveCategories(doc, profile.GetCategoryTokens(), log);
+            if (categoryIds.Count == 0)
+            {
+                throw new InvalidOperationException("?꾪꽣 移댄뀒怨좊━瑜??섎굹??李얠? 紐삵뻽?듬땲??");
+            }
+
+            if (!string.IsNullOrWhiteSpace(profile.FilterDefinitionXml))
+            {
+                XElement definition = TryParseXml(profile.FilterDefinitionXml);
+                if (definition == null)
+                {
+                    throw new InvalidDataException("?꾪꽣 ?뺤쓽 XML???댁꽍?????놁뒿?덈떎.");
+                }
+
+                var cache = new Dictionary<string, ParameterResolution>(StringComparer.OrdinalIgnoreCase);
+                return DeserializeElementFilter(doc, categoryIds, definition, cache);
+            }
+
+            ElementId parameterId;
+            StorageType storageType;
+            ResolveParameterIdentity(doc, categoryIds, profile.ParameterToken, out parameterId, out storageType);
+            FilterRule rule = CreateRule(parameterId, storageType, profile.Operator, profile.RuleValue);
+            return new ElementParameterFilter(new List<FilterRule> { rule }, false);
+        }
+
+        public static IList<ElementId> GetMatchingElementIds(Document doc, ViewFilterProfile profile, IEnumerable<ElementId> candidateIds, Action<string> log)
+        {
+            if (doc == null) throw new ArgumentNullException(nameof(doc));
+            if (profile == null) throw new ArgumentNullException(nameof(profile));
+
+            ElementFilter filter = CreateElementFilter(doc, profile, log);
+            HashSet<int> candidateIdSet = candidateIds != null
+                ? new HashSet<int>(candidateIds.Where(x => x != null && x != ElementId.InvalidElementId).Select(x => x.IntegerValue))
+                : null;
+
+            ICollection<ElementId> categoryIds = ResolveCategories(doc, profile.GetCategoryTokens(), log);
+            var results = new List<ElementId>();
+
+            foreach (ElementId categoryId in categoryIds)
+            {
+                FilteredElementCollector collector = new FilteredElementCollector(doc)
+                    .WhereElementIsNotElementType()
+                    .WherePasses(new ElementCategoryFilter(categoryId))
+                    .WherePasses(filter);
+
+                foreach (Element element in collector)
+                {
+                    if (element == null) continue;
+                    if (candidateIdSet != null && !candidateIdSet.Contains(element.Id.IntegerValue)) continue;
+                    results.Add(element.Id);
+                }
+            }
+
+            return results
+                .Distinct(new ElementIdComparer())
+                .ToList();
+        }
+
         public static void ApplyFilterToView(View view, ElementId filterId, bool enabled)
         {
             if (view == null) throw new ArgumentNullException(nameof(view));

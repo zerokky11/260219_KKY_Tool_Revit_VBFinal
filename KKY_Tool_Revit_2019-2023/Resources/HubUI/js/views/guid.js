@@ -27,6 +27,8 @@ export function renderGuid(root) {
         activeFamily: '',
         activeTab: 'project',
         busy: false,
+        acceptRunProgress: false,
+        acceptExcelProgress: false,
         runId: '',
         hasRun: false,
         includeFamily: false,
@@ -43,7 +45,7 @@ export function renderGuid(root) {
     const headerLeft = div('feature-heading');
     headerLeft.innerHTML = `
       <span class="feature-kicker">GUID Audit</span>
-      <h2 class="feature-title">공유 파라미터 GUID 검토</h2>
+      <h2 class="feature-title">GUID 검토</h2>
       <p class="feature-sub">프로젝트/패밀리 파라미터 GUID를 공유 파라미터 파일과 비교합니다.</p>`;
 
     const headerRight = div('guid-header-right');
@@ -218,6 +220,7 @@ export function renderGuid(root) {
     });
 
     onHost('guid:done', (payload) => {
+        state.acceptRunProgress = false;
         ProgressDialog.hide();
         setBusy(false);
         lastExcelPct = 0;
@@ -270,6 +273,7 @@ export function renderGuid(root) {
     });
 
     onHost('guid:exported', ({ path }) => {
+        state.acceptExcelProgress = false;
         ProgressDialog.hide();
         setBusy(false);
         lastExcelPct = 0;
@@ -281,6 +285,8 @@ export function renderGuid(root) {
     });
 
     const handleError = ({ message }) => {
+        state.acceptRunProgress = false;
+        state.acceptExcelProgress = false;
         ProgressDialog.hide();
         setBusy(false);
         lastExcelPct = 0;
@@ -328,6 +334,8 @@ export function renderGuid(root) {
         state.activeFamilyDoc = '';
         state.activeFamily = '';
         setBusy(true);
+        state.acceptRunProgress = true;
+        state.acceptExcelProgress = false;
         state.runId = '';
         state.activeTab = 'project';
         ProgressDialog.show('GUID Audit', '준비 중…');
@@ -355,6 +363,8 @@ export function renderGuid(root) {
             const excelMode = mode || 'fast';
             lastExcelPct = 0;
             setBusy(true);
+            state.acceptExcelProgress = true;
+            state.acceptRunProgress = false;
             ProgressDialog.show('엑셀 내보내기', '엑셀 파일을 만드는 중…');
             post('guid:export', { which, excelMode });
         });
@@ -802,6 +812,7 @@ export function renderGuid(root) {
     }
 
     function handleRunProgress(payload) {
+        if (!state.acceptRunProgress) return;
         const percent = typeof payload?.pct === 'number' ? payload.pct : 0;
         const message = payload?.text || '';
         if (!state.busy && percent <= 0) return;
@@ -811,6 +822,7 @@ export function renderGuid(root) {
     }
 
     function handleExcelProgress(payload) {
+        if (!state.acceptExcelProgress) return;
         const phase = normalizeExcelPhase(payload?.phase);
         const total = Number(payload?.total) || 0;
         const current = Number(payload?.current) || 0;

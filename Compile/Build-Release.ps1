@@ -9,10 +9,13 @@ $issPath = Join-Path $PSScriptRoot 'KKY_Tool_Compiler.iss'
 $feedScriptPath = Join-Path $PSScriptRoot 'New-UpdateFeed.ps1'
 $zipScriptPath = Join-Path $PSScriptRoot 'New-UpdateZip.ps1'
 $releaseDir = Join-Path $repoRoot 'Sever\Release'
+$stageRoot = Join-Path $repoRoot 'artifacts\release-stage\single'
 $indexPath = Join-Path $releaseDir 'index.html'
 $feedPath = Join-Path $releaseDir 'latest.json'
 $domainRoot = 'https://update.zerokky.com'
 $isccPath = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+$proj2019To2023 = Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\KKY_Tool_Revit.vbproj'
+$proj2025 = Join-Path $repoRoot 'KKY_Tool_Revit_2025\KKY_Tool_Revit_2025.vbproj'
 
 if (-not (Test-Path -LiteralPath $issPath)) {
     throw "Inno Setup script not found: $issPath"
@@ -41,8 +44,29 @@ $exeName = "KKY_Tool_Revit(2019,21,23,25)_v$version.exe"
 $zipName = "KKY_Tool_Revit(2019,21,23,25)_v$version.zip"
 $packageUrl = "$domainRoot/$zipName"
 $installerUrl = "$domainRoot/$exeName"
+if (Test-Path -LiteralPath $stageRoot) {
+    Remove-Item -LiteralPath $stageRoot -Recurse -Force
+}
+New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
 
-& $isccPath $issPath
+foreach ($year in '2019', '2021', '2023') {
+    $outputPath = Join-Path $stageRoot "Rvt$year\net48\"
+    & dotnet build $proj2019To2023 -c Release -p:SkipDeployAllYears=true -p:AddinYear=$year -p:OutputPath=$outputPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Build failed for Revit $year"
+    }
+}
+
+$outputPath2025 = Join-Path $stageRoot 'Rvt2025\net8.0-windows\'
+& dotnet build $proj2025 -c Release -p:SkipCreateAddin=true -p:OutputPath=$outputPath2025
+if ($LASTEXITCODE -ne 0) {
+    throw 'Build failed for Revit 2025'
+}
+
+& $isccPath "/DMyAppVersion=$version" "/DMyBuildRoot=$stageRoot" "/DMyOutputDir=$releaseDir" $issPath
+if ($LASTEXITCODE -ne 0) {
+    throw 'Installer compile failed.'
+}
 
 $exePath = Join-Path $releaseDir $exeName
 if (-not (Test-Path -LiteralPath $exePath)) {
@@ -52,7 +76,7 @@ if (-not (Test-Path -LiteralPath $exePath)) {
 $zipPath = Join-Path $releaseDir $zipName
 & $zipScriptPath `
     -Version $version `
-    -BuildRoot (Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\bin') `
+    -BuildRoot $stageRoot `
     -OutputPath $zipPath
 
 if (-not (Test-Path -LiteralPath $zipPath)) {

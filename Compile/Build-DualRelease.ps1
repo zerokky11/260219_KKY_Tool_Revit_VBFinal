@@ -68,9 +68,9 @@ function Set-VersionFiles {
     $assemblyVersion = "$major.$minor.0.0"
 
     $assemblyText = $assemblyOriginal
-    $assemblyText = [regex]::Replace($assemblyText, 'AssemblyVersion\("[^"]+"\)', "AssemblyVersion(""$assemblyVersion"")")
-    $assemblyText = [regex]::Replace($assemblyText, 'AssemblyFileVersion\("[^"]+"\)', "AssemblyFileVersion(""$assemblyVersion"")")
-    $assemblyText = [regex]::Replace($assemblyText, 'AssemblyInformationalVersion\("[^"]+"\)', "AssemblyInformationalVersion(""$Version"")")
+    $assemblyText = [regex]::Replace($assemblyText, 'AssemblyVersion\(".*?"\)', "AssemblyVersion(""$assemblyVersion"")", [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    $assemblyText = [regex]::Replace($assemblyText, 'AssemblyFileVersion\(".*?"\)', "AssemblyFileVersion(""$assemblyVersion"")", [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    $assemblyText = [regex]::Replace($assemblyText, 'AssemblyInformationalVersion\([\s\S]*?\)', "AssemblyInformationalVersion(""$Version"")", [System.Text.RegularExpressions.RegexOptions]::Singleline)
     Set-FileContentWithRetry -Path $assemblyInfoPath -Value $assemblyText | Out-Null
 
     if (-not [string]::IsNullOrWhiteSpace($topbarOriginal)) {

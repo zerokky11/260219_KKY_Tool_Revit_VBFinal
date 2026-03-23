@@ -355,6 +355,19 @@ Namespace UI.Hub
                         })
                         SetNativeDropOverlay(active)
 
+                    Case "ui:open-external"
+                        Dim externalPayload = TryCast(payload, Dictionary(Of String, Object))
+                        Dim url As String = String.Empty
+                        If externalPayload IsNot Nothing AndAlso externalPayload.ContainsKey("url") AndAlso externalPayload("url") IsNot Nothing Then
+                            url = Convert.ToString(externalPayload("url"))
+                        End If
+
+                        If Not String.IsNullOrWhiteSpace(url) Then
+                            Dim psi As New ProcessStartInfo(url)
+                            psi.UseShellExecute = True
+                            Process.Start(psi)
+                        End If
+
                     Case "ui:rvt-drop-commit"
                         Dim routeKey = GetCurrentRouteKey()
                         Dim pending = ConsumePendingNativeDropPaths(routeKey)
@@ -763,7 +776,7 @@ Namespace UI.Hub
 
         Private Shared Function SupportsDroppedRvtRoute(routeKey As String) As Boolean
             Select Case NormalizeRouteKey(routeKey)
-                Case "multi", "sharedparambatch", "deliverycleaner", "familylink", "guid", "segmentpms", "export"
+                Case "multi", "sharedparambatch", "deliverycleaner", "familylink", "guid", "segmentpms", "export", "parammodifier"
                     Return True
                 Case Else
                     Return False
@@ -794,6 +807,8 @@ Namespace UI.Hub
                     SendToWeb("segmentpms:rvt-picked-files", New With {.paths = paths})
                 Case "export"
                     SendToWeb("export:rvt-files", New With {.files = paths})
+                Case "parammodifier"
+                    SendToWeb("parammodifier:rvts-picked", New With {.ok = True, .paths = paths})
             End Select
         End Sub
 

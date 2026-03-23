@@ -52,6 +52,7 @@ export function renderSharedParamBatch(root) {
     lastProgressPct: 0,
     categoryFilterText: ''
   };
+  let progressHideTimer = null;
 
   const page = div('feature-shell sharedparambatch-page');
   const header = div('feature-header');
@@ -476,6 +477,7 @@ export function renderSharedParamBatch(root) {
 
   function handleProgress(payload) {
     if (!payload) return;
+    clearProgressHideTimer();
     const total = Number(payload.total || payload.Total || 0);
     const step = Number(payload.step || payload.Step || 0);
     const text = payload.text || payload.message || '';
@@ -486,7 +488,7 @@ export function renderSharedParamBatch(root) {
     state.lastProgressPct = pct;
     ProgressDialog.show('Project Parameter 추가', text || '진행 중');
     ProgressDialog.update(pct, text || '진행 중', total ? `${step} / ${total}` : '');
-    if (pct >= 100) ProgressDialog.hide();
+    if (pct >= 100) scheduleProgressHide();
   }
 
   function handleDone(payload) {
@@ -500,7 +502,7 @@ export function renderSharedParamBatch(root) {
     renderSummary();
     renderLogs();
     if (hasRunResults()) {
-      openResultModal();
+      requestAnimationFrame(() => openResultModal());
     }
     if (state.logs.length) toast('완료되었습니다.', 'ok');
   }
@@ -509,6 +511,7 @@ export function renderSharedParamBatch(root) {
     state.running = false;
     updateButtons();
     if (resetProgress) {
+      clearProgressHideTimer();
       state.lastProgressPct = 0;
       ProgressDialog.hide();
     }
@@ -526,7 +529,27 @@ export function renderSharedParamBatch(root) {
       return;
     }
     const path = payload.filePath || payload.path;
-    showExcelSavedDialog('엑셀로 내보냈습니다.', path, (p) => post('excel:open', { path: p }));
+    clearProgressHideTimer();
+    ProgressDialog.hide();
+    requestAnimationFrame(() => {
+      showExcelSavedDialog('엑셀로 내보냈습니다.', path, (p) => post('excel:open', { path: p }));
+    });
+  }
+
+  function clearProgressHideTimer() {
+    if (progressHideTimer) {
+      clearTimeout(progressHideTimer);
+      progressHideTimer = null;
+    }
+  }
+
+  function scheduleProgressHide(delay = 260, afterHide) {
+    clearProgressHideTimer();
+    progressHideTimer = setTimeout(() => {
+      progressHideTimer = null;
+      ProgressDialog.hide();
+      if (typeof afterHide === 'function') afterHide();
+    }, delay);
   }
 
   function renderSummary() {

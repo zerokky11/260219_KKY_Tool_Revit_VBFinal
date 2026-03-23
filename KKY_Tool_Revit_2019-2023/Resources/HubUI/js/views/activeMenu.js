@@ -1,7 +1,5 @@
 import { clear, div } from '../core/dom.js';
 
-const MULTI_MODE_KEY = 'kky.hub.multiMode';
-
 export function renderActiveMenu(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');
   clear(target);
@@ -12,20 +10,20 @@ export function renderActiveMenu(root) {
   heading.innerHTML = `
     <span class="feature-kicker">Active Document</span>
     <h2 class="feature-title">활성 문서 검토</h2>
-    <p class="feature-sub">현재 열려있는 Revit 문서에서 사용할 기능을 선택하세요.</p>`;
+    <p class="feature-sub">현재 열려 있는 Revit 문서에서 사용할 기능을 선택하세요.</p>`;
   header.append(heading);
   page.append(header);
 
   const grid = div('active-menu-grid');
   grid.append(
     buildCard(
-      '중복검토',
-      '중복 패밀리/요소를 그룹별로 확인하고 삭제/되돌리기를 관리합니다.',
+      '중복 / 자체간섭 검토',
+      '중복 패밀리와 요소를 그룹별로 확인하고 삭제 또는 복원을 관리합니다.',
       'dup'
     ),
     buildCard(
-      '패밀리 공유파라미터 추가 및 연동',
-      '활성 문서에서 공유 파라미터 추가 및 연동 상태를 점검합니다.',
+      '복합패밀리 공유 파라미터 추가/연동',
+      '활성 문서에서 공유 파라미터 추가 및 연동 상태를 검토합니다.',
       'paramprop'
     )
   );
@@ -47,16 +45,8 @@ export function renderActiveMenu(root) {
       </div>
       <span class="active-menu-cta btn btn--primary">열기</span>`;
     card.addEventListener('click', () => {
-      if (hash === 'multi') setMultiMode('bqc');
       location.hash = `#${hash}`;
     });
     return card;
-  }
-
-  function setMultiMode(mode) {
-    try {
-      localStorage.setItem(MULTI_MODE_KEY, mode);
-    } catch {
-    }
   }
 }

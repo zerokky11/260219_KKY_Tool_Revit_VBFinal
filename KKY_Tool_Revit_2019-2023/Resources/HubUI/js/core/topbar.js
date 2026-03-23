@@ -3,8 +3,9 @@ import { div, toast } from './dom.js';
 import { toggleTheme } from './theme.js';
 import { setConn, ping, post } from './bridge.js';
 
-const APP_VERSION_FALLBACK = 'v2.07';
+const APP_VERSION_FALLBACK = 'v2.10';
 const STARTUP_NOTICE_DURATION_MS = 4800;
+const REQUESTS_PAGE_URL = 'https://update.zerokky.com/requests.html';
 
 const TEXT = {
     tagline: '\u0052\u0065\u0076\u0069\u0074 \uc6cc\ud06c\ud50c\ub85c\uc6b0\ub97c \ud558\ub098\uc758 \ud5c8\ube0c\uc5d0\uc11c \uad00\ub9ac\ud558\uc138\uc694.',
@@ -15,7 +16,7 @@ const TEXT = {
     connectedNone: '\uc5f0\uacb0 \uc548\ub428',
     pin: '\ud56d\uc0c1 \uc704',
     theme: '\ud14c\ub9c8',
-    settings: '\uc124\uc815',
+    request: '\uc694\uccad\ud558\uae30',
     updateCheck: '\u0054\u006f\u006f\u006c \ubc84\uc804 \uccb4\ud06c',
     updateChecking: '\u0054\u006f\u006f\u006c \ubc84\uc804 \ud655\uc778 \uc911',
     updateHint: '\u0054\u006f\u006f\u006c \ubc84\uc804 \uccb4\ud06c\ub97c \ub20c\ub7ec \ucd5c\uc2e0 \ubc84\uc804\uc744 \uc124\uce58\ud558\uc138\uc694.',
@@ -340,14 +341,13 @@ export function renderTopbarChips() {
     };
     chipRow.append(pin);
 
-    const help = createControlButton({
-        label: TEXT.settings,
-        icon: 'gear',
-        classes: 'chip-btn settings-chip'
+    const requestBtn = createControlButton({
+        label: TEXT.request,
+        icon: 'request',
+        classes: 'chip-btn request-chip'
     });
-    help.setAttribute('aria-expanded', 'false');
-    help.addEventListener('click', () => toggleHelpPanel(help));
-    chipRow.append(help);
+    requestBtn.addEventListener('click', openRequestsPage);
+    chipRow.append(requestBtn);
 
     actions.append(chipRow);
 
@@ -562,6 +562,16 @@ function toggleHelpPanel(trigger) {
     });
 }
 
+function openRequestsPage() {
+    try {
+        post('ui:open-external', { url: REQUESTS_PAGE_URL });
+    } catch (_) {
+        try {
+            window.open(REQUESTS_PAGE_URL, '_blank', 'noopener,noreferrer');
+        } catch (_) { }
+    }
+}
+
 function createControlButton({ id, label, icon, classes = '', statusDot = false }) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -601,6 +611,8 @@ function iconSvg(name) {
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v6m0 0 2.5-2.5M12 10 9.5 7.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M7 12a5 5 0 1 0 1.46-3.54" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 20v-2" stroke-linecap="round"/></svg>';
         case 'gear':
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 13.5v-3l-2.1-.6a6.1 6.1 0 0 0-.6-1.4l1.2-1.8-2.1-2.1-1.8 1.2a6.1 6.1 0 0 0-1.4-.6L13.5 2h-3l-.6 2.1a6.1 6.1 0 0 0-1.4.6L6.7 3.5 4.6 5.6l1.2 1.8c-.26.44-.47.91-.6 1.4L3 10.5v3l2.1.6c.13.49.34.96.6 1.4l-1.2 1.8 2.1 2.1 1.8-1.2c.44.26.91.47 1.4.6l.6 2.1h3l.6-2.1c.49-.13.96-.34 1.4-.6l1.8 1.2 2.1-2.1-1.2-1.8c.26-.44.47-.91.6-1.4Z" fill="none"/><circle cx="12" cy="12" r="3.2" fill="none"/></svg>';
+        case 'request':
+            return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 7.25A2.25 2.25 0 0 1 8.25 5h7.5A2.25 2.25 0 0 1 18 7.25v4.5A2.25 2.25 0 0 1 15.75 14h-4.1l-3.15 2.6V14.9A2.25 2.25 0 0 1 6 12.75v-5.5Z" stroke-linejoin="round"/><path d="M9 8.75h6M9 11.25h4" stroke-linecap="round"/></svg>';
         default:
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"/></svg>';
     }

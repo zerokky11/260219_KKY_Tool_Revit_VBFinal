@@ -828,13 +828,14 @@ export function renderDup(root){
   var heading = div('feature-heading');
   var actions = div('feature-actions');
 
+  var settingsBtn = makeBtn('기본 및 세부 설정', 'dup-settings-btn');
   var runBtn = makeBtn('검토 시작', 'card-action-btn');
   var exportBtn = makeBtn('엑셀 내보내기', 'card-action-btn');
   exportBtn.disabled = true;
 
   var btnDup = makeBtn('중복검토', 'dup-mode-btn');
   var btnClash = makeBtn('자체간섭', 'dup-mode-btn');
-  var settingsBtn = makeBtn('Rule/Set 설정', 'dup-settings-btn');
+ 
 
   var modeShell = div('dup-mode-shell');
   var modeLabel = div('dup-mode-label');
@@ -855,9 +856,9 @@ export function renderDup(root){
   var appliedBar = div('dup-appliedbar hidden');
   var body = div('dup-body');
 
-  actions.appendChild(runBtn);
   actions.appendChild(modeShell);
   actions.appendChild(settingsShell);
+  actions.appendChild(runBtn);
   actions.appendChild(exportBtn);
 
   header.appendChild(heading);
@@ -1192,7 +1193,7 @@ export function renderDup(root){
     var title = (mode === 'clash') ? '자체간섭 검토' : '중복검토';
     var sub2 = (mode === 'clash')
       ? '같은 파일 내 자체간섭 후보를 A↔B 쌍으로 표시합니다.'
-      : '중복 요소 후보를 그룹별로 확인하고 삭제/되돌리기를 관리합니다.';
+      : '중복 검토 후 삭제/되돌리기. 설정에서 입력한 파라미터값을 함께 추출할 수 있습니다.';
     heading.innerHTML =
       '<span class="feature-kicker">Duplicate Inspector</span>' +
       '<h2 class="feature-title">' + esc(title) + '</h2>' +

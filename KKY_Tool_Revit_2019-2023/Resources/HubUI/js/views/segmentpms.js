@@ -88,7 +88,7 @@ export function renderSegmentPms(root) {
   const page = div('feature-shell segmentpms-page');
   const header = div('feature-header');
   const heading = div('feature-heading');
-  heading.innerHTML = `<span class="feature-kicker">PipeType - PMS</span><h2 class="feature-title">Segment 매핑/검증</h2><p class="feature-sub">추출(Excel)과 PMS를 분리하여 그룹 단위 매핑 후 비교합니다.</p>`;
+  heading.innerHTML = `<span class="feature-kicker">PipeType - PMS</span><h2 class="feature-title">PMS 검토</h2><p class="feature-sub">추출(Excel)과 PMS를 분리하여 그룹 단위 매핑 후 비교합니다.</p>`;
   header.append(heading);
   page.append(header);
 
