@@ -57,6 +57,7 @@
     <Compile Include="..\BatchCleanService.cs" Link="Services\BatchCleanService.cs" />
     <Compile Include="..\FloorInfoReviewService.cs" Link="Services\FloorInfoReviewService.cs" />
     <Compile Include="..\LegacyPurgeService.cs" Link="Services\LegacyPurgeService.cs" />
+    <Compile Include="..\LinkWorksetUiPrimeService.cs" Link="Services\LinkWorksetUiPrimeService.cs" />
     <Compile Include="..\ModelParameterExtractionService.cs" Link="Services\ModelParameterExtractionService.cs" />
     <Compile Include="..\PurgeUiBatchService.cs" Link="Services\PurgeUiBatchService.cs" />
     <Compile Include="..\RevitViewFilterProfileService.cs" Link="Services\RevitViewFilterProfileService.cs" />

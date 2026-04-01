@@ -947,6 +947,7 @@ Namespace UI.Hub
             Return New With {
                 .enabled = settings.Enabled,
                 .combinationMode = settings.CombinationMode.ToString(),
+                .applyToAllMatchingParameters = settings.ApplyToAllMatchingParameters,
                 .summary = settings.BuildSummary(),
                 .conditions = If(settings.Conditions, New List(Of ElementParameterCondition)()) _
                     .Select(Function(x) New With {
@@ -1057,6 +1058,7 @@ Namespace UI.Hub
 
             Dim d = ParsePayloadDict(raw)
             result.Enabled = SafeBoolObj(GetProp(d, "enabled"), False)
+            result.ApplyToAllMatchingParameters = SafeBoolObj(GetProp(d, "applyToAllMatchingParameters"), False)
 
             Dim comboName = NormalizeDeliveryCleanerText(GetProp(d, "combinationMode"))
             Dim combo As ParameterConditionCombination

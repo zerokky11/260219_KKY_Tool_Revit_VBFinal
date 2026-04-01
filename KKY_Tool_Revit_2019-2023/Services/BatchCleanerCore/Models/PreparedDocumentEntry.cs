@@ -11,5 +11,6 @@ namespace KKY_Tool_Revit.Models
         public ElementId KeptFilterId { get; set; }
         public int BeforeObjectCount { get; set; }
         public int AfterObjectCount { get; set; }
+        public string RemovedSummary { get; set; }
     }
 }

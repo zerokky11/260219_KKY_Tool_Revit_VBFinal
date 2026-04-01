@@ -39,7 +39,13 @@
 	<PropertyGroup>
 		<ProgramDataPath>$([System.Environment]::GetFolderPath(SpecialFolder.CommonApplicationData))</ProgramDataPath>
 		<AddinRoot>$(ProgramDataPath)\Autodesk\Revit\Addins</AddinRoot>
+		<UserAddinRoot>$([System.Environment]::GetFolderPath(SpecialFolder.ApplicationData))\Autodesk\Revit\Addins</UserAddinRoot>
 		<AddinYear>2025</AddinYear>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<HubUISourceDir Condition="Exists('$(MSBuildProjectDirectory)\Resources\HubUI\index.html')">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\Resources\HubUI\'))</HubUISourceDir>
+		<HubUISourceDir Condition="'$(HubUISourceDir)'=='' and Exists('$(MSBuildProjectDirectory)\..\KKY_Tool_Revit_2019-2023\Resources\HubUI\index.html')">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\KKY_Tool_Revit_2019-2023\Resources\HubUI\'))</HubUISourceDir>
 	</PropertyGroup>
 
 	<!-- ✅ Revit 2025 API 로컬 DLL 경로 (repo 내 Compile\2025addin) -->
@@ -109,14 +115,6 @@
 		</Compile>
 	</ItemGroup>
 
-	<!-- ✅ 빌드 전: 출력 HubUI 폴더 제거 (증분 복사로 인한 구버전 JS 잔존 방지) -->
-	<Target Name="CleanHubUIOutput" BeforeTargets="PrepareForBuild">
-		<PropertyGroup>
-			<HubUIOutDir>$(OutputPath)Resources\HubUI\</HubUIOutDir>
-		</PropertyGroup>
-		<RemoveDir Directories="$(HubUIOutDir)" Condition="Exists('$(HubUIOutDir)')" />
-	</Target>
-
 	<!-- 리소스 / HubUI -->
 	<ItemGroup>
 		<EmbeddedResource Include="..\KKY_Tool_Revit_2019-2023\Resources\icons\hub_16.png" Link="Resources\icons\hub_16.png" Condition="Exists('..\KKY_Tool_Revit_2019-2023\Resources\icons\hub_16.png')">
@@ -163,11 +161,25 @@
 		<None Include="My Project\Application.myapp" />
 	</ItemGroup>
 
-	<!-- ✅ 빌드 후: ProgramData Addins\2025\KKY_Tool_Revit.addin 생성 (Assembly는 빌드 산출물의 절대경로) -->
-	<Target Name="CreateAddin" AfterTargets="Build" Condition="'$(SkipCreateAddin)'!='true' and '$(BuildingInsideVisualStudio)'!='true'">
+	<Target Name="CopyHubUIToOutput" AfterTargets="CoreCompile">
+		<Error Condition="'$(HubUISourceDir)'==''" Text="HubUI source folder not found for 2025 build." />
+
+		<ItemGroup>
+			<_HubUIFiles Include="$(HubUISourceDir)**\*" />
+		</ItemGroup>
+
+		<MakeDir Directories="$(OutputPath)Resources\HubUI" />
+		<MakeDir Directories="@(_HubUIFiles->'$(OutputPath)Resources\HubUI\%(RecursiveDir)')" />
+		<Copy SourceFiles="@(_HubUIFiles)"
+			  DestinationFiles="@(_HubUIFiles->'$(OutputPath)Resources\HubUI\%(RecursiveDir)%(Filename)%(Extension)')"
+			  SkipUnchangedFiles="true" />
+	</Target>
+
+	<!-- ✅ 빌드 후: 사용자 AppData Addins\2025\KKY_Tool_Revit.addin 생성 (Assembly는 빌드 산출물의 절대경로) -->
+	<Target Name="CreateAddin" AfterTargets="Build" Condition="'$(SkipCreateAddin)'!='true'">
 		<PropertyGroup>
 			<BuiltDll>$(TargetPath)</BuiltDll>
-			<AddinOutDir>$(AddinRoot)\$(AddinYear)\</AddinOutDir>
+			<AddinOutDir>$(UserAddinRoot)\$(AddinYear)\</AddinOutDir>
 			<AddinFile>$(AddinOutDir)KKY_Tool_Revit.addin</AddinFile>
 		</PropertyGroup>
 

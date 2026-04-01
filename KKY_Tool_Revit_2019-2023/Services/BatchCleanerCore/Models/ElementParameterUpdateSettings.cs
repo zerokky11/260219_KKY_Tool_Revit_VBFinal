@@ -88,6 +88,7 @@ namespace KKY_Tool_Revit.Models
     {
         public bool Enabled { get; set; }
         public ParameterConditionCombination CombinationMode { get; set; } = ParameterConditionCombination.And;
+        public bool ApplyToAllMatchingParameters { get; set; }
         public List<ElementParameterCondition> Conditions { get; set; } = new List<ElementParameterCondition>();
         public List<ElementParameterAssignment> Assignments { get; set; } = new List<ElementParameterAssignment>();
 
@@ -103,6 +104,7 @@ namespace KKY_Tool_Revit.Models
             {
                 Enabled = Enabled,
                 CombinationMode = CombinationMode,
+                ApplyToAllMatchingParameters = ApplyToAllMatchingParameters,
                 Conditions = Conditions.Where(x => x != null).Select(x => x.Clone()).ToList(),
                 Assignments = Assignments.Where(x => x != null).Select(x => x.Clone()).ToList()
             };
@@ -130,7 +132,8 @@ namespace KKY_Tool_Revit.Models
             string joiner = CombinationMode == ParameterConditionCombination.Or ? " OR " : " AND ";
             string conditionText = conditions.Count == 0 ? "조건 없음" : string.Join(joiner, conditions);
             string assignmentText = assignments.Count == 0 ? "입력 없음" : string.Join(" / ", assignments);
-            return "조건: " + conditionText + Environment.NewLine + "입력: " + assignmentText;
+            string duplicateText = ApplyToAllMatchingParameters ? "중복 파라미터 전체 입력" : "중복 파라미터 하나만 입력";
+            return "조건: " + conditionText + Environment.NewLine + "입력: " + assignmentText + Environment.NewLine + "중복 처리: " + duplicateText;
         }
     }
 }

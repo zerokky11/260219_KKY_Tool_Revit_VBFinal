@@ -11,11 +11,13 @@ $topbarPath = Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\Resources\HubUI\js\c
 $issPath = Join-Path $repoRoot 'Compile\KKY_Tool_Compiler.iss'
 $feedScriptPath = Join-Path $repoRoot 'Compile\New-UpdateFeed.ps1'
 $zipScriptPath = Join-Path $repoRoot 'Compile\New-UpdateZip.ps1'
+$historyScriptPath = Join-Path $repoRoot 'Compile\Update-ReleaseHistory.ps1'
 $releaseDir = Join-Path $repoRoot 'Sever\Release'
 $stageRoot = Join-Path $repoRoot 'artifacts\release-stage'
 $proj2019To2023 = Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\KKY_Tool_Revit.vbproj'
 $proj2025 = Join-Path $repoRoot 'KKY_Tool_Revit_2025\KKY_Tool_Revit_2025.vbproj'
 $indexPath = Join-Path $releaseDir 'index.html'
+$historyPath = Join-Path $releaseDir 'release-history.json'
 $domainRoot = 'https://update.zerokky.com'
 $isccPath = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 
@@ -141,6 +143,14 @@ $finalDownloadUrl = "$domainRoot/$finalZipName"
     -PublishedAt (Get-Date -Format 'yyyy-MM-dd') `
     -Notes "Release build v$SecondVersion" `
     -OutputPath (Join-Path $releaseDir 'latest.json')
+
+& $historyScriptPath `
+    -Version $SecondVersion `
+    -PublishedAt (Get-Date -Format 'yyyy-MM-dd') `
+    -Notes "Release build v$SecondVersion" `
+    -PackageUrl $finalDownloadUrl `
+    -InstallerUrl "$domainRoot/$finalExeName" `
+    -OutputPath $historyPath
 
 if (Test-Path -LiteralPath $indexPath) {
     $indexText = Get-Content -Raw -LiteralPath $indexPath

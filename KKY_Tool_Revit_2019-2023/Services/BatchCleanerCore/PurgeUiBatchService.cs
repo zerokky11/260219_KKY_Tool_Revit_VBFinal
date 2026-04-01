@@ -70,6 +70,7 @@ namespace KKY_Tool_Revit.Services
         private static bool _running;
         private static bool _completedSuccessfully;
         private static bool _faulted;
+        private static Dictionary<string, IDictionary<string, int>> _purgeBeforeBreakdowns = new Dictionary<string, IDictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
         private static PurgeBatchState _state = PurgeBatchState.Idle;
         private static string _lastStatusMessage = string.Empty;
         private static IntPtr _mainWindowHandle = IntPtr.Zero;
@@ -166,6 +167,7 @@ namespace KKY_Tool_Revit.Services
                     _session.PurgeCountComparisons = new List<ModelObjectCountComparison>();
                     _session.PurgeCountComparisonXlsxPath = null;
                 }
+                _purgeBeforeBreakdowns = new Dictionary<string, IDictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
 
                 if (_purgeCommandId == null)
                 {
@@ -602,6 +604,7 @@ namespace KKY_Tool_Revit.Services
             }
 
             existing.BeforeCount = beforeCount;
+            _purgeBeforeBreakdowns[_currentPath] = ModelParameterExtractionService.GetExtractableElementSignatureCounts(doc);
         }
 
         private static void CaptureCurrentFileAfterCountLocked(Document doc)
@@ -631,7 +634,20 @@ namespace KKY_Tool_Revit.Services
             {
                 existing.AfterCount = ModelParameterExtractionService.CountExtractableElements(doc);
                 existing.Status = "O";
-                existing.Note = "Purge 완료";
+                string removedSummary = string.Empty;
+                IDictionary<string, int> beforeBreakdown = null;
+                _purgeBeforeBreakdowns.TryGetValue(_currentPath, out beforeBreakdown);
+                if (existing.BeforeCount.HasValue && existing.AfterCount.HasValue && existing.AfterCount.Value < existing.BeforeCount.Value)
+                {
+                    IDictionary<string, int> afterBreakdown = ModelParameterExtractionService.GetExtractableElementSignatureCounts(doc);
+                    removedSummary = ModelParameterExtractionService.BuildReductionSummary(beforeBreakdown, afterBreakdown);
+                    if (!string.IsNullOrWhiteSpace(removedSummary))
+                    {
+                        WriteLog("Purge 감소 객체 요약: " + existing.FileName + " / " + removedSummary);
+                    }
+                }
+
+                existing.Note = string.IsNullOrWhiteSpace(removedSummary) ? "Purge 완료" : "Purge 완료 / " + removedSummary;
                 WriteLog("Purge 객체수 비교: " + existing.FileName + " / 전 " + (existing.BeforeCount.HasValue ? existing.BeforeCount.Value.ToString() : "-") + " / 후 " + existing.AfterCount.Value);
             }
             catch (Exception ex)
@@ -803,6 +819,7 @@ namespace KKY_Tool_Revit.Services
             _initialFileCount = 0;
             _currentIteration = 1;
             _processedFileCount = 0;
+            _purgeBeforeBreakdowns = new Dictionary<string, IDictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
             _commandPostedUtc = DateTime.MinValue;
             _nextActionUtc = DateTime.MinValue;
             _lastEnterUtc = DateTime.MinValue;

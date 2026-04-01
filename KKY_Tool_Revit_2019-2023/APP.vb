@@ -58,6 +58,7 @@ Namespace KKY_Tool_Revit
             AddHandler a.ViewActivated, AddressOf OnViewActivated
             AddHandler a.ControlledApplication.DocumentOpened, AddressOf OnDocumentListChanged
             AddHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentListChanged
+            AddHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentClosedForActiveLinkWorksetReopen
 
             Return Result.Succeeded
         End Function
@@ -67,6 +68,7 @@ Namespace KKY_Tool_Revit
                 RemoveHandler a.ViewActivated, AddressOf OnViewActivated
                 RemoveHandler a.ControlledApplication.DocumentOpened, AddressOf OnDocumentListChanged
                 RemoveHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentListChanged
+                RemoveHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentClosedForActiveLinkWorksetReopen
             Catch
             End Try
             Return Result.Succeeded
@@ -82,6 +84,13 @@ Namespace KKY_Tool_Revit
         Private Sub OnDocumentListChanged(sender As Object, e As EventArgs)
             Try
                 HubHostWindow.NotifyDocumentListChanged()
+            Catch
+            End Try
+        End Sub
+
+        Private Sub OnDocumentClosedForActiveLinkWorksetReopen(sender As Object, e As Autodesk.Revit.DB.Events.DocumentClosedEventArgs)
+            Try
+                UiBridgeExternalEvent.NotifyActiveLinkWorksetDocumentClosed()
             Catch
             End Try
         End Sub

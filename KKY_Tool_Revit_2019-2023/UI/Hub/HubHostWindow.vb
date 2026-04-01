@@ -796,7 +796,7 @@ Namespace UI.Hub
                 Case "multi"
                     SendToWeb("hub:rvt-picked", New With {.paths = paths})
                 Case "sharedparambatch"
-                    SendToWeb("sharedparambatch:rvts-picked", New With {.ok = True, .paths = paths})
+                    SendToWeb("sharedparambatch:rvts-picked", New With {.ok = True, .paths = paths, .rvtPaths = paths})
                 Case "deliverycleaner"
                     SendToWeb("deliverycleaner:rvts-picked", New With {.ok = True, .paths = paths})
                 Case "familylink"

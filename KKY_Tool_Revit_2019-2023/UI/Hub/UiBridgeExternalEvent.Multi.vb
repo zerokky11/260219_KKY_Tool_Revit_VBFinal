@@ -84,6 +84,11 @@ Namespace UI.Hub
             Public Property Unit As String = "ft"
         End Class
 
+        Private Class MultiLinkWorksetOptions
+            Public Property Enabled As Boolean
+            Public Property ApplyDefaultWorksetOnly As Boolean = True
+        End Class
+
         Private Class MultiRunRequest
             Public Property Common As MultiCommonOptions = New MultiCommonOptions()
             Public Property Connector As MultiConnectorOptions = New MultiConnectorOptions()
@@ -92,6 +97,7 @@ Namespace UI.Hub
             Public Property Guid As MultiGuidOptions = New MultiGuidOptions()
             Public Property FamilyLink As MultiFamilyLinkOptions = New MultiFamilyLinkOptions()
             Public Property Points As MultiPointsOptions = New MultiPointsOptions()
+            Public Property LinkWorkset As MultiLinkWorksetOptions = New MultiLinkWorksetOptions()
             Public Property UseActiveDocument As Boolean = False
             Public Property RvtPaths As List(Of String) = New List(Of String)()
         End Class
@@ -114,6 +120,10 @@ Namespace UI.Hub
         Private Shared _multiRequest As MultiRunRequest
         Private Shared _multiApp As UIApplication
         Private Shared _multiIdlingBound As Boolean
+        Private Shared _activeLinkWorksetReopenPending As Boolean
+        Private Shared _activeLinkWorksetReopenQueued As Boolean
+        Private Shared _activeLinkWorksetReopenPath As String = String.Empty
+        Private Shared _activeLinkWorksetReopenName As String = String.Empty
 
         Private Shared _multiConnectorRows As List(Of Dictionary(Of String, Object))
         Private Shared _multiConnectorExtras As List(Of String)
@@ -125,6 +135,7 @@ Namespace UI.Hub
         Private Shared _multiGuidFamilyIndex As DataTable
         Private Shared _multiFamilyLinkRows As List(Of FamilyLinkAuditRow)
         Private Shared _multiPointRows As List(Of ExportPointsService.Row)
+        Private Shared _multiLinkWorksetRows As List(Of LinkWorksetAuditRow)
         Private Shared _multiRunItems As List(Of MultiRunItem)
 
         ' === hub:pick-rvt ===
@@ -168,6 +179,8 @@ Namespace UI.Hub
                     _multiFamilyLinkRows = Nothing
                 Case "points"
                     _multiPointRows = Nothing
+                Case "linkworkset"
+                    _multiLinkWorksetRows = Nothing
             End Select
         End Sub
 
@@ -217,34 +230,36 @@ Namespace UI.Hub
                 End Try
                 If String.IsNullOrWhiteSpace(docPath) Then docPath = safeName
 
+                If ShouldWarnActiveLinkWorksetRefresh(req) Then
+                    If Not ConfirmActiveLinkWorksetRefresh(doc, safeName) Then
+                        SendToWeb("host:info", New With {.message = "[linkworkset] 활성 문서 실행 취소"})
+                        Return
+                    End If
+                End If
+
                 req.RvtPaths = New List(Of String) From {docPath}
-
-                SyncLock _multiLock
-                    _multiRequest = req
-                    _multiQueue = Nothing
-                    _multiTotal = 1
-                    _multiIndex = 1
-                    _multiActive = False
-                    _multiPending = False
-                    _multiBusy = False
-                    _multiApp = app
-                    _multiRunItems = New List(Of MultiRunItem)()
-                    ResetMultiCaches()
-                End SyncLock
-
                 Dim started = Date.Now
-                ReportMultiProgress(0.0R, "현재 파일 검토 시작", safeName)
-                Try
-                    RunMultiForDocument(app, doc, docPath, safeName, 0.0R)
-                    AppendMultiRunItem(safeName, "success", "", "DONE", started)
-                Catch ex As Exception
-                    AppendMultiConnectorError(safeName, $"파일 처리 실패: {ex.Message}")
-                    AppendMultiRunItem(safeName, "failed", ex.Message, "RUN", started)
-                    SendToWeb("hub:multi-error", New With {.message = ex.Message})
-                    Return
-                End Try
-
-                FinishMultiRun()
+                Dim linkPrimeCount As Integer = CountTopLevelLinkTypes(doc)
+                If req.LinkWorkset IsNot Nothing AndAlso req.LinkWorkset.Enabled AndAlso linkPrimeCount > 0 Then
+                    SendToWeb("host:info", New With {.message = $"[linkworkset-ui] Manage Links 프라이밍 시작 | {safeName} | links={linkPrimeCount}"})
+                    If Not LinkWorksetUiPrimeService.Start(
+                        app,
+                        doc,
+                        docPath,
+                        safeName,
+                        linkPrimeCount,
+                        Sub(message)
+                            SendToWeb("host:info", New With {.message = "[linkworkset-ui] " & message})
+                        End Sub,
+                        Sub(ok, message)
+                            Enqueue(Sub(app2) _self.HandleActiveLinkWorksetAfterUiPrime(app2, req, docPath, safeName, started, ok, message))
+                        End Sub) Then
+                        SendToWeb("host:warn", New With {.message = "[linkworkset-ui] 프라이밍 시작 실패, 기본 흐름으로 계속합니다."})
+                        ExecuteActiveMultiRun(app, req, docPath, safeName, started)
+                    End If
+                Else
+                    ExecuteActiveMultiRun(app, req, docPath, safeName, started)
+                End If
                 Return
             End If
 
@@ -273,6 +288,85 @@ Namespace UI.Hub
             ReportMultiProgress(0.0R, "배치 검토 시작", $"{req.RvtPaths.Count}개 파일 준비")
         End Sub
 
+        Private Sub HandleActiveLinkWorksetAfterUiPrime(app As UIApplication,
+                                                        req As MultiRunRequest,
+                                                        docPath As String,
+                                                        safeName As String,
+                                                        started As Date,
+                                                        ok As Boolean,
+                                                        message As String)
+            If Not ok Then
+                SendToWeb("host:warn", New With {.message = $"[linkworkset-ui] 프라이밍 실패: {message}"})
+            Else
+                SendToWeb("host:info", New With {.message = $"[linkworkset-ui] 프라이밍 완료 | {safeName}"})
+            End If
+
+            ExecuteActiveMultiRun(app, req, docPath, safeName, started)
+        End Sub
+
+        Private Sub ExecuteActiveMultiRun(app As UIApplication,
+                                          req As MultiRunRequest,
+                                          docPath As String,
+                                          safeName As String,
+                                          started As Date)
+            Dim uidoc = app.ActiveUIDocument
+            Dim doc As Document = Nothing
+            Try
+                If uidoc IsNot Nothing Then doc = uidoc.Document
+            Catch
+                doc = Nothing
+            End Try
+            If doc Is Nothing Then
+                SendToWeb("hub:multi-error", New With {.message = "현재 활성 문서를 찾을 수 없습니다."})
+                Return
+            End If
+
+            SyncLock _multiLock
+                _multiRequest = req
+                _multiQueue = Nothing
+                _multiTotal = 1
+                _multiIndex = 1
+                _multiActive = False
+                _multiPending = False
+                _multiBusy = False
+                _multiApp = app
+                _multiRunItems = New List(Of MultiRunItem)()
+                ResetMultiCaches()
+            End SyncLock
+
+            Dim saveNeeded As Boolean = False
+            ReportMultiProgress(0.0R, "현재 파일 검토 시작", safeName)
+            Try
+                saveNeeded = RunMultiForDocument(app, doc, docPath, safeName, 0.0R)
+                If saveNeeded Then
+                    If ShouldWarnActiveLinkWorksetRefresh(req) Then
+                        If Not PersistActiveDocumentForLinkWorkset(doc, safeName) Then
+                            Throw New InvalidOperationException("활성 문서를 저장 또는 동기화하지 못했습니다.")
+                        End If
+                        ScheduleActiveLinkWorksetReopen(docPath, safeName)
+                    Else
+                        Try
+                            doc.Save()
+                            SendToWeb("host:info", New With {.message = $"[linkworkset] 활성 문서 저장 완료 | {safeName}"})
+                        Catch exSave As Exception
+                            SendToWeb("host:warn", New With {.message = $"활성 문서 저장 실패: {exSave.Message}"})
+                        End Try
+                    End If
+                End If
+                AppendMultiRunItem(safeName, "success", "", "DONE", started)
+            Catch ex As Exception
+                AppendMultiConnectorError(safeName, $"파일 처리 실패: {ex.Message}")
+                AppendMultiRunItem(safeName, "failed", ex.Message, "RUN", started)
+                SendToWeb("hub:multi-error", New With {.message = ex.Message})
+                Return
+            End Try
+
+            FinishMultiRun()
+            If saveNeeded AndAlso ShouldWarnActiveLinkWorksetRefresh(req) Then
+                PostActiveLinkWorksetCloseCommand(app, safeName)
+            End If
+        End Sub
+
         Private Sub HandleMultiIdling(sender As Object, e As Autodesk.Revit.UI.Events.IdlingEventArgs)
             Dim shouldRun As Boolean = False
             SyncLock _multiLock
@@ -284,6 +378,20 @@ Namespace UI.Hub
             End SyncLock
             If shouldRun Then
                 ProcessMultiNext(_multiApp)
+            End If
+        End Sub
+
+        Friend Shared Sub NotifyActiveLinkWorksetDocumentClosed()
+            Dim shouldQueue As Boolean = False
+            SyncLock _multiLock
+                shouldQueue = _activeLinkWorksetReopenPending AndAlso Not _activeLinkWorksetReopenQueued AndAlso Not String.IsNullOrWhiteSpace(_activeLinkWorksetReopenPath)
+                If shouldQueue Then
+                    _activeLinkWorksetReopenQueued = True
+                End If
+            End SyncLock
+
+            If shouldQueue Then
+                Enqueue(Sub(app) _self.HandlePendingActiveLinkWorksetReopen(app))
             End If
         End Sub
 
@@ -329,7 +437,13 @@ Namespace UI.Hub
                 ReportMultiProgress(basePct * 100.0R, "파일 열기 완료", safeName)
                 phase = "RUN"
 
-                RunMultiForDocument(app, doc, filePath, safeName, basePct)
+                Dim saveNeeded = RunMultiForDocument(app, doc, filePath, safeName, basePct)
+                If saveNeeded Then
+                    phase = "SAVE"
+                    ReportMultiProgress(basePct * 100.0R, "파일 저장 중", safeName)
+                    doc.Save()
+                    ReportMultiProgress(basePct * 100.0R, "파일 저장 완료", safeName)
+                End If
                 AppendMultiRunItem(safeName, "success", "", "DONE", started)
             Catch ex As Exception
                 AppendMultiConnectorError(safeName, $"파일 처리 실패: {ex.Message}")
@@ -360,9 +474,10 @@ NextItem:
             End If
         End Sub
 
-        Private Sub RunMultiForDocument(app As UIApplication, doc As Document, path As String, safeName As String, basePct As Double)
+        Private Function RunMultiForDocument(app As UIApplication, doc As Document, path As String, safeName As String, basePct As Double) As Boolean
             Dim steps As Integer = CountEnabledFeatures(_multiRequest)
             Dim stepIndex As Integer = 0
+            Dim saveNeeded As Boolean = False
 
             If _multiRequest.Connector.Enabled Then
                 stepIndex += 1
@@ -454,6 +569,151 @@ NextItem:
                 End If
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "Point 추출 완료", safeName)
             End If
+
+            If _multiRequest.LinkWorkset.Enabled Then
+                stepIndex += 1
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "링크 기본 웍셋 점검 중", safeName)
+                Dim rows = LinkWorksetAuditService.RunOnDocument(doc, path, _multiRequest.LinkWorkset.ApplyDefaultWorksetOnly, Nothing)
+                If rows IsNot Nothing Then
+                    If _multiLinkWorksetRows Is Nothing Then _multiLinkWorksetRows = New List(Of LinkWorksetAuditRow)()
+                    _multiLinkWorksetRows.AddRange(rows)
+                    PublishLinkWorksetDiagnostics(rows, safeName)
+                    saveNeeded = rows.Any(Function(r) r IsNot Nothing AndAlso r.Applied)
+                End If
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "링크 기본 웍셋 점검 완료", safeName)
+            End If
+            Return saveNeeded
+        End Function
+
+        Private Shared Function ShouldWarnActiveLinkWorksetRefresh(req As MultiRunRequest) As Boolean
+            Return req IsNot Nothing AndAlso
+                   req.UseActiveDocument AndAlso
+                   req.LinkWorkset IsNot Nothing AndAlso
+                   req.LinkWorkset.Enabled
+        End Function
+
+        Private Shared Function CountTopLevelLinkTypes(doc As Document) As Integer
+            If doc Is Nothing Then Return 0
+            Try
+                Return New FilteredElementCollector(doc).
+                    OfClass(GetType(RevitLinkType)).
+                    Cast(Of RevitLinkType)().
+                    Count(Function(x) x IsNot Nothing AndAlso Not x.IsNestedLink)
+            Catch
+                Return 0
+            End Try
+        End Function
+
+        Private Shared Function ConfirmActiveLinkWorksetRefresh(doc As Document, safeName As String) As Boolean
+            Dim isWorkshared As Boolean = False
+            Try
+                isWorkshared = (doc IsNot Nothing AndAlso doc.IsWorkshared)
+            Catch
+                isWorkshared = False
+            End Try
+
+            Dim td As New Autodesk.Revit.UI.TaskDialog("링크 기본 웍셋 점검/적용")
+            td.MainIcon = Autodesk.Revit.UI.TaskDialogIcon.TaskDialogIconInformation
+            td.TitleAutoPrefix = False
+            td.MainInstruction = "이 기능을 실행하면 파일이 자동 동기화 후 재오픈됩니다."
+            If Not isWorkshared Then
+                td.MainInstruction = "이 기능을 실행하면 파일이 자동 저장 후 재오픈됩니다."
+            End If
+            td.MainContent = "재오픈 시 웍셋은 모두 닫힌 상태로 열립니다." & vbCrLf & "계속하시겠습니까?"
+            td.FooterText = safeName
+            td.CommonButtons = TaskDialogCommonButtons.Yes Or TaskDialogCommonButtons.No
+            td.DefaultButton = TaskDialogResult.Yes
+            Return td.Show() = TaskDialogResult.Yes
+        End Function
+
+        Private Shared Function PersistActiveDocumentForLinkWorkset(doc As Document, safeName As String) As Boolean
+            If doc Is Nothing Then Return False
+
+            Try
+                If doc.IsWorkshared Then
+                    Dim twc As New TransactWithCentralOptions()
+                    Dim swc As New SynchronizeWithCentralOptions()
+                    swc.Comment = "KKY Tools - 링크 기본 웍셋 적용"
+                    Try
+                        Dim rel As New RelinquishOptions(True)
+                        swc.SetRelinquishOptions(rel)
+                    Catch
+                    End Try
+
+                    doc.SynchronizeWithCentral(twc, swc)
+                    SendToWeb("host:info", New With {.message = $"[linkworkset] 활성 문서 동기화 완료 | {safeName}"})
+                    Return True
+                End If
+            Catch exSync As Exception
+                SendToWeb("host:warn", New With {.message = $"활성 문서 동기화 실패, 저장으로 전환합니다: {exSync.Message}"})
+            End Try
+
+            Try
+                doc.Save()
+                SendToWeb("host:info", New With {.message = $"[linkworkset] 활성 문서 저장 완료 | {safeName}"})
+                Return True
+            Catch exSave As Exception
+                SendToWeb("host:warn", New With {.message = $"활성 문서 저장 실패: {exSave.Message}"})
+                Return False
+            End Try
+        End Function
+
+        Private Shared Sub ScheduleActiveLinkWorksetReopen(docPath As String, safeName As String)
+            SyncLock _multiLock
+                _activeLinkWorksetReopenPending = True
+                _activeLinkWorksetReopenQueued = False
+                _activeLinkWorksetReopenPath = If(docPath, String.Empty)
+                _activeLinkWorksetReopenName = If(safeName, String.Empty)
+            End SyncLock
+        End Sub
+
+        Private Shared Sub ResetActiveLinkWorksetReopenState()
+            SyncLock _multiLock
+                _activeLinkWorksetReopenPending = False
+                _activeLinkWorksetReopenQueued = False
+                _activeLinkWorksetReopenPath = String.Empty
+                _activeLinkWorksetReopenName = String.Empty
+            End SyncLock
+        End Sub
+
+        Private Shared Sub PostActiveLinkWorksetCloseCommand(app As UIApplication, safeName As String)
+            If app Is Nothing Then
+                ResetActiveLinkWorksetReopenState()
+                Return
+            End If
+
+            Try
+                Dim cmdId As RevitCommandId = RevitCommandId.LookupPostableCommandId(PostableCommand.Close)
+                app.PostCommand(cmdId)
+                SendToWeb("host:info", New With {.message = $"[linkworkset] 활성 문서 닫기 요청 | {safeName}"})
+            Catch ex As Exception
+                ResetActiveLinkWorksetReopenState()
+                SendToWeb("host:warn", New With {.message = $"활성 문서 자동 닫기 실패: {ex.Message}"})
+            End Try
+        End Sub
+
+        Private Sub HandlePendingActiveLinkWorksetReopen(app As UIApplication)
+            Dim reopenPath As String = String.Empty
+            Dim safeName As String = String.Empty
+            SyncLock _multiLock
+                reopenPath = _activeLinkWorksetReopenPath
+                safeName = _activeLinkWorksetReopenName
+            End SyncLock
+
+            If String.IsNullOrWhiteSpace(reopenPath) Then
+                ResetActiveLinkWorksetReopenState()
+                Return
+            End If
+
+            Try
+                Dim mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(reopenPath)
+                app.OpenAndActivateDocument(mp, BuildReopenOpenOptions(), False)
+                SendToWeb("host:info", New With {.message = $"[linkworkset] 활성 문서 재오픈 완료 | {If(String.IsNullOrWhiteSpace(safeName), Path.GetFileName(reopenPath), safeName)}"})
+            Catch ex As Exception
+                SendToWeb("host:warn", New With {.message = $"활성 문서 재오픈 실패: {ex.Message}"})
+            Finally
+                ResetActiveLinkWorksetReopenState()
+            End Try
         End Sub
 
         Private Sub FinishMultiRun()
@@ -475,6 +735,9 @@ NextItem:
             End If
             If _multiRequest IsNot Nothing AndAlso _multiRequest.Points IsNot Nothing AndAlso _multiRequest.Points.Enabled Then
                 summary("points") = New With {.rows = If(_multiPointRows, New List(Of ExportPointsService.Row)()).Count}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.LinkWorkset IsNot Nothing AndAlso _multiRequest.LinkWorkset.Enabled Then
+                summary("linkworkset") = New With {.rows = If(_multiLinkWorksetRows, New List(Of LinkWorksetAuditRow)()).Count}
             End If
             SendToWeb("hub:multi-done", New With {.summary = summary})
             SendToWeb("multi:review-summary", BuildMultiSummaryPayload())
@@ -503,6 +766,8 @@ NextItem:
                         ExportFamilyLink(doAutoFit, excelMode)
                     Case "points"
                         ExportPoints(doAutoFit, excelMode)
+                    Case "linkworkset"
+                        ExportLinkWorkset(doAutoFit, excelMode)
                     Case Else
                         SendToWeb("hub:multi-exported", New With {.ok = False, .message = "알 수 없는 기능 키입니다."})
                         Return
@@ -854,6 +1119,45 @@ NextItem:
             End If
         End Sub
 
+        Private Sub ExportLinkWorkset(doAutoFit As Boolean, excelMode As String)
+            Dim rows = If(_multiLinkWorksetRows, New List(Of LinkWorksetAuditRow)())
+            If rows.Count = 0 Then
+                SendToWeb("hub:multi-exported", New With {.ok = False, .message = "링크 기본 웍셋 결과가 없습니다."})
+                Return
+            End If
+
+            Dim headers As New List(Of String) From {
+                "HostFile",
+                "LinkName",
+                "LinkPath",
+                "AttachmentType",
+                "WasLoadedBefore",
+                "IsLoadedAfter",
+                "IsWorkshared",
+                "DefaultWorkset",
+                "TotalUserWorksets",
+                "OpenUserWorksetsBefore",
+                "DefaultOnlyBefore",
+                "OpenUserWorksetsAfter",
+                "DefaultOnlyAfter",
+                "ApplyRequested",
+                "Applied",
+                "Status",
+                "Message",
+                "DiagnosticLog"
+            }
+
+            Dim table = BuildLinkWorksetTable(headers, rows)
+            If Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: LinkWorkset")
+            Dim saved = ExcelCore.PickAndSaveXlsx("LinkWorkset", table, $"LinkWorkset_{Date.Now:yyyyMMdd_HHmm}.xlsx", doAutoFit, "hub:multi-progress", "linkworkset")
+            If String.IsNullOrWhiteSpace(saved) Then
+                SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+            Else
+                TryApplyExportStyles("linkworkset", saved, doAutoFit, If(excelMode, "normal"))
+                SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
+            End If
+        End Sub
+
         Private Shared Sub ResetMultiCaches()
             _multiConnectorRows = Nothing
             _multiConnectorExtras = Nothing
@@ -868,6 +1172,7 @@ NextItem:
             _multiGuidFamilyIndex = Nothing
             _multiFamilyLinkRows = Nothing
             _multiPointRows = Nothing
+            _multiLinkWorksetRows = Nothing
         End Sub
 
         Private Function ParseMultiRequest(payload As Object) As MultiRunRequest
@@ -896,6 +1201,7 @@ NextItem:
                 req.Guid = ParseGuid(fd)
                 req.FamilyLink = ParseFamilyLink(fd)
                 req.Points = ParsePoints(fd)
+                req.LinkWorkset = ParseLinkWorkset(fd)
             End If
             Return req
         End Function
@@ -967,9 +1273,18 @@ NextItem:
             Return opt
         End Function
 
+        Private Function ParseLinkWorkset(fd As Dictionary(Of String, Object)) As MultiLinkWorksetOptions
+            Dim opt As New MultiLinkWorksetOptions()
+            Dim obj = GetDictValue(fd, "linkworkset")
+            Dim d = ToDict(obj)
+            opt.Enabled = ToBool(GetDictValue(d, "enabled"))
+            opt.ApplyDefaultWorksetOnly = ToBool(GetDictValue(d, "applyDefaultWorksetOnly"), True)
+            Return opt
+        End Function
+
         Private Shared Function AnyFeatureEnabled(req As MultiRunRequest) As Boolean
             If req Is Nothing Then Return False
-            Return req.Connector.Enabled OrElse req.FloorInfo.Enabled OrElse req.Pms.Enabled OrElse req.Guid.Enabled OrElse req.FamilyLink.Enabled OrElse req.Points.Enabled
+            Return req.Connector.Enabled OrElse req.FloorInfo.Enabled OrElse req.Pms.Enabled OrElse req.Guid.Enabled OrElse req.FamilyLink.Enabled OrElse req.Points.Enabled OrElse req.LinkWorkset.Enabled
         End Function
 
         Private Shared Function CountEnabledFeatures(req As MultiRunRequest) As Integer
@@ -981,6 +1296,7 @@ NextItem:
             If req.Guid.Enabled Then count += 1
             If req.FamilyLink.Enabled Then count += 1
             If req.Points.Enabled Then count += 1
+            If req.LinkWorkset.Enabled Then count += 1
             Return Math.Max(count, 1)
         End Function
 
@@ -1044,6 +1360,10 @@ NextItem:
 
             If _multiRequest.Points IsNot Nothing AndAlso _multiRequest.Points.Enabled Then
                 summaries("points") = BuildPointsMultiSummary()
+            End If
+
+            If _multiRequest.LinkWorkset IsNot Nothing AndAlso _multiRequest.LinkWorkset.Enabled Then
+                summaries("linkworkset") = BuildLinkWorksetMultiSummary()
             End If
 
             Return summaries
@@ -1204,6 +1524,119 @@ NextItem:
             }
         End Function
 
+        Private Function BuildLinkWorksetMultiSummary() As Object
+            Dim rows = If(_multiLinkWorksetRows, New List(Of LinkWorksetAuditRow)())
+            Dim totalLinks As Integer = rows.Count
+            Dim appliedCount As Integer = rows.Where(Function(r) r IsNot Nothing AndAlso r.Applied).Count()
+            Dim okCount As Integer = rows.Where(Function(r) r IsNot Nothing AndAlso r.DefaultOnlyOpenAfter.HasValue AndAlso r.DefaultOnlyOpenAfter.Value).Count()
+            Dim issueCount As Integer = rows.Where(Function(r) r IsNot Nothing AndAlso IsLinkWorksetIssue(r)).Count()
+            Dim naCount As Integer = rows.Where(Function(r) r IsNot Nothing AndAlso String.Equals(If(r.Status, ""), "n/a", StringComparison.OrdinalIgnoreCase)).Count()
+
+            Return New With {
+                .key = "linkworkset",
+                .label = "링크 기본 웍셋 점검/적용",
+                .lines = New String() {
+                    $"선택 파일 수: {GetRequestedMultiFileCount()}개",
+                    $"링크 결과 행 수: {totalLinks}행",
+                    $"기본 workset만 열린 링크 수: {okCount}개",
+                    $"재적용된 링크 수: {appliedCount}개",
+                    $"확인 필요 링크 수: {issueCount}개",
+                    $"비Workshared 링크 수: {naCount}개"
+                },
+                .fileSummaries = BuildLinkWorksetFileSummaries(rows)
+            }
+        End Function
+
+        Private Function BuildLinkWorksetFileSummaries(rows As IList(Of LinkWorksetAuditRow)) As List(Of Object)
+            Dim orderedNames As New List(Of String)()
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing Then
+                For Each path In _multiRequest.RvtPaths
+                    Dim safeName As String = GetSafeMultiFileName(path)
+                    If String.IsNullOrWhiteSpace(safeName) Then Continue For
+                    If seen.Add(safeName) Then orderedNames.Add(safeName)
+                Next
+            End If
+
+            If _multiRunItems IsNot Nothing Then
+                For Each item In _multiRunItems
+                    If item Is Nothing Then Continue For
+                    Dim safeName As String = GetSafeMultiFileName(item.File)
+                    If String.IsNullOrWhiteSpace(safeName) Then Continue For
+                    If seen.Add(safeName) Then orderedNames.Add(safeName)
+                Next
+            End If
+
+            For Each row In rows
+                If row Is Nothing Then Continue For
+                Dim safeName As String = GetSafeMultiFileName(row.HostFileName)
+                If String.IsNullOrWhiteSpace(safeName) Then Continue For
+                If seen.Add(safeName) Then orderedNames.Add(safeName)
+            Next
+
+            Dim result As New List(Of Object)()
+            For Each fileName In orderedNames
+                Dim perFileRows = rows.
+                    Where(Function(r) r IsNot Nothing AndAlso String.Equals(GetSafeMultiFileName(r.HostFileName), fileName, StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+
+                Dim total As Integer = perFileRows.Count
+                Dim issueCount As Integer = perFileRows.Where(Function(r) IsLinkWorksetIssue(r)).Count()
+                Dim appliedCount As Integer = perFileRows.Where(Function(r) r IsNot Nothing AndAlso r.Applied).Count()
+                Dim reason As String = ""
+                If total = 0 Then
+                    reason = "링크 없음"
+                Else
+                    reason = $"적용 {appliedCount}건 / 확인필요 {issueCount}건"
+                End If
+
+                Dim statusText As String = "pending"
+                If _multiRunItems IsNot Nothing Then
+                    For Each item In _multiRunItems
+                        If item Is Nothing Then Continue For
+                        If String.Equals(GetSafeMultiFileName(item.File), fileName, StringComparison.OrdinalIgnoreCase) Then
+                            statusText = If(String.IsNullOrWhiteSpace(item.Status), "pending", item.Status)
+                            Exit For
+                        End If
+                    Next
+                End If
+
+                result.Add(New With {
+                    .file = fileName,
+                    .total = total,
+                    .issues = issueCount,
+                    .near = appliedCount,
+                    .status = statusText,
+                    .reason = reason
+                })
+            Next
+
+            Return result
+        End Function
+
+        Private Shared Function IsLinkWorksetIssue(row As LinkWorksetAuditRow) As Boolean
+            If row Is Nothing Then Return False
+            If String.Equals(If(row.Status, ""), "error", StringComparison.OrdinalIgnoreCase) Then Return True
+            If String.Equals(If(row.Status, ""), "warning", StringComparison.OrdinalIgnoreCase) Then Return True
+            If row.IsWorkshared AndAlso row.DefaultOnlyOpenAfter.HasValue AndAlso row.DefaultOnlyOpenAfter.Value = False Then Return True
+            If row.IsWorkshared AndAlso Not row.DefaultOnlyOpenAfter.HasValue AndAlso row.ApplyRequested Then Return True
+            Return False
+        End Function
+
+        Private Sub PublishLinkWorksetDiagnostics(rows As IEnumerable(Of LinkWorksetAuditRow), safeName As String)
+            If rows Is Nothing Then Return
+            For Each row In rows
+                If row Is Nothing Then Continue For
+                Dim summary As String =
+                    $"[linkworkset] {safeName} | {SafeStr(row.LinkName)} | status={SafeStr(row.Status)} | applied={BoolText(row.Applied)} | before={NullableBoolText(row.DefaultOnlyOpenBefore)} | after={NullableBoolText(row.DefaultOnlyOpenAfter)}"
+                SendToWeb("host:info", New With {.message = summary})
+                If Not String.IsNullOrWhiteSpace(row.DiagnosticLog) Then
+                    SendToWeb("host:info", New With {.message = "[linkworkset][diag] " & row.DiagnosticLog})
+                End If
+            Next
+        End Sub
+
         Private Function GetRequestedMultiFileCount() As Integer
             If _multiRequest Is Nothing OrElse _multiRequest.RvtPaths Is Nothing Then Return 0
             Dim fileSet As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
@@ -1247,13 +1680,22 @@ NextItem:
             Catch
             End Try
 
-            ' 속도 우선: 멀티 RVT는 항상 Workset을 닫고 열기
             Try
                 Dim ws = New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
                 opt.SetOpenWorksetsConfiguration(ws)
             Catch
             End Try
 
+            Return opt
+        End Function
+
+        Private Shared Function BuildReopenOpenOptions() As OpenOptions
+            Dim opt As New OpenOptions()
+            Try
+                Dim ws = New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
+                opt.SetOpenWorksetsConfiguration(ws)
+            Catch
+            End Try
             Return opt
         End Function
 
@@ -1486,6 +1928,46 @@ NextItem:
             Return dt
         End Function
 
+        Private Shared Function BuildLinkWorksetTable(headers As IList(Of String), rows As IList(Of LinkWorksetAuditRow)) As DataTable
+            Dim dt As New DataTable("LinkWorkset")
+            For Each h In headers
+                dt.Columns.Add(h)
+            Next
+
+            If rows Is Nothing OrElse rows.Count = 0 Then
+                Dim dr = dt.NewRow()
+                dr(0) = "오류가 없습니다."
+                dt.Rows.Add(dr)
+                Return dt
+            End If
+
+            For Each row In rows
+                If row Is Nothing Then Continue For
+                Dim dr = dt.NewRow()
+                dr(0) = SafeStr(row.HostFileName)
+                dr(1) = SafeStr(row.LinkName)
+                dr(2) = SafeStr(row.LinkPath)
+                dr(3) = SafeStr(row.AttachmentType)
+                dr(4) = BoolText(row.WasLoadedBefore)
+                dr(5) = BoolText(row.IsLoadedAfter)
+                dr(6) = BoolText(row.IsWorkshared)
+                dr(7) = SafeStr(row.DefaultWorksetName)
+                dr(8) = row.TotalUserWorksets.ToString()
+                dr(9) = SafeStr(row.OpenUserWorksetNamesBefore)
+                dr(10) = NullableBoolText(row.DefaultOnlyOpenBefore)
+                dr(11) = SafeStr(row.OpenUserWorksetNamesAfter)
+                dr(12) = NullableBoolText(row.DefaultOnlyOpenAfter)
+                dr(13) = BoolText(row.ApplyRequested)
+                dr(14) = BoolText(row.Applied)
+                dr(15) = SafeStr(row.Status)
+                dr(16) = SafeStr(row.Message)
+                dr(17) = SafeStr(row.DiagnosticLog)
+                dt.Rows.Add(dr)
+            Next
+
+            Return dt
+        End Function
+
         Private Shared Function ConvertPoint(valueFt As Double, unit As String) As Double
             If String.Equals(unit, "m", StringComparison.OrdinalIgnoreCase) Then
                 Return Math.Round(valueFt * 0.3048R, 6)
@@ -1561,6 +2043,15 @@ NextItem:
             Dim val As Object = Nothing
             If row.TryGetValue(key, val) Then Return val
             Return Nothing
+        End Function
+
+        Private Shared Function BoolText(value As Boolean) As String
+            Return If(value, "Y", "N")
+        End Function
+
+        Private Shared Function NullableBoolText(value As Boolean?) As String
+            If Not value.HasValue Then Return "N/A"
+            Return BoolText(value.Value)
         End Function
 
     End Class

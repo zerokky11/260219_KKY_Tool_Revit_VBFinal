@@ -19,6 +19,71 @@ namespace KKY_Tool_Revit.Services
             return CollectExtractableElements(doc).Count;
         }
 
+        public static IDictionary<string, int> GetExtractableElementSignatureCounts(Document doc)
+        {
+            if (doc == null) throw new ArgumentNullException(nameof(doc));
+
+            var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (Element element in CollectExtractableElements(doc))
+            {
+                string signature = BuildExtractableElementSignature(doc, element);
+                if (string.IsNullOrWhiteSpace(signature))
+                {
+                    signature = "(Unknown)";
+                }
+
+                int currentCount;
+                result.TryGetValue(signature, out currentCount);
+                result[signature] = currentCount + 1;
+            }
+
+            return result;
+        }
+
+        public static string BuildReductionSummary(IDictionary<string, int> beforeCounts, IDictionary<string, int> afterCounts, int maxItems = 8)
+        {
+            if (beforeCounts == null || beforeCounts.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var removedItems = new List<KeyValuePair<string, int>>();
+            foreach (KeyValuePair<string, int> item in beforeCounts)
+            {
+                int afterCount = 0;
+                if (afterCounts != null)
+                {
+                    afterCounts.TryGetValue(item.Key, out afterCount);
+                }
+
+                int removedCount = item.Value - afterCount;
+                if (removedCount > 0)
+                {
+                    removedItems.Add(new KeyValuePair<string, int>(item.Key, removedCount));
+                }
+            }
+
+            if (removedItems.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            List<KeyValuePair<string, int>> topItems = removedItems
+                .OrderByDescending(x => x.Value)
+                .ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+                .Take(Math.Max(1, maxItems))
+                .ToList();
+
+            string summary = string.Join("; ", topItems.Select(x => x.Key + " " + x.Value + "개"));
+            int remainingItemCount = removedItems.Count - topItems.Count;
+            if (remainingItemCount > 0)
+            {
+                summary += " 외 " + remainingItemCount + "개 항목";
+            }
+
+            return summary;
+        }
+
         public static IList<Element> GetExtractableElements(Document doc)
         {
             if (doc == null) throw new ArgumentNullException(nameof(doc));
@@ -136,6 +201,33 @@ namespace KKY_Tool_Revit.Services
                 .Where(x => IsEligibleModelElement(x, schedulableCategoryIds))
                 .OrderBy(x => x.Id.IntegerValue)
                 .ToList();
+        }
+
+        private static string BuildExtractableElementSignature(Document doc, Element element)
+        {
+            string categoryName = GetCategoryName(element);
+            string familyName = GetFamilyName(doc, element);
+            string typeName = GetTypeName(doc, element);
+
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(categoryName))
+            {
+                parts.Add(categoryName.Trim());
+            }
+
+            if (!string.IsNullOrWhiteSpace(familyName) &&
+                !parts.Any(x => string.Equals(x, familyName.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                parts.Add(familyName.Trim());
+            }
+
+            if (!string.IsNullOrWhiteSpace(typeName) &&
+                !parts.Any(x => string.Equals(x, typeName.Trim(), StringComparison.OrdinalIgnoreCase)))
+            {
+                parts.Add(typeName.Trim());
+            }
+
+            return string.Join(" | ", parts.Where(x => !string.IsNullOrWhiteSpace(x)));
         }
 
         private static bool IsEligibleModelElement(Element element, ISet<int> schedulableCategoryIds)

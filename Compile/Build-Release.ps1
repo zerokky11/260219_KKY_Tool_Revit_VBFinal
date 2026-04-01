@@ -8,10 +8,12 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $issPath = Join-Path $PSScriptRoot 'KKY_Tool_Compiler.iss'
 $feedScriptPath = Join-Path $PSScriptRoot 'New-UpdateFeed.ps1'
 $zipScriptPath = Join-Path $PSScriptRoot 'New-UpdateZip.ps1'
+$historyScriptPath = Join-Path $PSScriptRoot 'Update-ReleaseHistory.ps1'
 $releaseDir = Join-Path $repoRoot 'Sever\Release'
 $stageRoot = Join-Path $repoRoot 'artifacts\release-stage\single'
 $indexPath = Join-Path $releaseDir 'index.html'
 $feedPath = Join-Path $releaseDir 'latest.json'
+$historyPath = Join-Path $releaseDir 'release-history.json'
 $domainRoot = 'https://update.zerokky.com'
 $isccPath = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 $proj2019To2023 = Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\KKY_Tool_Revit.vbproj'
@@ -27,6 +29,10 @@ if (-not (Test-Path -LiteralPath $feedScriptPath)) {
 
 if (-not (Test-Path -LiteralPath $zipScriptPath)) {
     throw "Zip generator script not found: $zipScriptPath"
+}
+
+if (-not (Test-Path -LiteralPath $historyScriptPath)) {
+    throw "Release history script not found: $historyScriptPath"
 }
 
 if (-not (Test-Path -LiteralPath $isccPath)) {
@@ -89,6 +95,14 @@ if (-not (Test-Path -LiteralPath $zipPath)) {
     -PublishedAt (Get-Date -Format 'yyyy-MM-dd') `
     -Notes $Notes `
     -OutputPath $feedPath
+
+& $historyScriptPath `
+    -Version $version `
+    -PublishedAt (Get-Date -Format 'yyyy-MM-dd') `
+    -Notes $Notes `
+    -PackageUrl $packageUrl `
+    -InstallerUrl $installerUrl `
+    -OutputPath $historyPath
 
 if (Test-Path -LiteralPath $indexPath) {
     $indexContent = Get-Content -Raw -LiteralPath $indexPath

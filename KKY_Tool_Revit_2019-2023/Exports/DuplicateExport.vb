@@ -11,6 +11,7 @@ Namespace Exports
         Public Property Category As String
         Public Property Family As String
         Public Property Type As String
+        Public Property Comment As String
         Public Property ConnectedIds As System.Collections.Generic.List(Of String)
         Public Property ExtraParams As System.Collections.Generic.Dictionary(Of String, String)
 
@@ -196,6 +197,7 @@ Private Function MapRows(rows As System.Collections.IEnumerable) As System.Colle
                 it.Category = ReadProp(o, "Category", "category")
                 it.Family = ReadProp(o, "Family", "family")
                 it.Type = ReadProp(o, "Type", "type")
+                it.Comment = ReadProp(o, "Comment", "comment", "Reason", "reason", "Note", "note")
                 it.ConnectedIds = ReadList(o, "ConnectedIds", "connectedIds", "Links", "links", "connected", "Connected", "ConnectedElements")
                 it.ExtraParams = ReadStringMap(o, "ExtraParams", "extraParams")
 
@@ -217,6 +219,7 @@ Private Function MapRows(rows As System.Collections.IEnumerable) As System.Colle
             dt.Columns.Add("Category")
             dt.Columns.Add("Family")
             dt.Columns.Add("Type")
+            dt.Columns.Add("Comment")
             For Each paramName In orderedExtraNames
                 dt.Columns.Add(paramName)
             Next
@@ -240,6 +243,7 @@ Private Function MapRows(rows As System.Collections.IEnumerable) As System.Colle
                     dr("Category") = Nz(r.Category)
                     dr("Family") = Nz(famOut)
                     dr("Type") = Nz(r.Type)
+                    dr("Comment") = Nz(r.Comment)
                     For Each paramName In orderedExtraNames
                         dr(paramName) = GetMapValue(r.ExtraParams, paramName)
                     Next

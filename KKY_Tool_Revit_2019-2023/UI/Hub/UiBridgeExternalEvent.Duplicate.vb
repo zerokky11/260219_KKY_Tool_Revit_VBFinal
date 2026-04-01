@@ -123,6 +123,7 @@ End Function
         Public Property Category As String
         Public Property Family As String
         Public Property [Type] As String
+        Public Property Comment As String
         Public Property ConnectedCount As Integer
         Public Property ConnectedIds As String
         Public Property Candidate As Boolean
@@ -683,6 +684,7 @@ End Try
                     .Category = ci.Category,
                     .Family = ci.Family,
                     .Type = ci.TypeName,
+                    .Comment = BuildDuplicateComment(id, adjacency, infos, tolFeet),
                     .ConnectedCount = connCnt,
                     .ConnectedIds = conn,
                     .Candidate = True,
@@ -714,6 +716,7 @@ End Try
             .category = r.Category,
             .family = r.Family,
             .type = r.Type,
+            .comment = r.Comment,
             .connectedCount = r.ConnectedCount,
             .connectedIds = r.ConnectedIds,
             .candidate = r.Candidate,
@@ -1059,10 +1062,6 @@ Try
             If Not infos.TryGetValue(bId, bInfo) Then Continue For
 
             Dim commentParts As New List(Of String)()
-            If IsExactDuplicateCurvePair(aInfo, bInfo, tolFeet) OrElse IsExactBBoxDuplicate(aInfo, bInfo, tolFeet) Then
-                commentParts.Add("완전 중복 객체 겹침 포함")
-            End If
-
             Dim pairComment As String = BuildClashComment(doc, aId, bId)
             If Not String.IsNullOrWhiteSpace(pairComment) Then
                 commentParts.Add(pairComment)
@@ -1605,6 +1604,7 @@ End Try
                     .Category = r.Category,
                     .Family = r.Family,
                     .Type = r.Type,
+                    .Comment = r.Comment,
                     .ConnectedIds = r.ConnectedIds,
                     .GroupKey = r.GroupKey,
                     .ExtraParams = ReadElementParameterMap(activeDoc, r.ElementId, exportParamNames)
@@ -2109,11 +2109,48 @@ Private Shared Function IsExactDuplicateCandidate(a As ClashInfo, b As ClashInfo
     Return False
 End Function
 
+Private Shared Function GetDuplicatePairComment(a As ClashInfo, b As ClashInfo, tolFeet As Double) As String
+    If IsExactDuplicateCurvePair(a, b, tolFeet) Then
+        Return "완전 중복: 동일 타입/사이즈/양 끝점 일치"
+    End If
+
+    If IsExactBBoxDuplicate(a, b, tolFeet) Then
+        Return "완전 중복: 동일 타입/BBox 일치"
+    End If
+
+    Return "완전 중복"
+End Function
+
+Private Shared Function BuildDuplicateComment(id As Integer,
+                                             adjacency As Dictionary(Of Integer, HashSet(Of Integer)),
+                                             infos As Dictionary(Of Integer, ClashInfo),
+                                             tolFeet As Double) As String
+    If adjacency Is Nothing OrElse infos Is Nothing Then Return ""
+
+    Dim ci As ClashInfo = Nothing
+    If Not infos.TryGetValue(id, ci) Then Return ""
+
+    Dim nbSet As HashSet(Of Integer) = Nothing
+    If Not adjacency.TryGetValue(id, nbSet) OrElse nbSet Is Nothing OrElse nbSet.Count = 0 Then Return ""
+
+    Dim comments As New List(Of String)()
+
+    For Each nbId As Integer In nbSet.OrderBy(Function(x) x)
+        Dim other As ClashInfo = Nothing
+        If Not infos.TryGetValue(nbId, other) Then Continue For
+
+        Dim comment As String = GetDuplicatePairComment(ci, other, tolFeet)
+        If String.IsNullOrWhiteSpace(comment) Then Continue For
+        If comments.Contains(comment) Then Continue For
+        comments.Add(comment)
+    Next
+
+    Return String.Join(" / ", comments)
+End Function
+
 Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashInfo, tolFeet As Double, opt As Options, solidCache As Dictionary(Of Integer, List(Of Solid)), connCache As Dictionary(Of Integer, HashSet(Of Integer))) As Boolean
         ' ✅ 완전 중복은 간섭에서 제외
-        If IsExactBBoxDuplicate(a, b, tolFeet) Then
-            Return HasMeaningfulSolidOverlap(doc, a.Id, b.Id, opt, solidCache, tolFeet)
-        End If
+        If IsExactDuplicateCandidate(a, b, tolFeet) Then Return False
 
         ' ✅ 탭/피팅/조인트 등 의도된 MEP 연결은 간섭에서 제외
         If IsIntentionallyConnectedOrJoined(doc, a.Id, b.Id, connCache) Then
@@ -2158,11 +2195,6 @@ Private Shared Function IsRealClash(doc As Document, a As ClashInfo, b As ClashI
                     Dim overlapTol As Double = Math.Max(tolFeet * 2.0R, 0.001R) ' 0.001ft ≈ 0.3mm
                     If overlap < overlapTol Then Return False
                 End If
-            End If
-
-            ' ✅ 완전 중복(동일 기하/동일 사이즈/동일 타입)은 간섭에서 제외
-            If IsExactDuplicateCurvePair(a, b, tolFeet) Then
-                Return HasMeaningfulSolidOverlap(doc, a.Id, b.Id, opt, solidCache, tolFeet)
             End If
 
             If NeedsCurveSolidConfirmation(a, b) Then

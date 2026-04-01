@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Globalization;
@@ -37,23 +37,23 @@ namespace KKY_Tool_Revit.Services
                 try
                 {
                     log?.Invoke("----------------------------------------");
-                    log?.Invoke("정리 시작: " + filePath);
+                    log?.Invoke("?뺣━ ?쒖옉: " + filePath);
 
                     PreparedDocumentEntry prepared = PrepareSingle(uiapp, filePath, settings, designOptionAuditRows, log);
                     session.PreparedDocuments.Add(prepared);
                     session.CleanCountComparisons.Add(BuildCleanCountComparison(prepared, true, null));
                     result.OutputPath = prepared.OutputPath;
                     result.Success = true;
-                    result.Message = "정리 완료 / 저장 대기";
+                    result.Message = "정리 완료 / 저장 완료";
 
-                    log?.Invoke("정리 완료(저장 대기): " + prepared.OutputPath);
+                    log?.Invoke("정리 완료(저장 경로): " + prepared.OutputPath);
                 }
                 catch (Exception ex)
                 {
                     session.CleanCountComparisons.Add(BuildCleanCountComparison(filePath, null, false, ex.Message));
                     result.Success = false;
                     result.Message = ex.Message;
-                    log?.Invoke("실패: " + ex.Message);
+                    log?.Invoke("?ㅽ뙣: " + ex.Message);
                 }
             }
 
@@ -63,12 +63,12 @@ namespace KKY_Tool_Revit.Services
                 session.DesignOptionAuditCsvPath = auditPath;
                 if (!string.IsNullOrWhiteSpace(auditPath))
                 {
-                    log?.Invoke("Design Option CSV 저장: " + auditPath);
+                    log?.Invoke("Design Option CSV ??? " + auditPath);
                 }
             }
             catch (Exception ex)
             {
-                log?.Invoke("Design Option CSV 저장 실패: " + ex.Message);
+                log?.Invoke("Design Option CSV ????ㅽ뙣: " + ex.Message);
             }
 
             return session;
@@ -99,36 +99,36 @@ namespace KKY_Tool_Revit.Services
                 try
                 {
                     log?.Invoke("----------------------------------------");
-                    log?.Invoke("정리 시작: " + filePath);
+                    log?.Invoke("?뺣━ ?쒖옉: " + filePath);
 
                     prepared = PrepareSingle(uiapp, filePath, settings, designOptionAuditRows, log);
                     result.OutputPath = prepared.OutputPath;
 
-                    log?.Invoke("[STEP] Groups 브라우저 갱신 유도 시작");
+                    log?.Invoke("[STEP] Groups 釉뚮씪?곗? 媛깆떊 ?좊룄 ?쒖옉");
                     try
                     {
                         TouchGroupsBrowser(prepared.Document, log);
                     }
                     catch (Exception ex)
                     {
-                        log?.Invoke("Groups 갱신 유도 실패(무시): " + ex.Message);
+                        log?.Invoke("Groups 媛깆떊 ?좊룄 ?ㅽ뙣(臾댁떆): " + ex.Message);
                     }
 
-                    log?.Invoke("[STEP] 저장 시작");
+                    log?.Invoke("[STEP] ????쒖옉");
                     SaveCleanDocument(prepared.Document, prepared.TargetViewId, prepared.OutputPath, log);
                     session.CleanedOutputPaths.Add(prepared.OutputPath);
                     session.CleanCountComparisons.Add(BuildCleanCountComparison(prepared, true, null));
 
                     result.Success = true;
-                    result.Message = "정리 및 저장 완료";
-                    log?.Invoke("정리 및 저장 완료: " + prepared.OutputPath);
+                    result.Message = "?뺣━ 諛?????꾨즺";
+                    log?.Invoke("?뺣━ 諛?????꾨즺: " + prepared.OutputPath);
                 }
                 catch (Exception ex)
                 {
                     session.CleanCountComparisons.Add(BuildCleanCountComparison(filePath, prepared, false, ex.Message));
                     result.Success = false;
                     result.Message = ex.Message;
-                    log?.Invoke("실패: " + ex.Message);
+                    log?.Invoke("?ㅽ뙣: " + ex.Message);
                 }
                 finally
                 {
@@ -151,12 +151,12 @@ namespace KKY_Tool_Revit.Services
                 session.DesignOptionAuditCsvPath = auditPath;
                 if (!string.IsNullOrWhiteSpace(auditPath))
                 {
-                    log?.Invoke("Design Option CSV 저장: " + auditPath);
+                    log?.Invoke("Design Option CSV ??? " + auditPath);
                 }
             }
             catch (Exception ex)
             {
-                log?.Invoke("Design Option CSV 저장 실패: " + ex.Message);
+                log?.Invoke("Design Option CSV ????ㅽ뙣: " + ex.Message);
             }
 
             return session;
@@ -181,31 +181,31 @@ namespace KKY_Tool_Revit.Services
                 {
                     if (doc == null || !doc.IsValidObject)
                     {
-                        throw new InvalidOperationException("저장 대상 문서가 유효하지 않습니다.");
+                        throw new InvalidOperationException("??????臾몄꽌媛 ?좏슚?섏? ?딆뒿?덈떎.");
                     }
 
                     log?.Invoke("----------------------------------------");
-                    log?.Invoke("저장 시작: " + prepared.SourcePath);
-                    log?.Invoke("[STEP] Groups 브라우저 갱신 유도 시작");
+                    log?.Invoke("????쒖옉: " + prepared.SourcePath);
+                    log?.Invoke("[STEP] Groups 釉뚮씪?곗? 媛깆떊 ?좊룄 ?쒖옉");
                     try
                     {
                         TouchGroupsBrowser(doc, log);
                     }
                     catch (Exception ex)
                     {
-                        log?.Invoke("Groups 갱신 유도 실패(무시): " + ex.Message);
+                        log?.Invoke("Groups 媛깆떊 ?좊룄 ?ㅽ뙣(臾댁떆): " + ex.Message);
                     }
 
-                    log?.Invoke("[STEP] 저장 시작");
+                    log?.Invoke("[STEP] ????쒖옉");
                     SaveCleanDocument(doc, prepared.TargetViewId, prepared.OutputPath, log);
                     result.Success = true;
-                    result.Message = "저장 완료";
+                    result.Message = "????꾨즺";
                 }
                 catch (Exception ex)
                 {
                     result.Success = false;
                     result.Message = ex.Message;
-                    log?.Invoke("저장 실패: " + ex.Message);
+                    log?.Invoke("????ㅽ뙣: " + ex.Message);
                 }
                 finally
                 {
@@ -238,7 +238,7 @@ namespace KKY_Tool_Revit.Services
                     if (prepared.Document != null && prepared.Document.IsValidObject)
                     {
                         prepared.Document.Close(false);
-                        log?.Invoke("저장 없이 닫음: " + prepared.SourcePath);
+                        log?.Invoke("????놁씠 ?レ쓬: " + prepared.SourcePath);
                     }
                 }
                 catch
@@ -262,21 +262,22 @@ namespace KKY_Tool_Revit.Services
             try
             {
                 doc = OpenDetachedOrNormal(uiapp, filePath, log);
-                if (doc == null) throw new InvalidOperationException("문서를 열지 못했습니다.");
+                if (doc == null) throw new InvalidOperationException("臾몄꽌瑜??댁? 紐삵뻽?듬땲??");
 
                 int beforeObjectCount = ModelParameterExtractionService.CountExtractableElements(doc);
+                IDictionary<string, int> beforeObjectBreakdown = ModelParameterExtractionService.GetExtractableElementSignatureCounts(doc);
                 CollectDesignOptionAuditRows(doc, filePath, designOptionAuditRows, log);
 
-                log?.Invoke("[STEP] Manage Links 정리 시작");
+                log?.Invoke("[STEP] Manage Links ?뺣━ ?쒖옉");
                 DeleteManageLinks(doc, log);
-                log?.Invoke("[STEP] Group/Assembly 해제 시작");
+                log?.Invoke("[STEP] Group/Assembly ?댁젣 ?쒖옉");
                 UngroupAndDisassemble(doc, log);
-                log?.Invoke("[STEP] 기존 3D 뷰/동명 뷰 삭제 시작");
+                log?.Invoke("[STEP] 湲곗〈 3D 酉??숇챸 酉???젣 ?쒖옉");
                 DeleteExisting3DViewsAndConflictingNamedViews(doc, settings.Target3DViewName, log);
 
-                log?.Invoke("[STEP] 대상 3D 뷰 생성 시작");
+                log?.Invoke("[STEP] ???3D 酉??앹꽦 ?쒖옉");
                 ElementId targetViewId = CreateTarget3DView(doc, settings.Target3DViewName, log);
-                log?.Invoke("[STEP] 대상 3D 뷰 설정 적용 시작");
+                log?.Invoke("[STEP] ???3D 酉??ㅼ젙 ?곸슜 ?쒖옉");
                 ConfigureTarget3DView(doc, targetViewId, settings, log);
 
                 ElementId keptFilterId = ElementId.InvalidElementId;
@@ -285,27 +286,37 @@ namespace KKY_Tool_Revit.Services
                     keptFilterId = CreateOrApplyFilter(doc, targetViewId, settings, log);
                 }
 
-                log?.Invoke("[STEP] 대상 뷰 외 나머지 뷰/템플릿 삭제 시작");
+                log?.Invoke("[STEP] ???酉????섎㉧吏 酉??쒗뵆由???젣 ?쒖옉");
                 DeleteAllOtherViewsAndTemplates(doc, targetViewId, log);
-                log?.Invoke("[STEP] Starting View 설정 시작");
+                log?.Invoke("[STEP] Starting View ?ㅼ젙 ?쒖옉");
                 SetStartingView(doc, targetViewId, log);
-                log?.Invoke("[STEP] 미사용 뷰 필터 삭제 시작");
+                log?.Invoke("[STEP] 誘몄궗??酉??꾪꽣 ??젣 ?쒖옉");
                 DeleteUnusedViewFilters(doc, keptFilterId, log);
 
                 if (settings.ElementParameterUpdate != null && settings.ElementParameterUpdate.IsConfigured())
                 {
-                    log?.Invoke("[STEP] 객체 파라미터 일괄 입력 시작");
+                    log?.Invoke("[STEP] 媛앹껜 ?뚮씪誘명꽣 ?쇨큵 ?낅젰 ?쒖옉");
                     ApplyElementParameterUpdate(doc, settings.ElementParameterUpdate, log);
                 }
                 else
                 {
-                    log?.Invoke("[STEP] 객체 파라미터 일괄 입력 건너뜀");
+                    log?.Invoke("[STEP] 媛앹껜 ?뚮씪誘명꽣 ?쇨큵 ?낅젰 嫄대꼫?");
                 }
 
-                log?.Invoke("[STEP] Legacy Purge 제거됨 - 정리 단계에서는 Purge를 실행하지 않음");
+                log?.Invoke("[STEP] Legacy Purge ?쒓굅??- ?뺣━ ?④퀎?먯꽌??Purge瑜??ㅽ뻾?섏? ?딆쓬");
 
                 int afterObjectCount = ModelParameterExtractionService.CountExtractableElements(doc);
-                log?.Invoke("[STEP] 객체수 비교 / 정리 전 " + beforeObjectCount + ", 정리 후 " + afterObjectCount);
+                IDictionary<string, int> afterObjectBreakdown = ModelParameterExtractionService.GetExtractableElementSignatureCounts(doc);
+                string removedSummary = string.Empty;
+                if (afterObjectCount < beforeObjectCount)
+                {
+                    removedSummary = ModelParameterExtractionService.BuildReductionSummary(beforeObjectBreakdown, afterObjectBreakdown);
+                    if (!string.IsNullOrWhiteSpace(removedSummary))
+                    {
+                        log?.Invoke("[STEP] 媛먯냼 媛앹껜 ?붿빟 / " + removedSummary);
+                    }
+                }
+                log?.Invoke("[STEP] 媛앹껜??鍮꾧탳 / ?뺣━ ??" + beforeObjectCount + ", ?뺣━ ??" + afterObjectCount);
 
                 return new PreparedDocumentEntry
                 {
@@ -315,7 +326,8 @@ namespace KKY_Tool_Revit.Services
                     TargetViewId = targetViewId,
                     KeptFilterId = keptFilterId,
                     BeforeObjectCount = beforeObjectCount,
-                    AfterObjectCount = afterObjectCount
+                    AfterObjectCount = afterObjectCount,
+                    RemovedSummary = removedSummary
                 };
             }
             catch
@@ -348,7 +360,7 @@ namespace KKY_Tool_Revit.Services
                 };
                 openOptions.SetOpenWorksetsConfiguration(new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets));
 
-                log?.Invoke("Detach + 모든 워크셋 닫기 + workset discard 열기 시도");
+                log?.Invoke("Detach + 紐⑤뱺 ?뚰겕???リ린 + workset discard ?닿린 ?쒕룄");
                 return uiapp.Application.OpenDocumentFile(modelPath, openOptions);
             }
             catch
@@ -398,12 +410,12 @@ namespace KKY_Tool_Revit.Services
                         deletedCount += retryDeletedCount;
                         failedDeleteCount = retryFailedDeleteCount;
                     }
-                    log?.Invoke("Manage Links/Imports 삭제 결과 / 대상 " + ids.Count + ", 성공 " + deletedCount + ", 실패 " + failedDeleteCount);
+                    log?.Invoke("Manage Links/Imports ??젣 寃곌낵 / ???" + ids.Count + ", ?깃났 " + deletedCount + ", ?ㅽ뙣 " + failedDeleteCount);
                 }
 
                 tx.Commit();
-                log?.Invoke("Manage Links/Imports 단계 완료");
-                log?.Invoke("Manage Links/Imports 삭제 대상: " + ids.Count);
+                log?.Invoke("Manage Links/Imports ?④퀎 ?꾨즺");
+                log?.Invoke("Manage Links/Imports ??젣 ??? " + ids.Count);
             }
         }
 
@@ -440,14 +452,14 @@ namespace KKY_Tool_Revit.Services
                     localFailedCount++;
                     if (detailedFailureLogCount < 3)
                     {
-                        log?.Invoke(label + " 삭제 실패: Id " + id.IntegerValue + " / " + ex.Message);
+                        log?.Invoke(label + " ??젣 ?ㅽ뙣: Id " + id.IntegerValue + " / " + ex.Message);
                         detailedFailureLogCount++;
                     }
                 }
             }
 
             failedCount += localFailedCount;
-            log?.Invoke(label + " 삭제 시도: 대상 " + targets.Count + ", 성공 " + deletedCount + ", 실패 " + localFailedCount);
+            log?.Invoke(label + " ??젣 ?쒕룄: ???" + targets.Count + ", ?깃났 " + deletedCount + ", ?ㅽ뙣 " + localFailedCount);
             return deletedCount;
         }
 
@@ -646,7 +658,7 @@ namespace KKY_Tool_Revit.Services
                 }
 
                 tx.Commit();
-                log?.Invoke($"그룹 해제: {groupUngroupCount}, 그룹 삭제: {groupDeleteCount + leftoverGroupDeleteCount}, 그룹 타입 삭제: {groupTypeDeleteCount}, 어셈블리 해제: {assemblyDisassembleCount}, 어셈블리 삭제: {assemblyDeleteCount + leftoverAssemblyDeleteCount}, 어셈블리 타입 삭제: {assemblyTypeDeleteCount}");
+                log?.Invoke($"洹몃９ ?댁젣: {groupUngroupCount}, 洹몃９ ??젣: {groupDeleteCount + leftoverGroupDeleteCount}, 洹몃９ ?????젣: {groupTypeDeleteCount}, ?댁뀍釉붾━ ?댁젣: {assemblyDisassembleCount}, ?댁뀍釉붾━ ??젣: {assemblyDeleteCount + leftoverAssemblyDeleteCount}, ?댁뀍釉붾━ ?????젣: {assemblyTypeDeleteCount}");
             }
         }
 
@@ -697,10 +709,10 @@ namespace KKY_Tool_Revit.Services
 
             if (ViewNameExists(doc, exactName))
             {
-                throw new InvalidOperationException("사용자 지정 3D 뷰 이름이 기존 뷰와 충돌하여 정확한 이름으로 만들 수 없습니다: " + exactName);
+                throw new InvalidOperationException("?ъ슜??吏??3D 酉??대쫫??湲곗〈 酉곗? 異⑸룎?섏뿬 ?뺥솗???대쫫?쇰줈 留뚮뱾 ???놁뒿?덈떎: " + exactName);
             }
 
-            log?.Invoke($"기존 3D 뷰/동명 뷰 선삭제: 대상 {candidateIds.Count}, 성공 {deletedCount}, 실패 {failedCount}");
+            log?.Invoke($"湲곗〈 3D 酉??숇챸 酉??좎궘?? ???{candidateIds.Count}, ?깃났 {deletedCount}, ?ㅽ뙣 {failedCount}");
         }
 
         private static bool ShouldDeleteBeforeCreatingTargetView(View view, string exactName)
@@ -732,7 +744,7 @@ namespace KKY_Tool_Revit.Services
 
                 if (ViewNameExists(doc, exactName))
                 {
-                    throw new InvalidOperationException("대상 3D 뷰 이름이 아직 문서에 남아 있습니다: " + exactName);
+                    throw new InvalidOperationException("???3D 酉??대쫫???꾩쭅 臾몄꽌???⑥븘 ?덉뒿?덈떎: " + exactName);
                 }
 
                 ViewFamilyType threeDType = new FilteredElementCollector(doc)
@@ -742,7 +754,7 @@ namespace KKY_Tool_Revit.Services
 
                 if (threeDType == null)
                 {
-                    throw new InvalidOperationException("3D ViewFamilyType을 찾지 못했습니다.");
+                    throw new InvalidOperationException("3D ViewFamilyType??李얠? 紐삵뻽?듬땲??");
                 }
 
                 View3D createdView = View3D.CreateIsometric(doc, threeDType.Id);
@@ -753,7 +765,7 @@ namespace KKY_Tool_Revit.Services
                 tx.Commit();
             }
 
-            log?.Invoke("대상 3D 뷰 생성: " + exactName);
+            log?.Invoke("???3D 酉??앹꽦: " + exactName);
             return createdViewId;
         }
 
@@ -798,13 +810,13 @@ namespace KKY_Tool_Revit.Services
         {
             if (targetViewId == null || targetViewId == ElementId.InvalidElementId)
             {
-                throw new InvalidOperationException("대상 3D 뷰 ID가 올바르지 않습니다.");
+                throw new InvalidOperationException("???3D 酉?ID媛 ?щ컮瑜댁? ?딆뒿?덈떎.");
             }
 
             View3D view = doc.GetElement(targetViewId) as View3D;
             if (view == null || !view.IsValidObject)
             {
-                throw new InvalidOperationException("대상 3D 뷰가 유효하지 않습니다. 정리 중 삭제되었거나 트랜잭션이 롤백되었습니다.");
+                throw new InvalidOperationException("???3D 酉곌? ?좏슚?섏? ?딆뒿?덈떎. ?뺣━ 以???젣?섏뿀嫄곕굹 ?몃옖??뀡??濡ㅻ갚?섏뿀?듬땲??");
             }
 
             return view;
@@ -816,26 +828,26 @@ namespace KKY_Tool_Revit.Services
                 .OfClass(typeof(Phase))
                 .Cast<Phase>()
                 .FirstOrDefault(x => string.Equals(x.Name, "New Construction", StringComparison.OrdinalIgnoreCase)
-                                  || string.Equals(x.Name, "신축", StringComparison.OrdinalIgnoreCase));
+                                  || string.Equals(x.Name, "?좎텞", StringComparison.OrdinalIgnoreCase));
 
             PhaseFilter showAll = new FilteredElementCollector(doc)
                 .OfClass(typeof(PhaseFilter))
                 .Cast<PhaseFilter>()
                 .FirstOrDefault(x => string.Equals(x.Name, "Show All", StringComparison.OrdinalIgnoreCase)
-                                  || string.Equals(x.Name, "모두 표시", StringComparison.OrdinalIgnoreCase));
+                                  || string.Equals(x.Name, "紐⑤몢 ?쒖떆", StringComparison.OrdinalIgnoreCase));
 
             Parameter phaseParam = view.get_Parameter(BuiltInParameter.VIEW_PHASE);
             if (phaseParam != null && !phaseParam.IsReadOnly && newConstruction != null)
             {
                 phaseParam.Set(newConstruction.Id);
-                log?.Invoke("뷰 Phase 설정: " + newConstruction.Name);
+                log?.Invoke("酉?Phase ?ㅼ젙: " + newConstruction.Name);
             }
 
             Parameter phaseFilterParam = view.get_Parameter(BuiltInParameter.VIEW_PHASE_FILTER);
             if (phaseFilterParam != null && !phaseFilterParam.IsReadOnly && showAll != null)
             {
                 phaseFilterParam.Set(showAll.Id);
-                log?.Invoke("뷰 Phase Filter 설정: " + showAll.Name);
+                log?.Invoke("酉?Phase Filter ?ㅼ젙: " + showAll.Name);
             }
         }
 
@@ -848,7 +860,7 @@ namespace KKY_Tool_Revit.Services
                 Parameter parameter = view.LookupParameter(item.ParameterName);
                 if (parameter == null || parameter.IsReadOnly)
                 {
-                    log?.Invoke("뷰 파라미터 미적용: " + item.ParameterName);
+                    log?.Invoke("酉??뚮씪誘명꽣 誘몄쟻?? " + item.ParameterName);
                     continue;
                 }
 
@@ -870,11 +882,11 @@ namespace KKY_Tool_Revit.Services
                             break;
                     }
 
-                    log?.Invoke("뷰 파라미터 적용: " + item.ParameterName + " = " + item.ParameterValue);
+                    log?.Invoke("酉??뚮씪誘명꽣 ?곸슜: " + item.ParameterName + " = " + item.ParameterValue);
                 }
                 catch (Exception ex)
                 {
-                    log?.Invoke("뷰 파라미터 적용 실패: " + item.ParameterName + " / " + ex.Message);
+                    log?.Invoke("酉??뚮씪誘명꽣 ?곸슜 ?ㅽ뙣: " + item.ParameterName + " / " + ex.Message);
                 }
             }
         }
@@ -929,7 +941,7 @@ namespace KKY_Tool_Revit.Services
                 }
             }
 
-            log?.Invoke($"VG 설정 적용 완료 / 표시 {shownCount}, 숨김 {hiddenCount}, 숨김 서브카테고리 {hiddenSubCount}");
+            log?.Invoke($"VG ?ㅼ젙 ?곸슜 ?꾨즺 / ?쒖떆 {shownCount}, ?④? {hiddenCount}, ?④? ?쒕툕移댄뀒怨좊━ {hiddenSubCount}");
         }
 
         private static bool ShouldTreatAsModelVisibilityCategory(Category category)
@@ -949,9 +961,9 @@ namespace KKY_Tool_Revit.Services
                    || EqualsNormalizedCategoryName(category, "Parts")
                    || EqualsNormalizedCategoryName(category, "Site")
                    || EqualsNormalizedCategoryName(category, "Lines")
-                   || EqualsNormalizedCategoryName(category, "매스")
-                   || EqualsNormalizedCategoryName(category, "파츠")
-                   || EqualsNormalizedCategoryName(category, "대지")
+                   || EqualsNormalizedCategoryName(category, "留ㅼ뒪")
+                   || EqualsNormalizedCategoryName(category, "?뚯툩")
+                   || EqualsNormalizedCategoryName(category, "?吏")
                    || EqualsNormalizedCategoryName(category, "선");
         }
 
@@ -1057,11 +1069,11 @@ namespace KKY_Tool_Revit.Services
                     if (shouldEnable)
                     {
                         RevitViewFilterProfileService.ApplyFilterToView(view, filterId, true);
-                        log?.Invoke("필터를 미적용 상태로 두면 뷰가 비어 자동 활성화했습니다.");
+                        log?.Invoke("?꾪꽣瑜?誘몄쟻???곹깭濡??먮㈃ 酉곌? 鍮꾩뼱 ?먮룞 ?쒖꽦?뷀뻽?듬땲??");
                     }
                     else
                     {
-                        log?.Invoke("필터를 미적용 상태로 유지했습니다. 필터 없이도 뷰에 객체가 표시됩니다.");
+                        log?.Invoke("?꾪꽣瑜?誘몄쟻???곹깭濡??좎??덉뒿?덈떎. ?꾪꽣 ?놁씠??酉곗뿉 媛앹껜媛 ?쒖떆?⑸땲??");
                     }
                 }
 
@@ -1111,7 +1123,7 @@ namespace KKY_Tool_Revit.Services
                         ICollection<ElementId> removed = doc.Delete(viewId);
                         if (removed != null && targetViewId != null && removed.Any(x => x != null && x.IntegerValue == targetViewId.IntegerValue))
                         {
-                            throw new InvalidOperationException("대상 3D 뷰가 연쇄 삭제 대상으로 감지되었습니다.");
+                            throw new InvalidOperationException("???3D 酉곌? ?곗뇙 ??젣 ??곸쑝濡?媛먯??섏뿀?듬땲??");
                         }
 
                         deletedCount++;
@@ -1123,7 +1135,7 @@ namespace KKY_Tool_Revit.Services
                 }
 
                 tx.Commit();
-                log?.Invoke($"삭제된 뷰/템플릿: 대상 {deleteIds.Count}, 성공 {deletedCount}, 실패 {failedCount}");
+                log?.Invoke($"??젣??酉??쒗뵆由? ???{deleteIds.Count}, ?깃났 {deletedCount}, ?ㅽ뙣 {failedCount}");
             }
         }
 
@@ -1139,12 +1151,12 @@ namespace KKY_Tool_Revit.Services
                     StartingViewSettings startingViewSettings = StartingViewSettings.GetStartingViewSettings(doc);
                     startingViewSettings.ViewId = targetViewId;
                     tx.Commit();
-                    log?.Invoke("Starting View 설정 완료");
+                    log?.Invoke("Starting View ?ㅼ젙 ?꾨즺");
                 }
                 catch (Exception ex)
                 {
                     tx.RollBack();
-                    log?.Invoke("Starting View 설정 실패: " + ex.Message);
+                    log?.Invoke("Starting View ?ㅼ젙 ?ㅽ뙣: " + ex.Message);
                 }
             }
         }
@@ -1201,7 +1213,7 @@ namespace KKY_Tool_Revit.Services
                 }
 
                 tx.Commit();
-                log?.Invoke("미사용 뷰 필터 삭제: " + deleteIds.Count);
+                log?.Invoke("誘몄궗??酉??꾪꽣 ??젣: " + deleteIds.Count);
             }
         }
 
@@ -1222,7 +1234,7 @@ namespace KKY_Tool_Revit.Services
 
             if (candidateIds.Count == 0)
             {
-                log?.Invoke("Groups 갱신 유도 스킵: 그룹 생성 후보 요소 없음");
+                log?.Invoke("Groups 媛깆떊 ?좊룄 ?ㅽ궢: 洹몃９ ?앹꽦 ?꾨낫 ?붿냼 ?놁쓬");
                 return;
             }
 
@@ -1286,7 +1298,7 @@ namespace KKY_Tool_Revit.Services
                         }
 
                         tx.Commit();
-                        log?.Invoke("Groups 갱신 유도 완료");
+                        log?.Invoke("Groups 媛깆떊 ?좊룄 ?꾨즺");
                         return;
                     }
                     catch
@@ -1296,7 +1308,7 @@ namespace KKY_Tool_Revit.Services
                 }
 
                 tx.RollBack();
-                log?.Invoke("Groups 갱신 유도 실패: 그룹 생성 가능한 모델 요소를 찾지 못했습니다.");
+                log?.Invoke("Groups 媛깆떊 ?좊룄 ?ㅽ뙣: 洹몃９ ?앹꽦 媛?ν븳 紐⑤뜽 ?붿냼瑜?李얠? 紐삵뻽?듬땲??");
             }
         }
 
@@ -1324,7 +1336,7 @@ namespace KKY_Tool_Revit.Services
                     MemberElementCount = string.Empty
                 });
 
-                log?.Invoke("Design Option 없음");
+                log?.Invoke("Design Option ?놁쓬");
                 return;
             }
 
@@ -1358,7 +1370,7 @@ namespace KKY_Tool_Revit.Services
                 });
             }
 
-            log?.Invoke($"Design Option 발견: 옵션 {options.Count}개 / 옵션 소속 요소 {totalOptionMembers}개 / CSV 보고서로 저장 예정");
+            log?.Invoke($"Design Option 諛쒓껄: ?듭뀡 {options.Count}媛?/ ?듭뀡 ?뚯냽 ?붿냼 {totalOptionMembers}媛?/ CSV 蹂닿퀬?쒕줈 ????덉젙");
         }
 
         private static string WriteDesignOptionAuditCsv(string outputFolder, IList<DesignOptionAuditRow> rows)
@@ -1403,7 +1415,7 @@ namespace KKY_Tool_Revit.Services
                 BeforeCount = prepared.BeforeObjectCount,
                 AfterCount = prepared.AfterObjectCount,
                 Status = success ? "O" : "X",
-                Note = note ?? string.Empty
+                Note = string.IsNullOrWhiteSpace(note) ? (prepared.RemovedSummary ?? string.Empty) : note
             };
         }
 
@@ -1486,32 +1498,47 @@ namespace KKY_Tool_Revit.Services
 
                         foreach (ElementParameterAssignment assignment in activeAssignments)
                         {
-                            Parameter targetParameter = FindParameterOnElementOrType(doc, element, assignment.ParameterName, true, out bool targetOnType, out Element targetOwner);
-                            if (targetParameter == null || targetOwner == null)
+                            IList<ParameterTargetInfo> targets = FindParameterTargetsOnElementOrType(
+                                doc,
+                                element,
+                                assignment.ParameterName,
+                                true,
+                                settings.ApplyToAllMatchingParameters);
+                            if (targets == null || targets.Count == 0)
                             {
                                 failedCount++;
                                 continue;
                             }
 
-                            if (targetOnType)
+                            foreach (ParameterTargetInfo target in targets)
                             {
-                                string typeKey = targetOwner.Id.IntegerValue.ToString(CultureInfo.InvariantCulture)
-                                    + "|" + (assignment.ParameterName ?? string.Empty)
-                                    + "|" + (assignment.Value ?? string.Empty);
-                                if (!updatedTypeKeys.Add(typeKey))
+                                if (target == null || target.Parameter == null || target.Owner == null)
                                 {
+                                    failedCount++;
                                     continue;
                                 }
-                            }
 
-                            if (TrySetParameterValue(doc, targetOwner, targetParameter, assignment.Value, log))
-                            {
-                                updatedValueCount++;
-                                elementUpdated = true;
-                            }
-                            else
-                            {
-                                failedCount++;
+                                if (target.IsTypeParameter)
+                                {
+                                    string typeKey = target.Owner.Id.IntegerValue.ToString(CultureInfo.InvariantCulture)
+                                        + "|" + (assignment.ParameterName ?? string.Empty)
+                                        + "|" + (assignment.Value ?? string.Empty)
+                                        + "|" + target.MatchIndex.ToString(CultureInfo.InvariantCulture);
+                                    if (!updatedTypeKeys.Add(typeKey))
+                                    {
+                                        continue;
+                                    }
+                                }
+
+                                if (TrySetParameterValue(doc, target.Owner, target.Parameter, assignment.Value, log))
+                                {
+                                    updatedValueCount++;
+                                    elementUpdated = true;
+                                }
+                                else
+                                {
+                                    failedCount++;
+                                }
                             }
                         }
 
@@ -1527,56 +1554,113 @@ namespace KKY_Tool_Revit.Services
                 }
 
                 tx.Commit();
-                log?.Invoke($"객체 파라미터 일괄 입력: 스캔 {scannedCount}, 조건일치 {matchedCount}, 변경 요소 {updatedElementCount}, 값 입력 {updatedValueCount}, 실패 {failedCount}");
+                string duplicateModeText = settings.ApplyToAllMatchingParameters ? "중복 전체 입력" : "중복 하나만 입력";
+                log?.Invoke($"객체 파라미터 일괄 입력: 스캔 {scannedCount}, 조건일치 {matchedCount}, 변경 요소 {updatedElementCount}, 값 입력 {updatedValueCount}, 실패 {failedCount}, 중복 처리 {duplicateModeText}");
             }
         }
 
 
-        private static Parameter FindParameterOnElementOrType(Document doc, Element element, string parameterName, bool requireWritable, out bool isTypeParameter, out Element owner)
+        private sealed class ParameterTargetInfo
         {
-            isTypeParameter = false;
-            owner = null;
+            public Parameter Parameter { get; set; }
+            public Element Owner { get; set; }
+            public bool IsTypeParameter { get; set; }
+            public int MatchIndex { get; set; }
+        }
 
+        private static IList<ParameterTargetInfo> FindParameterTargetsOnElementOrType(Document doc, Element element, string parameterName, bool requireWritable, bool applyAllMatchingParameters)
+        {
+            var results = new List<ParameterTargetInfo>();
             if (doc == null || element == null || string.IsNullOrWhiteSpace(parameterName))
             {
-                return null;
+                return results;
             }
 
-            Parameter instanceParameter = FindParameterByName(element, parameterName, requireWritable);
-            if (instanceParameter != null)
+            List<Parameter> instanceParameters = FindParametersByName(element, parameterName, requireWritable);
+            if (applyAllMatchingParameters)
             {
-                owner = element;
-                return instanceParameter;
+                for (int i = 0; i < instanceParameters.Count; i++)
+                {
+                    results.Add(new ParameterTargetInfo
+                    {
+                        Parameter = instanceParameters[i],
+                        Owner = element,
+                        IsTypeParameter = false,
+                        MatchIndex = i
+                    });
+                }
+            }
+            else if (instanceParameters.Count > 0)
+            {
+                results.Add(new ParameterTargetInfo
+                {
+                    Parameter = instanceParameters[0],
+                    Owner = element,
+                    IsTypeParameter = false,
+                    MatchIndex = 0
+                });
+                return results;
             }
 
             ElementId typeId = element.GetTypeId();
             if (typeId == null || typeId == ElementId.InvalidElementId)
             {
-                return null;
+                return results;
             }
 
             Element typeElement = doc.GetElement(typeId);
             if (typeElement == null)
             {
-                return null;
+                return results;
             }
 
-            Parameter typeParameter = FindParameterByName(typeElement, parameterName, requireWritable);
-            if (typeParameter != null)
+            List<Parameter> typeParameters = FindParametersByName(typeElement, parameterName, requireWritable);
+            if (applyAllMatchingParameters)
             {
-                isTypeParameter = true;
-                owner = typeElement;
-                return typeParameter;
+                for (int i = 0; i < typeParameters.Count; i++)
+                {
+                    results.Add(new ParameterTargetInfo
+                    {
+                        Parameter = typeParameters[i],
+                        Owner = typeElement,
+                        IsTypeParameter = true,
+                        MatchIndex = i
+                    });
+                }
+            }
+            else if (results.Count == 0 && typeParameters.Count > 0)
+            {
+                results.Add(new ParameterTargetInfo
+                {
+                    Parameter = typeParameters[0],
+                    Owner = typeElement,
+                    IsTypeParameter = true,
+                    MatchIndex = 0
+                });
             }
 
-            return null;
+            return results;
+        }
+
+        private static Parameter FindParameterOnElementOrType(Document doc, Element element, string parameterName, bool requireWritable, out bool isTypeParameter, out Element owner)
+        {
+            ParameterTargetInfo target = FindParameterTargetsOnElementOrType(doc, element, parameterName, requireWritable, false).FirstOrDefault();
+            isTypeParameter = target != null && target.IsTypeParameter;
+            owner = target?.Owner;
+            return target?.Parameter;
         }
 
         private static Parameter FindParameterByName(Element element, string parameterName, bool requireWritable)
         {
+            return FindParametersByName(element, parameterName, requireWritable).FirstOrDefault();
+        }
+
+        private static List<Parameter> FindParametersByName(Element element, string parameterName, bool requireWritable)
+        {
+            var matches = new List<Parameter>();
             if (element == null || string.IsNullOrWhiteSpace(parameterName))
             {
-                return null;
+                return matches;
             }
 
             Parameter direct = null;
@@ -1591,10 +1675,9 @@ namespace KKY_Tool_Revit.Services
 
             if (IsUsableNamedParameter(direct, parameterName, requireWritable))
             {
-                return direct;
+                matches.Add(direct);
             }
 
-            Parameter bestMatch = null;
             foreach (Parameter parameter in element.Parameters.Cast<Parameter>())
             {
                 if (!IsUsableNamedParameter(parameter, parameterName, requireWritable))
@@ -1602,18 +1685,21 @@ namespace KKY_Tool_Revit.Services
                     continue;
                 }
 
+                if (matches.Any(existing => ReferenceEquals(existing, parameter)))
+                {
+                    continue;
+                }
+
                 if (!requireWritable && parameter.HasValue)
                 {
-                    return parameter;
+                    matches.Insert(0, parameter);
+                    continue;
                 }
 
-                if (bestMatch == null)
-                {
-                    bestMatch = parameter;
-                }
+                matches.Add(parameter);
             }
 
-            return bestMatch;
+            return matches;
         }
 
         private static bool IsUsableNamedParameter(Parameter parameter, string parameterName, bool requireWritable)
@@ -1803,7 +1889,7 @@ namespace KKY_Tool_Revit.Services
             }
             catch (Exception ex)
             {
-                log?.Invoke("파라미터 값 입력 실패: " + owner?.Id?.IntegerValue + " / " + parameter.Definition?.Name + " / " + ex.Message);
+                log?.Invoke("?뚮씪誘명꽣 媛??낅젰 ?ㅽ뙣: " + owner?.Id?.IntegerValue + " / " + parameter.Definition?.Name + " / " + ex.Message);
                 return false;
             }
         }
@@ -1910,7 +1996,7 @@ namespace KKY_Tool_Revit.Services
             };
 
             doc.SaveAs(outputPath, saveAsOptions);
-            log?.Invoke("저장 완료: " + outputPath + " / TargetView=" + previewViewName);
+            log?.Invoke("????꾨즺: " + outputPath + " / TargetView=" + previewViewName);
         }
 
         private static void AttachFailureSwallower(Transaction tx)
