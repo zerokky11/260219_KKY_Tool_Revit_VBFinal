@@ -1,4 +1,4 @@
-import { clear, div } from '../core/dom.js';
+﻿import { clear, div } from '../core/dom.js';
 
 export function renderActiveMenu(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');

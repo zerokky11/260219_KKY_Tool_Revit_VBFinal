@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -189,12 +189,12 @@ namespace KKY_Tool_Revit.Services
         {
             if (doc == null) throw new ArgumentNullException(nameof(doc));
             if (profile == null) throw new ArgumentNullException(nameof(profile));
-            if (!profile.IsConfigured()) throw new InvalidOperationException("?꾪꽣 ?꾨줈?꾩씠 ?꾩쟾?섏? ?딆뒿?덈떎.");
+            if (!profile.IsConfigured()) throw new InvalidOperationException("필터 프로파일이 완전하지 않습니다.");
 
             ICollection<ElementId> categoryIds = ResolveCategories(doc, profile.GetCategoryTokens(), log);
             if (categoryIds.Count == 0)
             {
-                throw new InvalidOperationException("?꾪꽣 移댄뀒怨좊━瑜??섎굹??李얠? 紐삵뻽?듬땲??");
+                throw new InvalidOperationException("필터 카테고리를 하나도 찾지 못했습니다.");
             }
 
             if (!string.IsNullOrWhiteSpace(profile.FilterDefinitionXml))
@@ -202,7 +202,7 @@ namespace KKY_Tool_Revit.Services
                 XElement definition = TryParseXml(profile.FilterDefinitionXml);
                 if (definition == null)
                 {
-                    throw new InvalidDataException("?꾪꽣 ?뺤쓽 XML???댁꽍?????놁뒿?덈떎.");
+                    throw new InvalidDataException("필터 정의 XML을 해석할 수 없습니다.");
                 }
 
                 var cache = new Dictionary<string, ParameterResolution>(StringComparer.OrdinalIgnoreCase);

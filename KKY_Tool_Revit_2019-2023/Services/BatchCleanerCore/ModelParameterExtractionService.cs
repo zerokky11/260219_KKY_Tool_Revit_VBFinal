@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -13,6 +13,14 @@ namespace KKY_Tool_Revit.Services
 {
     public static class ModelParameterExtractionService
     {
+        public sealed class ElementParameterValueInfo
+        {
+            public bool HasParameter { get; set; }
+            public string ValueText { get; set; } = string.Empty;
+            public string DataTypeToken { get; set; } = string.Empty;
+            public double? InternalDoubleValue { get; set; }
+        }
+
         public static int CountExtractableElements(Document doc)
         {
             if (doc == null) throw new ArgumentNullException(nameof(doc));
@@ -110,6 +118,16 @@ namespace KKY_Tool_Revit.Services
             return GetParameterValue(doc, element, parameterName);
         }
 
+        public static ElementParameterValueInfo GetElementParameterValueInfo(Document doc, Element element, string parameterName)
+        {
+            return GetParameterValueInfo(doc, element, parameterName);
+        }
+
+        public static bool HasElementParameter(Document doc, Element element, string parameterName)
+        {
+            return FindParameterOnElementOrType(doc, element, parameterName) != null;
+        }
+
         public static string ExportModelParameters(UIApplication uiapp, BatchPrepareSession session, string outputFolder, string parameterNamesCsv, Action<string> log)
         {
             if (session == null) throw new ArgumentNullException(nameof(session));
@@ -124,10 +142,10 @@ namespace KKY_Tool_Revit.Services
                 .Where(x => !string.IsNullOrWhiteSpace(x) && File.Exists(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            if (paths.Count == 0) throw new InvalidOperationException("?곕뗄??????뵬????곷뮸??덈뼄.");
+            if (paths.Count == 0) throw new InvalidOperationException("추출 대상 모델 파일이 없습니다.");
 
             List<string> parameterNames = SplitParameterNames(parameterNamesCsv);
-            if (parameterNames.Count == 0) throw new InvalidOperationException("?곕뗄??????뵬沃섎챸苑???已????롪돌 ??곴맒 ??낆젾??곷튊 ??몃빍??");
+            if (parameterNames.Count == 0) throw new InvalidOperationException("추출할 파라미터명이 없습니다. 하나 이상 입력해 주세요.");
 
             if (string.IsNullOrWhiteSpace(outputFolder))
             {
@@ -146,7 +164,7 @@ namespace KKY_Tool_Revit.Services
                 Document doc = null;
                 try
                 {
-                    log?.Invoke("??욧쉐揶??곕뗄?????뵬 ??용┛: " + path);
+                    log?.Invoke("모델 파라미터 추출 시작: " + path);
                     ModelPath modelPath = ModelPathUtils.ConvertUserVisiblePathToModelPath(path);
                     doc = uiapp.Application.OpenDocumentFile(modelPath, new OpenOptions());
                     IList<Element> elements = CollectExtractableElements(doc);
@@ -169,7 +187,7 @@ namespace KKY_Tool_Revit.Services
                         rowCount++;
                     }
 
-                    log?.Invoke("??욧쉐揶??곕뗄???袁⑥┷: " + fileName + " / ??" + rowCount);
+                    log?.Invoke("모델 파라미터 추출 완료: " + fileName + " / 행 " + rowCount);
                 }
                 finally
                 {
@@ -187,7 +205,7 @@ namespace KKY_Tool_Revit.Services
             }
 
             File.WriteAllText(csvPath, sb.ToString(), new UTF8Encoding(true));
-            log?.Invoke("??욧쉐揶??곕뗄??CSV ???? " + csvPath);
+            log?.Invoke("모델 파라미터 CSV 저장: " + csvPath);
             return csvPath;
         }
 
@@ -623,13 +641,37 @@ namespace KKY_Tool_Revit.Services
 
         private static string GetParameterValue(Document doc, Element element, string parameterName)
         {
+            return GetParameterValueInfo(doc, element, parameterName).ValueText ?? string.Empty;
+        }
+
+        private static ElementParameterValueInfo GetParameterValueInfo(Document doc, Element element, string parameterName)
+        {
+            var info = new ElementParameterValueInfo();
             Parameter parameter = FindParameterOnElementOrType(doc, element, parameterName);
-            if (parameter == null) return string.Empty;
+            if (parameter == null) return info;
+
+            info.HasParameter = true;
+            info.DataTypeToken = GetDefinitionDataTypeToken(parameter.Definition);
+            if (parameter.StorageType == StorageType.Double)
+            {
+                try
+                {
+                    info.InternalDoubleValue = parameter.AsDouble();
+                }
+                catch
+                {
+                    info.InternalDoubleValue = null;
+                }
+            }
 
             try
             {
                 string valueString = parameter.AsValueString();
-                if (!string.IsNullOrWhiteSpace(valueString)) return valueString;
+                if (!string.IsNullOrWhiteSpace(valueString))
+                {
+                    info.ValueText = valueString;
+                    return info;
+                }
             }
             catch
             {
@@ -640,24 +682,35 @@ namespace KKY_Tool_Revit.Services
                 switch (parameter.StorageType)
                 {
                     case StorageType.String:
-                        return parameter.AsString() ?? string.Empty;
+                        info.ValueText = parameter.AsString() ?? string.Empty;
+                        break;
                     case StorageType.Integer:
-                        return parameter.AsInteger().ToString();
+                        info.ValueText = parameter.AsInteger().ToString();
+                        break;
                     case StorageType.Double:
-                        return parameter.AsDouble().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        info.ValueText = parameter.AsDouble().ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        break;
                     case StorageType.ElementId:
                         ElementId id = parameter.AsElementId();
-                        if (id == null || id == ElementId.InvalidElementId) return string.Empty;
+                        if (id == null || id == ElementId.InvalidElementId)
+                        {
+                            info.ValueText = string.Empty;
+                            break;
+                        }
                         Element refElement = doc.GetElement(id);
-                        return refElement != null ? (refElement.Name ?? id.IntegerValue.ToString()) : id.IntegerValue.ToString();
+                        info.ValueText = refElement != null ? (refElement.Name ?? id.IntegerValue.ToString()) : id.IntegerValue.ToString();
+                        break;
                     default:
-                        return string.Empty;
+                        info.ValueText = string.Empty;
+                        break;
                 }
             }
             catch
             {
-                return string.Empty;
+                info.ValueText = string.Empty;
             }
+
+            return info;
         }
 
         private static Parameter FindParameterOnElementOrType(Document doc, Element element, string parameterName)
@@ -673,6 +726,18 @@ namespace KKY_Tool_Revit.Services
                 if (parameter != null) return parameter;
             }
 
+            foreach (BuiltInParameter builtInParameter in GetBuiltInParameterCandidates(parameterName))
+            {
+                parameter = TryGetBuiltInParameter(element, builtInParameter);
+                if (parameter != null) return parameter;
+
+                if (type != null)
+                {
+                    parameter = TryGetBuiltInParameter(type, builtInParameter);
+                    if (parameter != null) return parameter;
+                }
+            }
+
             return null;
         }
 
@@ -683,6 +748,21 @@ namespace KKY_Tool_Revit.Services
             {
                 Parameter direct = owner.LookupParameter(parameterName);
                 if (IsUsableNamedParameter(direct, parameterName)) return direct;
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                IList<Parameter> directMatches = owner.GetParameters(parameterName);
+                if (directMatches != null)
+                {
+                    foreach (Parameter parameter in directMatches)
+                    {
+                        if (IsUsableNamedParameter(parameter, parameterName)) return parameter;
+                    }
+                }
             }
             catch
             {
@@ -706,8 +786,118 @@ namespace KKY_Tool_Revit.Services
         {
             if (parameter == null || parameter.Definition == null) return false;
             string actualName = parameter.Definition.Name;
-            return !string.IsNullOrWhiteSpace(actualName)
-                   && string.Equals(actualName.Trim(), expectedName.Trim(), StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(actualName)) return false;
+
+            string normalizedActual = NormalizeParameterToken(actualName);
+            string normalizedExpected = NormalizeParameterToken(expectedName);
+            return !string.IsNullOrWhiteSpace(normalizedActual)
+                   && string.Equals(normalizedActual, normalizedExpected, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static Parameter TryGetBuiltInParameter(Element owner, BuiltInParameter builtInParameter)
+        {
+            if (owner == null) return null;
+
+            try
+            {
+                Parameter parameter = owner.get_Parameter(builtInParameter);
+                return parameter != null && parameter.Definition != null ? parameter : null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static IEnumerable<BuiltInParameter> GetBuiltInParameterCandidates(string parameterName)
+        {
+            string token = NormalizeParameterToken(parameterName);
+            if (string.IsNullOrWhiteSpace(token)) yield break;
+
+            if (IsAnyToken(token, "area", "면적"))
+            {
+                yield return BuiltInParameter.HOST_AREA_COMPUTED;
+                yield return BuiltInParameter.ROOM_AREA;
+            }
+
+            if (IsAnyToken(token, "volume", "vol", "부피", "볼륨"))
+            {
+                yield return BuiltInParameter.HOST_VOLUME_COMPUTED;
+                yield return BuiltInParameter.ROOM_VOLUME;
+            }
+
+            if (IsAnyToken(token, "length", "len", "길이"))
+            {
+                yield return BuiltInParameter.CURVE_ELEM_LENGTH;
+            }
+        }
+
+        private static bool IsAnyToken(string token, params string[] candidates)
+        {
+            if (string.IsNullOrWhiteSpace(token) || candidates == null) return false;
+            return candidates.Any(candidate => string.Equals(token, NormalizeParameterToken(candidate), StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string NormalizeParameterToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+
+            var buffer = new StringBuilder(value.Length);
+            foreach (char ch in value.Trim())
+            {
+                if (char.IsWhiteSpace(ch) || ch == '_' || ch == '-' || ch == '(' || ch == ')' || ch == '[' || ch == ']')
+                {
+                    continue;
+                }
+
+                buffer.Append(char.ToLowerInvariant(ch));
+            }
+
+            return buffer.ToString();
+        }
+
+        private static string GetDefinitionDataTypeToken(Definition definition)
+        {
+            if (definition == null) return string.Empty;
+
+            try
+            {
+                MethodInfo method = definition.GetType().GetMethod("GetDataType", Type.EmptyTypes);
+                if (method != null)
+                {
+                    object dataType = method.Invoke(definition, null);
+                    if (dataType != null)
+                    {
+                        PropertyInfo typeIdProperty = dataType.GetType().GetProperty("TypeId");
+                        if (typeIdProperty != null)
+                        {
+                            string typeId = typeIdProperty.GetValue(dataType, null) as string;
+                            if (!string.IsNullOrWhiteSpace(typeId)) return typeId;
+                        }
+
+                        string raw = dataType.ToString();
+                        if (!string.IsNullOrWhiteSpace(raw)) return raw;
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                PropertyInfo parameterTypeProperty = definition.GetType().GetProperty("ParameterType");
+                if (parameterTypeProperty != null)
+                {
+                    object parameterType = parameterTypeProperty.GetValue(definition, null);
+                    if (parameterType != null) return parameterType.ToString() ?? string.Empty;
+                }
+            }
+            catch
+            {
+            }
+
+            return string.Empty;
         }
         private static string Csv(string value)
         {

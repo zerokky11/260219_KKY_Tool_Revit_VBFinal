@@ -1,5 +1,5 @@
 ﻿// Resources/HubUI/js/views/familylink.js
-import { clear, div, toast, debounce, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
+import { clear, div, toast, debounce, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { ProgressDialog } from '../core/progress.js';
@@ -13,14 +13,17 @@ const DEFAULT_SCHEMA = [
   'HostFamilyCategory',
   'NestedFamilyName',
   'NestedTypeName',
+  'NestedInstanceId',
+  'NestedPath',
+  'NestingLevel',
   'NestedCategory',
+  'NestedParamName',
   'TargetParamName',
   'ExpectedGuid',
   'FoundScope',
   'NestedParamGuid',
   'NestedParamDataType',
   'AssocHostParamName',
-  'HostParamGuid',
   'HostParamIsShared',
   'Issue',
   'Notes'
@@ -296,6 +299,7 @@ export function renderFamilyLink(root) {
     exportBtn.disabled = state.rows.length === 0 || state.busy;
     setBusy(false);
     ProgressDialog.hide();
+    requestAnimationFrame(() => showFamilyLinkCompletionDialog());
   }
 
   function handleError(payload) {
@@ -345,6 +349,11 @@ export function renderFamilyLink(root) {
       toast('검토할 RVT 파일을 추가하세요.', 'warn');
       return;
     }
+    const selectedRvts = getCheckedRvtPaths();
+    if (!selectedRvts.length) {
+      toast('검토할 RVT를 1개 이상 선택하세요.', 'warn');
+      return;
+    }
 
     const targets = Array.from(state.selectedParams)
       .map(guid => state.items.find(item => item.guid === guid))
@@ -362,7 +371,7 @@ export function renderFamilyLink(root) {
     ProgressDialog.update(0, '준비 중...', '');
 
     post('familylink:run', {
-      rvtPaths: state.rvtPaths.slice(),
+      rvtPaths: selectedRvts,
       targets
     });
   }
@@ -392,10 +401,14 @@ export function renderFamilyLink(root) {
 
   function syncRunState() {
     const hasTargets = state.selectedParams.size > 0;
-    const hasRvts = state.rvtPaths.length > 0;
+    const hasRvts = getCheckedRvtPaths().length > 0;
     runBtn.disabled = state.busy || !(hasTargets && hasRvts);
     exportBtn.disabled = state.busy || state.rows.length === 0;
     btnRemoveRvt.disabled = state.rvtChecked.size === 0;
+  }
+
+  function getCheckedRvtPaths() {
+    return state.rvtPaths.filter((path) => state.rvtChecked.has(path));
   }
 
   function renderGroups() {
@@ -618,6 +631,43 @@ export function renderFamilyLink(root) {
     }
 
     resultMeta.textContent = `${state.rows.length} rows`;
+  }
+
+  function showFamilyLinkCompletionDialog() {
+    const totalRows = state.rows.length || 0;
+    const issueCount = state.rows.filter((row) => isIssueRow(row)).length;
+    const okCount = Math.max(totalRows - issueCount, 0);
+    const fileCount = countUniqueValues(state.rows, 'FileName');
+    const hostFamilyCount = countUniqueValues(state.rows, 'HostFamilyName');
+
+    showCompletionSummaryDialog({
+      title: '패밀리 연동 검토 완료',
+      message: '네스티드 패밀리 공유파라미터 연동 검토가 끝났습니다. 아래 표에서 상세를 확인하거나 바로 엑셀로 내보낼 수 있습니다.',
+      summaryItems: [
+        { label: '검토 결과 행', value: String(totalRows) },
+        { label: '이슈 행', value: String(issueCount) },
+        { label: '정상 행', value: String(okCount) },
+        { label: '대상 RVT', value: `${fileCount}개` },
+        { label: 'Host Family', value: `${hostFamilyCount}개` }
+      ],
+      exportDisabled: !!exportBtn.disabled,
+      onExport: () => exportBtn.click()
+    });
+  }
+
+  function isIssueRow(row) {
+    const issue = String(row?.Issue || '').trim();
+    if (!issue) return false;
+    return !/^(ok|정상)$/i.test(issue);
+  }
+
+  function countUniqueValues(rows, key) {
+    const values = new Set();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+      const value = String(row?.[key] ?? '').trim();
+      if (value) values.add(value);
+    });
+    return values.size;
   }
 }
 

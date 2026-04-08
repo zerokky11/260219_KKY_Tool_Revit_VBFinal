@@ -15,6 +15,8 @@ import { renderFamilyLink } from './views/familylink.js';
 import { renderMulti } from './views/multi.js?v=20260323j';
 import { renderDeliveryCleaner } from './views/deliverycleaner.js';
 import { renderParamModifier } from './views/parammodifier.js';
+import { renderConditionExtract } from './views/conditionextract.js';
+import { renderLateralNozzle } from './views/lateralnozzle.js';
 
 initTheme();
 
@@ -146,6 +148,8 @@ function route() {
     case 'multi': return renderMulti(targetRoot);
     case 'deliverycleaner': return renderDeliveryCleaner(targetRoot);
     case 'parammodifier': return renderParamModifier(targetRoot);
+    case 'conditionextract': return renderConditionExtract(targetRoot);
+    case 'lateralnozzle': return renderLateralNozzle(targetRoot);
     case 'active-menu': return renderActiveMenu(targetRoot);
     default: return renderHome(targetRoot);
   }

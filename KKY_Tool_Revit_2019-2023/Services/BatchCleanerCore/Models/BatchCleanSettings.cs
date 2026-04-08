@@ -14,6 +14,10 @@ namespace KKY_Tool_Revit.Models
         public bool ApplyFilterInitially { get; set; }
         public bool AutoEnableFilterIfEmpty { get; set; }
         public ViewFilterProfile FilterProfile { get; set; }
+        public ParameterConditionCombination VisibilityRuleCombinationMode { get; set; } = ParameterConditionCombination.Or;
+        public List<VisibilitySubCategoryRule> VisibilitySubCategoryRules { get; set; } = new List<VisibilitySubCategoryRule>();
+        public bool? ShowImportedCategoriesInView { get; set; }
+        public bool? ShowImportsInFamilies { get; set; }
 
         public ElementParameterUpdateSettings ElementParameterUpdate { get; set; } = new ElementParameterUpdateSettings();
 
@@ -36,6 +40,12 @@ namespace KKY_Tool_Revit.Models
                 ApplyFilterInitially = ApplyFilterInitially,
                 AutoEnableFilterIfEmpty = AutoEnableFilterIfEmpty,
                 FilterProfile = FilterProfile != null ? FilterProfile.Clone() : null,
+                VisibilityRuleCombinationMode = VisibilityRuleCombinationMode,
+                VisibilitySubCategoryRules = VisibilitySubCategoryRules != null
+                    ? VisibilitySubCategoryRules.Where(x => x != null).Select(x => x.Clone()).ToList()
+                    : new List<VisibilitySubCategoryRule>(),
+                ShowImportedCategoriesInView = ShowImportedCategoriesInView,
+                ShowImportsInFamilies = ShowImportsInFamilies,
                 ElementParameterUpdate = ElementParameterUpdate != null ? ElementParameterUpdate.Clone() : new ElementParameterUpdateSettings()
             };
         }

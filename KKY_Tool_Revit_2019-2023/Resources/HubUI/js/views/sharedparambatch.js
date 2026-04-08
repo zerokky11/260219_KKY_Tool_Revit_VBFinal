@@ -200,8 +200,16 @@ export function renderSharedParamBatch(root) {
   onHost('sharedparambatch:progress', handleProgress);
   onHost('sharedparambatch:done', handleDone);
   onHost('sharedparambatch:exported', handleExported);
-  onHost('revit:error', ({ message }) => { finishRunning(false); toast(message || 'Revit 오류가 발생했습니다.', 'err', 3200); });
-  onHost('host:error', ({ message }) => { finishRunning(false); toast(message || '호스트 오류가 발생했습니다.', 'err', 3200); });
+  onHost('revit:error', ({ message }) => {
+    state.pendingFolderBrowse = false;
+    finishRunning(true);
+    toast(message || 'Revit 오류가 발생했습니다.', 'err', 3200);
+  });
+  onHost('host:error', ({ message }) => {
+    state.pendingFolderBrowse = false;
+    finishRunning(true);
+    toast(message || '호스트 오류가 발생했습니다.', 'err', 3200);
+  });
 
   post('sharedparambatch:init', {});
   renderRvtList();
@@ -307,7 +315,7 @@ export function renderSharedParamBatch(root) {
         desc: opt.dataset.desc || '',
         settings: {
           isInstanceBinding: true,
-          paramGroup: state.paramGroups[0]?.id || 'PG_DATA',
+          paramGroup: getDefaultParamGroupValue(),
           allowVaryBetweenGroups: false,
           categories: []
         }
@@ -445,6 +453,8 @@ export function renderSharedParamBatch(root) {
     if (state.running) return;
     if (!state.selectedParams.length) { toast('파라미터를 선택하세요.', 'err'); return; }
     if (!state.rvtList.length) { toast('RVT 파일을 추가하세요.', 'err'); return; }
+    const selectedRvts = getCheckedRvtPaths();
+    if (!selectedRvts.length) { toast('적용할 RVT를 1개 이상 선택하세요.', 'err'); return; }
     const missingCats = state.selectedParams.filter(p => !p.settings.categories.length);
     if (missingCats.length) {
       toast('카테고리를 지정하지 않은 파라미터가 있습니다.', 'err');
@@ -453,7 +463,7 @@ export function renderSharedParamBatch(root) {
 
     const payload = {
       spFilePath: state.spFilePath,
-      rvtPaths: state.rvtList,
+      rvtPaths: selectedRvts,
       parameters: state.selectedParams.map(p => ({
         groupName: p.groupName,
         paramName: p.name,
@@ -521,19 +531,23 @@ export function renderSharedParamBatch(root) {
   }
 
   async function onExport() {
+    if (state.running) return;
     if (!state.logs.length) { toast('내보낼 로그가 없습니다.', 'err'); return; }
     const excelMode = await chooseExcelMode();
+    state.running = true;
+    updateButtons();
+    ProgressDialog.show('Project Parameter 결과 내보내기', '엑셀 파일을 준비하는 중...');
+    ProgressDialog.update(0, '엑셀 파일을 준비하는 중...', '');
     post('sharedparambatch:export-excel', { excelMode: excelMode || 'fast' });
   }
 
   function handleExported(payload) {
+    finishRunning(true);
     if (!payload || !payload.ok) {
       toast(payload?.message || '엑셀 내보내기 실패', 'err');
       return;
     }
     const path = payload.filePath || payload.path;
-    clearProgressHideTimer();
-    ProgressDialog.hide();
     requestAnimationFrame(() => {
       showExcelSavedDialog('엑셀로 내보냈습니다.', path, (p) => post('excel:open', { path: p }));
     });
@@ -588,9 +602,13 @@ export function renderSharedParamBatch(root) {
     });
   }
 
+  function getCheckedRvtPaths() {
+    return state.rvtList.filter((path) => state.rvtChecked.has(path));
+  }
+
   function updateButtons() {
     const disabled = state.running;
-    btnRun.disabled = disabled || !state.selectedParams.length || !state.rvtList.length;
+    btnRun.disabled = disabled || !state.selectedParams.length || !state.rvtList.length || !getCheckedRvtPaths().length;
     btnViewResult.disabled = disabled || !hasRunResults();
     btnExport.disabled = disabled || !hasRunResults();
     const modal = buildParamPickerModal;
@@ -608,6 +626,24 @@ export function renderSharedParamBatch(root) {
     const match = state.paramGroups.find(g => g.key === value || g.Key === value || g.id === value || g.Id === value);
     if (match) return formatRevitParamGroupLabel(match.label || match.Label || match.key || match.Key || match.id || match.Id || value || '');
     return formatRevitParamGroupLabel(value || '');
+  }
+
+  function getParamGroupValue(group) {
+    if (!group) return '';
+    return group.key || group.Key || group.id || group.Id || '';
+  }
+
+  function getDefaultParamGroupValue() {
+    const preferred = state.paramGroups.find((group) => {
+      const key = String(group?.key || group?.Key || '').toLowerCase();
+      const id = String(group?.id || group?.Id || '').toLowerCase();
+      const label = String(group?.label || group?.Label || '').toLowerCase();
+      return key === 'pg_data'
+        || id === 'pg_data'
+        || key.includes('parameter.group:data')
+        || label === 'data';
+    });
+    return getParamGroupValue(preferred || state.paramGroups[0]) || 'PG_DATA';
   }
 
   function applyBulkSettings() {
@@ -864,11 +900,20 @@ export function renderSharedParamBatch(root) {
     groupSelectEl.className = 'sharedparambatch-select';
     state.paramGroups.forEach((g) => {
       const opt = document.createElement('option');
-      opt.value = g.key || g.Key || g.id || g.Id;
+      opt.value = getParamGroupValue(g);
       opt.textContent = formatParamGroup(opt.value);
       groupSelectEl.append(opt);
     });
-    groupSelectEl.value = param.settings.paramGroup;
+    const currentGroup = state.paramGroups.find((g) => {
+      const value = getParamGroupValue(g);
+      return value === param.settings.paramGroup
+        || g.id === param.settings.paramGroup
+        || g.Id === param.settings.paramGroup
+        || g.key === param.settings.paramGroup
+        || g.Key === param.settings.paramGroup;
+    });
+    groupSelectEl.value = getParamGroupValue(currentGroup) || param.settings.paramGroup || getDefaultParamGroupValue();
+    param.settings.paramGroup = groupSelectEl.value || getDefaultParamGroupValue();
     groupSelectEl.addEventListener('change', () => { param.settings.paramGroup = groupSelectEl.value; });
     groupRow.append(groupSelectEl);
 

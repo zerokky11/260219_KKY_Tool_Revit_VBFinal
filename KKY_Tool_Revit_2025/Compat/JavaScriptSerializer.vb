@@ -2,6 +2,8 @@
 Option Strict On
 
 Imports System.Collections.Generic
+Imports System.Globalization
+Imports System.Text.RegularExpressions
 Imports System.Text.Encodings.Web
 Imports System.Text.Json
 Imports System.Text.Json.Nodes
@@ -77,7 +79,7 @@ Namespace Global.System.Web.Script.Serialization
             If value.TryGetValue(je) Then
                 Select Case je.ValueKind
                     Case JsonValueKind.String
-                        Return je.GetString()
+                        Return NormalizeLegacyEscapedString(je.GetString())
                     Case JsonValueKind.Number
                         Dim l As Long
                         If je.TryGetInt64(l) Then Return l
@@ -96,13 +98,57 @@ Namespace Global.System.Web.Script.Serialization
             End If
 
             Dim s As String = Nothing
-            If value.TryGetValue(s) Then Return s
+            If value.TryGetValue(s) Then Return NormalizeLegacyEscapedString(s)
             Dim b As Boolean
             If value.TryGetValue(b) Then Return b
             Dim n As Double
             If value.TryGetValue(n) Then Return n
 
             Return value.ToJsonString()
+        End Function
+
+        Private Shared Function NormalizeLegacyEscapedString(value As String) As String
+            Dim s As String = NormalizeWrappedQuotesText(value)
+            If String.IsNullOrEmpty(s) Then
+                Return s
+            End If
+
+            If s.IndexOf("\u", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                s = Regex.Replace(
+                    s,
+                    "(?i)(?:\\\\u|\\u)([0-9a-f]{4})",
+                    Function(m)
+                        Try
+                            Return ChrW(Integer.Parse(m.Groups(1).Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture))
+                        Catch
+                            Return m.Value
+                        End Try
+                    End Function)
+            End If
+
+            If s.Contains("\""") Then
+                s = s.Replace("\""", """")
+            End If
+
+            Return NormalizeWrappedQuotesText(s)
+        End Function
+
+        Private Shared Function NormalizeWrappedQuotesText(value As String) As String
+            Dim s As String = If(value, String.Empty).Trim()
+
+            For i As Integer = 0 To 1
+                If s.Length >= 2 AndAlso s(0) = """"c AndAlso s(s.Length - 1) = """"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                If s.Length >= 2 AndAlso s(0) = "'"c AndAlso s(s.Length - 1) = "'"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                Exit For
+            Next
+
+            Return s
         End Function
 
     End Class

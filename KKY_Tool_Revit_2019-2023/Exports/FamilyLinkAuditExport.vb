@@ -19,6 +19,9 @@ Namespace Exports
             "HostFamilyCategory",
             "NestedFamilyName",
             "NestedTypeName",
+            "NestedInstanceId",
+            "NestedPath",
+            "NestingLevel",
             "NestedCategory",
             "NestedParamName",
             "TargetParamName",
@@ -46,7 +49,7 @@ Namespace Exports
 
             Dim defaultName As String = $"FamilyLinkAudit_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
             Using dlg As New SaveFileDialog()
-                dlg.Filter = "Excel Workbook (*.xlsx)|*.xlsx|CSV (*.csv)|*.csv"
+                dlg.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
                 dlg.FileName = defaultName
                 dlg.AddExtension = True
                 dlg.DefaultExt = "xlsx"
@@ -57,24 +60,18 @@ Namespace Exports
 
                 Dim filePath As String = dlg.FileName
                 Dim ext As String = Path.GetExtension(filePath).ToLowerInvariant()
-                If String.IsNullOrWhiteSpace(ext) Then
-                    ext = If(dlg.FilterIndex = 2, ".csv", ".xlsx")
-                    filePath = filePath & ext
+                If Not String.Equals(ext, ".xlsx", StringComparison.OrdinalIgnoreCase) Then
+                    filePath = Path.ChangeExtension(filePath, ".xlsx")
                 End If
 
-                If ext = ".csv" Then
-                    ReportProgress(progressChannel, "EXCEL_SAVE", "CSV 저장 중...", 1, 1, 0.95R, True)
-                    SaveCsv(filePath, table)
-                Else
-                    Dim doAutoFit As Boolean = (Not fastExport) AndAlso autoFit
-                    Dim excelMode As String = If(fastExport, "fast", "normal")
-                    ReportProgress(progressChannel, "EXCEL_INIT", "엑셀 저장 준비 중...", 0, Math.Max(1, table.Rows.Count), 0.0R, True)
-                    ExcelCore.SaveXlsx(filePath, "FamilyLinkAudit", table, doAutoFit, progressKey:=progressChannel, exportKind:="familylink")
-                    ReportProgress(progressChannel, "EXCEL_SAVE", "엑셀 파일 저장 중...", Math.Max(1, table.Rows.Count), Math.Max(1, table.Rows.Count), 0.95R, True)
-                    ExcelExportStyleRegistry.ApplyStylesForKey("familylink", filePath, autoFit:=doAutoFit, excelMode:=excelMode)
-                    If doAutoFit Then
-                        ReportProgress(progressChannel, "AUTOFIT", "열 너비 자동 조정 중...", 1, 1, 1.0R, True)
-                    End If
+                Dim doAutoFit As Boolean = (Not fastExport) AndAlso autoFit
+                Dim excelMode As String = If(fastExport, "fast", "normal")
+                ReportProgress(progressChannel, "EXCEL_INIT", "엑셀 저장 준비 중...", 0, Math.Max(1, table.Rows.Count), 0.0R, True)
+                ExcelCore.SaveXlsx(filePath, "FamilyLinkAudit", table, doAutoFit, progressKey:=progressChannel, exportKind:="familylink")
+                ReportProgress(progressChannel, "EXCEL_SAVE", "엑셀 파일 저장 중...", Math.Max(1, table.Rows.Count), Math.Max(1, table.Rows.Count), 0.95R, True)
+                ExcelExportStyleRegistry.ApplyStylesForKey("familylink", filePath, autoFit:=doAutoFit, excelMode:=excelMode)
+                If doAutoFit Then
+                    ReportProgress(progressChannel, "AUTOFIT", "열 너비 자동 조정 중...", 1, 1, 1.0R, True)
                 End If
                 ReportProgress(progressChannel, "DONE", "내보내기 완료", 1, 1, 1.0R, True)
                 Return filePath
@@ -109,6 +106,9 @@ Namespace Exports
                 dr("HostFamilyCategory") = SafeStr(r.HostFamilyCategory)
                 dr("NestedFamilyName") = SafeStr(r.NestedFamilyName)
                 dr("NestedTypeName") = SafeStr(r.NestedTypeName)
+                dr("NestedInstanceId") = SafeStr(r.NestedInstanceId)
+                dr("NestedPath") = SafeStr(r.NestedPath)
+                dr("NestingLevel") = SafeStr(r.NestingLevel)
                 dr("NestedCategory") = SafeStr(r.NestedCategory)
                 dr("NestedParamName") = SafeStr(r.NestedParamName)
                 dr("TargetParamName") = SafeStr(r.TargetParamName)
@@ -135,32 +135,6 @@ Namespace Exports
                 End If
             Next
             Return True
-        End Function
-
-        Private Sub SaveCsv(filePath As String, table As DataTable)
-            Using fs As New FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read)
-                Using sw As New StreamWriter(fs, New UTF8Encoding(True))
-                    sw.WriteLine(String.Join(",", Schema.Select(Function(h) CsvEscape(h))))
-                    For Each row As DataRow In table.Rows
-                        Dim cols As New List(Of String)()
-                        For Each h In Schema
-                            cols.Add(CsvEscape(If(row(h), "").ToString()))
-                        Next
-                        sw.WriteLine(String.Join(",", cols))
-                    Next
-                End Using
-            End Using
-        End Sub
-
-        Private Function CsvEscape(s As String) As String
-            If s Is Nothing Then s = ""
-            Dim quote As String = """"
-            Dim needsQuotes As Boolean = s.Contains(","c) OrElse s.Contains(quote) OrElse s.Contains(vbCr) OrElse s.Contains(vbLf)
-            s = s.Replace(quote, quote & quote)
-            If needsQuotes Then
-                Return quote & s & quote
-            End If
-            Return s
         End Function
 
         Private Function SafeStr(s As String) As String

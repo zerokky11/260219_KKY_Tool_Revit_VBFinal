@@ -1,4 +1,4 @@
-export function getRvtName(path, fallback = '') {
+﻿export function getRvtName(path, fallback = '') {
   if (!path) return fallback || '';
   const parts = String(path).split(/[/\\]/);
   return parts[parts.length - 1] || fallback || '';

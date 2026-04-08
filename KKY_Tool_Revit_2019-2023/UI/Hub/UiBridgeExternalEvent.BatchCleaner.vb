@@ -26,6 +26,7 @@ Namespace UI.Hub
         Private Shared _deliveryCleanerSession As BatchPrepareSession
         Private Shared _deliveryCleanerExtractParamsCsv As String = String.Empty
         Private Shared _deliveryCleanerLastLogExportPath As String = String.Empty
+        Private Shared _deliveryCleanerVisibilityCategories As New List(Of String)()
         Private Const DeliveryCleanerProgressChannel As String = "deliverycleaner:progress"
 
         Private NotInheritable Class DeliveryCleanerLogSummaryRow
@@ -207,7 +208,7 @@ Namespace UI.Hub
         End Sub
 
         Private Sub HandleDeliveryCleanerInit(app As UIApplication, payload As Object)
-            SendToWeb("deliverycleaner:init", BuildDeliveryCleanerStatePayload())
+            SendToWeb("deliverycleaner:init", BuildDeliveryCleanerStatePayload(app))
         End Sub
 
         Private Sub HandleDeliveryCleanerPickRvts(app As UIApplication, payload As Object)
@@ -264,6 +265,58 @@ Namespace UI.Hub
             End Using
         End Sub
 
+        Private Sub HandleDeliveryCleanerVisibilityRulesImport(app As UIApplication, payload As Object)
+            Using dlg As New WinForms.OpenFileDialog()
+                dlg.Filter = "VV 규칙 XML (*.xml)|*.xml"
+                dlg.Title = "VV 규칙 불러오기"
+                dlg.RestoreDirectory = True
+                If dlg.ShowDialog() <> WinForms.DialogResult.OK Then Return
+
+                Dim snapshot = VisibilitySubCategoryRuleProfileService.LoadFromXml(dlg.FileName)
+                SendToWebAfterDialog("deliverycleaner:visibility-rules-loaded", New With {
+                    .ok = True,
+                    .source = dlg.FileName,
+                    .visibilityRules = New With {
+                        .combinationMode = snapshot.CombinationMode.ToString(),
+                        .showImportedCategoriesInView = snapshot.ShowImportedCategoriesInView,
+                        .showImportsInFamilies = snapshot.ShowImportsInFamilies,
+                        .rules = If(snapshot.Rules, New List(Of VisibilitySubCategoryRule)()) _
+                            .Select(Function(x) New With {
+                                .enabled = If(x IsNot Nothing, x.Enabled, False),
+                                .parentCategoryNames = If(x IsNot Nothing, x.GetNormalizedParentCategoryNames().ToList(), New List(Of String)()),
+                                .operatorName = If(x IsNot Nothing, x.Operator.ToString(), FilterRuleOperator.Contains.ToString()),
+                                .subCategoryText = If(x IsNot Nothing, x.SubCategoryText, String.Empty)
+                            }).ToList()
+                    }
+                })
+            End Using
+        End Sub
+
+        Private Sub HandleDeliveryCleanerVisibilityRulesSave(app As UIApplication, payload As Object)
+            Dim pd = ParsePayloadDict(payload)
+            Dim visibilityRaw = ParsePayloadDict(GetProp(pd, "visibilityRules"))
+            Dim combinationMode = ParseDeliveryCleanerCombinationMode(GetProp(visibilityRaw, "combinationMode"), ParameterConditionCombination.Or)
+            Dim rules = ParseDeliveryCleanerVisibilityRules(GetProp(visibilityRaw, "rules"))
+            Dim showImportedCategoriesInView = ParseDeliveryCleanerNullableBool(GetProp(visibilityRaw, "showImportedCategoriesInView"))
+            Dim showImportsInFamilies = ParseDeliveryCleanerNullableBool(GetProp(visibilityRaw, "showImportsInFamilies"))
+            Dim hasConfiguredRules = rules IsNot Nothing AndAlso rules.Any(Function(x) x IsNot Nothing AndAlso x.IsConfigured())
+            If Not hasConfiguredRules AndAlso Not showImportedCategoriesInView.HasValue AndAlso Not showImportsInFamilies.HasValue Then
+                SendToWeb("deliverycleaner:error", New With {.message = "저장할 VV 규칙이 없습니다."})
+                Return
+            End If
+
+            Using dlg As New WinForms.SaveFileDialog()
+                dlg.Filter = "VV 규칙 XML (*.xml)|*.xml"
+                dlg.Title = "VV 규칙 저장"
+                dlg.FileName = "DeliveryCleanerVisibilityRules.xml"
+                dlg.RestoreDirectory = True
+                If dlg.ShowDialog() <> WinForms.DialogResult.OK Then Return
+
+                VisibilitySubCategoryRuleProfileService.SaveToXml(combinationMode, rules, showImportedCategoriesInView, showImportsInFamilies, dlg.FileName)
+                SendToWebAfterDialog("deliverycleaner:visibility-rules-saved", New With {.ok = True, .path = dlg.FileName})
+            End Using
+        End Sub
+
         Private Sub HandleDeliveryCleanerFilterDocList(app As UIApplication, payload As Object)
             Dim doc = app.ActiveUIDocument?.Document
             If doc Is Nothing Then
@@ -314,8 +367,14 @@ Namespace UI.Hub
         End Sub
 
         Private Sub HandleDeliveryCleanerRun(app As UIApplication, payload As Object)
+            Dim pd = ParsePayloadDict(payload)
             Dim settings = ParseDeliveryCleanerSettings(payload)
-            Dim validationMessage = ValidateDeliveryCleanerSettings(settings)
+            Dim selectedPaths = ResolveDeliveryCleanerTargetPaths(ParseStringList(pd, "selectedFilePaths"))
+            Dim executionSettings = settings.Clone()
+            If selectedPaths.Count > 0 Then
+                executionSettings.FilePaths = selectedPaths
+            End If
+            Dim validationMessage = ValidateDeliveryCleanerSettings(executionSettings)
             If Not String.IsNullOrWhiteSpace(validationMessage) Then
                 SendToWeb("deliverycleaner:error", New With {.message = validationMessage})
                 Return
@@ -328,7 +387,7 @@ Namespace UI.Hub
             Dim progress As New DeliveryCleanerProgressContext With {
                 .Title = "Delivery Cleaner",
                 .Mode = "run",
-                .TotalFiles = CountExistingDeliveryCleanerFiles(settings.FilePaths),
+                .TotalFiles = CountExistingDeliveryCleanerFiles(executionSettings.FilePaths),
                 .TotalSteps = 12
             }
             Dim logger As Action(Of String) =
@@ -340,7 +399,10 @@ Namespace UI.Hub
             AppendDeliveryCleanerLog("정리 시작")
 
             Try
-                Dim session = BatchCleanService.CleanAndSave(app, settings, logger)
+                Dim session = BatchCleanService.CleanAndSave(app, executionSettings, logger)
+                If session IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(session.DesignOptionAuditCsvPath) Then
+                    session.DesignOptionAuditCsvPath = ConvertDeliveryCleanerCsvToXlsx(session.DesignOptionAuditCsvPath, "Design Option 검토")
+                End If
                 SyncLock _deliveryCleanerLock
                     _deliveryCleanerSettings = settings.Clone()
                     _deliveryCleanerSession = session
@@ -363,7 +425,10 @@ Namespace UI.Hub
         Private Sub HandleDeliveryCleanerVerify(app As UIApplication, payload As Object)
             Dim pd = ParsePayloadDict(payload)
             Dim settings = ParseDeliveryCleanerSettings(payload)
-            Dim targetPaths = ResolveDeliveryCleanerTargetPaths(ParseStringList(pd, "filePaths"))
+            Dim targetPaths = ResolveDeliveryCleanerTargetPaths(ParseStringList(pd, "selectedFilePaths"))
+            If targetPaths.Count = 0 Then
+                targetPaths = ResolveDeliveryCleanerTargetPaths(ParseStringList(pd, "filePaths"))
+            End If
             If targetPaths.Count = 0 Then
                 SendToWeb("deliverycleaner:error", New With {.message = "검토할 RVT 파일이 없습니다."})
                 Return
@@ -385,19 +450,20 @@ Namespace UI.Hub
             Try
                 Dim csvPath = VerificationService.VerifyPaths(app, targetPaths, outputFolder, settings, logger)
                 Dim rowCount = CountDeliveryCleanerExportRows(csvPath, "정리 결과 검토")
+                Dim exportPath = ConvertDeliveryCleanerCsvToXlsx(csvPath, "정리 결과 검토")
                 SyncLock _deliveryCleanerLock
                     If _deliveryCleanerSession Is Nothing Then _deliveryCleanerSession = New BatchPrepareSession()
-                    _deliveryCleanerSession.VerificationCsvPath = csvPath
+                    _deliveryCleanerSession.VerificationCsvPath = exportPath
                     If String.IsNullOrWhiteSpace(_deliveryCleanerSession.OutputFolder) Then _deliveryCleanerSession.OutputFolder = outputFolder
                     If _deliveryCleanerSettings Is Nothing Then _deliveryCleanerSettings = settings.Clone()
                 End SyncLock
 
-                SendDeliveryCleanerProgress(progress, "Completed", csvPath, complete:=True)
+                SendDeliveryCleanerProgress(progress, "Completed", exportPath, complete:=True)
                 SendToWeb("deliverycleaner:verify-done", New With {
                     .ok = True,
                     .rowCount = rowCount,
                     .state = BuildDeliveryCleanerStatePayload(),
-                    .canExport = Not String.IsNullOrWhiteSpace(csvPath)
+                    .canExport = Not String.IsNullOrWhiteSpace(exportPath)
                 })
             Catch ex As Exception
                 AppendDeliveryCleanerLog("검토 중 오류: " & ex.Message)
@@ -409,7 +475,10 @@ Namespace UI.Hub
         Private Sub HandleDeliveryCleanerExtract(app As UIApplication, payload As Object)
             Dim pd = ParsePayloadDict(payload)
             Dim settings = ParseDeliveryCleanerSettings(payload)
-            Dim targetPaths = ResolveDeliveryCleanerTargetPaths(ParseStringList(pd, "filePaths"))
+            Dim targetPaths = ResolveDeliveryCleanerTargetPaths(ParseStringList(pd, "selectedFilePaths"))
+            If targetPaths.Count = 0 Then
+                targetPaths = ResolveDeliveryCleanerTargetPaths(ParseStringList(pd, "filePaths"))
+            End If
             If targetPaths.Count = 0 Then
                 SendToWeb("deliverycleaner:error", New With {.message = "속성값을 추출할 RVT 파일이 없습니다."})
                 Return
@@ -438,21 +507,22 @@ Namespace UI.Hub
             Try
                 Dim csvPath = ModelParameterExtractionService.ExportModelParameters(app, targetPaths, outputFolder, parameterNamesCsv, logger)
                 Dim rowCount = CountDeliveryCleanerExportRows(csvPath, "속성값 추출")
+                Dim exportPath = ConvertDeliveryCleanerCsvToXlsx(csvPath, "속성값 추출")
                 SyncLock _deliveryCleanerLock
                     _deliveryCleanerExtractParamsCsv = parameterNamesCsv
                     If _deliveryCleanerSession Is Nothing Then _deliveryCleanerSession = New BatchPrepareSession()
-                    _deliveryCleanerSession.ExtractionCsvPath = csvPath
+                    _deliveryCleanerSession.ExtractionCsvPath = exportPath
                     If String.IsNullOrWhiteSpace(_deliveryCleanerSession.OutputFolder) Then _deliveryCleanerSession.OutputFolder = outputFolder
                     If _deliveryCleanerSettings Is Nothing Then _deliveryCleanerSettings = settings.Clone()
                 End SyncLock
 
-                SendDeliveryCleanerProgress(progress, "Completed", csvPath, complete:=True)
+                SendDeliveryCleanerProgress(progress, "Completed", exportPath, complete:=True)
                 SendToWeb("deliverycleaner:extract-done", New With {
                     .ok = True,
                     .rowCount = rowCount,
                     .parameterNamesCsv = parameterNamesCsv,
                     .state = BuildDeliveryCleanerStatePayload(),
-                    .canExport = Not String.IsNullOrWhiteSpace(csvPath)
+                    .canExport = Not String.IsNullOrWhiteSpace(exportPath)
                 })
             Catch ex As Exception
                 AppendDeliveryCleanerLog("속성값 추출 중 오류: " & ex.Message)
@@ -464,7 +534,10 @@ Namespace UI.Hub
         Private Sub HandleDeliveryCleanerPurge(app As UIApplication, payload As Object)
             Dim pd = ParsePayloadDict(payload)
             Dim settings = ParseDeliveryCleanerSettings(payload)
-            Dim targetPaths = ResolveDeliveryCleanerTargetPaths(ParseStringList(pd, "filePaths"))
+            Dim targetPaths = ResolveDeliveryCleanerTargetPaths(ParseStringList(pd, "selectedFilePaths"))
+            If targetPaths.Count = 0 Then
+                targetPaths = ResolveDeliveryCleanerTargetPaths(ParseStringList(pd, "filePaths"))
+            End If
             If targetPaths.Count = 0 Then
                 SendToWeb("deliverycleaner:error", New With {.message = "Purge 대상 파일이 없습니다."})
                 Return
@@ -824,12 +897,13 @@ Namespace UI.Hub
             SendToWeb("deliverycleaner:folder-opened", New With {.ok = True, .path = targetPath})
         End Sub
 
-        Private Shared Function BuildDeliveryCleanerStatePayload() As Object
+        Private Shared Function BuildDeliveryCleanerStatePayload(Optional app As UIApplication = Nothing) As Object
             Dim settings As BatchCleanSettings = Nothing
             Dim session As BatchPrepareSession = Nothing
             Dim logs As List(Of String) = Nothing
             Dim extractCsv As String = String.Empty
             Dim lastLogExportPath As String = String.Empty
+            Dim visibilityCategories As List(Of String) = Nothing
 
             SyncLock _deliveryCleanerLock
                 settings = If(_deliveryCleanerSettings IsNot Nothing, _deliveryCleanerSettings.Clone(), Nothing)
@@ -837,7 +911,15 @@ Namespace UI.Hub
                 logs = New List(Of String)(_deliveryCleanerLogs)
                 extractCsv = _deliveryCleanerExtractParamsCsv
                 lastLogExportPath = _deliveryCleanerLastLogExportPath
+                visibilityCategories = New List(Of String)(_deliveryCleanerVisibilityCategories)
             End SyncLock
+
+            If app IsNot Nothing Then
+                visibilityCategories = GetDeliveryCleanerVisibilityCategories(app)
+                SyncLock _deliveryCleanerLock
+                    _deliveryCleanerVisibilityCategories = New List(Of String)(visibilityCategories)
+                End SyncLock
+            End If
 
             Return New With {
                 .settings = SerializeDeliveryCleanerSettings(settings),
@@ -845,8 +927,31 @@ Namespace UI.Hub
                 .logs = logs,
                 .extractParameterNamesCsv = extractCsv,
                 .lastLogExportPath = lastLogExportPath,
-                .purge = SerializePurgeSnapshot(PurgeUiBatchService.GetProgressSnapshot())
+                .purge = SerializePurgeSnapshot(PurgeUiBatchService.GetProgressSnapshot()),
+                .availableVisibilityCategories = visibilityCategories
             }
+        End Function
+
+        Private Shared Function GetDeliveryCleanerVisibilityCategories(app As UIApplication) As List(Of String)
+            Dim doc = app?.ActiveUIDocument?.Document
+            If doc Is Nothing Then Return New List(Of String)()
+
+            Dim names As New SortedSet(Of String)(StringComparer.CurrentCultureIgnoreCase)
+
+            Try
+                For Each item As Category In doc.Settings.Categories
+                    Dim category = item
+                    If category Is Nothing Then Continue For
+                    If category.Parent IsNot Nothing Then Continue For
+
+                    Dim name = If(category.Name, String.Empty).Trim()
+                    If String.IsNullOrWhiteSpace(name) Then Continue For
+                    names.Add(name)
+                Next
+            Catch
+            End Try
+
+            Return names.ToList()
         End Function
 
         Private Shared Function SerializeDeliveryCleanerSettings(settings As BatchCleanSettings) As Object
@@ -866,6 +971,18 @@ Namespace UI.Hub
                 .applyFilterInitially = settings.ApplyFilterInitially,
                 .autoEnableFilterIfEmpty = settings.AutoEnableFilterIfEmpty,
                 .filterProfile = SerializeFilterProfile(settings.FilterProfile),
+                .visibilityRules = New With {
+                    .combinationMode = settings.VisibilityRuleCombinationMode.ToString(),
+                    .showImportedCategoriesInView = settings.ShowImportedCategoriesInView,
+                    .showImportsInFamilies = settings.ShowImportsInFamilies,
+                    .rules = If(settings.VisibilitySubCategoryRules, New List(Of VisibilitySubCategoryRule)()) _
+                        .Select(Function(x) New With {
+                            .enabled = If(x IsNot Nothing, x.Enabled, False),
+                            .parentCategoryNames = If(x IsNot Nothing, x.GetNormalizedParentCategoryNames().ToList(), New List(Of String)()),
+                            .operatorName = If(x IsNot Nothing, x.Operator.ToString(), FilterRuleOperator.Contains.ToString()),
+                            .subCategoryText = If(x IsNot Nothing, x.SubCategoryText, String.Empty)
+                        }).ToList()
+                },
                 .elementParameterUpdate = SerializeElementParameterUpdateSettings(settings.ElementParameterUpdate)
             }
         End Function
@@ -1007,6 +1124,11 @@ Namespace UI.Hub
             settings.AutoEnableFilterIfEmpty = SafeBoolObj(GetProp(pd, "autoEnableFilterIfEmpty"), False)
             settings.ViewParameters = ParseDeliveryCleanerViewParameters(GetProp(pd, "viewParameters"))
             settings.FilterProfile = ParseDeliveryCleanerFilterProfile(GetProp(pd, "filterProfile"))
+            Dim visibilityRaw = ParsePayloadDict(GetProp(pd, "visibilityRules"))
+            settings.VisibilityRuleCombinationMode = ParseDeliveryCleanerCombinationMode(GetProp(visibilityRaw, "combinationMode"), ParameterConditionCombination.Or)
+            settings.VisibilitySubCategoryRules = ParseDeliveryCleanerVisibilityRules(GetProp(visibilityRaw, "rules"))
+            settings.ShowImportedCategoriesInView = ParseDeliveryCleanerNullableBool(GetProp(visibilityRaw, "showImportedCategoriesInView"))
+            settings.ShowImportsInFamilies = ParseDeliveryCleanerNullableBool(GetProp(visibilityRaw, "showImportsInFamilies"))
             settings.ElementParameterUpdate = ParseDeliveryCleanerElementUpdate(GetProp(pd, "elementParameterUpdate"))
 
             Return settings
@@ -1052,6 +1174,67 @@ Namespace UI.Hub
             Return profile
         End Function
 
+        Private Shared Function ParseDeliveryCleanerCombinationMode(raw As Object, fallback As ParameterConditionCombination) As ParameterConditionCombination
+            Dim comboName = NormalizeDeliveryCleanerText(raw)
+            Dim combo As ParameterConditionCombination
+            If [Enum].TryParse(comboName, True, combo) Then
+                Return combo
+            End If
+
+            Return fallback
+        End Function
+
+        Private Shared Function ParseDeliveryCleanerNullableBool(raw As Object) As Boolean?
+            If raw Is Nothing Then Return Nothing
+
+            If TypeOf raw Is Boolean Then
+                Return CBool(raw)
+            End If
+
+            Dim text = NormalizeDeliveryCleanerText(raw)
+            If String.IsNullOrWhiteSpace(text) Then Return Nothing
+
+            Dim parsed As Boolean
+            If Boolean.TryParse(text, parsed) Then
+                Return parsed
+            End If
+
+            Select Case text.Trim().ToLowerInvariant()
+                Case "show", "shown", "checked", "check", "on", "visible", "yes"
+                    Return True
+                Case "hide", "hidden", "unchecked", "uncheck", "off", "invisible", "no"
+                    Return False
+                Case Else
+                    Return Nothing
+            End Select
+        End Function
+
+        Private Shared Function ParseDeliveryCleanerVisibilityRules(raw As Object) As List(Of VisibilitySubCategoryRule)
+            Dim result As New List(Of VisibilitySubCategoryRule)()
+            Dim items = TryCast(raw, IEnumerable)
+            If items Is Nothing OrElse TypeOf raw Is String Then Return result
+
+            For Each item As Object In items
+                Dim itemDict = ParsePayloadDict(item)
+                Dim operatorName = NormalizeDeliveryCleanerText(GetProp(itemDict, "operatorName"))
+                Dim op As FilterRuleOperator
+                If Not [Enum].TryParse(operatorName, True, op) Then op = FilterRuleOperator.Contains
+
+                result.Add(New VisibilitySubCategoryRule With {
+                    .Enabled = SafeBoolObj(GetProp(itemDict, "enabled"), False),
+                    .ParentCategoryNames = ParseStringList(itemDict, "parentCategoryNames") _
+                        .Select(Function(x) NormalizeDeliveryCleanerText(x)) _
+                        .Where(Function(x) Not String.IsNullOrWhiteSpace(x)) _
+                        .Distinct(StringComparer.OrdinalIgnoreCase) _
+                        .ToList(),
+                    .Operator = op,
+                    .SubCategoryText = NormalizeDeliveryCleanerText(GetProp(itemDict, "subCategoryText"))
+                })
+            Next
+
+            Return result
+        End Function
+
         Private Shared Function ParseDeliveryCleanerElementUpdate(raw As Object) As ElementParameterUpdateSettings
             Dim result As New ElementParameterUpdateSettings()
             If raw Is Nothing Then Return result
@@ -1060,11 +1243,7 @@ Namespace UI.Hub
             result.Enabled = SafeBoolObj(GetProp(d, "enabled"), False)
             result.ApplyToAllMatchingParameters = SafeBoolObj(GetProp(d, "applyToAllMatchingParameters"), False)
 
-            Dim comboName = NormalizeDeliveryCleanerText(GetProp(d, "combinationMode"))
-            Dim combo As ParameterConditionCombination
-            If [Enum].TryParse(comboName, True, combo) Then
-                result.CombinationMode = combo
-            End If
+            result.CombinationMode = ParseDeliveryCleanerCombinationMode(GetProp(d, "combinationMode"), ParameterConditionCombination.And)
 
             Dim conditionsRaw = TryCast(GetProp(d, "conditions"), IEnumerable)
             If conditionsRaw IsNot Nothing Then

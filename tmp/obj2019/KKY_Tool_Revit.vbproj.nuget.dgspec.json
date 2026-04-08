@@ -1,0 +1,153 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\kkyki\\OneDrive\\바탕 화면\\KKY_Tool_Revit\\KKY_Tool_Revit_2019-2023\\KKY_Tool_Revit.vbproj": {}
+  },
+  "projects": {
+    "C:\\Users\\kkyki\\OneDrive\\바탕 화면\\KKY_Tool_Revit\\KKY_Tool_Revit_2019-2023\\KKY_Tool_Revit.vbproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\kkyki\\OneDrive\\바탕 화면\\KKY_Tool_Revit\\KKY_Tool_Revit_2019-2023\\KKY_Tool_Revit.vbproj",
+        "projectName": "KKY_Tool_Revit",
+        "projectPath": "C:\\Users\\kkyki\\OneDrive\\바탕 화면\\KKY_Tool_Revit\\KKY_Tool_Revit_2019-2023\\KKY_Tool_Revit.vbproj",
+        "packagesPath": "C:\\Users\\kkyki\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\kkyki\\OneDrive\\바탕 화면\\KKY_Tool_Revit\\tmp\\obj2019\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\kkyki\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net48"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net48": {
+            "targetAlias": "net48",
+            "projectReferences": {
+              "C:\\Users\\kkyki\\OneDrive\\바탕 화면\\KKY_Tool_Revit\\KKY_Tool_Revit_2019-2023\\Services\\BatchCleanerCore\\CoreProject\\KKY_RvtBatchCleaner_Core.csproj": {
+                "projectPath": "C:\\Users\\kkyki\\OneDrive\\바탕 화면\\KKY_Tool_Revit\\KKY_Tool_Revit_2019-2023\\Services\\BatchCleanerCore\\CoreProject\\KKY_RvtBatchCleaner_Core.csproj"
+              }
+            }
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net48": {
+          "targetAlias": "net48",
+          "dependencies": {
+            "Microsoft.Web.WebView2": {
+              "target": "Package",
+              "version": "[1.0.2592.51, )"
+            },
+            "NPOI": {
+              "target": "Package",
+              "version": "[2.6.1, )"
+            },
+            "System.Numerics.Vectors": {
+              "target": "Package",
+              "version": "[4.5.0, )"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.103\\RuntimeIdentifierGraph.json"
+        }
+      }
+    },
+    "C:\\Users\\kkyki\\OneDrive\\바탕 화면\\KKY_Tool_Revit\\KKY_Tool_Revit_2019-2023\\Services\\BatchCleanerCore\\CoreProject\\KKY_RvtBatchCleaner_Core.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\kkyki\\OneDrive\\바탕 화면\\KKY_Tool_Revit\\KKY_Tool_Revit_2019-2023\\Services\\BatchCleanerCore\\CoreProject\\KKY_RvtBatchCleaner_Core.csproj",
+        "projectName": "KKY_RvtBatchCleaner_Core",
+        "projectPath": "C:\\Users\\kkyki\\OneDrive\\바탕 화면\\KKY_Tool_Revit\\KKY_Tool_Revit_2019-2023\\Services\\BatchCleanerCore\\CoreProject\\KKY_RvtBatchCleaner_Core.csproj",
+        "packagesPath": "C:\\Users\\kkyki\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\kkyki\\OneDrive\\바탕 화면\\KKY_Tool_Revit\\tmp\\obj2019\\",
+        "projectStyle": "PackageReference",
+        "crossTargeting": true,
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\kkyki\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net48",
+          "net8.0-windows"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0-windows7.0": {
+            "targetAlias": "net8.0-windows",
+            "projectReferences": {}
+          },
+          "net48": {
+            "targetAlias": "net48",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net8.0-windows7.0": {
+          "targetAlias": "net8.0-windows",
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            },
+            "Microsoft.WindowsDesktop.App.WindowsForms": {
+              "privateAssets": "none"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.103/PortableRuntimeIdentifierGraph.json"
+        },
+        "net48": {
+          "targetAlias": "net48",
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.103\\RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

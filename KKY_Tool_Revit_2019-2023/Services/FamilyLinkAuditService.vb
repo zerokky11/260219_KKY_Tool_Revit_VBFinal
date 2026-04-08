@@ -1,4 +1,4 @@
-Option Explicit On
+﻿Option Explicit On
 Option Strict On
 
 Imports System
@@ -24,6 +24,9 @@ Namespace Services
         Public Property HostFamilyCategory As String = ""
         Public Property NestedFamilyName As String = ""
         Public Property NestedTypeName As String = ""
+        Public Property NestedInstanceId As String = ""
+        Public Property NestedPath As String = ""
+        Public Property NestingLevel As String = ""
         Public Property NestedCategory As String = ""
         Public Property NestedParamName As String = ""
         Public Property TargetParamName As String = ""
@@ -44,6 +47,7 @@ Namespace Services
         GuidMismatch
         HostParamNotShared
         ParamNotFound
+        DescendantNestedUnsupported
         [Error]
     End Enum
 
@@ -55,6 +59,11 @@ Namespace Services
     Friend Class FoundParam
         Public Property P As Parameter
         Public Property Scope As FoundScope
+    End Class
+
+    Friend Class NestedFamilyStructureInfo
+        Public Property HasNestedFamilies As Boolean
+        Public Property NestedFamilyCount As Integer
     End Class
 
     Public NotInheritable Class FamilyLinkAuditService
@@ -70,7 +79,7 @@ Namespace Services
             If app Is Nothing Then Throw New ArgumentNullException(NameOf(app))
 
             Dim rows As New List(Of FamilyLinkAuditRow)()
-            Dim targetMap As Dictionary(Of String, FamilyLinkTargetParam) = BuildTargetMap(targets)
+            Dim targetMap As Dictionary(Of String, List(Of FamilyLinkTargetParam)) = BuildTargetMap(targets)
             If targetMap.Count = 0 Then Return rows
 
             Dim cleanedPaths As List(Of String) = NormalizePaths(rvtPaths)
@@ -83,13 +92,13 @@ Namespace Services
                 Dim fileName As String = SafeFileName(rvtPath)
 
                 Try
-                    ReportProgress(progress, total, i + 1, 0.02R, $"문서 여는 중... {i + 1}/{total} {fileName}")
+                    ReportProgress(progress, total, i + 1, 0.02R, $"프로젝트 스캔 시작... {i + 1}/{total} {fileName}")
 
                     If String.IsNullOrWhiteSpace(rvtPath) Then Throw New ArgumentException("RVT 경로가 비어 있습니다.")
                     If Not File.Exists(rvtPath) Then Throw New FileNotFoundException("RVT 파일을 찾을 수 없습니다.", rvtPath)
 
                     doc = OpenProjectDocument(app.Application, rvtPath)
-                    If doc Is Nothing Then Throw New InvalidOperationException("문서를 열 수 없습니다.")
+                    If doc Is Nothing Then Throw New InvalidOperationException("프로젝트 문서를 열 수 없습니다.")
 
                     Dim hostFamilies As List(Of Family) =
                         New FilteredElementCollector(doc).
@@ -109,7 +118,7 @@ Namespace Services
                     For fi As Integer = 0 To famTotal - 1
                         Dim fam As Family = hostFamilies(fi)
                         Dim frac As Double = 0.05R + 0.9R * SafeRatio(fi + 1, famTotal)
-                        ReportProgress(progress, total, i + 1, frac, $"[{rvtName}] 패밀리 검사 중 ({fi + 1}/{famTotal})")
+                        ReportProgress(progress, total, i + 1, frac, $"[{rvtName}] 패밀리 검사 중({fi + 1}/{famTotal})")
                         AuditFamilyAsHost(doc, fam, fileName, targetMap, rows)
                     Next
 
@@ -131,7 +140,6 @@ Namespace Services
                 End Try
             Next
 
-            rows = rows.Where(Function(x) Not String.Equals((If(x.Issue, "")).Trim(), "OK", StringComparison.OrdinalIgnoreCase)).ToList()
             Return rows
         End Function
 
@@ -142,7 +150,7 @@ Namespace Services
             Dim rows As New List(Of FamilyLinkAuditRow)()
             If doc Is Nothing Then Return rows
 
-            Dim targetMap As Dictionary(Of String, FamilyLinkTargetParam) = BuildTargetMap(targets)
+            Dim targetMap As Dictionary(Of String, List(Of FamilyLinkTargetParam)) = BuildTargetMap(targets)
             If targetMap.Count = 0 Then Return rows
 
             Dim fileName As String = SafeFileName(rvtPath)
@@ -163,7 +171,7 @@ Namespace Services
                 For fi As Integer = 0 To famTotal - 1
                     Dim fam As Family = hostFamilies(fi)
                     Dim frac As Double = 0.05R + 0.9R * SafeRatio(fi + 1, famTotal)
-                    ReportProgress(progress, 1, 1, frac, $"[{fileName}] 패밀리 검사 중 ({fi + 1}/{famTotal})")
+                    ReportProgress(progress, 1, 1, frac, $"[{fileName}] 패밀리 검사 중({fi + 1}/{famTotal})")
                     AuditFamilyAsHost(doc, fam, fileName, targetMap, rows)
                 Next
 
@@ -176,14 +184,13 @@ Namespace Services
                 })
             End Try
 
-            rows = rows.Where(Function(x) Not String.Equals((If(x.Issue, "")).Trim(), "OK", StringComparison.OrdinalIgnoreCase)).ToList()
             Return rows
         End Function
 
         Private Shared Sub AuditFamilyAsHost(hostDoc As Document,
                                              hostFamily As Family,
                                              fileName As String,
-                                             expectedByName As Dictionary(Of String, FamilyLinkTargetParam),
+                                             expectedByName As Dictionary(Of String, List(Of FamilyLinkTargetParam)),
                                              rows As List(Of FamilyLinkAuditRow))
 
             Dim famDoc As Document = Nothing
@@ -201,156 +208,13 @@ Namespace Services
 
                 If nestedInstances.Count = 0 Then Return
 
-                Dim repInstances As List(Of FamilyInstance) =
-                    nestedInstances.
-                        GroupBy(Function(fi) fi.Symbol.Id.IntegerValue).
-                        Select(Function(g) g.First()).
-                        ToList()
-
                 Dim hostCat As String = ""
                 Try
                     If hostFamily.FamilyCategory IsNot Nothing Then hostCat = hostFamily.FamilyCategory.Name
                 Catch
                 End Try
 
-                For Each fi As FamilyInstance In repInstances
-                    Dim nestedFam As Family = fi.Symbol.Family
-
-                    Dim nestedCat As String = ""
-                    Try
-                        If fi.Category IsNot Nothing Then nestedCat = fi.Category.Name
-                    Catch
-                    End Try
-
-                    Dim map As Dictionary(Of String, List(Of FoundParam)) = CollectParamMap(fi)
-
-                    For Each kv As KeyValuePair(Of String, FamilyLinkTargetParam) In expectedByName
-                        Dim targetName As String = kv.Key
-                        Dim expected As FamilyLinkTargetParam = kv.Value
-
-                        Dim found As List(Of FoundParam) = Nothing
-                        If Not map.TryGetValue(targetName, found) OrElse found Is Nothing OrElse found.Count = 0 Then
-                            rows.Add(New FamilyLinkAuditRow With {
-                                .FileName = fileName,
-                                .HostFamilyName = hostFamily.Name,
-                                .HostFamilyCategory = hostCat,
-                                .NestedFamilyName = nestedFam.Name,
-                                .NestedTypeName = SafeStr(fi.Symbol.Name),
-                                .NestedCategory = nestedCat,
-                                .NestedParamName = "",
-                                .TargetParamName = targetName,
-                                .ExpectedGuid = expected.Guid.ToString("D"),
-                                .Issue = FamilyLinkAuditIssue.ParamNotFound.ToString(),
-                                .Notes = "네스티드(하위) 패밀리 인스턴스/타입에서 해당 이름의 파라미터를 찾지 못함"
-                            })
-                            Continue For
-                        End If
-
-                        For Each fp As FoundParam In found
-                            Dim p As Parameter = fp.P
-                            If p Is Nothing OrElse p.Definition Is Nothing Then Continue For
-
-                            Dim nestedGuid As Guid
-                            Dim nestedGuidOk As Boolean = TryGetParameterGuid(p, nestedGuid)
-                            Dim nestedGuidStr As String = If(nestedGuidOk, nestedGuid.ToString("D"), "")
-
-                            Dim nestedIsShared As Boolean = False
-                            Dim nestedIsSharedKnown As Boolean = TryGetParameterIsShared(p, nestedIsShared)
-
-                            Dim assoc As FamilyParameter = Nothing
-                            Try
-                                assoc = famDoc.FamilyManager.GetAssociatedFamilyParameter(p)
-                            Catch ex As Exception
-                                rows.Add(New FamilyLinkAuditRow With {
-                                    .FileName = fileName,
-                                    .HostFamilyName = hostFamily.Name,
-                                    .HostFamilyCategory = hostCat,
-                                    .NestedFamilyName = nestedFam.Name,
-                                    .NestedTypeName = SafeStr(fi.Symbol.Name),
-                                    .NestedCategory = nestedCat,
-                                    .NestedParamName = SafeStr(p.Definition.Name),
-                                .TargetParamName = targetName,
-                                    .ExpectedGuid = expected.Guid.ToString("D"),
-                                    .FoundScope = fp.Scope.ToString(),
-                                    .NestedParamGuid = nestedGuidStr,
-                                    .NestedParamDataType = SafeDefTypeToken(p.Definition),
-                                    .Issue = FamilyLinkAuditIssue.[Error].ToString(),
-                                    .Notes = "GetAssociatedFamilyParameter 실패: " & ex.Message
-                                })
-                                Continue For
-                            End Try
-
-                            Dim issue As FamilyLinkAuditIssue = FamilyLinkAuditIssue.OK
-                            Dim notes As String = ""
-
-                            If assoc Is Nothing Then
-                                issue = FamilyLinkAuditIssue.MissingAssociation
-                                notes = "호스트 패밀리 파라미터로 연동(Associate)되지 않음"
-                            Else
-                                If nestedGuidOk Then
-                                    If nestedGuid <> expected.Guid Then
-                                        issue = FamilyLinkAuditIssue.GuidMismatch
-                                        notes = $"네스티드 파라미터 GUID 불일치 (Expected {expected.Guid:D}, Nested {nestedGuid:D})"
-                                    End If
-                                Else
-                                    If nestedIsSharedKnown Then
-                                        If nestedIsShared Then
-                                            notes = "네스티드 파라미터 IsShared=True 이지만 GUID 추출 실패(특이 케이스)"
-                                        Else
-                                            notes = "네스티드 파라미터 IsShared=False (Shared 아님, 이름만 일치)"
-                                        End If
-                                    Else
-                                        notes = "네스티드 파라미터 Shared 여부 확인 실패(이름만 일치)"
-                                    End If
-                                End If
-
-                                If assoc.IsShared = False Then
-                                    If issue = FamilyLinkAuditIssue.OK Then issue = FamilyLinkAuditIssue.HostParamNotShared
-                                    If notes <> "" Then notes &= " / "
-                                    notes &= "연결된 호스트 FamilyParameter가 Shared가 아님"
-                                End If
-
-                                Dim hostGuid As Guid
-                                If TryGetDefinitionGuid(assoc.Definition, hostGuid) Then
-                                    If hostGuid <> expected.Guid Then
-                                        If issue = FamilyLinkAuditIssue.OK Then issue = FamilyLinkAuditIssue.GuidMismatch
-                                        If notes <> "" Then notes &= " / "
-                                        notes &= $"호스트 파라미터 GUID 불일치 (Expected {expected.Guid:D}, Host {hostGuid:D})"
-                                    End If
-                                End If
-                            End If
-
-                            Dim row As New FamilyLinkAuditRow With {
-                                .FileName = fileName,
-                                .HostFamilyName = hostFamily.Name,
-                                .HostFamilyCategory = hostCat,
-                                .NestedFamilyName = nestedFam.Name,
-                                .NestedTypeName = SafeStr(fi.Symbol.Name),
-                                .NestedCategory = nestedCat,
-                                .NestedParamName = SafeStr(p.Definition.Name),
-                                .TargetParamName = targetName,
-                                .ExpectedGuid = expected.Guid.ToString("D"),
-                                .FoundScope = fp.Scope.ToString(),
-                                .NestedParamGuid = nestedGuidStr,
-                                .NestedParamDataType = SafeDefTypeToken(p.Definition),
-                                .Issue = issue.ToString(),
-                                .Notes = notes
-                            }
-
-                            If assoc IsNot Nothing Then
-                                row.AssocHostParamName = SafeStr(assoc.Definition.Name)
-                                row.HostParamIsShared = assoc.IsShared.ToString()
-
-                                Dim hostGuid2 As Guid
-                                If TryGetDefinitionGuid(assoc.Definition, hostGuid2) Then
-                                    row.HostParamGuid = hostGuid2.ToString("D")
-                                End If
-                            End If
-
-                            rows.Add(row)
-                        Next
-                    Next
-                Next
+                AuditNestedInstancesRecursive(famDoc, hostFamily, hostCat, fileName, expectedByName, rows, "", 1)
 
             Finally
                 If famDoc IsNot Nothing Then
@@ -361,6 +225,450 @@ Namespace Services
                 End If
             End Try
         End Sub
+
+        Private Shared Sub AuditNestedInstancesRecursive(parentFamilyDoc As Document,
+                                                         hostFamily As Family,
+                                                         hostCat As String,
+                                                         fileName As String,
+                                                         expectedByName As Dictionary(Of String, List(Of FamilyLinkTargetParam)),
+                                                         rows As List(Of FamilyLinkAuditRow),
+                                                         pathPrefix As String,
+                                                         nestingLevel As Integer)
+
+            If parentFamilyDoc Is Nothing Then Return
+
+            Dim nestedInstances As List(Of FamilyInstance) =
+                New FilteredElementCollector(parentFamilyDoc).
+                    OfClass(GetType(FamilyInstance)).
+                    WhereElementIsNotElementType().
+                    Cast(Of FamilyInstance)().
+                    Where(Function(x) x IsNot Nothing AndAlso x.Symbol IsNot Nothing AndAlso x.Symbol.Family IsNot Nothing).
+                    ToList()
+
+            If nestedInstances.Count = 0 Then Return
+
+            For Each fi As FamilyInstance In nestedInstances
+                Dim nestedFam As Family = fi.Symbol.Family
+                Dim nestedCat As String = ""
+                Try
+                    If fi.Category IsNot Nothing Then nestedCat = fi.Category.Name
+                Catch
+                End Try
+
+                Dim nestedPath As String = BuildNestedPath(pathPrefix, nestedFam, fi)
+                Dim nestedStructure As NestedFamilyStructureInfo = Nothing
+                Dim childDoc As Document = Nothing
+
+                Try
+                    If nestedFam IsNot Nothing AndAlso nestedFam.IsEditable AndAlso Not nestedFam.IsInPlace Then
+                        childDoc = parentFamilyDoc.EditFamily(nestedFam)
+                        If childDoc IsNot Nothing AndAlso childDoc.IsFamilyDocument Then
+                            nestedStructure = New NestedFamilyStructureInfo()
+                            nestedStructure.NestedFamilyCount =
+                                New FilteredElementCollector(childDoc).
+                                    OfClass(GetType(FamilyInstance)).
+                                    WhereElementIsNotElementType().
+                                    GetElementCount()
+                            nestedStructure.HasNestedFamilies = (nestedStructure.NestedFamilyCount > 0)
+                        End If
+                    End If
+                Catch
+                    childDoc = Nothing
+                End Try
+
+                If nestedStructure Is Nothing Then
+                    nestedStructure = New NestedFamilyStructureInfo()
+                End If
+
+                If nestingLevel <= 1 Then
+                    AuditDirectNestedInstance(parentFamilyDoc, fileName, hostFamily, hostCat, nestedFam, fi, nestedCat, nestedStructure, expectedByName, rows, nestedPath, nestingLevel)
+                Else
+                    AuditDescendantNestedInstance(fileName, hostFamily, hostCat, nestedFam, fi, nestedCat, nestedStructure, expectedByName, rows, nestedPath, nestingLevel)
+                End If
+
+                If childDoc IsNot Nothing AndAlso nestedStructure.HasNestedFamilies Then
+                    AuditNestedInstancesRecursive(childDoc, hostFamily, hostCat, fileName, expectedByName, rows, nestedPath, nestingLevel + 1)
+                End If
+
+                If childDoc IsNot Nothing Then
+                    Try
+                        childDoc.Close(False)
+                    Catch
+                    End Try
+                End If
+            Next
+        End Sub
+
+        Private Shared Sub AuditDirectNestedInstance(parentFamilyDoc As Document,
+                                                     fileName As String,
+                                                     hostFamily As Family,
+                                                     hostCat As String,
+                                                     nestedFam As Family,
+                                                     fi As FamilyInstance,
+                                                     nestedCat As String,
+                                                     nestedStructure As NestedFamilyStructureInfo,
+                                                     expectedByName As Dictionary(Of String, List(Of FamilyLinkTargetParam)),
+                                                     rows As List(Of FamilyLinkAuditRow),
+                                                     nestedPath As String,
+                                                     nestingLevel As Integer)
+
+            Dim map As Dictionary(Of String, List(Of FoundParam)) = CollectParamMap(fi)
+
+            For Each kv As KeyValuePair(Of String, List(Of FamilyLinkTargetParam)) In expectedByName
+                Dim targetName As String = kv.Key
+                Dim expectedItems As IEnumerable(Of FamilyLinkTargetParam) =
+                    If(kv.Value, Enumerable.Empty(Of FamilyLinkTargetParam)()).
+                        Where(Function(x) x IsNot Nothing)
+
+                Dim resolvedFound As List(Of FoundParam) = Nothing
+                If Not map.TryGetValue(targetName, resolvedFound) OrElse resolvedFound Is Nothing OrElse resolvedFound.Count = 0 Then
+                    For Each expectedItem As FamilyLinkTargetParam In expectedItems
+                        rows.Add(BuildParamNotFoundRow(fileName, hostFamily, hostCat, nestedFam, fi, nestedCat, targetName, expectedItem, nestedStructure, nestedPath, nestingLevel))
+                    Next
+                    Continue For
+                End If
+
+                For Each expectedItem As FamilyLinkTargetParam In expectedItems
+                    Dim candidateRows As New List(Of FamilyLinkAuditRow)()
+
+                    For Each fp As FoundParam In resolvedFound
+                        Dim candidate As FamilyLinkAuditRow =
+                            EvaluateFoundParam(fileName, hostFamily, hostCat, nestedFam, fi, nestedCat, targetName, expectedItem, fp, parentFamilyDoc, nestedStructure, nestedPath, nestingLevel)
+                        If candidate IsNot Nothing Then candidateRows.Add(candidate)
+                    Next
+
+                    If candidateRows.Count = 0 Then
+                        rows.Add(BuildParamNotFoundRow(fileName, hostFamily, hostCat, nestedFam, fi, nestedCat, targetName, expectedItem, nestedStructure, nestedPath, nestingLevel))
+                        Continue For
+                    End If
+
+                    If candidateRows.Any(Function(x) IsOkIssue(x)) Then
+                        Continue For
+                    End If
+
+                    Dim preferred As FamilyLinkAuditRow = SelectPreferredAuditRow(candidateRows)
+                    If preferred IsNot Nothing Then rows.Add(preferred)
+                Next
+            Next
+        End Sub
+
+        Private Shared Sub AuditDescendantNestedInstance(fileName As String,
+                                                         hostFamily As Family,
+                                                         hostCat As String,
+                                                         nestedFam As Family,
+                                                         fi As FamilyInstance,
+                                                         nestedCat As String,
+                                                         nestedStructure As NestedFamilyStructureInfo,
+                                                         expectedByName As Dictionary(Of String, List(Of FamilyLinkTargetParam)),
+                                                         rows As List(Of FamilyLinkAuditRow),
+                                                         nestedPath As String,
+                                                         nestingLevel As Integer)
+
+            Dim map As Dictionary(Of String, List(Of FoundParam)) = CollectParamMap(fi)
+
+            For Each kv As KeyValuePair(Of String, List(Of FamilyLinkTargetParam)) In expectedByName
+                Dim targetName As String = kv.Key
+                Dim expectedItems As IEnumerable(Of FamilyLinkTargetParam) =
+                    If(kv.Value, Enumerable.Empty(Of FamilyLinkTargetParam)()).
+                        Where(Function(x) x IsNot Nothing)
+
+                Dim found As List(Of FoundParam) = Nothing
+                map.TryGetValue(targetName, found)
+                Dim representative As FoundParam = If(found IsNot Nothing AndAlso found.Count > 0, found(0), Nothing)
+                Dim p As Parameter = If(representative IsNot Nothing, representative.P, Nothing)
+
+                Dim nestedParamName As String = ""
+                Dim nestedScope As String = ""
+                Dim nestedGuidStr As String = ""
+                Dim nestedDataType As String = ""
+
+                If p IsNot Nothing AndAlso p.Definition IsNot Nothing Then
+                    nestedParamName = SafeStr(p.Definition.Name)
+                    nestedScope = If(representative IsNot Nothing, representative.Scope.ToString(), "")
+                    Dim nestedGuid As Guid
+                    If TryGetParameterGuid(p, nestedGuid) Then
+                        nestedGuidStr = nestedGuid.ToString("D")
+                    End If
+                    nestedDataType = SafeDefTypeToken(p.Definition)
+                End If
+
+                For Each expectedItem As FamilyLinkTargetParam In expectedItems
+                    Dim notes As String =
+                        $"직접 하위가 아닌 하위의 하위 경로(Level {nestingLevel})에서 발견된 패밀리입니다. 경로: {nestedPath}. 직접 하위만 호스트 연동 검토 대상이며 이 행은 동일 타입 중첩 구조를 구분하기 위한 표시입니다"
+
+                    If String.IsNullOrWhiteSpace(nestedParamName) Then
+                        notes &= " / 현재 인스턴스/타입에서 해당 이름의 파라미터를 찾지 못함"
+                    End If
+
+                    Dim compositeNote As String = BuildCompositeNestedNote(nestedStructure)
+                    If compositeNote <> "" Then notes &= " / " & compositeNote
+
+                    rows.Add(New FamilyLinkAuditRow With {
+                        .FileName = fileName,
+                        .HostFamilyName = If(hostFamily IsNot Nothing, hostFamily.Name, ""),
+                        .HostFamilyCategory = hostCat,
+                        .NestedFamilyName = If(nestedFam IsNot Nothing, nestedFam.Name, ""),
+                        .NestedTypeName = SafeStr(If(fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing, fi.Symbol.Name, "")),
+                        .NestedInstanceId = SafeElementIdText(fi),
+                        .NestedPath = nestedPath,
+                        .NestingLevel = nestingLevel.ToString(),
+                        .NestedCategory = nestedCat,
+                        .NestedParamName = nestedParamName,
+                        .TargetParamName = targetName,
+                        .ExpectedGuid = If(expectedItem IsNot Nothing, expectedItem.Guid.ToString("D"), ""),
+                        .FoundScope = nestedScope,
+                        .NestedParamGuid = nestedGuidStr,
+                        .NestedParamDataType = nestedDataType,
+                        .Issue = FamilyLinkAuditIssue.DescendantNestedUnsupported.ToString(),
+                        .Notes = notes
+                    })
+                Next
+            Next
+        End Sub
+
+        Private Shared Function BuildParamNotFoundRow(fileName As String,
+                                                      hostFamily As Family,
+                                                      hostCat As String,
+                                                      nestedFam As Family,
+                                                      fi As FamilyInstance,
+                                                      nestedCat As String,
+                                                      targetName As String,
+                                                      expected As FamilyLinkTargetParam,
+                                                      nestedStructure As NestedFamilyStructureInfo,
+                                                      nestedPath As String,
+                                                      nestingLevel As Integer) As FamilyLinkAuditRow
+            Dim notes As String = "중첩 패밀리(하위) 또는 패밀리 인스턴스/타입에서 해당 이름의 파라미터를 찾지 못함"
+            Dim compositeNote As String = BuildCompositeNestedNote(nestedStructure)
+            If compositeNote <> "" Then notes &= " / " & compositeNote
+
+            Return New FamilyLinkAuditRow With {
+                .FileName = fileName,
+                .HostFamilyName = If(hostFamily IsNot Nothing, hostFamily.Name, ""),
+                .HostFamilyCategory = hostCat,
+                .NestedFamilyName = If(nestedFam IsNot Nothing, nestedFam.Name, ""),
+                .NestedTypeName = SafeStr(If(fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing, fi.Symbol.Name, "")),
+                .NestedInstanceId = SafeElementIdText(fi),
+                .NestedPath = nestedPath,
+                .NestingLevel = nestingLevel.ToString(),
+                .NestedCategory = nestedCat,
+                .NestedParamName = "",
+                .TargetParamName = targetName,
+                .ExpectedGuid = If(expected IsNot Nothing, expected.Guid.ToString("D"), ""),
+                .Issue = FamilyLinkAuditIssue.ParamNotFound.ToString(),
+                .Notes = notes
+            }
+        End Function
+
+        Private Shared Function EvaluateFoundParam(fileName As String,
+                                                   hostFamily As Family,
+                                                   hostCat As String,
+                                                   nestedFam As Family,
+                                                   fi As FamilyInstance,
+                                                   nestedCat As String,
+                                                   targetName As String,
+                                                   expected As FamilyLinkTargetParam,
+                                                   fp As FoundParam,
+                                                   famDoc As Document,
+                                                   nestedStructure As NestedFamilyStructureInfo,
+                                                   nestedPath As String,
+                                                   nestingLevel As Integer) As FamilyLinkAuditRow
+            If expected Is Nothing OrElse fp Is Nothing Then Return Nothing
+
+            Dim p As Parameter = fp.P
+            If p Is Nothing OrElse p.Definition Is Nothing Then Return Nothing
+
+            Dim nestedGuid As Guid
+            Dim nestedGuidOk As Boolean = TryGetParameterGuid(p, nestedGuid)
+            Dim nestedGuidStr As String = If(nestedGuidOk, nestedGuid.ToString("D"), "")
+
+            Dim nestedIsShared As Boolean = False
+            Dim nestedIsSharedKnown As Boolean = TryGetParameterIsShared(p, nestedIsShared)
+
+            Dim assoc As FamilyParameter = Nothing
+            Try
+                assoc = famDoc.FamilyManager.GetAssociatedFamilyParameter(p)
+            Catch ex As Exception
+                Dim errorNotes As String = "GetAssociatedFamilyParameter 실패: " & ex.Message
+                Dim compositeNote As String = BuildCompositeNestedNote(nestedStructure)
+                If compositeNote <> "" Then errorNotes = compositeNote & " / " & errorNotes
+
+                Return New FamilyLinkAuditRow With {
+                    .FileName = fileName,
+                    .HostFamilyName = If(hostFamily IsNot Nothing, hostFamily.Name, ""),
+                    .HostFamilyCategory = hostCat,
+                    .NestedFamilyName = If(nestedFam IsNot Nothing, nestedFam.Name, ""),
+                    .NestedTypeName = SafeStr(If(fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing, fi.Symbol.Name, "")),
+                    .NestedInstanceId = SafeElementIdText(fi),
+                    .NestedPath = nestedPath,
+                    .NestingLevel = nestingLevel.ToString(),
+                    .NestedCategory = nestedCat,
+                    .NestedParamName = SafeStr(p.Definition.Name),
+                    .TargetParamName = targetName,
+                    .ExpectedGuid = expected.Guid.ToString("D"),
+                    .FoundScope = fp.Scope.ToString(),
+                    .NestedParamGuid = nestedGuidStr,
+                    .NestedParamDataType = SafeDefTypeToken(p.Definition),
+                    .Issue = FamilyLinkAuditIssue.[Error].ToString(),
+                    .Notes = errorNotes
+                }
+            End Try
+
+            Dim issue As FamilyLinkAuditIssue = FamilyLinkAuditIssue.OK
+            Dim notes As String = ""
+
+            If assoc Is Nothing Then
+                issue = FamilyLinkAuditIssue.MissingAssociation
+                notes = "중첩 패밀리 파라미터에 호스트 연결(Associate)이 없습니다"
+            Else
+                If nestedGuidOk Then
+                    If nestedGuid <> expected.Guid Then
+                        issue = FamilyLinkAuditIssue.GuidMismatch
+                        notes = $"중첩 패밀리 파라미터 GUID 불일치(Expected {expected.Guid:D}, Nested {nestedGuid:D})"
+                    End If
+                Else
+                    If nestedIsSharedKnown Then
+                        If nestedIsShared Then
+                            notes = "중첩 패밀리 파라미터 IsShared=True 이나 GUID 추출 실패(특이 케이스)"
+                        Else
+                            notes = "중첩 패밀리 파라미터 IsShared=False (Shared 아님, 이름만 일치)"
+                        End If
+                    Else
+                        notes = "중첩 패밀리 파라미터 Shared 여부 확인 실패(이름만 일치)"
+                    End If
+                End If
+
+                If assoc.IsShared = False Then
+                    If issue = FamilyLinkAuditIssue.OK Then issue = FamilyLinkAuditIssue.HostParamNotShared
+                    If notes <> "" Then notes &= " / "
+                    notes &= "연결된 호스트 FamilyParameter가 Shared가 아님"
+                End If
+
+                Dim hostGuid As Guid
+                If TryGetDefinitionGuid(assoc.Definition, hostGuid) Then
+                    If hostGuid <> expected.Guid Then
+                        If issue = FamilyLinkAuditIssue.OK Then issue = FamilyLinkAuditIssue.GuidMismatch
+                        If notes <> "" Then notes &= " / "
+                        notes &= $"호스트 파라미터 GUID 불일치(Expected {expected.Guid:D}, Host {hostGuid:D})"
+                    End If
+                End If
+            End If
+
+            Dim compositeSummaryNote As String = BuildCompositeNestedNote(nestedStructure)
+            If compositeSummaryNote <> "" Then
+                If notes <> "" Then
+                    notes &= " / "
+                End If
+                notes &= compositeSummaryNote
+            End If
+
+            Dim row As New FamilyLinkAuditRow With {
+                .FileName = fileName,
+                .HostFamilyName = If(hostFamily IsNot Nothing, hostFamily.Name, ""),
+                .HostFamilyCategory = hostCat,
+                .NestedFamilyName = If(nestedFam IsNot Nothing, nestedFam.Name, ""),
+                .NestedTypeName = SafeStr(If(fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing, fi.Symbol.Name, "")),
+                .NestedInstanceId = SafeElementIdText(fi),
+                .NestedPath = nestedPath,
+                .NestingLevel = nestingLevel.ToString(),
+                .NestedCategory = nestedCat,
+                .NestedParamName = SafeStr(p.Definition.Name),
+                .TargetParamName = targetName,
+                .ExpectedGuid = expected.Guid.ToString("D"),
+                .FoundScope = fp.Scope.ToString(),
+                .NestedParamGuid = nestedGuidStr,
+                .NestedParamDataType = SafeDefTypeToken(p.Definition),
+                .Issue = issue.ToString(),
+                .Notes = notes
+            }
+
+            If assoc IsNot Nothing Then
+                row.AssocHostParamName = SafeStr(assoc.Definition.Name)
+                row.HostParamIsShared = assoc.IsShared.ToString()
+
+                Dim hostGuid2 As Guid
+                If TryGetDefinitionGuid(assoc.Definition, hostGuid2) Then
+                    row.HostParamGuid = hostGuid2.ToString("D")
+                End If
+            End If
+
+            Return row
+        End Function
+
+        Private Shared Function BuildCompositeNestedNote(info As NestedFamilyStructureInfo) As String
+            If info Is Nothing OrElse Not info.HasNestedFamilies Then Return ""
+
+            If info.NestedFamilyCount > 0 Then
+                Return $"직접 중첩 패밀리가 또 다른 하위 패밀리 {info.NestedFamilyCount}개를 포함하는 복합 패밀리입니다. 하위 패밀리의 하위 패밀리 파라미터는 현재 단계에서 직접 연결 검토할 수 없습니다"
+            End If
+
+            Return "직접 중첩 패밀리가 또 다른 하위 패밀리를 포함하는 복합 패밀리입니다. 하위 패밀리의 하위 패밀리 파라미터는 현재 단계에서 직접 연결 검토할 수 없습니다"
+        End Function
+
+        Private Shared Function BuildNestedPath(pathPrefix As String,
+                                                nestedFam As Family,
+                                                fi As FamilyInstance) As String
+            Dim segment As String = If(nestedFam IsNot Nothing, nestedFam.Name, "")
+            Dim typeName As String = SafeStr(If(fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing, fi.Symbol.Name, ""))
+            If typeName <> "" Then
+                segment &= $" [{typeName}]"
+            End If
+
+            If String.IsNullOrWhiteSpace(pathPrefix) Then Return segment
+            If String.IsNullOrWhiteSpace(segment) Then Return pathPrefix
+            Return pathPrefix & " > " & segment
+        End Function
+
+        Private Shared Function IsOkIssue(row As FamilyLinkAuditRow) As Boolean
+            If row Is Nothing Then Return False
+            Return String.Equals(SafeStr(row.Issue).Trim(), FamilyLinkAuditIssue.OK.ToString(), StringComparison.OrdinalIgnoreCase)
+        End Function
+
+        Private Shared Function SelectPreferredAuditRow(candidates As IEnumerable(Of FamilyLinkAuditRow)) As FamilyLinkAuditRow
+            If candidates Is Nothing Then Return Nothing
+
+            Return candidates.
+                Where(Function(x) x IsNot Nothing).
+                OrderBy(Function(x) GetIssuePriority(x)).
+                ThenBy(Function(x) GetScopePriority(x)).
+                ThenBy(Function(x) SafeStr(x.NestedParamName), StringComparer.OrdinalIgnoreCase).
+                FirstOrDefault()
+        End Function
+
+        Private Shared Function GetIssuePriority(row As FamilyLinkAuditRow) As Integer
+            If row Is Nothing Then Return Integer.MaxValue
+
+            Select Case SafeStr(row.Issue).Trim()
+                Case FamilyLinkAuditIssue.GuidMismatch.ToString()
+                    Return 0
+                Case FamilyLinkAuditIssue.HostParamNotShared.ToString()
+                    Return 1
+                Case FamilyLinkAuditIssue.MissingAssociation.ToString()
+                    Return 2
+                Case FamilyLinkAuditIssue.DescendantNestedUnsupported.ToString()
+                    Return 3
+                Case FamilyLinkAuditIssue.ParamNotFound.ToString()
+                    Return 4
+                Case FamilyLinkAuditIssue.[Error].ToString()
+                    Return 5
+                Case FamilyLinkAuditIssue.OK.ToString()
+                    Return 6
+                Case Else
+                    Return 7
+            End Select
+        End Function
+
+        Private Shared Function GetScopePriority(row As FamilyLinkAuditRow) As Integer
+            If row Is Nothing Then Return Integer.MaxValue
+
+            Select Case SafeStr(row.FoundScope).Trim()
+                Case FoundScope.InstanceParam.ToString()
+                    Return 0
+                Case FoundScope.TypeParam.ToString()
+                    Return 1
+                Case Else
+                    Return 2
+            End Select
+        End Function
 
         Private Shared Function CollectParamMap(fi As FamilyInstance) As Dictionary(Of String, List(Of FoundParam))
             Dim map As New Dictionary(Of String, List(Of FoundParam))(StringComparer.OrdinalIgnoreCase)
@@ -446,7 +754,7 @@ Namespace Services
                 End If
 
             Catch
-                ' Reflection/특이 케이스는 무시하고 폴백으로 진행
+                ' Reflection/특이 케이스는 무시하고 다음 경로로 진행
             End Try
 
             Return TryGetDefinitionGuid(p.Definition, guid)
@@ -462,6 +770,16 @@ Namespace Services
 #Else
                 Return SafeStr(defn.ParameterType.ToString())
 #End If
+            Catch
+                Return ""
+            End Try
+        End Function
+
+        Private Shared Function SafeElementIdText(fi As FamilyInstance) As String
+            If fi Is Nothing Then Return ""
+            Try
+                If fi.Id Is Nothing Then Return ""
+                Return fi.Id.IntegerValue.ToString()
             Catch
                 Return ""
             End Try
@@ -499,13 +817,16 @@ Namespace Services
             End Try
         End Function
 
-        Private Shared Function BuildTargetMap(targets As IList(Of FamilyLinkTargetParam)) As Dictionary(Of String, FamilyLinkTargetParam)
-            Dim map As New Dictionary(Of String, FamilyLinkTargetParam)(StringComparer.OrdinalIgnoreCase)
+        Private Shared Function BuildTargetMap(targets As IList(Of FamilyLinkTargetParam)) As Dictionary(Of String, List(Of FamilyLinkTargetParam))
+            Dim map As New Dictionary(Of String, List(Of FamilyLinkTargetParam))(StringComparer.OrdinalIgnoreCase)
             If targets Is Nothing Then Return map
             For Each t In targets
                 If t Is Nothing Then Continue For
                 If String.IsNullOrWhiteSpace(t.Name) Then Continue For
-                map(t.Name) = t
+                Dim key As String = t.Name.Trim()
+                If Not map.ContainsKey(key) Then map(key) = New List(Of FamilyLinkTargetParam)()
+                If map(key).Any(Function(existing) existing IsNot Nothing AndAlso existing.Guid = t.Guid) Then Continue For
+                map(key).Add(t)
             Next
             Return map
         End Function

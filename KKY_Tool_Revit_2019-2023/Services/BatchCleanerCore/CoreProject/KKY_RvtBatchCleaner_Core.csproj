@@ -51,6 +51,7 @@
     <Compile Include="..\Models\ElementParameterUpdateSettings.cs" Link="Models\ElementParameterUpdateSettings.cs" />
     <Compile Include="..\Models\PreparedDocumentEntry.cs" Link="Models\PreparedDocumentEntry.cs" />
     <Compile Include="..\Models\PurgeBatchProgressSnapshot.cs" Link="Models\PurgeBatchProgressSnapshot.cs" />
+    <Compile Include="..\Models\VisibilitySubCategoryRule.cs" Link="Models\VisibilitySubCategoryRule.cs" />
     <Compile Include="..\Models\ViewFilterProfile.cs" Link="Models\ViewFilterProfile.cs" />
     <Compile Include="..\Models\ViewParameterAssignment.cs" Link="Models\ViewParameterAssignment.cs" />
 
@@ -61,6 +62,7 @@
     <Compile Include="..\ModelParameterExtractionService.cs" Link="Services\ModelParameterExtractionService.cs" />
     <Compile Include="..\PurgeUiBatchService.cs" Link="Services\PurgeUiBatchService.cs" />
     <Compile Include="..\RevitViewFilterProfileService.cs" Link="Services\RevitViewFilterProfileService.cs" />
+    <Compile Include="..\VisibilitySubCategoryRuleProfileService.cs" Link="Services\VisibilitySubCategoryRuleProfileService.cs" />
     <Compile Include="..\TransactionFailureSwallower.cs" Link="Services\TransactionFailureSwallower.cs" />
     <Compile Include="..\VerificationService.cs" Link="Services\VerificationService.cs" />
   </ItemGroup>

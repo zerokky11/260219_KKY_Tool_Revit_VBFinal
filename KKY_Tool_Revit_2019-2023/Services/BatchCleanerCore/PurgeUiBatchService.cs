@@ -318,7 +318,7 @@ namespace KKY_Tool_Revit.Services
                 }
                 catch (Exception ex)
                 {
-                    WriteLog("Purge ?곹깭 泥섎━ ?ㅻ쪟: " + ex.Message);
+                    WriteLog("Purge 상태 처리 오류: " + ex.Message);
                     SetFaultedLocked();
                 }
             }
@@ -367,7 +367,7 @@ namespace KKY_Tool_Revit.Services
             _externalEventHandler.PendingOpenPath = _currentPath;
             RefocusRevitForPurgeLocked("퍼지 대상 활성 열기 요청");
             _externalEvent.Raise();
-            WriteLog("?쇱? ????뚯씪 ?쒖꽦 ?닿린 ?붿껌: " + _currentPath);
+            WriteLog("임시 저장 파일 생성 열기 요청: " + _currentPath);
             _state = PurgeBatchState.ActivateCurrentDocument;
             _nextActionUtc = DateTime.UtcNow.AddMilliseconds(900);
         }
@@ -419,7 +419,7 @@ namespace KKY_Tool_Revit.Services
                 return;
             }
 
-            RefocusRevitForPurgeLocked("Purge 紐낅졊 ?ㅽ뻾");
+            RefocusRevitForPurgeLocked("Purge 명령 실행");
             WriteLog("Purge 실행: " + Path.GetFileName(_currentPath) + " / 반복 " + _currentIteration + "/" + _maxIterations);
             _uiapp.PostCommand(_purgeCommandId);
             _commandPostedUtc = DateTime.UtcNow;
@@ -715,14 +715,14 @@ namespace KKY_Tool_Revit.Services
             IntPtr dialogHandle = FindRevitModalDialog(_mainWindowHandle);
             if (dialogHandle != IntPtr.Zero)
             {
-                RefocusRevitForPurgeLocked("Purge ??붿긽???뺤씤");
+                RefocusRevitForPurgeLocked("Purge 대상창 확인");
                 EnsureWindowTopMost(dialogHandle);
                 FocusWindow(dialogHandle);
                 SendEnterToWindow(dialogHandle);
                 _dialogEnterAttempts = 1;
                 _lastEnterUtc = DateTime.UtcNow;
                 _state = PurgeBatchState.WaitingForDialogToClose;
-                WriteLog("Purge ??붿긽???뺤씤 / Enter ?꾩넚");
+                WriteLog("Purge 대상창 확인 / Enter 전송");
                 return;
             }
 
@@ -748,7 +748,7 @@ namespace KKY_Tool_Revit.Services
             IntPtr dialogHandle = FindRevitModalDialog(_mainWindowHandle);
             if (dialogHandle == IntPtr.Zero)
             {
-                WriteLog("Purge ??붿긽???ロ옒 ?뺤씤");
+                WriteLog("Purge 대상창 재확인");
                 AdvanceIterationLocked();
                 return;
             }
@@ -756,13 +756,13 @@ namespace KKY_Tool_Revit.Services
             TimeSpan sinceLastEnter = DateTime.UtcNow - _lastEnterUtc;
             if (sinceLastEnter > TimeSpan.FromSeconds(2) && _dialogEnterAttempts < MaxEnterAttemptsPerIteration)
             {
-                RefocusRevitForPurgeLocked("Purge ??붿긽???뺤씤");
+                RefocusRevitForPurgeLocked("Purge 대상창 확인");
                 EnsureWindowTopMost(dialogHandle);
                 FocusWindow(dialogHandle);
                 SendEnterToWindow(dialogHandle);
                 _dialogEnterAttempts++;
                 _lastEnterUtc = DateTime.UtcNow;
-                WriteLog("Purge ??붿긽???ы솗??/ Enter ?ъ쟾??" + _dialogEnterAttempts + "/" + MaxEnterAttemptsPerIteration);
+                WriteLog("Purge 대상창 활성화 / Enter 재전송 " + _dialogEnterAttempts + "/" + MaxEnterAttemptsPerIteration);
                 return;
             }
 
@@ -1005,7 +1005,7 @@ namespace KKY_Tool_Revit.Services
             {
                 SetWindowPos(_mainWindowHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
                 _mainWindowTopMost = true;
-                _lastStatusMessage = "Revit 李???긽 ???좎?";
+                _lastStatusMessage = "Revit 창 상태 확인";
             }
             catch
             {

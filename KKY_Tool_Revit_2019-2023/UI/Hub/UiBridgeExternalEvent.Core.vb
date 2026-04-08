@@ -95,6 +95,9 @@ Namespace UI.Hub
                     BroadcastTopmost()
                     Return
 
+                Case "ui:sync-context", "ui:route-changed", "ui:theme-changed"
+                    Return
+
                 Case "ui:set-topmost"
                     Dim turnOn As Boolean = False
                     Try
@@ -138,6 +141,7 @@ Namespace UI.Hub
             map.Add("export:save-excel", "HandleExportSaveExcel")
             ' Shared Parameter Propagator
             map.Add("paramprop:run", "HandleSharedParamRun")
+            map.Add("paramprop:browse-output-folder", "HandleSharedParamBrowseOutputFolder")
             map.Add("sharedparam:run", "HandleSharedParamRun")
             map.Add("sharedparam:list", "HandleSharedParamList")
             map.Add("sharedparam:status", "HandleSharedParamStatus")
@@ -146,6 +150,7 @@ Namespace UI.Hub
             map.Add("paramprop:list", "HandleSharedParamList")
             map.Add("paramprop:status", "HandleSharedParamStatus")
             map.Add("paramprop:export-excel", "HandleSharedParamExport")
+            map.Add("sharedparam:browse-output-folder", "HandleSharedParamBrowseOutputFolder")
             map.Add("sharedparam:export", "HandleSharedParamExport")
             ' Shared Parameter Batch
             map.Add("sharedparambatch:init", "HandleSharedParamBatchInit")
@@ -164,6 +169,17 @@ Namespace UI.Hub
             map.Add("parammodifier:run", "HandleParameterModifierRun")
             map.Add("parammodifier:export-results", "HandleParameterModifierExportResults")
             map.Add("parammodifier:open-folder", "HandleParameterModifierOpenFolder")
+            ' Condition Extract
+            map.Add("conditionextract:init", "HandleConditionExtractInit")
+            map.Add("conditionextract:pick-rvts", "HandleConditionExtractPickRvts")
+            map.Add("conditionextract:run", "HandleConditionExtractRun")
+            map.Add("conditionextract:export-results", "HandleConditionExtractExportResults")
+            map.Add("conditionextract:open-folder", "HandleConditionExtractOpenFolder")
+            ' Nozzle Code KTA Standardization
+            map.Add("lateralnozzle:init", "HandleLateralNozzleInit")
+            map.Add("lateralnozzle:pick-excels", "HandleLateralNozzlePickExcels")
+            map.Add("lateralnozzle:run", "HandleLateralNozzleRun")
+            map.Add("lateralnozzle:open-folder", "HandleLateralNozzleOpenFolder")
             ' 공통 Excel 동작
             map.Add("excel:open", "HandleExcelOpen")
             ' Segment ↔ PMS Check
@@ -199,6 +215,8 @@ Namespace UI.Hub
             map.Add("deliverycleaner:browse-output-folder", "HandleDeliveryCleanerBrowseOutputFolder")
             map.Add("deliverycleaner:filter-import", "HandleDeliveryCleanerFilterImport")
             map.Add("deliverycleaner:filter-save", "HandleDeliveryCleanerFilterSave")
+            map.Add("deliverycleaner:visibility-rules-import", "HandleDeliveryCleanerVisibilityRulesImport")
+            map.Add("deliverycleaner:visibility-rules-save", "HandleDeliveryCleanerVisibilityRulesSave")
             map.Add("deliverycleaner:filter-doc-list", "HandleDeliveryCleanerFilterDocList")
             map.Add("deliverycleaner:filter-doc-extract", "HandleDeliveryCleanerFilterDocExtract")
             map.Add("deliverycleaner:run", "HandleDeliveryCleanerRun")
@@ -458,6 +476,13 @@ Private Shared Function NormalizeEventName(name As String) As String
 
             ' 일부 호출 경로에서 "C:\...ile.xlsx" 처럼 따옴표가 포함되어 전달되는 경우가 있어 정규화
             inputPath = NormalizeWrappedQuotesText(inputPath)
+            Try
+                If inputPath.IndexOf("\u", StringComparison.OrdinalIgnoreCase) >= 0 OrElse inputPath.Contains("\\") Then
+                    inputPath = System.Text.RegularExpressions.Regex.Unescape(inputPath)
+                End If
+            Catch
+                ' ignore
+            End Try
 
             ' file:///C:/... 형태 대응
             Try

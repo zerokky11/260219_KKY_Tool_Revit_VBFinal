@@ -91,12 +91,23 @@ export function renderMulti(root) {
       excludeEndDummy: false
     }),
     features: {
-      connector: createFeatureState({ tol: 1.0, unit: 'inch', param: 'Comments', paramItems: ['Comments'] }),
+      connector: createFeatureState({
+        tol: 1.0,
+        unit: 'inch',
+        param: 'Comments',
+        paramItems: ['Comments'],
+        includePointXY: false,
+        includeLinearMetrics: false
+      }),
     floorinfo: createFeatureState({ parameterName: '', levelRules: [], documentTitle: '', warnings: [] }),
       guid: createFeatureState({ includeFamily: false, includeAnnotation: false }),
       familylink: createFeatureState({ targetsText: '', selectedTargets: [], targets: [] }),
       points: createFeatureState({ unit: 'ft' }),
-      linkworkset: createFeatureState({ applyDefaultWorksetOnly: true })
+      linkworkset: createFeatureState({
+        applyDefaultWorksetOnly: true,
+        useSyncComment: false,
+        syncComment: 'KKY Tools - 링크 기본 웍셋 적용'
+      })
     },
     results: {},
     sharedParamStatus: null,
@@ -178,6 +189,7 @@ export function renderMulti(root) {
     chipLabel: '파일 정리',
     chipTitle: '파일 정리 워크플로우 화면으로 이동합니다.'
   }));
+  group1.section.append(buildConditionExtractWorkflowRow());
   group1.section.append(buildToggleRow('connector', buildConnectorConfig()));
   group1.section.append(buildToggleRow('floorinfo', buildFloorInfoConfig()));
   group1.section.append(buildDupWorkflowRow({
@@ -189,6 +201,7 @@ export function renderMulti(root) {
   group3.section.append(buildParamPropWorkflowRow());
   group3.section.append(buildPmsWorkflowRow());
   group3.section.append(buildParamModifierWorkflowRow());
+  group3.section.append(buildLateralNozzleWorkflowRow());
   group3.section.append(buildToggleRow('guid', buildGuidConfig()));
   group3.section.append(buildToggleRow('familylink', buildFamilyLinkConfig()));
   group3.section.append(buildToggleRow('points', buildPointsConfig()));
@@ -320,6 +333,15 @@ export function renderMulti(root) {
     ProgressDialog.hide();
     updateRunProgress(0, '오류 발생', payload?.message || '');
     toast(payload?.message || '배치 검토 중 오류가 발생했습니다.', 'err');
+    state.ui.runCompleted = false;
+    updateRunActionLabel();
+  });
+
+  onHost('hub:multi-canceled', (payload) => {
+    setBusyState(false);
+    ProgressDialog.hide();
+    updateRunProgress(0, '실행 취소', payload?.message || '');
+    toast(payload?.message || '작업을 취소했습니다.', 'warn');
     state.ui.runCompleted = false;
     updateRunActionLabel();
   });
@@ -864,6 +886,32 @@ export function renderMulti(root) {
     });
   }
 
+  function buildLateralNozzleWorkflowRow() {
+    return buildWorkflowLaunchRow({
+      iconLabel: 'KTA',
+      title: '노즐코드 KTA 단일화',
+      cardDesc: '접수받은 KTA 양식을\n정해진 하나의 시트양식으로 추출',
+      infoDesc: '접수받은 KTA 양식을 정해진 하나의 시트양식으로 추출합니다.',
+      categoryLabel: 'Excel',
+      categoryTitle: '엑셀 추출/정리 기능',
+      summary: '엑셀 파일 추가 → 헤더 블록 자동 탐색 → 누락/형식 검토 → 결과 시트 저장',
+      route: 'lateralnozzle'
+    });
+  }
+
+function buildConditionExtractWorkflowRow() {
+  return buildWorkflowLaunchRow({
+    iconLabel: 'BQC',
+    title: '조건별 객체 대상 속성 추출',
+    cardDesc: '조건식으로 객체를 추려\n지정 속성 + 좌표/선형 정보를 함께 추출',
+    infoDesc: '조건식으로 객체를 추려 지정 속성과 좌표/선형 정보를 함께 추출합니다.',
+    categoryLabel: 'BQC 검토',
+    categoryTitle: '조건별 속성 추출 기능',
+    summary: '활성 문서 또는 다중 RVT 선택 → 조건/추출 파라미터 설정 → 좌표/선형 옵션 선택 → 결과 엑셀 저장',
+    route: 'conditionextract'
+  });
+}
+
   function buildParamPropWorkflowRow() {
     return buildWorkflowLaunchRow({
       iconLabel: 'SP',
@@ -1016,6 +1064,22 @@ export function renderMulti(root) {
       refreshConnectorFeatureSummary();
     });
 
+    const pointXY = makeCheckboxField('Point X / Point Y 추출');
+    pointXY.input.checked = !!state.features.connector.configDraft.includePointXY;
+    pointXY.input.addEventListener('change', () => {
+      state.features.connector.configDraft.includePointXY = pointXY.input.checked;
+      markFeatureDirty('connector');
+      refreshConnectorFeatureSummary();
+    });
+
+    const linearMetrics = makeCheckboxField('선형 길이 / 방향 벡터 추출');
+    linearMetrics.input.checked = !!state.features.connector.configDraft.includeLinearMetrics;
+    linearMetrics.input.addEventListener('change', () => {
+      state.features.connector.configDraft.includeLinearMetrics = linearMetrics.input.checked;
+      markFeatureDirty('connector');
+      refreshConnectorFeatureSummary();
+    });
+
     const basicsCard = div('feature-row__summary');
     basicsCard.style.display = 'grid';
     basicsCard.style.gap = '10px';
@@ -1084,6 +1148,31 @@ export function renderMulti(root) {
     unitCard.append(unit.field);
     basics.append(tolCard, unitCard);
     basicsCard.append(basicsTitle, basics);
+
+    const extractOptionsCard = div('feature-row__summary');
+    extractOptionsCard.style.display = 'grid';
+    extractOptionsCard.style.gap = '8px';
+    extractOptionsCard.style.padding = '10px';
+    extractOptionsCard.style.borderRadius = '14px';
+    extractOptionsCard.style.border = '1px solid var(--border-accent-soft)';
+    extractOptionsCard.style.background = 'var(--surface-control)';
+
+    const extractOptionsTitle = document.createElement('strong');
+    extractOptionsTitle.textContent = '추가 추출 옵션';
+    extractOptionsTitle.style.fontSize = '12px';
+    extractOptionsTitle.style.lineHeight = '1.3';
+
+    pointXY.field.style.margin = '0';
+    linearMetrics.field.style.margin = '0';
+    pointXY.field.style.padding = '0';
+    linearMetrics.field.style.padding = '0';
+    pointXY.field.style.border = '0';
+    linearMetrics.field.style.border = '0';
+    pointXY.field.style.background = 'transparent';
+    linearMetrics.field.style.background = 'transparent';
+
+    extractOptionsCard.append(extractOptionsTitle, pointXY.field, linearMetrics.field);
+    basicsCard.append(extractOptionsCard);
 
     const selectedWrap = div('feature-row__summary');
     selectedWrap.style.display = 'grid';
@@ -1329,7 +1418,20 @@ export function renderMulti(root) {
 
     buildConnectorConfig.renderList = renderConnectorList;
     renderConnectorList();
-    return { panel, controls: { tol, unit, searchInput, listWrap, selectedWrap, renderConnectorList, renderConnectorSelected } };
+    return {
+      panel,
+      controls: {
+        tol,
+        unit,
+        pointXY,
+        linearMetrics,
+        searchInput,
+        listWrap,
+        selectedWrap,
+        renderConnectorList,
+        renderConnectorSelected
+      }
+    };
   }
 
   function buildFloorInfoConfig() {
@@ -1619,11 +1721,29 @@ export function renderMulti(root) {
       markFeatureDirty('linkworkset');
     });
 
-    const note = div('feature-note');
-    note.textContent = 'top-level Revit 링크를 대상으로 현재 로드 상태와 open user workset 현황을 추출하고, 필요 시 기본 workset1 만 열리도록 재로드합니다.';
+    const useSyncComment = makeCheckboxField('동기화 시 코멘트 적용');
+    useSyncComment.input.checked = !!state.features.linkworkset.configDraft.useSyncComment;
+    const syncComment = makeField('동기화 코멘트', 'linkworksetSyncComment', '예) KKY Tools - 링크 기본 웍셋 적용');
+    syncComment.input.value = state.features.linkworkset.configDraft.syncComment || 'KKY Tools - 링크 기본 웍셋 적용';
+    syncComment.input.addEventListener('input', () => {
+      state.features.linkworkset.configDraft.syncComment = syncComment.input.value;
+      markFeatureDirty('linkworkset');
+    });
+    const updateSyncCommentState = () => {
+      syncComment.input.disabled = !useSyncComment.input.checked;
+    };
+    useSyncComment.input.addEventListener('change', () => {
+      state.features.linkworkset.configDraft.useSyncComment = useSyncComment.input.checked;
+      markFeatureDirty('linkworkset');
+      updateSyncCommentState();
+    });
+    updateSyncCommentState();
 
-    panel.append(applyDefault.field, note);
-    return { panel, controls: { applyDefault } };
+    const note = div('feature-note');
+    note.textContent = 'top-level Revit 링크를 대상으로 현재 로드 상태와 open user workset 현황을 추출하고, 필요 시 기본 workset1 만 열리도록 재로드합니다. 코멘트 적용을 켜면 동기화 시 입력한 문구를 함께 기록합니다.';
+
+    panel.append(applyDefault.field, useSyncComment.field, syncComment.field, note);
+    return { panel, controls: { applyDefault, useSyncComment, syncComment } };
   }
 
   function buildFamilyLinkConfig() {
@@ -2464,6 +2584,18 @@ export function renderMulti(root) {
     });
   }
 
+  function getReviewItemFile(item) {
+    return String(item?.file || item?.File || '').trim();
+  }
+
+  function getReviewItemStatus(item) {
+    return String(item?.status || item?.Status || 'pending');
+  }
+
+  function getReviewItemReason(item) {
+    return String(item?.reason || item?.Reason || '');
+  }
+
   function getRecentResultRows() {
     const payload = getCurrentModeReviewSummary();
     const modeKeys = getModeFeatureKeys();
@@ -2477,21 +2609,21 @@ export function renderMulti(root) {
     if (summaryRows.length) {
       const merged = new Map();
       summaryRows.forEach((row) => {
-        const file = row?.file || '';
+        const file = getReviewItemFile(row);
         if (!file) return;
         const current = merged.get(file) || {
           file,
           total: 0,
           issues: 0,
           near: 0,
-          status: String(row?.status || 'pending'),
-          reason: row?.reason || ''
+          status: getReviewItemStatus(row),
+          reason: getReviewItemReason(row)
         };
         current.total = Math.max(Number(current.total) || 0, Number(row?.total) || 0);
         current.issues += Number(row?.issues) || 0;
         current.near += Number(row?.near) || 0;
-        current.status = current.status || String(row?.status || 'pending');
-        if (!current.reason && row?.reason) current.reason = row.reason;
+        current.status = current.status || getReviewItemStatus(row);
+        if (!current.reason && getReviewItemReason(row)) current.reason = getReviewItemReason(row);
         merged.set(file, current);
       });
       return Array.from(merged.values()).map((row) => ({
@@ -2506,13 +2638,13 @@ export function renderMulti(root) {
 
     const items = Array.isArray(payload?.items) ? payload.items : [];
     return items.map((item) => ({
-      file: item?.file || '',
+      file: getReviewItemFile(item),
       total: '',
       issues: '',
       near: '',
-      status: String(item?.status || 'pending'),
-      reason: item?.reason || ''
-    }));
+      status: getReviewItemStatus(item),
+      reason: getReviewItemReason(item)
+    })).filter((item) => !!item.file);
   }
 
   function renderRecentResultTable(targets = []) {
@@ -2555,15 +2687,15 @@ export function renderMulti(root) {
     const byFile = new Map();
     const items = Array.isArray(payload?.items) ? payload.items : [];
     items.forEach((item) => {
-      const file = item?.file || '';
+      const file = getReviewItemFile(item);
       if (!file) return;
       byFile.set(file, {
         file,
-        status: String(item?.status || 'pending'),
+        status: getReviewItemStatus(item),
         total: '',
         issues: '',
         near: '',
-        reason: item?.reason || ''
+        reason: getReviewItemReason(item)
       });
     });
 
@@ -2572,11 +2704,11 @@ export function renderMulti(root) {
         ? payload.featureSummaries[key].fileSummaries
         : [];
       fileSummaries.forEach((item) => {
-        const file = item?.file || '';
+        const file = getReviewItemFile(item);
         if (!file) return;
         const existing = byFile.get(file) || {
           file,
-          status: String(item?.status || 'pending'),
+          status: getReviewItemStatus(item),
           total: '',
           issues: '',
           near: '',
@@ -2585,8 +2717,8 @@ export function renderMulti(root) {
         existing.total = existing.total === '' ? (Number(item?.total) || 0) : Math.max(Number(existing.total) || 0, Number(item?.total) || 0);
         existing.issues = (Number(existing.issues) || 0) + (Number(item?.issues) || 0);
         existing.near = (Number(existing.near) || 0) + (Number(item?.near) || 0);
-        existing.status = existing.status || String(item?.status || 'pending');
-        if (!existing.reason && item?.reason) existing.reason = item.reason;
+        existing.status = existing.status || getReviewItemStatus(item);
+        if (!existing.reason && getReviewItemReason(item)) existing.reason = getReviewItemReason(item);
         byFile.set(file, existing);
       });
     });
@@ -2889,12 +3021,17 @@ export function renderMulti(root) {
       if (!configuredCount) return '선택한 영역 기준 레벨에 기대 층정보 값을 최소 1개 이상 입력하세요.';
     }
     if (options.requireRvt && !state.rvtList.length) return 'RVT 파일을 추가하세요.';
+    if (options.requireRvt && !getCheckedRvtPaths().length) return '검토할 RVT를 1개 이상 선택하세요.';
     return '';
+  }
+
+  function getCheckedRvtPaths() {
+    return state.rvtList.filter((path) => state.rvtChecked.has(path));
   }
 
   function buildPayload() {
     return {
-      rvtPaths: state.rvtList.slice(),
+      rvtPaths: getCheckedRvtPaths(),
       commonOptions: state.common.configCommitted,
       features: {
         connector: buildCommittedFeature('connector'),
@@ -2908,8 +3045,10 @@ export function renderMulti(root) {
   }
 
   function onExport(key) {
-    setBusyState(true);
     chooseExcelMode((mode) => {
+      setBusyState(true);
+      ProgressDialog.show('엑셀 내보내기', '준비 중...');
+      ProgressDialog.update(0, '준비 중...', '');
       post('hub:multi-export', { key, excelMode: mode || 'fast' });
     });
   }
@@ -3386,6 +3525,9 @@ export function renderMulti(root) {
       return [
         '공유 파라미터 txt 목록에서 검토 대상을 검색해 선택합니다.',
         '여러 파라미터를 선택하면 같은 논리로 연속성 검토를 진행합니다.',
+        '추가 추출 파라미터는 인스턴스 우선, 없으면 타입 파라미터에서도 값을 찾습니다.',
+        'Point X / Point Y 옵션을 켜면 결과에 좌표 컬럼이 자동으로 추가됩니다.',
+        '선형 길이 / 방향 벡터 옵션을 켜면 Curve Length, Direction X/Y/Z 컬럼이 함께 추가됩니다.',
         '허용범위와 단위는 기존 커넥터 검토 로직 그대로 적용됩니다.'
       ];
     }
@@ -3562,11 +3704,17 @@ export function renderMulti(root) {
     );
     const unit = feature.configDraft?.unit || feature.configCommitted?.unit || 'inch';
     const tol = feature.configDraft?.tol || feature.configCommitted?.tol || 1;
+    const includePointXY = !!(feature.configDraft?.includePointXY ?? feature.configCommitted?.includePointXY);
+    const includeLinearMetrics = !!(feature.configDraft?.includeLinearMetrics ?? feature.configCommitted?.includeLinearMetrics);
     const selectedText = selected.length ? selected.join(', ') : '선택 없음';
+    const optionParts = [];
+    if (includePointXY) optionParts.push('XY');
+    if (includeLinearMetrics) optionParts.push('Dir');
+    const optionText = optionParts.length ? ` · 옵션 ${optionParts.join(', ')}` : '';
     target.top.textContent = feature.enabled
       ? '체크됨 · 설정창에서 검토 파라미터를 선택하거나 수정할 수 있습니다.'
       : '체크 후 옵션을 열어 공유 파라미터 목록에서 검토 대상을 선택하세요.';
-    target.sub.textContent = `선택 파라미터 ${selected.length}개 · ${selectedText} · 허용범위 ${tol} ${unit}`;
+    target.sub.textContent = `선택 파라미터 ${selected.length}개 · ${selectedText} · 허용범위 ${tol} ${unit}${optionText}`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
       FEATURE_META.connector?.label || '파라미터 값 연속성 검토',
@@ -3869,7 +4017,9 @@ export function renderMulti(root) {
     const payload = {
       extraParamsText: committed.extraParams || '',
       targetFilterText: committed.targetFilter || '',
-      excludeEndDummy: !!committed.excludeEndDummy
+      excludeEndDummy: !!committed.excludeEndDummy,
+      includePointXY: !!committed.includePointXY,
+      includeLinearMetrics: !!committed.includeLinearMetrics
     };
     try {
       localStorage.setItem(COMMON_OPTIONS_KEY, JSON.stringify(payload));
@@ -3989,6 +4139,8 @@ export function renderMulti(root) {
       draft.param = draft.paramItems.join(',') || 'Comments';
       controls.tol.input.value = draft.tol;
       controls.unit.select.value = draft.unit;
+      if (controls.pointXY?.input) controls.pointXY.input.checked = !!draft.includePointXY;
+      if (controls.linearMetrics?.input) controls.linearMetrics.input.checked = !!draft.includeLinearMetrics;
       if (controls.searchInput) controls.searchInput.value = '';
       if (controls.renderConnectorList) controls.renderConnectorList();
       if (controls.renderConnectorSelected) controls.renderConnectorSelected();
@@ -4011,6 +4163,9 @@ export function renderMulti(root) {
     } else if (key === 'linkworkset') {
       const draft = state.features.linkworkset.configDraft;
       controls.applyDefault.input.checked = draft.applyDefaultWorksetOnly !== false;
+      controls.useSyncComment.input.checked = !!draft.useSyncComment;
+      controls.syncComment.input.value = draft.syncComment || 'KKY Tools - 링크 기본 웍셋 적용';
+      controls.syncComment.input.disabled = !controls.useSyncComment.input.checked;
     } else if (key === 'common') {
       const draft = state.common.configDraft;
       controls.extra.input.value = draft.extraParams;

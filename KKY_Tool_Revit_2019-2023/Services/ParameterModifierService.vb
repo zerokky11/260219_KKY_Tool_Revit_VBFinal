@@ -1,4 +1,4 @@
-Option Explicit On
+﻿Option Explicit On
 Option Strict On
 
 Imports System
@@ -431,8 +431,7 @@ Namespace Services
 
             Dim results As New List(Of Boolean)()
             For Each condition In conditions
-                Dim parameter = FindParameterOnElementOrType(doc, element, condition.ParameterName)
-                results.Add(EvaluateCondition(doc, parameter, condition))
+                results.Add(EvaluateCondition(doc, element, condition))
             Next
 
             If combinationMode = ParameterConditionCombination.Or Then
@@ -443,12 +442,14 @@ Namespace Services
         End Function
 
         Private Shared Function EvaluateCondition(doc As Document,
-                                                  parameter As Parameter,
+                                                  element As Element,
                                                   condition As ElementParameterCondition) As Boolean
             If condition Is Nothing Then Return True
-            If parameter Is Nothing Then Return False
 
-            Dim actualText = GetParameterValueText(doc, parameter)
+            Dim hasParameter = ModelParameterExtractionService.HasElementParameter(doc, element, condition.ParameterName)
+            If Not hasParameter Then Return False
+
+            Dim actualText = ModelParameterExtractionService.GetElementParameterValue(doc, element, condition.ParameterName)
             Select Case condition.Operator
                 Case FilterRuleOperator.HasValue
                     Return Not String.IsNullOrWhiteSpace(actualText)

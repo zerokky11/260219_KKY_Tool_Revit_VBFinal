@@ -1,4 +1,4 @@
-Imports System
+﻿Imports System
 Imports System.Collections.Generic
 Imports System.Diagnostics
 Imports System.Globalization
@@ -759,13 +759,7 @@ Namespace Services
 
         Private Shared Function ResolveParamText(el As Element, name As String) As String
             If el Is Nothing OrElse String.IsNullOrWhiteSpace(name) Then Return ""
-
-            Dim p As Parameter = Nothing
-            Try
-                p = el.LookupParameter(name)
-            Catch
-            End Try
-
+            Dim p As Parameter = FindParameterOnElementOrType(el, name)
             If p Is Nothing Then Return ""
             Return ResolveParamText(p)
         End Function
@@ -819,13 +813,224 @@ Namespace Services
                 If perElem.ContainsKey(n) Then
                     result(n) = perElem(n)
                 Else
-                    Dim text = ResolveParamText(el, n)
+                    Dim text = ResolveExtraValue(el, n)
                     perElem(n) = text
                     result(n) = text
                 End If
             Next
 
             Return result
+        End Function
+
+        Private Shared Function ResolveExtraValue(el As Element, name As String) As String
+            If el Is Nothing OrElse String.IsNullOrWhiteSpace(name) Then Return ""
+
+            Dim syntheticValue As String = String.Empty
+            If TryResolveSyntheticExtraValue(el, name, syntheticValue) Then
+                Return syntheticValue
+            End If
+
+            Return ResolveParamText(el, name)
+        End Function
+
+        Private Shared Function TryResolveSyntheticExtraValue(el As Element,
+                                                              rawName As String,
+                                                              ByRef value As String) As Boolean
+            value = String.Empty
+            If el Is Nothing OrElse String.IsNullOrWhiteSpace(rawName) Then Return False
+
+            Dim normalized = NormalizeSyntheticName(rawName)
+            If String.IsNullOrWhiteSpace(normalized) Then Return False
+
+            Dim point As XYZ = Nothing
+            Dim direction As XYZ = Nothing
+            Dim lengthFt As Double = 0.0R
+
+            Select Case normalized
+                Case "pointx"
+                    If TryGetRepresentativePoint(el, point) Then value = FormatGeometryValue(point.X, 6)
+                    Return True
+                Case "pointy"
+                    If TryGetRepresentativePoint(el, point) Then value = FormatGeometryValue(point.Y, 6)
+                    Return True
+                Case "pointz"
+                    If TryGetRepresentativePoint(el, point) Then value = FormatGeometryValue(point.Z, 6)
+                    Return True
+                Case "curvelength", "length", "linelength"
+                    If TryGetCurveLengthFt(el, lengthFt) Then value = FormatGeometryValue(lengthFt, 6)
+                    Return True
+                Case "directionx", "vectorx", "dirx"
+                    If TryGetDirectionVector(el, direction) Then value = FormatGeometryValue(direction.X, 6)
+                    Return True
+                Case "directiony", "vectory", "diry"
+                    If TryGetDirectionVector(el, direction) Then value = FormatGeometryValue(direction.Y, 6)
+                    Return True
+                Case "directionz", "vectorz", "dirz"
+                    If TryGetDirectionVector(el, direction) Then value = FormatGeometryValue(direction.Z, 6)
+                    Return True
+            End Select
+
+            Return False
+        End Function
+
+        Private Shared Function NormalizeSyntheticName(rawName As String) As String
+            If String.IsNullOrWhiteSpace(rawName) Then Return String.Empty
+            Return New String(rawName.
+                Trim().
+                ToLowerInvariant().
+                Where(Function(ch) Char.IsLetterOrDigit(ch)).
+                ToArray())
+        End Function
+
+        Private Shared Function TryGetRepresentativePoint(el As Element, ByRef point As XYZ) As Boolean
+            point = Nothing
+            If el Is Nothing Then Return False
+
+            Try
+                Dim lp = TryCast(el.Location, LocationPoint)
+                If lp IsNot Nothing AndAlso lp.Point IsNot Nothing Then
+                    point = lp.Point
+                    Return True
+                End If
+            Catch
+            End Try
+
+            Try
+                Dim lc = TryCast(el.Location, LocationCurve)
+                If lc IsNot Nothing AndAlso lc.Curve IsNot Nothing Then
+                    point = lc.Curve.Evaluate(0.5R, True)
+                    If point IsNot Nothing Then Return True
+                End If
+            Catch
+            End Try
+
+            Try
+                Dim connectors = GetConnectors(el)
+                If connectors Is Nothing OrElse connectors.Count = 0 Then Return False
+
+                Dim count As Integer = 0
+                Dim sumX As Double = 0.0R
+                Dim sumY As Double = 0.0R
+                Dim sumZ As Double = 0.0R
+                For Each connector In connectors
+                    If connector Is Nothing Then Continue For
+                    Dim origin As XYZ = Nothing
+                    Try
+                        origin = connector.Origin
+                    Catch
+                        origin = Nothing
+                    End Try
+                    If origin Is Nothing Then Continue For
+                    sumX += origin.X
+                    sumY += origin.Y
+                    sumZ += origin.Z
+                    count += 1
+                Next
+
+                If count > 0 Then
+                    point = New XYZ(sumX / count, sumY / count, sumZ / count)
+                    Return True
+                End If
+            Catch
+            End Try
+
+            Return False
+        End Function
+
+        Private Shared Function TryGetCurveLengthFt(el As Element, ByRef lengthFt As Double) As Boolean
+            lengthFt = 0.0R
+            If el Is Nothing Then Return False
+
+            Try
+                Dim lc = TryCast(el.Location, LocationCurve)
+                If lc Is Nothing OrElse lc.Curve Is Nothing Then Return False
+                lengthFt = lc.Curve.Length
+                Return Not Double.IsNaN(lengthFt) AndAlso Not Double.IsInfinity(lengthFt)
+            Catch
+                Return False
+            End Try
+        End Function
+
+        Private Shared Function TryGetDirectionVector(el As Element, ByRef direction As XYZ) As Boolean
+            direction = Nothing
+            If el Is Nothing Then Return False
+
+            Try
+                Dim lc = TryCast(el.Location, LocationCurve)
+                If lc Is Nothing OrElse lc.Curve Is Nothing Then Return False
+
+                Dim startPoint = lc.Curve.GetEndPoint(0)
+                Dim endPoint = lc.Curve.GetEndPoint(1)
+                If startPoint Is Nothing OrElse endPoint Is Nothing Then Return False
+
+                Dim dx = endPoint.X - startPoint.X
+                Dim dy = endPoint.Y - startPoint.Y
+                Dim dz = endPoint.Z - startPoint.Z
+                Dim length = Math.Sqrt((dx * dx) + (dy * dy) + (dz * dz))
+                If length <= 0.0000001R Then Return False
+
+                direction = New XYZ(dx / length, dy / length, dz / length)
+                Return True
+            Catch
+                Return False
+            End Try
+        End Function
+
+        Private Shared Function FormatGeometryValue(value As Double, decimals As Integer) As String
+            If Double.IsNaN(value) OrElse Double.IsInfinity(value) Then Return String.Empty
+            Dim rounded = Math.Round(value, decimals, MidpointRounding.AwayFromZero)
+            Return rounded.ToString(CultureInfo.InvariantCulture)
+        End Function
+
+        Private Shared Function FindParameterOnElementOrType(el As Element, name As String) As Parameter
+            If el Is Nothing OrElse String.IsNullOrWhiteSpace(name) Then Return Nothing
+
+            Dim p As Parameter = FindParameterByName(el, name)
+            If p IsNot Nothing Then Return p
+
+            Try
+                Dim typeId = el.GetTypeId()
+                If typeId Is Nothing OrElse typeId = ElementId.InvalidElementId Then Return Nothing
+
+                Dim typeEl = TryCast(el.Document.GetElement(typeId), Element)
+                If typeEl Is Nothing Then Return Nothing
+                Return FindParameterByName(typeEl, name)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function FindParameterByName(owner As Element, name As String) As Parameter
+            If owner Is Nothing OrElse String.IsNullOrWhiteSpace(name) Then Return Nothing
+
+            Try
+                Dim direct = owner.LookupParameter(name)
+                If IsUsableNamedParameter(direct, name) Then Return direct
+            Catch
+            End Try
+
+            Try
+                For Each parameter As Parameter In owner.Parameters
+                    If IsUsableNamedParameter(parameter, name) Then Return parameter
+                Next
+            Catch
+            End Try
+
+            Return Nothing
+        End Function
+
+        Private Shared Function IsUsableNamedParameter(parameter As Parameter, expectedName As String) As Boolean
+            If parameter Is Nothing OrElse parameter.Definition Is Nothing OrElse String.IsNullOrWhiteSpace(expectedName) Then Return False
+
+            Dim actualName As String = String.Empty
+            Try
+                actualName = If(parameter.Definition.Name, String.Empty)
+            Catch
+                actualName = String.Empty
+            End Try
+
+            Return Not String.IsNullOrWhiteSpace(actualName) AndAlso
+                   String.Equals(actualName.Trim(), expectedName.Trim(), StringComparison.OrdinalIgnoreCase)
         End Function
 
         ' ============================

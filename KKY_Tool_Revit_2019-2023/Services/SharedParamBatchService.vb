@@ -4,9 +4,11 @@ Option Strict On
 Imports System
 Imports System.Collections.Generic
 Imports System.Data
+Imports System.Globalization
 Imports System.IO
 Imports System.Linq
 Imports System.Text
+Imports System.Text.RegularExpressions
 Imports System.Web.Script.Serialization
 Imports System.Windows.Forms
 Imports Autodesk.Revit.DB
@@ -299,9 +301,16 @@ Namespace Services
                 Return New RunResult With {.Ok = False, .Message = "설정 JSON 파싱 실패: " & ex.Message}
             End Try
 
-            Dim spFilePath As String = TryGetString(payload, "spFilePath")
+            Dim spFilePath As String = NormalizeFilePath(TryGetString(payload, "spFilePath"))
             If String.IsNullOrWhiteSpace(spFilePath) Then
-                spFilePath = uiapp.Application.SharedParametersFilename
+                spFilePath = NormalizeFilePath(uiapp.Application.SharedParametersFilename)
+            End If
+
+            If Not File.Exists(spFilePath) Then
+                Dim currentSpFile As String = NormalizeFilePath(uiapp.Application.SharedParametersFilename)
+                If Not String.IsNullOrWhiteSpace(currentSpFile) AndAlso File.Exists(currentSpFile) Then
+                    spFilePath = currentSpFile
+                End If
             End If
 
             Dim settings As BatchSettings = ParseBatchSettings(payload)
@@ -329,15 +338,17 @@ Namespace Services
 
                 Dim extDefByGuid As New Dictionary(Of Guid, ExternalDefinition)()
                 For Each p As ParamToBind In settings.Parameters
-                    Dim extDef As ExternalDefinition = FindExternalDefinitionByGuid(defFile, p.GuidValue)
+                    Dim extDef As ExternalDefinition = FindExternalDefinition(defFile, p.GuidValue, p.ParamName, p.GroupName)
                     If extDef Is Nothing Then
                         Return New RunResult With {
                             .Ok = False,
                             .Message = "Shared Parameter 정의를 찾지 못했습니다: " & p.ParamName & " (" & p.GuidValue.ToString() & ")"
                         }
                     End If
-                    If Not extDefByGuid.ContainsKey(p.GuidValue) Then
-                        extDefByGuid.Add(p.GuidValue, extDef)
+                    Dim extDefGuid As Guid = extDef.GUID
+                    p.GuidValue = extDefGuid
+                    If Not extDefByGuid.ContainsKey(extDefGuid) Then
+                        extDefByGuid.Add(extDefGuid, extDef)
                     End If
                 Next
 
@@ -650,20 +661,17 @@ Namespace Services
             Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
 
 #If REVIT2025 = 1 Then
-            For Each v As BuiltInParameterGroup In [Enum].GetValues(GetType(BuiltInParameterGroup))
-                Dim key As String = v.ToString()
-                If seen.Contains(key) Then Continue For
-                seen.Add(key)
+            For Each v In BuiltInParameterGroupCompat.GetGroupOptions()
+                If v Is Nothing Then Continue For
+                Dim id As String = Convert.ToString(v.Id)
+                If seen.Contains(id) Then Continue For
+                seen.Add(id)
 
-                Dim label As String = key
-                Try
-                    Dim gId As ForgeTypeId = BuiltInParameterGroupCompat.ToGroupTypeId(v)
-                    label = LabelUtils.GetLabelForGroup(gId)
-                Catch
-                    label = key
-                End Try
-
-                opts.Add(New ParamGroupOption With {.Key = key, .Id = key, .Label = label})
+                opts.Add(New ParamGroupOption With {
+                    .Key = If(v.Key, String.Empty),
+                    .Id = id,
+                    .Label = If(String.IsNullOrWhiteSpace(v.Label), v.Key, v.Label)
+                })
             Next
 
             Return opts.OrderBy(Function(o) o.Label).ToList()
@@ -838,6 +846,22 @@ Namespace Services
             Try
                 Return Convert.ToBoolean(payload(key))
             Catch
+                Try
+                    Dim raw As String = NormalizePayloadText(Convert.ToString(payload(key)))
+                    If String.IsNullOrWhiteSpace(raw) Then Return defaultValue
+
+                    Dim parsed As Boolean
+                    If Boolean.TryParse(raw, parsed) Then
+                        Return parsed
+                    End If
+
+                    Dim iv As Integer
+                    If Integer.TryParse(raw, iv) Then
+                        Return iv <> 0
+                    End If
+                Catch
+                End Try
+
                 Return defaultValue
             End Try
         End Function
@@ -850,13 +874,13 @@ Namespace Services
             Dim enumerable = TryCast(raw, System.Collections.IEnumerable)
             If enumerable IsNot Nothing AndAlso Not (TypeOf raw Is String) Then
                 For Each o As Object In enumerable
-                    Dim s = If(o, String.Empty).ToString()
+                    Dim s = NormalizePayloadText(If(o, String.Empty).ToString())
                     If Not String.IsNullOrWhiteSpace(s) AndAlso Not list.Contains(s) Then
                         list.Add(s)
                     End If
                 Next
             Else
-                Dim s = If(raw, String.Empty).ToString()
+                Dim s = NormalizePayloadText(If(raw, String.Empty).ToString())
                 If Not String.IsNullOrWhiteSpace(s) Then
                     list.Add(s)
                 End If
@@ -866,7 +890,62 @@ Namespace Services
 
         Private Shared Function TryGetString(payload As Dictionary(Of String, Object), key As String) As String
             If payload Is Nothing OrElse Not payload.ContainsKey(key) Then Return String.Empty
-            Return If(payload(key), String.Empty).ToString()
+            Return NormalizePayloadText(If(payload(key), String.Empty).ToString())
+        End Function
+
+        Private Shared Function NormalizeFilePath(path As String) As String
+            Dim s As String = NormalizePayloadText(path)
+            If s.Length >= 2 AndAlso s.StartsWith("""", StringComparison.Ordinal) AndAlso s.EndsWith("""", StringComparison.Ordinal) Then
+                s = s.Substring(1, s.Length - 2).Trim()
+            End If
+            Return s
+        End Function
+
+        Private Shared Function NormalizePayloadText(value As String) As String
+            Dim s As String = If(value, String.Empty).Trim()
+
+            For i As Integer = 0 To 1
+                If s.Length >= 2 AndAlso s(0) = """"c AndAlso s(s.Length - 1) = """"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                If s.Length >= 2 AndAlso s(0) = "'"c AndAlso s(s.Length - 1) = "'"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                Exit For
+            Next
+
+            If s.IndexOf("\u", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                s = Regex.Replace(
+                    s,
+                    "(?i)(?:\\\\u|\\u)([0-9a-f]{4})",
+                    Function(m)
+                        Try
+                            Return ChrW(Integer.Parse(m.Groups(1).Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture))
+                        Catch
+                            Return m.Value
+                        End Try
+                    End Function)
+            End If
+
+            If s.Contains("\""") Then
+                s = s.Replace("\""", """")
+            End If
+
+            For i As Integer = 0 To 1
+                If s.Length >= 2 AndAlso s(0) = """"c AndAlso s(s.Length - 1) = """"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                If s.Length >= 2 AndAlso s(0) = "'"c AndAlso s(s.Length - 1) = "'"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                Exit For
+            Next
+
+            Return s
         End Function
 
         Private Shared Function ParseParamGroup(payload As Dictionary(Of String, Object), key As String) As BuiltInParameterGroup
@@ -878,7 +957,15 @@ Namespace Services
             If raw Is Nothing Then Return GetDefaultParamGroup()
 
             Try
-                Dim s As String = raw.ToString()
+                Dim s As String = NormalizePayloadText(raw.ToString())
+#If REVIT2025 = 1 Then
+                Dim parsed2025 As BuiltInParameterGroup = BuiltInParameterGroupCompat.FromSerializedValue(s, GetDefaultParamGroup())
+                If Not parsed2025.Equals(GetDefaultParamGroup()) OrElse
+                   String.Equals(s, Convert.ToString(CInt(GetDefaultParamGroup())), StringComparison.OrdinalIgnoreCase) OrElse
+                   String.Equals(s, GetDefaultParamGroup().ToString(), StringComparison.OrdinalIgnoreCase) Then
+                    Return parsed2025
+                End If
+#End If
                 Dim iv As Integer
                 If Integer.TryParse(s, iv) Then
                     Return CType(iv, BuiltInParameterGroup)
@@ -891,8 +978,12 @@ Namespace Services
             End Try
 
             Try
+#If REVIT2025 = 1 Then
+                Return BuiltInParameterGroupCompat.FromSerializedValue(raw, GetDefaultParamGroup())
+#Else
                 Dim iv As Integer = Convert.ToInt32(raw)
                 Return CType(iv, BuiltInParameterGroup)
+#End If
             Catch
             End Try
 
@@ -901,8 +992,9 @@ Namespace Services
 
         Private Shared Function ValidateBatchSettings(s As BatchSettings, spFilePath As String) As String
             If s Is Nothing Then Return "설정이 비어있습니다."
-            If String.IsNullOrWhiteSpace(spFilePath) OrElse Not File.Exists(spFilePath) Then
-                Return "Shared Parameter TXT가 유효하지 않습니다."
+            Dim normalizedSpFilePath As String = NormalizeFilePath(spFilePath)
+            If String.IsNullOrWhiteSpace(normalizedSpFilePath) OrElse Not File.Exists(normalizedSpFilePath) Then
+                Return "Shared Parameter TXT가 유효하지 않습니다. Checked: " & If(normalizedSpFilePath, String.Empty)
             End If
 
             If s.RvtPaths Is Nothing OrElse s.RvtPaths.Count = 0 Then
@@ -927,8 +1019,19 @@ Namespace Services
             Return ""
         End Function
 
+        Private Shared Function FindExternalDefinition(defFile As DefinitionFile,
+                                                      targetGuid As Guid,
+                                                      targetName As String,
+                                                      targetGroupName As String) As ExternalDefinition
+            Dim byGuid As ExternalDefinition = FindExternalDefinitionByGuid(defFile, targetGuid)
+            If byGuid IsNot Nothing Then Return byGuid
+
+            Return FindExternalDefinitionByName(defFile, targetName, targetGroupName)
+        End Function
+
         Private Shared Function FindExternalDefinitionByGuid(defFile As DefinitionFile, targetGuid As Guid) As ExternalDefinition
             If defFile Is Nothing Then Return Nothing
+            If targetGuid = Guid.Empty Then Return Nothing
 
             For Each g As DefinitionGroup In defFile.Groups
                 If g Is Nothing Then Continue For
@@ -940,6 +1043,38 @@ Namespace Services
             Next
 
             Return Nothing
+        End Function
+
+        Private Shared Function FindExternalDefinitionByName(defFile As DefinitionFile,
+                                                             targetName As String,
+                                                             targetGroupName As String) As ExternalDefinition
+            If defFile Is Nothing Then Return Nothing
+
+            Dim normalizedName As String = NormalizePayloadText(targetName)
+            If String.IsNullOrWhiteSpace(normalizedName) Then Return Nothing
+
+            Dim normalizedGroupName As String = NormalizePayloadText(targetGroupName)
+            Dim firstNameMatch As ExternalDefinition = Nothing
+
+            For Each g As DefinitionGroup In defFile.Groups
+                If g Is Nothing Then Continue For
+                For Each d As Definition In g.Definitions
+                    Dim ed As ExternalDefinition = TryCast(d, ExternalDefinition)
+                    If ed Is Nothing Then Continue For
+                    If Not String.Equals(ed.Name, normalizedName, StringComparison.OrdinalIgnoreCase) Then Continue For
+
+                    If Not String.IsNullOrWhiteSpace(normalizedGroupName) AndAlso
+                       String.Equals(g.Name, normalizedGroupName, StringComparison.OrdinalIgnoreCase) Then
+                        Return ed
+                    End If
+
+                    If firstNameMatch Is Nothing Then
+                        firstNameMatch = ed
+                    End If
+                Next
+            Next
+
+            Return firstNameMatch
         End Function
 
         Private Shared Function ApplyAllSharedParameterBindings(doc As Document,
@@ -1099,22 +1234,79 @@ Namespace Services
                         Return False
                     End If
 
-                    If p.Settings.IsInstanceBinding AndAlso p.Settings.AllowVaryBetweenGroups Then
-                        Try
-                            Dim spe2 As SharedParameterElement = SharedParameterElement.Lookup(doc, extDef.GUID)
-                            If spe2 IsNot Nothing Then
-                                Dim idef As InternalDefinition = TryCast(spe2.GetDefinition(), InternalDefinition)
-                                If idef IsNot Nothing Then
-                                    idef.SetAllowVaryBetweenGroups(doc, True)
+                    t.Commit()
+                End Using
+
+                Try
+                    doc.Regenerate()
+                Catch
+                End Try
+
+                Dim spe2 As SharedParameterElement = Nothing
+                Dim idef As InternalDefinition = Nothing
+                Try
+                    spe2 = SharedParameterElement.Lookup(doc, extDef.GUID)
+                    If spe2 IsNot Nothing Then
+                        idef = TryCast(spe2.GetDefinition(), InternalDefinition)
+                    End If
+                Catch
+                    spe2 = Nothing
+                    idef = Nothing
+                End Try
+
+                If idef Is Nothing Then
+                    warn.Add("PARAM_ELEMENT_LOOKUP_FAIL: SharedParameterElement를 찾지 못했습니다.")
+                Else
+                    Dim needsGroupFix As Boolean = Not IsParameterGroupApplied(idef, p.Settings.ParamGroup)
+                    Dim shouldApplyVary As Boolean = p.Settings.IsInstanceBinding
+
+                    If needsGroupFix OrElse shouldApplyVary Then
+                        Using tFix As New Autodesk.Revit.DB.Transaction(doc, "Finalize Shared Parameter Settings: " & p.ParamName)
+                            tFix.Start()
+
+                            If needsGroupFix Then
+                                Dim groupFixed As Boolean = False
+                                Try
+#If REVIT2025 = 1 Then
+                                    Dim desiredGroupTypeId As ForgeTypeId = BuiltInParameterGroupCompat.ToGroupTypeId(p.Settings.ParamGroup)
+                                    groupFixed = doc.ParameterBindings.ReInsert(idef, binding, desiredGroupTypeId)
+#Else
+                                    groupFixed = doc.ParameterBindings.ReInsert(idef, binding, p.Settings.ParamGroup)
+#End If
+                                Catch
+                                    groupFixed = False
+                                End Try
+
+                                If Not groupFixed Then
+                                    groupFixed = TryReinsertProjectBindingGroup(doc, extDef.GUID, p.Settings.ParamGroup)
+                                End If
+
+                                If Not groupFixed Then
+                                    warn.Add("GROUP_SET_FAIL: 요청 그룹을 적용하지 못했습니다. Requested=" & Convert.ToString(p.Settings.ParamGroup))
                                 End If
                             End If
-                        Catch exVar As Exception
-                            warn.Add("VARY_SET_FAIL: " & exVar.Message)
+
+                            If shouldApplyVary Then
+                                Try
+                                    idef.SetAllowVaryBetweenGroups(doc, p.Settings.AllowVaryBetweenGroups)
+                                Catch exVar As Exception
+                                    warn.Add("VARY_SET_FAIL: " & exVar.Message)
+                                End Try
+                            End If
+
+                            tFix.Commit()
+                        End Using
+
+                        Try
+                            doc.Regenerate()
+                        Catch
                         End Try
                     End If
 
-                    t.Commit()
-                End Using
+                    If Not IsParameterGroupApplied(idef, p.Settings.ParamGroup) Then
+                        warn.Add("GROUP_MISMATCH: 요청 그룹과 실제 그룹이 다릅니다. Requested=" & Convert.ToString(p.Settings.ParamGroup))
+                    End If
+                End If
 
                 Dim boundIds As HashSet(Of Integer) = GetBoundCategoryIds(doc, extDef.GUID)
                 If boundIds.Count > 0 Then
@@ -1258,21 +1450,6 @@ Namespace Services
                     resolvedBy = "path"
                     Return cat
                 End If
-
-                For Each ancestorPath As String In GetAncestorCategoryPaths(trimmedPath)
-                    If maps.ByPath.TryGetValue(ancestorPath, cat) AndAlso cat IsNot Nothing AndAlso IsCategoryDirectlyBindable(cat) Then
-                        resolvedBy = "path->ancestor"
-                        Return cat
-                    End If
-                Next
-
-                Dim representativePath As String = NormalizeRepresentativeCategoryPath(trimmedPath)
-                If representativePath <> "" AndAlso Not String.Equals(representativePath, trimmedPath, StringComparison.OrdinalIgnoreCase) Then
-                    If maps.ByPath.TryGetValue(representativePath, cat) AndAlso cat IsNot Nothing AndAlso IsCategoryDirectlyBindable(cat) Then
-                        resolvedBy = "path->root"
-                        Return cat
-                    End If
-                End If
             End If
 
             If idInt <> 0 AndAlso maps.ById.TryGetValue(idInt, cat) AndAlso cat IsNot Nothing Then
@@ -1280,21 +1457,6 @@ Namespace Services
                     resolvedBy = "id"
                     Return cat
                 End If
-
-                Dim parentCat As Category = cat
-                Do
-                    Try
-                        parentCat = parentCat.Parent
-                    Catch
-                        parentCat = Nothing
-                    End Try
-
-                    If parentCat Is Nothing Then Exit Do
-                    If IsCategoryDirectlyBindable(parentCat) Then
-                        resolvedBy = "id->parent"
-                        Return parentCat
-                    End If
-                Loop
             End If
 
             Dim trimmedName As String = If(name, "").Trim()
@@ -1303,18 +1465,73 @@ Namespace Services
                     resolvedBy = "name"
                     Return cat
                 End If
-
-                Dim representativeName As String = NormalizeRepresentativeCategoryName(trimmedName)
-                If representativeName <> "" AndAlso Not String.Equals(representativeName, trimmedName, StringComparison.OrdinalIgnoreCase) Then
-                    If maps.ByPath.TryGetValue(representativeName, cat) AndAlso cat IsNot Nothing AndAlso IsCategoryDirectlyBindable(cat) Then
-                        resolvedBy = "name->root"
-                        Return cat
-                    End If
-                End If
             End If
 
             resolvedBy = "notfound"
             Return Nothing
+        End Function
+
+        Private Shared Function IsParameterGroupApplied(idef As InternalDefinition,
+                                                        requestedGroup As BuiltInParameterGroup) As Boolean
+            If idef Is Nothing Then Return False
+
+            Try
+#If REVIT2025 = 1 Then
+                Dim actualGroup As ForgeTypeId = idef.GetGroupTypeId()
+                Dim requestedGroupTypeId As ForgeTypeId = BuiltInParameterGroupCompat.ToGroupTypeId(requestedGroup)
+                If actualGroup Is Nothing OrElse requestedGroupTypeId Is Nothing Then Return False
+                Return actualGroup.Equals(requestedGroupTypeId)
+#Else
+                Return idef.ParameterGroup = requestedGroup
+#End If
+            Catch
+                Return False
+            End Try
+        End Function
+
+        Private Shared Function TryReinsertProjectBindingGroup(doc As Document,
+                                                               guidValue As Guid,
+                                                               requestedGroup As BuiltInParameterGroup) As Boolean
+            If doc Is Nothing OrElse guidValue = Guid.Empty Then Return False
+
+            Dim matchedDefinition As Definition = Nothing
+            Dim matchedBinding As Autodesk.Revit.DB.Binding = Nothing
+
+            Try
+                Dim map As BindingMap = doc.ParameterBindings
+                Dim it As DefinitionBindingMapIterator = map.ForwardIterator()
+                it.Reset()
+
+                While it.MoveNext()
+                    Dim defn As Definition = TryCast(it.Key, Definition)
+                    Dim ext As ExternalDefinition = TryCast(defn, ExternalDefinition)
+                    If ext Is Nothing Then Continue While
+
+                    Dim extGuid As Guid = Guid.Empty
+                    Try : extGuid = ext.GUID : Catch : extGuid = Guid.Empty : End Try
+                    If extGuid <> guidValue Then Continue While
+
+                    matchedDefinition = defn
+                    matchedBinding = TryCast(it.Current, Autodesk.Revit.DB.Binding)
+                    Exit While
+                End While
+            Catch
+                matchedDefinition = Nothing
+                matchedBinding = Nothing
+            End Try
+
+            If matchedDefinition Is Nothing OrElse matchedBinding Is Nothing Then Return False
+
+            Try
+#If REVIT2025 = 1 Then
+                Dim requestedGroupTypeId As ForgeTypeId = BuiltInParameterGroupCompat.ToGroupTypeId(requestedGroup)
+                Return doc.ParameterBindings.ReInsert(matchedDefinition, matchedBinding, requestedGroupTypeId)
+#Else
+                Return doc.ParameterBindings.ReInsert(matchedDefinition, matchedBinding, requestedGroup)
+#End If
+            Catch
+                Return False
+            End Try
         End Function
 
         Private Shared Function SafeCategoryName(cat As Category) As String

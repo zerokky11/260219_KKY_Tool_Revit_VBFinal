@@ -170,7 +170,7 @@ End Function
                 If String.IsNullOrWhiteSpace(savedPath) Then
                     SendToWeb("familylink:exported", New With {
                         .ok = False,
-                        .message = "엑셀/CSV 내보내기가 취소되었습니다."
+                        .message = "엑셀 내보내기가 취소되었습니다."
                     })
                     Return
                 End If
@@ -187,7 +187,7 @@ End Function
                     .message = ex.Message
                 })
                 SendToWeb("familylink:error", New With {
-                    .message = "엑셀/CSV 내보내기 실패",
+                    .message = "엑셀 내보내기 실패",
                     .detail = ex.Message
                 })
             End Try
@@ -261,14 +261,17 @@ End Function
             d("HostFamilyCategory") = row.HostFamilyCategory
             d("NestedFamilyName") = row.NestedFamilyName
             d("NestedTypeName") = row.NestedTypeName
+            d("NestedInstanceId") = row.NestedInstanceId
+            d("NestedPath") = row.NestedPath
+            d("NestingLevel") = row.NestingLevel
             d("NestedCategory") = row.NestedCategory
+            d("NestedParamName") = row.NestedParamName
             d("TargetParamName") = row.TargetParamName
             d("ExpectedGuid") = row.ExpectedGuid
             d("FoundScope") = row.FoundScope
             d("NestedParamGuid") = row.NestedParamGuid
             d("NestedParamDataType") = row.NestedParamDataType
             d("AssocHostParamName") = row.AssocHostParamName
-            d("HostParamGuid") = row.HostParamGuid
             d("HostParamIsShared") = row.HostParamIsShared
             d("Issue") = row.Issue
             d("Notes") = row.Notes

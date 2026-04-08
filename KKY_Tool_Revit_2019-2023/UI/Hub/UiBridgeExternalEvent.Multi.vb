@@ -1,10 +1,13 @@
 ﻿Imports System
 Imports System.Collections.Generic
 Imports System.Data
+Imports System.Diagnostics
+Imports Drawing = System.Drawing
 Imports System.IO
+Imports System.Linq
 Imports Autodesk.Revit.DB
 Imports Autodesk.Revit.UI
-Imports System.Windows.Forms
+Imports WinForms = System.Windows.Forms
 Imports KKY_Tool_Revit.Infrastructure
 Imports KKY_Tool_Revit.Services
 Imports KKY_Tool_Revit.Exports
@@ -17,6 +20,8 @@ Namespace UI.Hub
             Public Property ExtraParams As String = String.Empty
             Public Property TargetFilter As String = String.Empty
             Public Property ExcludeEndDummy As Boolean
+            Public Property IncludePointXY As Boolean
+            Public Property IncludeLinearMetrics As Boolean
         End Class
 
         ' === commonoptions:get ===
@@ -26,13 +31,17 @@ Namespace UI.Hub
                 SendToWeb("commonoptions:loaded", New With {
                     .extraParamsText = stored.ExtraParamsText,
                     .targetFilterText = stored.TargetFilterText,
-                    .excludeEndDummy = stored.ExcludeEndDummy
+                    .excludeEndDummy = stored.ExcludeEndDummy,
+                    .includePointXY = stored.IncludePointXY,
+                    .includeLinearMetrics = stored.IncludeLinearMetrics
                 })
             Catch ex As Exception
                 SendToWeb("commonoptions:loaded", New With {
                     .extraParamsText = "",
                     .targetFilterText = "",
                     .excludeEndDummy = False,
+                    .includePointXY = False,
+                    .includeLinearMetrics = False,
                     .errorMessage = ex.Message
                 })
             End Try
@@ -44,10 +53,14 @@ Namespace UI.Hub
             Dim extraText As String = Convert.ToString(GetProp(pd, "extraParamsText"))
             Dim filterText As String = Convert.ToString(GetProp(pd, "targetFilterText"))
             Dim excludeEndDummy As Boolean = SafeBoolObj(GetProp(pd, "excludeEndDummy"), False)
+            Dim includePointXY As Boolean = SafeBoolObj(GetProp(pd, "includePointXY"), False)
+            Dim includeLinearMetrics As Boolean = SafeBoolObj(GetProp(pd, "includeLinearMetrics"), False)
             Dim options As New HubCommonOptionsStorageService.HubCommonOptions() With {
                 .ExtraParamsText = If(extraText, String.Empty),
                 .TargetFilterText = If(filterText, String.Empty),
-                .ExcludeEndDummy = excludeEndDummy
+                .ExcludeEndDummy = excludeEndDummy,
+                .IncludePointXY = includePointXY,
+                .IncludeLinearMetrics = includeLinearMetrics
             }
 
             Dim ok = HubCommonOptionsStorageService.Save(options)
@@ -59,6 +72,8 @@ Namespace UI.Hub
             Public Property Tol As Double = 1.0R
             Public Property Unit As String = "inch"
             Public Property Param As String = "Comments"
+            Public Property IncludePointXY As Boolean
+            Public Property IncludeLinearMetrics As Boolean
         End Class
 
         Private Class MultiPmsOptions
@@ -87,6 +102,8 @@ Namespace UI.Hub
         Private Class MultiLinkWorksetOptions
             Public Property Enabled As Boolean
             Public Property ApplyDefaultWorksetOnly As Boolean = True
+            Public Property UseSyncComment As Boolean
+            Public Property SyncComment As String = String.Empty
         End Class
 
         Private Class MultiRunRequest
@@ -142,12 +159,12 @@ Namespace UI.Hub
         ' payload: none
         ' response: hub:rvt-picked { paths:[string] }
         Private Sub HandleMultiPickRvt()
-            Using dlg As New OpenFileDialog()
+            Using dlg As New WinForms.OpenFileDialog()
                 dlg.Filter = "Revit Project (*.rvt)|*.rvt"
                 dlg.Multiselect = True
                 dlg.Title = "RVT 파일 선택"
                 dlg.RestoreDirectory = True
-                If dlg.ShowDialog() <> DialogResult.OK Then Return
+                If dlg.ShowDialog() <> WinForms.DialogResult.OK Then Return
                 Dim files As String() = dlg.FileNames
                 SendToWebAfterDialog("hub:rvt-picked", New With {.paths = files})
             End Using
@@ -202,6 +219,28 @@ Namespace UI.Hub
                 Return
             End If
 
+            If ShouldOfferLegacyManageLinksSwitch(app, req) Then
+                Dim choice = ConfirmLegacyManageLinksSwitch(app)
+                If choice = TaskDialogResult.Yes Then
+                    Dim switchMessage As String = ""
+                    If TryEnableLegacyManageLinksAndRestart(app, switchMessage) Then
+                        SendToWeb("host:info", New With {.message = switchMessage})
+                        SendToWeb("hub:multi-canceled", New With {.message = switchMessage})
+                        Return
+                    End If
+
+                    SendToWeb("host:warn", New With {.message = switchMessage})
+                    SendToWeb("hub:multi-error", New With {.message = switchMessage})
+                    Return
+                End If
+
+                If choice = TaskDialogResult.No Then
+                    SendToWeb("host:info", New With {.message = "[linkworkset] Legacy Manage Links 전환을 취소해 기능 실행을 중단했습니다."})
+                    SendToWeb("hub:multi-canceled", New With {.message = "기능 실행을 취소했습니다."})
+                    Return
+                End If
+            End If
+
             ' 현재 활성 문서(열려있는 파일)로 즉시 검토
             If req.UseActiveDocument Then
                 Dim uidoc = app.ActiveUIDocument
@@ -233,33 +272,14 @@ Namespace UI.Hub
                 If ShouldWarnActiveLinkWorksetRefresh(req) Then
                     If Not ConfirmActiveLinkWorksetRefresh(doc, safeName) Then
                         SendToWeb("host:info", New With {.message = "[linkworkset] 활성 문서 실행 취소"})
+                        SendToWeb("hub:multi-canceled", New With {.message = "기능 실행을 취소했습니다."})
                         Return
                     End If
                 End If
 
                 req.RvtPaths = New List(Of String) From {docPath}
                 Dim started = Date.Now
-                Dim linkPrimeCount As Integer = CountTopLevelLinkTypes(doc)
-                If req.LinkWorkset IsNot Nothing AndAlso req.LinkWorkset.Enabled AndAlso linkPrimeCount > 0 Then
-                    SendToWeb("host:info", New With {.message = $"[linkworkset-ui] Manage Links 프라이밍 시작 | {safeName} | links={linkPrimeCount}"})
-                    If Not LinkWorksetUiPrimeService.Start(
-                        app,
-                        doc,
-                        docPath,
-                        safeName,
-                        linkPrimeCount,
-                        Sub(message)
-                            SendToWeb("host:info", New With {.message = "[linkworkset-ui] " & message})
-                        End Sub,
-                        Sub(ok, message)
-                            Enqueue(Sub(app2) _self.HandleActiveLinkWorksetAfterUiPrime(app2, req, docPath, safeName, started, ok, message))
-                        End Sub) Then
-                        SendToWeb("host:warn", New With {.message = "[linkworkset-ui] 프라이밍 시작 실패, 기본 흐름으로 계속합니다."})
-                        ExecuteActiveMultiRun(app, req, docPath, safeName, started)
-                    End If
-                Else
-                    ExecuteActiveMultiRun(app, req, docPath, safeName, started)
-                End If
+                ExecuteActiveMultiRun(app, req, docPath, safeName, started, False)
                 Return
             End If
 
@@ -301,14 +321,15 @@ Namespace UI.Hub
                 SendToWeb("host:info", New With {.message = $"[linkworkset-ui] 프라이밍 완료 | {safeName}"})
             End If
 
-            ExecuteActiveMultiRun(app, req, docPath, safeName, started)
+            ExecuteActiveMultiRun(app, req, docPath, safeName, started, ok)
         End Sub
 
         Private Sub ExecuteActiveMultiRun(app As UIApplication,
                                           req As MultiRunRequest,
                                           docPath As String,
                                           safeName As String,
-                                          started As Date)
+                                          started As Date,
+                                          linkWorksetUiPrimed As Boolean)
             Dim uidoc = app.ActiveUIDocument
             Dim doc As Document = Nothing
             Try
@@ -337,10 +358,10 @@ Namespace UI.Hub
             Dim saveNeeded As Boolean = False
             ReportMultiProgress(0.0R, "현재 파일 검토 시작", safeName)
             Try
-                saveNeeded = RunMultiForDocument(app, doc, docPath, safeName, 0.0R)
+                saveNeeded = RunMultiForDocument(app, doc, docPath, safeName, 0.0R, linkWorksetUiPrimed)
                 If saveNeeded Then
                     If ShouldWarnActiveLinkWorksetRefresh(req) Then
-                        If Not PersistActiveDocumentForLinkWorkset(doc, safeName) Then
+                        If Not PersistActiveDocumentForLinkWorkset(doc, safeName, ResolveLinkWorksetSyncComment(req)) Then
                             Throw New InvalidOperationException("활성 문서를 저장 또는 동기화하지 못했습니다.")
                         End If
                         ScheduleActiveLinkWorksetReopen(docPath, safeName)
@@ -365,6 +386,191 @@ Namespace UI.Hub
             If saveNeeded AndAlso ShouldWarnActiveLinkWorksetRefresh(req) Then
                 PostActiveLinkWorksetCloseCommand(app, safeName)
             End If
+        End Sub
+
+        Private Function ShouldUseForegroundBatchLinkWorkset(req As MultiRunRequest) As Boolean
+            Return False
+        End Function
+
+        Private Sub StartForegroundBatchLinkWorkset(app As UIApplication, req As MultiRunRequest)
+            Dim requestedPath As String = NormalizeMultiPath(req.RvtPaths(0))
+            Dim safeName As String = Path.GetFileName(requestedPath)
+            Dim started = Date.Now
+
+            SyncLock _multiLock
+                _multiRequest = req
+                _multiQueue = Nothing
+                _multiTotal = 1
+                _multiIndex = 1
+                _multiActive = False
+                _multiPending = False
+                _multiBusy = False
+                _multiApp = app
+                _multiRunItems = New List(Of MultiRunItem)()
+                ResetMultiCaches()
+            End SyncLock
+
+            If Not File.Exists(requestedPath) Then
+                SendToWeb("host:warn", New With {.message = $"[multi-open] 파일 경로 확인 실패 | path={requestedPath}"})
+                SendToWeb("hub:multi-error", New With {.message = "파일을 찾을 수 없습니다."})
+                AppendMultiRunItem(safeName, "skipped", "파일을 찾을 수 없습니다.", "OPEN", started)
+                FinishMultiRun()
+                Return
+            End If
+
+            ReportMultiProgress(0.0R, "전면 배치 준비 중", safeName)
+
+            Dim openPath As String = requestedPath
+            Dim createdLocal As Boolean = False
+            Try
+                Dim fileInfo = TryExtractMultiBasicFileInfo(requestedPath)
+                If fileInfo IsNot Nothing AndAlso fileInfo.IsCentral Then
+                    openPath = CreateMultiNewLocalPath(requestedPath)
+                    createdLocal = True
+                    SendToWeb("host:info", New With {
+                        .message = $"[multi-open] 중앙파일을 임시 로컬로 생성 | central={requestedPath} | local={openPath}"
+                    })
+                End If
+
+                Dim mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(openPath)
+                Dim activated = app.OpenAndActivateDocument(mp, BuildOpenOptions(mp, False), False)
+                Dim doc As Document = Nothing
+                Try
+                    If activated IsNot Nothing Then doc = activated.Document
+                Catch
+                    doc = Nothing
+                End Try
+
+                If doc Is Nothing Then
+                    Throw New InvalidOperationException("전면 배치 문서를 활성화하지 못했습니다.")
+                End If
+
+                ReportMultiProgress(0.0R, "파일 열기 완료", safeName)
+
+                Dim linkPrimeCount As Integer = CountTopLevelLinkTypes(doc)
+                If req.LinkWorkset IsNot Nothing AndAlso req.LinkWorkset.Enabled AndAlso linkPrimeCount > 0 Then
+                    SendToWeb("host:info", New With {.message = $"[linkworkset-ui] 배치 전면 프라이밍 시작 | {safeName} | links={linkPrimeCount}"})
+                    If Not Global.KKY_Tool_Revit.Services.LinkWorksetUiPrimeService.Start(
+                        app,
+                        doc,
+                        openPath,
+                        safeName,
+                        linkPrimeCount,
+                        Sub(message)
+                            SendToWeb("host:info", New With {.message = "[linkworkset-ui] " & message})
+                        End Sub,
+                        Sub(ok, message)
+                            Enqueue(Sub(app2) _self.HandleForegroundBatchLinkWorksetAfterUiPrime(app2, req, requestedPath, openPath, safeName, started, createdLocal, ok, message))
+                        End Sub) Then
+                        SendToWeb("host:warn", New With {.message = "[linkworkset-ui] 배치 전면 프라이밍 시작 실패, 기본 흐름으로 계속합니다."})
+                        HandleForegroundBatchLinkWorksetAfterUiPrime(app, req, requestedPath, openPath, safeName, started, createdLocal, False, "start-failed")
+                    End If
+                Else
+                    HandleForegroundBatchLinkWorksetAfterUiPrime(app, req, requestedPath, openPath, safeName, started, createdLocal, False, "no-links")
+                End If
+            Catch ex As Exception
+                AppendMultiConnectorError(safeName, $"파일 처리 실패: {ex.Message}")
+                AppendMultiRunItem(safeName, "failed", ex.Message, "OPEN", started)
+                SendToWeb("hub:multi-error", New With {.message = ex.Message})
+                If createdLocal Then
+                    TryDeleteMultiTempFile(openPath)
+                End If
+                FinishMultiRun()
+            End Try
+        End Sub
+
+        Private Sub HandleForegroundBatchLinkWorksetAfterUiPrime(app As UIApplication,
+                                                                 req As MultiRunRequest,
+                                                                 requestedPath As String,
+                                                                 openPath As String,
+                                                                 safeName As String,
+                                                                 started As Date,
+                                                                 createdLocal As Boolean,
+                                                                 uiPrimed As Boolean,
+                                                                 message As String)
+            If uiPrimed Then
+                SendToWeb("host:info", New With {.message = $"[linkworkset-ui] 배치 전면 프라이밍 완료 | {safeName}"})
+            ElseIf Not String.IsNullOrWhiteSpace(message) Then
+                SendToWeb("host:warn", New With {.message = $"[linkworkset-ui] 배치 전면 프라이밍 미완료 | {safeName} | {message}"})
+            End If
+
+            Dim uidoc = app.ActiveUIDocument
+            Dim doc As Document = Nothing
+            Try
+                If uidoc IsNot Nothing Then doc = uidoc.Document
+            Catch
+                doc = Nothing
+            End Try
+
+            If doc Is Nothing Then
+                AppendMultiRunItem(safeName, "failed", "전면 활성 문서를 찾을 수 없습니다.", "RUN", started)
+                SendToWeb("hub:multi-error", New With {.message = "전면 활성 문서를 찾을 수 없습니다."})
+                FinishMultiRun()
+                Return
+            End If
+
+            Dim saveNeeded As Boolean = False
+            Try
+                ReportMultiProgress(0.0R, "링크 기본 웍셋 점검 중", safeName)
+                saveNeeded = RunMultiForDocument(app, doc, requestedPath, safeName, 0.0R, uiPrimed)
+                If saveNeeded Then
+                    If createdLocal Then
+                        ReportMultiProgress(0.0R, "중앙파일 동기화 중", safeName)
+                        Dim syncError As String = ""
+                        If Not TrySynchronizeMultiLocalToCentral(doc, ResolveLinkWorksetSyncComment(req), syncError) Then
+                            Throw New InvalidOperationException("중앙파일 동기화 실패: " & syncError)
+                        End If
+                        ReportMultiProgress(0.0R, "중앙파일 동기화 완료", safeName)
+                    Else
+                        ReportMultiProgress(0.0R, "파일 저장 중", safeName)
+                        doc.Save()
+                        ReportMultiProgress(0.0R, "파일 저장 완료", safeName)
+                    End If
+                End If
+                AppendMultiRunItem(safeName, "success", "", "DONE", started)
+            Catch ex As Exception
+                AppendMultiConnectorError(safeName, $"파일 처리 실패: {ex.Message}")
+                AppendMultiRunItem(safeName, "failed", ex.Message, "RUN", started)
+                SendToWeb("host:warn", New With {.message = $"파일 처리 실패: {safeName} - {ex.Message}"})
+            Finally
+                TryCloseForegroundBatchDocument(app, safeName)
+                If createdLocal Then
+                    TryDeleteMultiTempFile(openPath)
+                End If
+            End Try
+
+            FinishMultiRun()
+        End Sub
+
+        Private Shared Sub TryCloseForegroundBatchDocument(app As UIApplication, safeName As String)
+            If app Is Nothing Then Return
+
+            Dim uidoc As UIDocument = Nothing
+            Try
+                uidoc = app.ActiveUIDocument
+            Catch
+                uidoc = Nothing
+            End Try
+            If uidoc Is Nothing Then Return
+
+            Try
+                Dim closeMethod = uidoc.GetType().GetMethod("SaveAndClose", Type.EmptyTypes)
+                If closeMethod IsNot Nothing Then
+                    closeMethod.Invoke(uidoc, Nothing)
+                    SendToWeb("host:info", New With {.message = $"[multi-open] 전면 배치 문서 닫기 완료 | {safeName}"})
+                    Return
+                End If
+            Catch ex As Exception
+                SendToWeb("host:warn", New With {.message = $"[multi-open] 전면 배치 문서 SaveAndClose 실패 | {safeName} | {ex.Message}"})
+            End Try
+
+            Try
+                Dim cmdId As RevitCommandId = RevitCommandId.LookupPostableCommandId(PostableCommand.Close)
+                app.PostCommand(cmdId)
+                SendToWeb("host:info", New With {.message = $"[multi-open] 전면 배치 문서 닫기 요청 | {safeName}"})
+            Catch ex As Exception
+                SendToWeb("host:warn", New With {.message = $"[multi-open] 전면 배치 문서 닫기 실패 | {safeName} | {ex.Message}"})
+            End Try
         End Sub
 
         Private Sub HandleMultiIdling(sender As Object, e As Autodesk.Revit.UI.Events.IdlingEventArgs)
@@ -409,22 +615,47 @@ Namespace UI.Hub
                 Return
             End If
 
+            filePath = NormalizeMultiPath(filePath)
             Dim safeName As String = System.IO.Path.GetFileName(filePath)
             Dim basePct As Double = If(_multiTotal > 0, CDbl(_multiIndex - 1) / CDbl(_multiTotal), 0.0R)
             ReportMultiProgress(basePct * 100.0R, "파일 여는 중", safeName)
 
             Dim doc As Document = Nothing
+            Dim requestedPath As String = filePath
+            Dim openPath As String = filePath
+            Dim createdLocal As Boolean = False
+            Dim fileInfo As BasicFileInfo = Nothing
             Dim phase As String = "OPEN"
             Dim started = Date.Now
             Try
-                If Not System.IO.File.Exists(filePath) Then
+                If Not System.IO.File.Exists(requestedPath) Then
+                    Dim dirPath As String = ""
+                    Dim dirExists As Boolean = False
+                    Try
+                        dirPath = System.IO.Path.GetDirectoryName(requestedPath)
+                        dirExists = (Not String.IsNullOrWhiteSpace(dirPath) AndAlso System.IO.Directory.Exists(dirPath))
+                    Catch
+                    End Try
+
+                    SendToWeb("host:warn", New With {
+                        .message = $"[multi-open] 파일 경로 확인 실패 | path={requestedPath} | len={If(requestedPath, String.Empty).Length} | dir={dirPath} | dirExists={If(dirExists, "Y", "N")}"
+                    })
                     ReportMultiProgress(basePct * 100.0R, "파일을 찾을 수 없습니다.", safeName)
                     AppendMultiConnectorError(safeName, "파일을 찾을 수 없습니다.")
                     AppendMultiRunItem(safeName, "skipped", "파일을 찾을 수 없습니다.", "OPEN", started)
                     GoTo NextItem
                 End If
 
-                Dim mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(filePath)
+                fileInfo = TryExtractMultiBasicFileInfo(requestedPath)
+                If fileInfo IsNot Nothing AndAlso fileInfo.IsCentral Then
+                    openPath = CreateMultiNewLocalPath(requestedPath)
+                    createdLocal = True
+                    SendToWeb("host:info", New With {
+                        .message = $"[multi-open] 중앙파일을 임시 로컬로 생성 | central={requestedPath} | local={openPath}"
+                    })
+                End If
+
+                Dim mp = ModelPathUtils.ConvertUserVisiblePathToModelPath(openPath)
 
                 Dim preferConnectorWorksets As Boolean = False
                 Try
@@ -437,12 +668,45 @@ Namespace UI.Hub
                 ReportMultiProgress(basePct * 100.0R, "파일 열기 완료", safeName)
                 phase = "RUN"
 
-                Dim saveNeeded = RunMultiForDocument(app, doc, filePath, safeName, basePct)
+                Dim rowStartIndex As Integer = If(_multiLinkWorksetRows, New List(Of LinkWorksetAuditRow)()).Count
+                Dim saveNeeded = RunMultiForDocument(app, doc, requestedPath, safeName, basePct, False)
+
+                If ShouldRetryLinkWorksetWithHostWorksets(_multiRequest) Then
+                    Dim retryWorksetNames = CollectRetryHostWorksetNames(GetMultiLinkRowsSince(rowStartIndex))
+                    If retryWorksetNames.Count > 0 Then
+                        SendToWeb("host:info", New With {
+                            .message = $"[linkworkset] 닫힌 host workset 재시도 | {safeName} | worksets={String.Join(", ", retryWorksetNames)}"
+                        })
+
+                        Try
+                            doc.Close(False)
+                        Catch
+                        End Try
+                        doc = Nothing
+
+                        TrimMultiLinkWorksetRows(rowStartIndex)
+
+                        Dim retryOptions = BuildOpenOptions(mp, preferConnectorWorksets, retryWorksetNames)
+                        doc = app.Application.OpenDocumentFile(mp, retryOptions)
+                        ReportMultiProgress(basePct * 100.0R, "필요 host workset 열기 후 재시도", safeName)
+                        saveNeeded = RunMultiForDocument(app, doc, requestedPath, safeName, basePct, False)
+                    End If
+                End If
+
                 If saveNeeded Then
                     phase = "SAVE"
-                    ReportMultiProgress(basePct * 100.0R, "파일 저장 중", safeName)
-                    doc.Save()
-                    ReportMultiProgress(basePct * 100.0R, "파일 저장 완료", safeName)
+                    If createdLocal Then
+                        ReportMultiProgress(basePct * 100.0R, "중앙파일 동기화 중", safeName)
+                        Dim syncError As String = ""
+                        If Not TrySynchronizeMultiLocalToCentral(doc, ResolveLinkWorksetSyncComment(_multiRequest), syncError) Then
+                            Throw New InvalidOperationException("중앙파일 동기화 실패: " & syncError)
+                        End If
+                        ReportMultiProgress(basePct * 100.0R, "중앙파일 동기화 완료", safeName)
+                    Else
+                        ReportMultiProgress(basePct * 100.0R, "파일 저장 중", safeName)
+                        doc.Save()
+                        ReportMultiProgress(basePct * 100.0R, "파일 저장 완료", safeName)
+                    End If
                 End If
                 AppendMultiRunItem(safeName, "success", "", "DONE", started)
             Catch ex As Exception
@@ -456,6 +720,9 @@ Namespace UI.Hub
                         doc.Close(False)
                     Catch
                     End Try
+                End If
+                If createdLocal Then
+                    TryDeleteMultiTempFile(openPath)
                 End If
             End Try
 
@@ -474,7 +741,12 @@ NextItem:
             End If
         End Sub
 
-        Private Function RunMultiForDocument(app As UIApplication, doc As Document, path As String, safeName As String, basePct As Double) As Boolean
+        Private Function RunMultiForDocument(app As UIApplication,
+                                             doc As Document,
+                                             path As String,
+                                             safeName As String,
+                                             basePct As Double,
+                                             Optional linkWorksetUiPrimed As Boolean = False) As Boolean
             Dim steps As Integer = CountEnabledFeatures(_multiRequest)
             Dim stepIndex As Integer = 0
             Dim saveNeeded As Boolean = False
@@ -482,7 +754,9 @@ NextItem:
             If _multiRequest.Connector.Enabled Then
                 stepIndex += 1
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "커넥터 진단 실행 중", safeName)
-                Dim extras = ParseExtraParams(_multiRequest.Common.ExtraParams)
+                Dim extras = BuildConnectorExtraParams(_multiRequest.Common.ExtraParams,
+                                                       _multiRequest.Connector.IncludePointXY,
+                                                       _multiRequest.Connector.IncludeLinearMetrics)
                 Dim rows = ConnectorDiagnosticsService.RunOnDocument(doc, _multiRequest.Connector.Tol, _multiRequest.Connector.Unit, _multiRequest.Connector.Param, extras, _multiRequest.Common.TargetFilter, _multiRequest.Common.ExcludeEndDummy, Sub(pct, msg)
                                                                                                                                                                                                                                                          Dim overallPct = ((basePct + (pct / 100.0R) / Math.Max(_multiTotal, 1)) * 100.0R)
                                                                                                                                                                                                                                                          ReportMultiProgress(overallPct, "커넥터 진단 실행 중", $"{safeName} · {msg}")
@@ -573,7 +847,7 @@ NextItem:
             If _multiRequest.LinkWorkset.Enabled Then
                 stepIndex += 1
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "링크 기본 웍셋 점검 중", safeName)
-                Dim rows = LinkWorksetAuditService.RunOnDocument(doc, path, _multiRequest.LinkWorkset.ApplyDefaultWorksetOnly, Nothing)
+                Dim rows = LinkWorksetAuditService.RunOnDocument(doc, path, _multiRequest.LinkWorkset.ApplyDefaultWorksetOnly, Nothing, linkWorksetUiPrimed)
                 If rows IsNot Nothing Then
                     If _multiLinkWorksetRows Is Nothing Then _multiLinkWorksetRows = New List(Of LinkWorksetAuditRow)()
                     _multiLinkWorksetRows.AddRange(rows)
@@ -591,6 +865,355 @@ NextItem:
                    req.LinkWorkset IsNot Nothing AndAlso
                    req.LinkWorkset.Enabled
         End Function
+
+        Private Shared Function ShouldOfferLegacyManageLinksSwitch(app As UIApplication, req As MultiRunRequest) As Boolean
+            If app Is Nothing OrElse req Is Nothing Then Return False
+            If req.LinkWorkset Is Nothing OrElse Not req.LinkWorkset.Enabled Then Return False
+
+            Dim versionNumber = GetRevitMajorVersion(app)
+            If versionNumber < 2025 Then Return False
+
+            Return Not IsLegacyManageLinksEnabled(versionNumber)
+        End Function
+
+        Private Shared Function ConfirmLegacyManageLinksSwitch(app As UIApplication) As TaskDialogResult
+            Dim versionText As String = "현재 버전"
+            Try
+                versionText = $"Revit {GetRevitMajorVersion(app)}"
+            Catch
+            End Try
+
+            Dim result = ShowHubStyledYesNoDialog(
+                "링크 기본 웍셋 점검/적용",
+                "Legacy Manage Links 설정이 꺼져 있습니다.",
+                $"{versionText}에서는 새 Manage Links 대화상자가 불안정할 수 있습니다." & vbCrLf &
+                "예를 누르면 Legacy Manage Links 설정을 적용하고 Revit을 자동으로 다시 실행합니다." & vbCrLf &
+                "아니오를 누르면 기능 실행을 취소하고 허브로 돌아갑니다.",
+                "설정 후 재시작",
+                "취소",
+                "이 설정은 Revit.ini를 수정한 뒤 Revit을 다시 시작해야 적용됩니다. 재시작 후 Legacy Manage Links가 활성화됩니다.")
+
+            Return If(result, TaskDialogResult.Yes, TaskDialogResult.No)
+        End Function
+
+        Private Shared Function ShowHubStyledYesNoDialog(title As String,
+                                                         mainInstruction As String,
+                                                         mainContent As String,
+                                                         yesText As String,
+                                                         noText As String,
+                                                         Optional noteText As String = Nothing) As Boolean
+            Dim isLight = String.Equals(HubHostWindow.CurrentThemeKey, "light", StringComparison.OrdinalIgnoreCase)
+
+            Dim backColor = If(isLight, Drawing.Color.FromArgb(245, 248, 252), Drawing.Color.FromArgb(10, 18, 36))
+            Dim panelColor = If(isLight, Drawing.Color.FromArgb(255, 255, 255), Drawing.Color.FromArgb(18, 31, 58))
+            Dim borderColor = If(isLight, Drawing.Color.FromArgb(201, 214, 234), Drawing.Color.FromArgb(54, 82, 126))
+            Dim titleColor = If(isLight, Drawing.Color.FromArgb(23, 38, 68), Drawing.Color.FromArgb(238, 244, 255))
+            Dim textColor = If(isLight, Drawing.Color.FromArgb(66, 84, 117), Drawing.Color.FromArgb(184, 204, 238))
+            Dim accentColor = If(isLight, Drawing.Color.FromArgb(44, 153, 255), Drawing.Color.FromArgb(48, 170, 255))
+            Dim buttonGhostBack = If(isLight, Drawing.Color.FromArgb(239, 244, 252), Drawing.Color.FromArgb(25, 40, 69))
+
+            Using form As New WinForms.Form()
+                form.Text = title
+                form.StartPosition = WinForms.FormStartPosition.CenterScreen
+                form.FormBorderStyle = WinForms.FormBorderStyle.FixedDialog
+                form.MinimizeBox = False
+                form.MaximizeBox = False
+                form.ShowInTaskbar = False
+                form.TopMost = True
+                form.BackColor = backColor
+                form.ClientSize = New Drawing.Size(1120, 560)
+                form.MinimumSize = New Drawing.Size(1120, 560)
+                form.Font = New Drawing.Font("Malgun Gothic", 10.5F, Drawing.FontStyle.Regular, Drawing.GraphicsUnit.Point)
+
+                Dim outer As New WinForms.Panel() With {
+                    .Dock = WinForms.DockStyle.Fill,
+                    .Padding = New WinForms.Padding(28),
+                    .BackColor = backColor
+                }
+
+                Dim card As New WinForms.Panel() With {
+                    .Dock = WinForms.DockStyle.Fill,
+                    .BackColor = panelColor,
+                    .Padding = New WinForms.Padding(36, 32, 36, 28),
+                    .BorderStyle = WinForms.BorderStyle.FixedSingle
+                }
+
+                Dim titleLabel As New WinForms.Label() With {
+                    .Dock = WinForms.DockStyle.Top,
+                    .Height = 70,
+                    .Text = mainInstruction,
+                    .ForeColor = titleColor,
+                    .Font = New Drawing.Font("Malgun Gothic", 19.0F, Drawing.FontStyle.Bold, Drawing.GraphicsUnit.Point)
+                }
+                titleLabel.TextAlign = Drawing.ContentAlignment.MiddleLeft
+
+                Dim contentLabel As New WinForms.Label() With {
+                    .Dock = WinForms.DockStyle.Top,
+                    .Height = 170,
+                    .Text = mainContent,
+                    .ForeColor = textColor,
+                    .Font = New Drawing.Font("Malgun Gothic", 13.0F, Drawing.FontStyle.Regular, Drawing.GraphicsUnit.Point)
+                }
+                contentLabel.TextAlign = Drawing.ContentAlignment.TopLeft
+
+                Dim noteLabel As New WinForms.Label() With {
+                    .Dock = WinForms.DockStyle.Top,
+                    .Height = 72,
+                    .Text = If(String.IsNullOrWhiteSpace(noteText),
+                               "취소하면 허브로 돌아가고, 계속하면 안내된 단계로 진행됩니다.",
+                               noteText),
+                    .ForeColor = accentColor,
+                    .Font = New Drawing.Font("Malgun Gothic", 11.0F, Drawing.FontStyle.Bold, Drawing.GraphicsUnit.Point)
+                }
+                noteLabel.TextAlign = Drawing.ContentAlignment.MiddleLeft
+
+                Dim buttonPanel As New WinForms.FlowLayoutPanel() With {
+                    .Dock = WinForms.DockStyle.Bottom,
+                    .Height = 72,
+                    .FlowDirection = WinForms.FlowDirection.RightToLeft,
+                    .WrapContents = False,
+                    .BackColor = panelColor,
+                    .Padding = New WinForms.Padding(0, 16, 0, 0)
+                }
+
+                Dim yesButton As New WinForms.Button() With {
+                    .Text = yesText,
+                    .Width = 210,
+                    .Height = 52,
+                    .FlatStyle = WinForms.FlatStyle.Flat,
+                    .BackColor = accentColor,
+                    .ForeColor = Drawing.Color.White,
+                    .TabIndex = 0
+                }
+                yesButton.FlatAppearance.BorderSize = 0
+
+                Dim noButton As New WinForms.Button() With {
+                    .Text = noText,
+                    .Width = 148,
+                    .Height = 52,
+                    .FlatStyle = WinForms.FlatStyle.Flat,
+                    .BackColor = buttonGhostBack,
+                    .ForeColor = titleColor,
+                    .TabIndex = 1
+                }
+                noButton.FlatAppearance.BorderSize = 1
+                noButton.FlatAppearance.BorderColor = borderColor
+
+                AddHandler yesButton.Click, Sub()
+                                                form.DialogResult = WinForms.DialogResult.Yes
+                                                form.Close()
+                                            End Sub
+                AddHandler noButton.Click, Sub()
+                                               form.DialogResult = WinForms.DialogResult.No
+                                               form.Close()
+                                           End Sub
+
+                buttonPanel.Controls.Add(yesButton)
+                buttonPanel.Controls.Add(noButton)
+
+                card.Controls.Add(buttonPanel)
+                card.Controls.Add(noteLabel)
+                card.Controls.Add(contentLabel)
+                card.Controls.Add(titleLabel)
+                outer.Controls.Add(card)
+                form.Controls.Add(outer)
+                form.AcceptButton = yesButton
+                form.CancelButton = noButton
+                form.ActiveControl = yesButton
+
+                Dim result = (form.ShowDialog() = WinForms.DialogResult.Yes)
+                Try
+                    If _host IsNot Nothing Then
+                        _host.Activate()
+                        _host.Focus()
+                    End If
+                Catch
+                End Try
+                Return result
+            End Using
+        End Function
+
+        Private Shared Function GetRevitMajorVersion(app As UIApplication) As Integer
+            If app Is Nothing OrElse app.Application Is Nothing Then Return 0
+
+            Dim raw As String = ""
+            Try
+                raw = If(app.Application.VersionNumber, "").Trim()
+            Catch
+                raw = ""
+            End Try
+
+            Dim parsed As Integer = 0
+            If Integer.TryParse(raw, parsed) Then Return parsed
+            Return 0
+        End Function
+
+        Private Shared Function GetRevitIniPath(versionNumber As Integer) As String
+            If versionNumber <= 0 Then Return String.Empty
+            Return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Autodesk",
+                "Revit",
+                "Autodesk Revit " & versionNumber.ToString(),
+                "Revit.ini")
+        End Function
+
+        Private Shared Function IsLegacyManageLinksEnabled(versionNumber As Integer) As Boolean
+            Dim iniPath = GetRevitIniPath(versionNumber)
+            If String.IsNullOrWhiteSpace(iniPath) OrElse Not File.Exists(iniPath) Then Return False
+
+            Try
+                For Each line In File.ReadAllLines(iniPath)
+                    Dim trimmed = If(line, String.Empty).Trim()
+                    If trimmed.StartsWith("EnableOldManageLinksDialog", StringComparison.OrdinalIgnoreCase) Then
+                        Dim parts = trimmed.Split({"="c}, 2)
+                        If parts.Length = 2 AndAlso String.Equals(parts(1).Trim(), "1", StringComparison.OrdinalIgnoreCase) Then
+                            Return True
+                        End If
+                    End If
+                Next
+            Catch
+            End Try
+
+            Return False
+        End Function
+
+        Private Shared Function TryEnableLegacyManageLinksAndRestart(app As UIApplication, ByRef message As String) As Boolean
+            message = "Legacy Manage Links 설정 적용에 실패했습니다."
+            If app Is Nothing Then
+                message = "Revit 앱 정보를 찾을 수 없습니다."
+                Return False
+            End If
+
+            Dim versionNumber = GetRevitMajorVersion(app)
+            Dim iniPath = GetRevitIniPath(versionNumber)
+            If String.IsNullOrWhiteSpace(iniPath) Then
+                message = "Revit.ini 경로를 찾을 수 없습니다."
+                Return False
+            End If
+
+            Try
+                Dim iniDir = Path.GetDirectoryName(iniPath)
+                If Not String.IsNullOrWhiteSpace(iniDir) Then Directory.CreateDirectory(iniDir)
+                If File.Exists(iniPath) Then
+                    Dim backupPath = iniPath & ".bak-" & DateTime.Now.ToString("yyyyMMdd-HHmmss")
+                    File.Copy(iniPath, backupPath, True)
+                End If
+                WriteLegacyManageLinksIni(iniPath)
+            Catch ex As Exception
+                message = "Legacy Manage Links 설정 저장 실패: " & ex.Message
+                Return False
+            End Try
+
+            Dim exePath As String = ""
+            Try
+                exePath = Process.GetCurrentProcess().MainModule.FileName
+            Catch ex As Exception
+                message = "Revit 재실행 경로를 찾을 수 없습니다: " & ex.Message
+                Return False
+            End Try
+
+            If String.IsNullOrWhiteSpace(exePath) OrElse Not File.Exists(exePath) Then
+                message = "Revit 실행 파일 경로를 확인할 수 없습니다."
+                Return False
+            End If
+
+            Try
+                QueueRevitRelaunchAfterExit(exePath)
+            Catch ex As Exception
+                message = "Revit 재실행 예약 실패: " & ex.Message
+                Return False
+            End Try
+
+            message = "Legacy Manage Links 설정을 적용했습니다. Revit을 종료 후 자동으로 다시 실행합니다."
+            RequestRevitExit(app)
+            Return True
+        End Function
+
+        Private Shared Sub WriteLegacyManageLinksIni(iniPath As String)
+            Dim lines As New List(Of String)()
+            If File.Exists(iniPath) Then
+                lines.AddRange(File.ReadAllLines(iniPath))
+            End If
+
+            Dim miscIndex As Integer = -1
+            Dim keyIndex As Integer = -1
+
+            For i As Integer = 0 To lines.Count - 1
+                Dim trimmed = If(lines(i), String.Empty).Trim()
+                If String.Equals(trimmed, "[Misc]", StringComparison.OrdinalIgnoreCase) Then
+                    miscIndex = i
+                    For j As Integer = i + 1 To lines.Count - 1
+                        Dim inner = If(lines(j), String.Empty).Trim()
+                        If inner.StartsWith("[") AndAlso inner.EndsWith("]") Then Exit For
+                        If inner.StartsWith("EnableOldManageLinksDialog", StringComparison.OrdinalIgnoreCase) Then
+                            keyIndex = j
+                            Exit For
+                        End If
+                    Next
+                    Exit For
+                End If
+            Next
+
+            If miscIndex < 0 Then
+                If lines.Count > 0 AndAlso Not String.IsNullOrWhiteSpace(lines(lines.Count - 1)) Then lines.Add("")
+                lines.Add("[Misc]")
+                lines.Add("EnableOldManageLinksDialog=1")
+            ElseIf keyIndex >= 0 Then
+                lines(keyIndex) = "EnableOldManageLinksDialog=1"
+            Else
+                lines.Insert(miscIndex + 1, "EnableOldManageLinksDialog=1")
+            End If
+
+            File.WriteAllLines(iniPath, lines)
+        End Sub
+
+        Private Shared Sub QueueRevitRelaunchAfterExit(revitExePath As String)
+            Dim stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss")
+            Dim queueDir = Path.Combine(Path.GetTempPath(), "KKY_Tool_Revit", "Relaunch", stamp)
+            Directory.CreateDirectory(queueDir)
+
+            Dim scriptPath = Path.Combine(queueDir, "restart-revit.ps1")
+            Dim pidText = Process.GetCurrentProcess().Id.ToString()
+            Dim escapedExe = revitExePath.Replace("'", "''")
+            Dim script = String.Join(Environment.NewLine, New String() {
+                "$ErrorActionPreference = 'Stop'",
+                "$pidToWait = " & pidText,
+                "$exePath = '" & escapedExe & "'",
+                "while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) { Start-Sleep -Seconds 2 }",
+                "Start-Sleep -Milliseconds 800",
+                "Start-Process -FilePath $exePath"
+            })
+            File.WriteAllText(scriptPath, script)
+
+            Dim psi As New ProcessStartInfo()
+            psi.FileName = "powershell.exe"
+            psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File " & QuoteProcessArgument(scriptPath)
+            psi.UseShellExecute = True
+            psi.WorkingDirectory = queueDir
+            Process.Start(psi)
+        End Sub
+
+        Private Shared Function QuoteProcessArgument(value As String) As String
+            If value Is Nothing Then Return """"""
+            Return """" & value.Replace("""", "\""") & """"
+        End Function
+
+        Private Shared Sub RequestRevitExit(app As UIApplication)
+            Try
+                Dim cmdId = RevitCommandId.LookupCommandId("ID_APP_EXIT")
+                If cmdId IsNot Nothing Then
+                    app.PostCommand(cmdId)
+                    Return
+                End If
+            Catch
+            End Try
+
+            Try
+                Process.GetCurrentProcess().CloseMainWindow()
+            Catch
+            End Try
+        End Sub
 
         Private Shared Function CountTopLevelLinkTypes(doc As Document) As Integer
             If doc Is Nothing Then Return 0
@@ -612,28 +1235,28 @@ NextItem:
                 isWorkshared = False
             End Try
 
-            Dim td As New Autodesk.Revit.UI.TaskDialog("링크 기본 웍셋 점검/적용")
-            td.MainIcon = Autodesk.Revit.UI.TaskDialogIcon.TaskDialogIconInformation
-            td.TitleAutoPrefix = False
-            td.MainInstruction = "이 기능을 실행하면 파일이 자동 동기화 후 재오픈됩니다."
+            Dim instruction = "이 기능을 실행하면 파일이 자동 동기화 후 재오픈됩니다."
             If Not isWorkshared Then
-                td.MainInstruction = "이 기능을 실행하면 파일이 자동 저장 후 재오픈됩니다."
+                instruction = "이 기능을 실행하면 파일이 자동 저장 후 재오픈됩니다."
             End If
-            td.MainContent = "재오픈 시 웍셋은 모두 닫힌 상태로 열립니다." & vbCrLf & "계속하시겠습니까?"
-            td.FooterText = safeName
-            td.CommonButtons = TaskDialogCommonButtons.Yes Or TaskDialogCommonButtons.No
-            td.DefaultButton = TaskDialogResult.Yes
-            Return td.Show() = TaskDialogResult.Yes
+
+            Return ShowHubStyledYesNoDialog(
+                "링크 기본 웍셋 점검/적용",
+                instruction,
+                "재오픈 시 웍셋은 모두 닫힌 상태로 열립니다." & vbCrLf & "계속하시겠습니까?" & vbCrLf & safeName,
+                "계속",
+                "취소",
+                "링크 적용 상태와 웍셋 열림 구성을 안정적으로 반영하려면 저장 또는 동기화 후 다시 열어야 합니다.")
         End Function
 
-        Private Shared Function PersistActiveDocumentForLinkWorkset(doc As Document, safeName As String) As Boolean
+        Private Shared Function PersistActiveDocumentForLinkWorkset(doc As Document, safeName As String, syncComment As String) As Boolean
             If doc Is Nothing Then Return False
 
             Try
                 If doc.IsWorkshared Then
                     Dim twc As New TransactWithCentralOptions()
                     Dim swc As New SynchronizeWithCentralOptions()
-                    swc.Comment = "KKY Tools - 링크 기본 웍셋 적용"
+                    swc.Comment = If(syncComment, String.Empty)
                     Try
                         Dim rel As New RelinquishOptions(True)
                         swc.SetRelinquishOptions(rel)
@@ -666,6 +1289,71 @@ NextItem:
                 _activeLinkWorksetReopenName = If(safeName, String.Empty)
             End SyncLock
         End Sub
+
+        Private Shared Function ShouldRetryLinkWorksetWithHostWorksets(req As MultiRunRequest) As Boolean
+            If req Is Nothing Then Return False
+            If req.LinkWorkset Is Nothing OrElse Not req.LinkWorkset.Enabled Then Return False
+            Return True
+        End Function
+
+        Private Shared Function ResolveLinkWorksetSyncComment(req As MultiRunRequest) As String
+            If req Is Nothing OrElse req.LinkWorkset Is Nothing Then Return String.Empty
+            If Not req.LinkWorkset.UseSyncComment Then Return String.Empty
+
+            Dim comment = SafeStr(req.LinkWorkset.SyncComment).Trim()
+            If String.IsNullOrWhiteSpace(comment) Then
+                Return "KKY Tools - 링크 기본 웍셋 적용"
+            End If
+            Return comment
+        End Function
+
+        Private Shared Function GetMultiLinkRowsSince(startIndex As Integer) As List(Of LinkWorksetAuditRow)
+            Dim rows = If(_multiLinkWorksetRows, New List(Of LinkWorksetAuditRow)())
+            If startIndex <= 0 Then Return New List(Of LinkWorksetAuditRow)(rows)
+            If startIndex >= rows.Count Then Return New List(Of LinkWorksetAuditRow)()
+            Return rows.Skip(startIndex).ToList()
+        End Function
+
+        Private Shared Sub TrimMultiLinkWorksetRows(startIndex As Integer)
+            If _multiLinkWorksetRows Is Nothing Then Return
+            If startIndex <= 0 Then
+                _multiLinkWorksetRows.Clear()
+                Return
+            End If
+            If startIndex >= _multiLinkWorksetRows.Count Then Return
+            _multiLinkWorksetRows.RemoveRange(startIndex, _multiLinkWorksetRows.Count - startIndex)
+        End Sub
+
+        Private Shared Function CollectRetryHostWorksetNames(rows As IEnumerable(Of LinkWorksetAuditRow)) As List(Of String)
+            Dim names As New List(Of String)()
+            If rows Is Nothing Then Return names
+
+            For Each row In rows
+                If row Is Nothing Then Continue For
+                Dim message = If(row.Message, String.Empty)
+                Dim diag = If(row.DiagnosticLog, String.Empty)
+                If message.IndexOf("closed workset", StringComparison.OrdinalIgnoreCase) < 0 AndAlso
+                   diag.IndexOf("closed workset", StringComparison.OrdinalIgnoreCase) < 0 Then
+                    Continue For
+                End If
+
+                Dim marker = "hostWorksets="
+                Dim idx = diag.IndexOf(marker, StringComparison.OrdinalIgnoreCase)
+                If idx < 0 Then Continue For
+                Dim rest = diag.Substring(idx + marker.Length)
+                Dim endIdx = rest.IndexOf(" || ", StringComparison.Ordinal)
+                If endIdx >= 0 Then rest = rest.Substring(0, endIdx)
+                For Each token In rest.Split(New String() {","}, StringSplitOptions.RemoveEmptyEntries)
+                    Dim name = token.Trim()
+                    If String.IsNullOrWhiteSpace(name) Then Continue For
+                    If Not names.Any(Function(x) String.Equals(x, name, StringComparison.OrdinalIgnoreCase)) Then
+                        names.Add(name)
+                    End If
+                Next
+            Next
+
+            Return names
+        End Function
 
         Private Shared Sub ResetActiveLinkWorksetReopenState()
             SyncLock _multiLock
@@ -1129,7 +1817,6 @@ NextItem:
             Dim headers As New List(Of String) From {
                 "HostFile",
                 "LinkName",
-                "LinkPath",
                 "AttachmentType",
                 "WasLoadedBefore",
                 "IsLoadedAfter",
@@ -1143,8 +1830,7 @@ NextItem:
                 "ApplyRequested",
                 "Applied",
                 "Status",
-                "Message",
-                "DiagnosticLog"
+                "Message"
             }
 
             Dim table = BuildLinkWorksetTable(headers, rows)
@@ -1214,6 +1900,8 @@ NextItem:
             opt.Tol = ToDouble(GetDictValue(d, "tol"), 1.0R)
             opt.Unit = SafeStr(GetDictValue(d, "unit"))
             opt.Param = SafeStr(GetDictValue(d, "param"))
+            opt.IncludePointXY = ToBool(GetDictValue(d, "includePointXY"))
+            opt.IncludeLinearMetrics = ToBool(GetDictValue(d, "includeLinearMetrics"))
             If String.IsNullOrWhiteSpace(opt.Unit) Then opt.Unit = "inch"
             If String.IsNullOrWhiteSpace(opt.Param) Then opt.Param = "Comments"
             Return opt
@@ -1279,6 +1967,8 @@ NextItem:
             Dim d = ToDict(obj)
             opt.Enabled = ToBool(GetDictValue(d, "enabled"))
             opt.ApplyDefaultWorksetOnly = ToBool(GetDictValue(d, "applyDefaultWorksetOnly"), True)
+            opt.UseSyncComment = ToBool(GetDictValue(d, "useSyncComment"), False)
+            opt.SyncComment = SafeStr(GetDictValue(d, "syncComment")).Trim()
             Return opt
         End Function
 
@@ -1303,8 +1993,10 @@ NextItem:
         Private Sub AppendMultiRunItem(fileName As String, status As String, reason As String, phase As String, started As DateTime)
             If _multiRunItems Is Nothing Then _multiRunItems = New List(Of MultiRunItem)()
             Dim elapsed = CLng((Date.Now - started).TotalMilliseconds)
+            Dim displayName As String = GetSafeMultiFileName(fileName)
+            If String.IsNullOrWhiteSpace(displayName) Then displayName = SafeStr(fileName)
             _multiRunItems.Add(New MultiRunItem With {
-                .File = fileName,
+                .File = displayName,
                 .Status = status,
                 .Reason = reason,
                 .Phase = phase,
@@ -1315,6 +2007,16 @@ NextItem:
         Private Function BuildMultiSummaryPayload() As Object
             Dim items As List(Of MultiRunItem) = If(_multiRunItems, New List(Of MultiRunItem)())
             Dim featureSummaries = BuildMultiFeatureSummaries()
+            Dim itemPayloads = items.
+                Where(Function(x) x IsNot Nothing).
+                Select(Function(x) New With {
+                    .file = GetSafeMultiFileName(If(x.File, "")),
+                    .status = SafeStr(If(x.Status, "")),
+                    .reason = SafeStr(If(x.Reason, "")),
+                    .phase = SafeStr(If(x.Phase, "")),
+                    .elapsedMs = x.ElapsedMs
+                }).
+                ToList()
 
             Dim total As Integer = If(_multiTotal > 0, _multiTotal, items.Count)
 
@@ -1334,7 +2036,7 @@ NextItem:
         .failed = failed,
         .canceled = False,
         .featureSummaries = featureSummaries,
-        .items = items
+        .items = itemPayloads
     }
         End Function
 
@@ -1464,6 +2166,7 @@ NextItem:
             Dim projectRows As Integer = If(_multiGuidProject, New DataTable()).Rows.Count
             Dim familyRows As Integer = If(_multiGuidFamilyDetail, New DataTable()).Rows.Count
             Dim includeFamily As Boolean = (_multiRequest IsNot Nothing AndAlso _multiRequest.Guid IsNot Nothing AndAlso _multiRequest.Guid.IncludeFamily)
+            Dim fileSummaries = BuildGuidFileSummaries()
             Dim lines As New List(Of String) From {
                 $"선택 파일 수: {GetRequestedMultiFileCount()}개",
                 $"프로젝트 결과 행 수: {projectRows}행"
@@ -1476,7 +2179,8 @@ NextItem:
             Return New With {
                 .key = "guid",
                 .label = "공유파라미터 GUID 검토",
-                .lines = lines.ToArray()
+                .lines = lines.ToArray(),
+                .fileSummaries = fileSummaries
             }
         End Function
 
@@ -1484,6 +2188,7 @@ NextItem:
             Dim rows = If(_multiFamilyLinkRows, New List(Of FamilyLinkAuditRow)())
             Dim errorCount As Integer = rows.Where(Function(r) r IsNot Nothing AndAlso String.Equals(If(r.Issue, ""), FamilyLinkAuditIssue.[Error].ToString(), StringComparison.OrdinalIgnoreCase)).Count()
             Dim targetCount As Integer = 0
+            Dim fileSummaries = BuildFamilyLinkFileSummaries(rows)
             If _multiRequest IsNot Nothing AndAlso _multiRequest.FamilyLink IsNot Nothing AndAlso _multiRequest.FamilyLink.Targets IsNot Nothing Then
                 targetCount = _multiRequest.FamilyLink.Targets.Count
             End If
@@ -1496,12 +2201,14 @@ NextItem:
                     $"검토 대상 파라미터 수: {targetCount}개",
                     $"이슈 결과 행 수: {rows.Count}행",
                     $"오류 행 수: {errorCount}행"
-                }
+                },
+                .fileSummaries = fileSummaries
             }
         End Function
 
         Private Function BuildPointsMultiSummary() As Object
             Dim rows = If(_multiPointRows, New List(Of ExportPointsService.Row)())
+            Dim fileSummaries = BuildPointsFileSummaries(rows)
             Dim successFileSet As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
             For Each row In rows
                 If row Is Nothing Then Continue For
@@ -1520,7 +2227,8 @@ NextItem:
                     $"결과 행 수: {rows.Count}행",
                     $"성공 파일 수: {successFiles}개",
                     $"실패 파일 수: {failedCount}개"
-                }
+                },
+                .fileSummaries = fileSummaries
             }
         End Function
 
@@ -1615,6 +2323,167 @@ NextItem:
             Return result
         End Function
 
+        Private Function BuildGuidFileSummaries() As List(Of Object)
+            Dim projectTable = If(_multiGuidProject, New DataTable())
+            Dim familyTable = If(_multiGuidFamilyDetail, New DataTable())
+            Dim orderedNames = BuildOrderedMultiFileNames(
+                projectTable.Rows.Cast(Of DataRow)().Select(Function(r) ReadDataRowField(r, "RvtName")),
+                familyTable.Rows.Cast(Of DataRow)().Select(Function(r) ReadDataRowField(r, "RvtName")))
+
+            Dim result As New List(Of Object)()
+            For Each fileName In orderedNames
+                Dim projectRows = projectTable.Rows.Cast(Of DataRow)().
+                    Where(Function(r) String.Equals(GetSafeMultiFileName(ReadDataRowField(r, "RvtName")), fileName, StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+                Dim familyRows = familyTable.Rows.Cast(Of DataRow)().
+                    Where(Function(r) String.Equals(GetSafeMultiFileName(ReadDataRowField(r, "RvtName")), fileName, StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+
+                Dim total As Integer = projectRows.Count + familyRows.Count
+                Dim issueCount As Integer = projectRows.Where(Function(r) IsGuidIssueResult(ReadDataRowField(r, "Result"))).Count() +
+                                          familyRows.Where(Function(r) IsGuidIssueResult(ReadDataRowField(r, "Result"))).Count()
+                Dim runReason As String = ""
+                Dim statusText As String = GetMultiRunItemStatus(fileName, runReason)
+                Dim reasonParts As New List(Of String)()
+                If projectRows.Count > 0 Then reasonParts.Add($"Project {projectRows.Count}행")
+                If familyRows.Count > 0 Then reasonParts.Add($"Family {familyRows.Count}행")
+                Dim reason As String = If(reasonParts.Count > 0, String.Join(" / ", reasonParts), runReason)
+
+                result.Add(New With {
+                    .file = fileName,
+                    .total = total,
+                    .issues = issueCount,
+                    .near = 0,
+                    .status = statusText,
+                    .reason = reason
+                })
+            Next
+
+            Return result
+        End Function
+
+        Private Function BuildFamilyLinkFileSummaries(rows As IList(Of FamilyLinkAuditRow)) As List(Of Object)
+            Dim sourceRows = If(rows, New List(Of FamilyLinkAuditRow)())
+            Dim orderedNames = BuildOrderedMultiFileNames(sourceRows.Select(Function(r) If(r Is Nothing, "", r.FileName)))
+            Dim result As New List(Of Object)()
+
+            For Each fileName In orderedNames
+                Dim perFileRows = sourceRows.
+                    Where(Function(r) r IsNot Nothing AndAlso String.Equals(GetSafeMultiFileName(r.FileName), fileName, StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+                Dim issueCount As Integer = perFileRows.Where(Function(r) Not String.Equals(If(r.Issue, ""), FamilyLinkAuditIssue.OK.ToString(), StringComparison.OrdinalIgnoreCase)).Count()
+                Dim runReason As String = ""
+                Dim statusText As String = GetMultiRunItemStatus(fileName, runReason)
+                Dim reason As String = If(perFileRows.Count > 0, $"이슈 {issueCount}건", runReason)
+
+                result.Add(New With {
+                    .file = fileName,
+                    .total = perFileRows.Count,
+                    .issues = issueCount,
+                    .near = 0,
+                    .status = statusText,
+                    .reason = reason
+                })
+            Next
+
+            Return result
+        End Function
+
+        Private Function BuildPointsFileSummaries(rows As IList(Of ExportPointsService.Row)) As List(Of Object)
+            Dim sourceRows = If(rows, New List(Of ExportPointsService.Row)())
+            Dim orderedNames = BuildOrderedMultiFileNames(sourceRows.Select(Function(r) If(r Is Nothing, "", r.File)))
+            Dim result As New List(Of Object)()
+
+            For Each fileName In orderedNames
+                Dim perFileRows = sourceRows.
+                    Where(Function(r) r IsNot Nothing AndAlso String.Equals(GetSafeMultiFileName(r.File), fileName, StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+                Dim runReason As String = ""
+                Dim statusText As String = GetMultiRunItemStatus(fileName, runReason)
+                Dim issueCount As Integer = If(perFileRows.Count = 0 AndAlso Not String.Equals(statusText, "success", StringComparison.OrdinalIgnoreCase), 1, 0)
+                Dim reason As String = runReason
+                If String.IsNullOrWhiteSpace(reason) Then
+                    reason = If(perFileRows.Count > 0, $"포인트 {perFileRows.Count}건", "추출 결과 없음")
+                End If
+
+                result.Add(New With {
+                    .file = fileName,
+                    .total = perFileRows.Count,
+                    .issues = issueCount,
+                    .near = 0,
+                    .status = statusText,
+                    .reason = reason
+                })
+            Next
+
+            Return result
+        End Function
+
+        Private Function BuildOrderedMultiFileNames(ParamArray nameGroups() As IEnumerable(Of String)) As List(Of String)
+            Dim orderedNames As New List(Of String)()
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing Then
+                For Each path In _multiRequest.RvtPaths
+                    Dim safeName As String = GetSafeMultiFileName(path)
+                    If String.IsNullOrWhiteSpace(safeName) Then Continue For
+                    If seen.Add(safeName) Then orderedNames.Add(safeName)
+                Next
+            End If
+
+            If _multiRunItems IsNot Nothing Then
+                For Each item In _multiRunItems
+                    If item Is Nothing Then Continue For
+                    Dim safeName As String = GetSafeMultiFileName(item.File)
+                    If String.IsNullOrWhiteSpace(safeName) Then Continue For
+                    If seen.Add(safeName) Then orderedNames.Add(safeName)
+                Next
+            End If
+
+            For Each group In nameGroups
+                If group Is Nothing Then Continue For
+                For Each rawName In group
+                    Dim safeName As String = GetSafeMultiFileName(rawName)
+                    If String.IsNullOrWhiteSpace(safeName) Then Continue For
+                    If seen.Add(safeName) Then orderedNames.Add(safeName)
+                Next
+            Next
+
+            Return orderedNames
+        End Function
+
+        Private Function GetMultiRunItemStatus(fileName As String, ByRef reason As String) As String
+            reason = ""
+            If _multiRunItems IsNot Nothing Then
+                For Each item In _multiRunItems
+                    If item Is Nothing Then Continue For
+                    If String.Equals(GetSafeMultiFileName(item.File), fileName, StringComparison.OrdinalIgnoreCase) Then
+                        reason = If(item.Reason, "")
+                        Return If(String.IsNullOrWhiteSpace(item.Status), "pending", item.Status)
+                    End If
+                Next
+            End If
+            Return "pending"
+        End Function
+
+        Private Shared Function ReadDataRowField(row As DataRow, columnName As String) As String
+            If row Is Nothing OrElse row.Table Is Nothing OrElse String.IsNullOrWhiteSpace(columnName) Then Return ""
+            If Not row.Table.Columns.Contains(columnName) Then Return ""
+            Try
+                Return SafeStr(row(columnName))
+            Catch
+                Return ""
+            End Try
+        End Function
+
+        Private Shared Function IsGuidIssueResult(resultText As String) As Boolean
+            Dim value As String = SafeStr(resultText).Trim()
+            If String.IsNullOrWhiteSpace(value) Then Return False
+            If value.StartsWith("OK", StringComparison.OrdinalIgnoreCase) Then Return False
+            If String.Equals(value, "PROJECT_PARAM", StringComparison.OrdinalIgnoreCase) Then Return False
+            Return True
+        End Function
+
         Private Shared Function IsLinkWorksetIssue(row As LinkWorksetAuditRow) As Boolean
             If row Is Nothing Then Return False
             If String.Equals(If(row.Status, ""), "error", StringComparison.OrdinalIgnoreCase) Then Return True
@@ -1649,12 +2518,47 @@ NextItem:
 
         Private Shared Function GetSafeMultiFileName(path As String) As String
             If String.IsNullOrWhiteSpace(path) Then Return String.Empty
+            path = NormalizeMultiPath(path)
             Try
                 Dim name As String = System.IO.Path.GetFileName(path)
-                If Not String.IsNullOrWhiteSpace(name) Then Return name
+                If Not String.IsNullOrWhiteSpace(name) Then
+                    Dim withoutExtension As String = ""
+                    Try
+                        withoutExtension = System.IO.Path.GetFileNameWithoutExtension(name)
+                    Catch
+                        withoutExtension = ""
+                    End Try
+                    If Not String.IsNullOrWhiteSpace(withoutExtension) Then Return withoutExtension
+                    Return name
+                End If
             Catch
             End Try
             Return path
+        End Function
+
+        Private Shared Function NormalizeMultiPath(path As String) As String
+            Dim value As String = SafeStr(path).Trim()
+            If String.IsNullOrWhiteSpace(value) Then Return String.Empty
+
+            value = New String(value.Where(Function(ch) Not Char.IsControl(ch)).ToArray())
+            value = value.Trim(""""c)
+
+            Try
+                If value.IndexOf("\u", StringComparison.OrdinalIgnoreCase) >= 0 OrElse value.Contains("\\") Then
+                    value = System.Text.RegularExpressions.Regex.Unescape(value)
+                End If
+            Catch
+            End Try
+
+            Do While value.EndsWith("""", StringComparison.Ordinal)
+                value = value.Substring(0, value.Length - 1).TrimEnd()
+            Loop
+
+            Do While value.StartsWith("""", StringComparison.Ordinal)
+                value = value.Substring(1).TrimStart()
+            Loop
+
+            Return value
         End Function
 
         Private Sub ReportMultiProgress(percent As Double, message As String, detail As String)
@@ -1674,20 +2578,141 @@ NextItem:
         End Function
 
         Private Shared Function BuildOpenOptions(projectPath As ModelPath, preferConnectorWorksets As Boolean) As OpenOptions
+            Return BuildOpenOptions(projectPath, preferConnectorWorksets, Nothing)
+        End Function
+
+        Private Shared Function BuildOpenOptions(projectPath As ModelPath,
+                                                 preferConnectorWorksets As Boolean,
+                                                 additionalOpenWorksetNames As IEnumerable(Of String)) As OpenOptions
             Dim opt As New OpenOptions()
             Try
-                opt.DetachFromCentralOption = DetachFromCentralOption.DetachAndPreserveWorksets
+                opt.DetachFromCentralOption = DetachFromCentralOption.DoNotDetach
             Catch
             End Try
 
             Try
-                Dim ws = New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
+                Dim ws = BuildSavedWorksetOpenConfiguration(projectPath, additionalOpenWorksetNames)
                 opt.SetOpenWorksetsConfiguration(ws)
             Catch
             End Try
 
             Return opt
         End Function
+
+        Private Shared Function BuildSavedWorksetOpenConfiguration(projectPath As ModelPath,
+                                                                   Optional additionalOpenWorksetNames As IEnumerable(Of String) = Nothing) As WorksetConfiguration
+            Dim config As New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
+            If projectPath Is Nothing Then Return config
+
+            Try
+                Dim previews = WorksharingUtils.GetUserWorksetInfo(projectPath)
+                If previews Is Nothing OrElse previews.Count = 0 Then Return config
+
+                Dim extraNames As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+                If additionalOpenWorksetNames IsNot Nothing Then
+                    For Each name In additionalOpenWorksetNames
+                        If String.IsNullOrWhiteSpace(name) Then Continue For
+                        extraNames.Add(name.Trim())
+                    Next
+                End If
+
+                Dim openIds As New List(Of WorksetId)()
+                For Each preview In previews
+                    If preview Is Nothing Then Continue For
+                    Dim shouldOpen As Boolean = IsPreviewMarkedOpen(preview)
+                    If Not shouldOpen AndAlso extraNames.Count > 0 Then
+                        Try
+                            Dim previewName = Convert.ToString(preview.Name)
+                            shouldOpen = extraNames.Contains(If(previewName, String.Empty))
+                        Catch
+                            shouldOpen = False
+                        End Try
+                    End If
+                    If shouldOpen Then
+                        openIds.Add(preview.Id)
+                    End If
+                Next
+
+                If openIds.Count > 0 Then
+                    config.Open(openIds)
+                End If
+            Catch
+            End Try
+
+            Return config
+        End Function
+
+        Private Shared Function IsPreviewMarkedOpen(preview As WorksetPreview) As Boolean
+            If preview Is Nothing Then Return False
+            Try
+                Dim prop = preview.GetType().GetProperty("IsOpen")
+                If prop Is Nothing Then Return False
+                Dim raw = prop.GetValue(preview, Nothing)
+                If TypeOf raw Is Boolean Then Return CBool(raw)
+            Catch
+            End Try
+            Return False
+        End Function
+
+        Private Shared Function TryExtractMultiBasicFileInfo(pathText As String) As BasicFileInfo
+            Try
+                If String.IsNullOrWhiteSpace(pathText) Then Return Nothing
+                Return BasicFileInfo.Extract(pathText)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function CreateMultiNewLocalPath(centralPath As String) As String
+            Dim localRoot = Path.Combine(Path.GetTempPath(), "KKY_Tool_Revit", "MultiRvt", DateTime.Now.ToString("yyyyMMdd"))
+            Directory.CreateDirectory(localRoot)
+
+            Dim fileName = Path.GetFileNameWithoutExtension(centralPath) & "_" & Environment.UserName & "_" & DateTime.Now.ToString("HHmmssfff") & ".rvt"
+            Dim localPath = Path.Combine(localRoot, fileName)
+
+            Dim sourcePath = ModelPathUtils.ConvertUserVisiblePathToModelPath(centralPath)
+            Dim targetPath = ModelPathUtils.ConvertUserVisiblePathToModelPath(localPath)
+            WorksharingUtils.CreateNewLocal(sourcePath, targetPath)
+            Return localPath
+        End Function
+
+        Private Shared Function TrySynchronizeMultiLocalToCentral(doc As Document, comment As String, ByRef err As String) As Boolean
+            err = String.Empty
+            If doc Is Nothing Then
+                err = "문서가 없습니다."
+                Return False
+            End If
+
+            If Not doc.IsWorkshared Then
+                err = "Workshared 문서가 아닙니다."
+                Return False
+            End If
+
+            Try
+                Dim twc As New TransactWithCentralOptions()
+                Dim swc As New SynchronizeWithCentralOptions()
+                swc.Comment = If(comment, String.Empty)
+                Try
+                    Dim relinquish As New RelinquishOptions(True)
+                    swc.SetRelinquishOptions(relinquish)
+                Catch
+                End Try
+
+                doc.SynchronizeWithCentral(twc, swc)
+                Return True
+            Catch ex As Exception
+                err = ex.Message
+                Return False
+            End Try
+        End Function
+
+        Private Shared Sub TryDeleteMultiTempFile(pathText As String)
+            If String.IsNullOrWhiteSpace(pathText) OrElse Not File.Exists(pathText) Then Return
+            Try
+                File.Delete(pathText)
+            Catch
+            End Try
+        End Sub
 
         Private Shared Function BuildReopenOpenOptions() As OpenOptions
             Dim opt As New OpenOptions()
@@ -1946,22 +2971,20 @@ NextItem:
                 Dim dr = dt.NewRow()
                 dr(0) = SafeStr(row.HostFileName)
                 dr(1) = SafeStr(row.LinkName)
-                dr(2) = SafeStr(row.LinkPath)
-                dr(3) = SafeStr(row.AttachmentType)
-                dr(4) = BoolText(row.WasLoadedBefore)
-                dr(5) = BoolText(row.IsLoadedAfter)
-                dr(6) = BoolText(row.IsWorkshared)
-                dr(7) = SafeStr(row.DefaultWorksetName)
-                dr(8) = row.TotalUserWorksets.ToString()
-                dr(9) = SafeStr(row.OpenUserWorksetNamesBefore)
-                dr(10) = NullableBoolText(row.DefaultOnlyOpenBefore)
-                dr(11) = SafeStr(row.OpenUserWorksetNamesAfter)
-                dr(12) = NullableBoolText(row.DefaultOnlyOpenAfter)
-                dr(13) = BoolText(row.ApplyRequested)
-                dr(14) = BoolText(row.Applied)
-                dr(15) = SafeStr(row.Status)
-                dr(16) = SafeStr(row.Message)
-                dr(17) = SafeStr(row.DiagnosticLog)
+                dr(2) = SafeStr(row.AttachmentType)
+                dr(3) = BoolText(row.WasLoadedBefore)
+                dr(4) = BoolText(row.IsLoadedAfter)
+                dr(5) = BoolText(row.IsWorkshared)
+                dr(6) = SafeStr(row.DefaultWorksetName)
+                dr(7) = row.TotalUserWorksets.ToString()
+                dr(8) = SafeStr(row.OpenUserWorksetNamesBefore)
+                dr(9) = NullableBoolText(row.DefaultOnlyOpenBefore)
+                dr(10) = SafeStr(row.OpenUserWorksetNamesAfter)
+                dr(11) = NullableBoolText(row.DefaultOnlyOpenAfter)
+                dr(12) = BoolText(row.ApplyRequested)
+                dr(13) = BoolText(row.Applied)
+                dr(14) = SafeStr(row.Status)
+                dr(15) = SafeStr(row.Message)
                 dt.Rows.Add(dr)
             Next
 
@@ -1999,13 +3022,13 @@ NextItem:
             Dim arr = TryCast(raw, System.Collections.IEnumerable)
             If arr IsNot Nothing AndAlso Not TypeOf raw Is String Then
                 For Each o In arr
-                    Dim s = SafeStr(o)
+                    Dim s = NormalizeMultiPath(SafeStr(o))
                     If Not String.IsNullOrWhiteSpace(s) AndAlso Not list.Contains(s) Then
                         list.Add(s)
                     End If
                 Next
             Else
-                Dim s = SafeStr(raw)
+                Dim s = NormalizeMultiPath(SafeStr(raw))
                 If Not String.IsNullOrWhiteSpace(s) Then list.Add(s)
             End If
             Return list

@@ -14,6 +14,8 @@ Namespace Services
             Public Property ExtraParamsText As String = String.Empty
             Public Property TargetFilterText As String = String.Empty
             Public Property ExcludeEndDummy As Boolean
+            Public Property IncludePointXY As Boolean
+            Public Property IncludeLinearMetrics As Boolean
         End Class
 
         Public Shared Function Load() As HubCommonOptions

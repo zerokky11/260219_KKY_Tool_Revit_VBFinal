@@ -1,0 +1,4 @@
+root = true
+
+[*.{vb,cs,js,css,html,htm,json,xml,xaml,md,txt,csproj,vbproj,sln,config}]
+charset = utf-8-bom

@@ -1,5 +1,5 @@
-// Resources/HubUI/js/views/paramprop.js
-import { clear, div, toast, setBusy, showExcelSavedDialog, debounce, chooseExcelMode } from '../core/dom.js';
+﻿// Resources/HubUI/js/views/paramprop.js
+import { clear, div, toast, setBusy, showExcelSavedDialog, showCompletionSummaryDialog, debounce, chooseExcelMode } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 
@@ -61,6 +61,8 @@ export function renderParamProp(root) {
         targetGroupId: null,
         isInstance: true,
         excludeDummy: true,
+        saveModifiedFamilies: false,
+        modifiedFamilyOutputFolder: '',
         acceptProgress: false,
         lastReport: DEFAULT_GUIDE,
         lastDetails: []
@@ -164,6 +166,33 @@ export function renderParamProp(root) {
     optionRow.append(dummyWrap, instWrap, targetGroupWrap);
     pickerCard.append(optionRow);
 
+    const saveRow = div('paramprop-row paramprop-save-row');
+    const saveWrap = div('paramprop-opt paramprop-opt-save');
+    const saveChk = document.createElement('input');
+    saveChk.type = 'checkbox';
+    saveChk.checked = false;
+    saveChk.id = 'optSaveModifiedFamilies';
+    const saveLbl = document.createElement('label');
+    saveLbl.setAttribute('for', 'optSaveModifiedFamilies');
+    saveLbl.textContent = '수정된 패밀리(.rfa) 파일 저장';
+    saveWrap.append(saveChk, saveLbl);
+
+    const savePathWrap = div('paramprop-opt paramprop-opt-save-path is-disabled');
+    const savePathLbl = labelSpan('저장 폴더');
+    const savePathInput = document.createElement('input');
+    savePathInput.type = 'text';
+    savePathInput.className = 'paramprop-search paramprop-folder-input';
+    savePathInput.placeholder = '수정된 패밀리(.rfa)를 저장할 폴더를 선택하세요';
+    savePathInput.disabled = true;
+    const saveBrowseBtn = document.createElement('button');
+    saveBrowseBtn.type = 'button';
+    saveBrowseBtn.className = 'btn btn-secondary';
+    saveBrowseBtn.textContent = '찾아보기';
+    saveBrowseBtn.disabled = true;
+    savePathWrap.append(savePathLbl, savePathInput, saveBrowseBtn);
+    saveRow.append(saveWrap, savePathWrap);
+    pickerCard.append(saveRow);
+
     const resultCard = div('paramprop-card section paramprop-report-card');
     const resultTitle = div('paramprop-title');
     resultTitle.textContent = '결과';
@@ -197,6 +226,11 @@ export function renderParamProp(root) {
     onHost('sharedparam:done', handleDone);
     onHost('sharedparam:exported', handleExported);
     onHost('paramprop:progress', handleProgress);
+    onHost('paramprop:output-folder-picked', ({ path }) => {
+        if (!path) return;
+        state.modifiedFamilyOutputFolder = String(path || '').trim();
+        savePathInput.value = state.modifiedFamilyOutputFolder;
+    });
     onHost('revit:error', ({ message }) => {
         state.acceptProgress = false;
         lastProgressPct = 0;
@@ -213,6 +247,22 @@ export function renderParamProp(root) {
     });
 
     fetchDefinitions();
+    saveChk.addEventListener('change', () => {
+        state.saveModifiedFamilies = !!saveChk.checked;
+        if (!state.saveModifiedFamilies) {
+            state.modifiedFamilyOutputFolder = '';
+            savePathInput.value = '';
+        }
+        syncSaveOptions();
+    });
+    savePathInput.addEventListener('input', () => {
+        state.modifiedFamilyOutputFolder = String(savePathInput.value || '').trim();
+    });
+    saveBrowseBtn.addEventListener('click', () => {
+        if (!state.saveModifiedFamilies) return;
+        post('paramprop:browse-output-folder', {});
+    });
+    syncSaveOptions();
 
     function fetchDefinitions() {
         setBusy(true, '공유 파라미터를 불러오는 중...');
@@ -266,7 +316,72 @@ export function renderParamProp(root) {
         const msg = message || (good ? '공유 파라미터 연동이 완료되었습니다.' : '공유 파라미터 연동에 실패했습니다.');
         toast(msg, good ? 'ok' : (status === 'cancelled' ? 'info' : 'err'), 2800);
         ProgressDialog.update(100, '완료', '공유 파라미터 추가 및 연동이 완료되었습니다.');
-        setTimeout(() => { lastProgressPct = 0; ProgressDialog.hide(); }, 400);
+        const targetGroup = state.targetGroups.find((item) => item?.id === state.targetGroupId);
+        const detailSummary = summarizeDetailRows(state.lastDetails);
+        const summaryItems = [
+            { label: '선택 파라미터 수', value: String(state.selectedParams.size) },
+            { label: '오류 행 수', value: String(detailSummary.errorCount) },
+            { label: '건너뜀 행 수', value: String(detailSummary.skipCount) },
+            { label: '검토 필요 행 수', value: String(detailSummary.reviewCount) },
+            { label: '실행 결과', value: good ? '완료' : (status === 'cancelled' ? '취소' : '실패') }
+        ];
+        const notes = [];
+        if (targetGroup) notes.push(`대상 그룹: ${targetGroup?.name || targetGroup?.label || '-'}`);
+        if (detailSummary.totalCount === 0 && good) notes.push('상세 결과에 표시할 오류 또는 건너뜀 항목이 없습니다.');
+        if (detailSummary.scanFailCount > 0) notes.push(`ScanFail: ${detailSummary.scanFailCount}건`);
+        if (detailSummary.childErrorCount > 0) notes.push(`ChildError: ${detailSummary.childErrorCount}건`);
+        if (message) notes.push(String(message));
+        setTimeout(() => {
+            lastProgressPct = 0;
+            ProgressDialog.hide();
+            requestAnimationFrame(() => {
+                showCompletionSummaryDialog({
+                    title: '공유 파라미터 연동 완료',
+                    message: good
+                        ? '공유 파라미터 추가 및 연동이 끝났습니다. 결과를 확인하거나 바로 엑셀로 내보낼 수 있습니다.'
+                        : '공유 파라미터 연동이 끝났습니다. 결과를 확인하고 필요하면 다시 실행해 주세요.',
+                    summaryItems,
+                    notes,
+                    exportDisabled: exportBtn.disabled,
+                    onExport: () => exportBtn.click()
+                });
+            });
+        }, 400);
+    }
+
+    function summarizeDetailRows(rows) {
+        const summary = {
+            totalCount: 0,
+            skipCount: 0,
+            scanFailCount: 0,
+            errorCount: 0,
+            childErrorCount: 0,
+            reviewCount: 0
+        };
+        (Array.isArray(rows) ? rows : []).forEach((row) => {
+            summary.totalCount += 1;
+            const kind = String(row?.type || row?.kind || '').trim().toLowerCase();
+            if (kind === 'skip') {
+                summary.skipCount += 1;
+                return;
+            }
+            if (kind === 'scanfail') {
+                summary.scanFailCount += 1;
+                return;
+            }
+            if (kind === 'error') {
+                summary.errorCount += 1;
+                return;
+            }
+            if (kind === 'childerror') {
+                summary.childErrorCount += 1;
+                return;
+            }
+            summary.reviewCount += 1;
+        });
+        summary.errorCount += summary.scanFailCount + summary.childErrorCount;
+        summary.reviewCount += summary.errorCount;
+        return summary;
     }
 
     function handleExported({ ok, path, message }) {
@@ -287,6 +402,10 @@ export function renderParamProp(root) {
             toast('하나 이상의 파라미터를 선택해 주세요.', 'warn');
             return;
         }
+        if (state.saveModifiedFamilies && !String(state.modifiedFamilyOutputFolder || '').trim()) {
+            toast('수정된 패밀리(.rfa)를 저장할 폴더를 선택해 주세요.', 'warn');
+            return;
+        }
         lastProgressPct = 0;
         state.acceptProgress = true;
         setBusy(true, '공유 파라미터 연동 중...');
@@ -298,19 +417,24 @@ export function renderParamProp(root) {
             paramGuids: Array.from(new Set((state.defs || []).filter((d) => selected.includes(d.name) && d.guid).map((d) => d.guid))),
             group: state.targetGroupId,
             isInstance: !!state.isInstance,
-            excludeDummy: !!state.excludeDummy
+            excludeDummy: !!state.excludeDummy,
+            saveModifiedFamilies: !!state.saveModifiedFamilies,
+            modifiedFamilyOutputFolder: String(state.modifiedFamilyOutputFolder || '').trim()
         };
         post('sharedparam:run', payload);
     }
 
-    function onExport() {
+    async function onExport() {
         if (!state.lastDetails.length) {
             toast('최근 연동 결과가 없습니다.', 'info');
             return;
         }
+        const excelMode = await chooseExcelMode();
         state.acceptProgress = true;
         setBusy(true, '엑셀 내보내기 중...');
-        chooseExcelMode((mode) => post('sharedparam:export-excel', { excelMode: mode || 'fast' }));
+        ProgressDialog.show('공유 파라미터 결과 내보내기', '엑셀 파일을 준비하는 중...');
+        ProgressDialog.update(0, '엑셀 파일을 준비하는 중...', '');
+        post('sharedparam:export-excel', { excelMode: excelMode || 'fast' });
     }
 
     function renderGroups() {
@@ -513,6 +637,13 @@ export function renderParamProp(root) {
         btn.textContent = label;
         btn.onclick = onClick;
         return btn;
+    }
+
+    function syncSaveOptions() {
+        const enabled = !!state.saveModifiedFamilies;
+        savePathInput.disabled = !enabled;
+        saveBrowseBtn.disabled = !enabled;
+        savePathWrap.classList.toggle('is-disabled', !enabled);
     }
 
     function handleProgress(payload) {

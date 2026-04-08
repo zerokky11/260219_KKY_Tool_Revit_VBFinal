@@ -71,7 +71,9 @@ Namespace Services
         ' LoadFamily는 트랜잭션 밖에서 호출
         Public Sub SafeLoadFamily(sourceFamDoc As Document,
                                   targetDoc As Document,
-                                  Optional label As String = "LoadFamily")
+                                  Optional label As String = "LoadFamily",
+                                  Optional saveModifiedCopy As Boolean = False,
+                                  Optional saveFolder As String = Nothing)
 
             If targetDoc Is Nothing Then Throw New ArgumentNullException(NameOf(targetDoc))
 
@@ -79,20 +81,40 @@ Namespace Services
                 Throw New InvalidOperationException("Target document has an open transaction. Close it before LoadFamily.")
             End If
 
-            Try
-                If sourceFamDoc IsNot Nothing AndAlso sourceFamDoc.IsModified Then
-                    If Not String.IsNullOrEmpty(sourceFamDoc.PathName) Then
-                        sourceFamDoc.Save()
-                    End If
-                End If
-            Catch
-                ' 저장 실패는 무시 (로드 자체는 시도)
-            End Try
+            If saveModifiedCopy AndAlso sourceFamDoc IsNot Nothing AndAlso sourceFamDoc.IsModified Then
+                SaveModifiedFamilyCopy(sourceFamDoc, saveFolder)
+            End If
 
             Dim opts As New FamilyLoadOptionsAllOverwrite()
             sourceFamDoc.LoadFamily(targetDoc, opts)
 
             Try : targetDoc.Regenerate() : Catch : End Try
+        End Sub
+
+        Private Sub SaveModifiedFamilyCopy(sourceFamDoc As Document, saveFolder As String)
+            If sourceFamDoc Is Nothing OrElse Not sourceFamDoc.IsModified Then Return
+
+            Dim normalizedFolder As String = If(saveFolder, String.Empty).Trim()
+            If String.IsNullOrWhiteSpace(normalizedFolder) Then
+                Throw New InvalidOperationException("수정된 패밀리(.rfa) 저장 폴더가 지정되지 않았습니다.")
+            End If
+
+            Directory.CreateDirectory(normalizedFolder)
+
+            Dim baseName As String = Path.GetFileNameWithoutExtension(If(sourceFamDoc.Title, String.Empty))
+            If String.IsNullOrWhiteSpace(baseName) Then
+                baseName = "ModifiedFamily"
+            End If
+
+            For Each ch As Char In Path.GetInvalidFileNameChars()
+                baseName = baseName.Replace(ch, "_"c)
+            Next
+
+            Dim savePath As String = Path.Combine(normalizedFolder, baseName & ".rfa")
+            Dim options As New SaveAsOptions()
+            options.OverwriteExistingFile = True
+
+            sourceFamDoc.SaveAs(savePath, options)
         End Sub
 
     End Module
@@ -456,7 +478,7 @@ Namespace Services
         End Sub
     End Class
 
-    '==================== 결과 폼 (CSV 내보내기 포함) ====================
+    '==================== 결과 폼 (엑셀 내보내기 포함) ====================
     Friend Class FormPropagateReport
         Inherits WinForms.Form
 
@@ -543,7 +565,7 @@ Namespace Services
             btnClose = New WinForms.Button() With {.Text = "닫기", .Width = 100, .Left = 770, .Top = 630}
             AddHandler btnClose.Click, Sub() Me.Close()
 
-            btnCsv = New WinForms.Button() With {.Text = "CSV 내보내기", .Width = 120, .Left = 640, .Top = 630}
+            btnCsv = New WinForms.Button() With {.Text = "엑셀 내보내기", .Width = 120, .Left = 640, .Top = 630}
             AddHandler btnCsv.Click, AddressOf OnExportCsv
 
             Controls.AddRange(New WinForms.Control() {txtReport, lv, btnCsv, btnClose})
@@ -551,44 +573,42 @@ Namespace Services
 
         Private Sub OnExportCsv(sender As Object, e As EventArgs)
             Using dlg As New WinForms.SaveFileDialog()
-                dlg.Filter = "CSV 파일 (*.csv)|*.csv|모든 파일 (*.*)|*.*"
-                dlg.FileName = "KKY_ParamPropagator_Report.csv"
+                dlg.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
+                dlg.FileName = "KKY_ParamPropagator_Report.xlsx"
                 If dlg.ShowDialog() <> WinForms.DialogResult.OK Then Return
 
                 Try
-                    Using sw As New StreamWriter(dlg.FileName, False, Encoding.UTF8)
-                        sw.WriteLine("Type,FamilyName,Detail")
-                        For Each r In _rows
-                            Dim line = $"{EscapeCsv(r.Kind)},{EscapeCsv(r.Family)},{EscapeCsv(r.Detail)}"
-                            sw.WriteLine(line)
-                        Next
-                    End Using
-                    WinForms.MessageBox.Show("CSV 내보내기가 완료되었습니다.", "KKY Param Propagator")
+                    Dim savePath = dlg.FileName
+                    If Not String.Equals(Path.GetExtension(savePath), ".xlsx", StringComparison.OrdinalIgnoreCase) Then
+                        savePath = Path.ChangeExtension(savePath, ".xlsx")
+                    End If
+
+                    Dim dt As New DataTable("SharedParamPropagate")
+                    dt.Columns.Add("Type")
+                    dt.Columns.Add("Family")
+                    dt.Columns.Add("Detail")
+
+                    For Each r In _rows
+                        Dim row = dt.NewRow()
+                        row("Type") = If(r.Kind, String.Empty)
+                        row("Family") = If(r.Family, String.Empty)
+                        row("Detail") = If(r.Detail, String.Empty)
+                        dt.Rows.Add(row)
+                    Next
+
+                    Infrastructure.ExcelCore.SaveXlsx(savePath, "Results", dt, autoFit:=True, sheetKey:="paramprop", exportKind:="paramprop")
+                    WinForms.MessageBox.Show("엑셀 내보내기가 완료되었습니다.", "KKY Param Propagator")
                 Catch ex As Exception
-                    WinForms.MessageBox.Show($"CSV 내보내기 실패: {ex.Message}", "KKY Param Propagator")
+                    WinForms.MessageBox.Show($"엑셀 내보내기 실패: {ex.Message}", "KKY Param Propagator")
                 End Try
             End Using
         End Sub
-
-        Private Function EscapeCsv(s As String) As String
-            If s Is Nothing Then Return String.Empty
-
-            Dim quote As String = """"
-            Dim needsQuote As Boolean =
-                (s.Contains(",") OrElse s.Contains(quote) OrElse s.Contains(vbCr) OrElse s.Contains(vbLf))
-
-            Dim val As String = s.Replace(quote, quote & quote)
-
-            If needsQuote Then
-                Return quote & val & quote
-            End If
-
-            Return val
-        End Function
     End Class
 
     '==================== 메인 서비스 ====================
     Public Class ParamPropagateService
+        Private Shared _saveModifiedFamilies As Boolean = False
+        Private Shared _modifiedFamilyOutputFolder As String = String.Empty
 
         Public Enum RunStatus
             Succeeded
@@ -621,6 +641,8 @@ Namespace Services
             Public Property TargetGroup As Integer
             Public Property IsInstance As Boolean
             Public Property ExcludeDummy As Boolean
+            Public Property SaveModifiedFamilies As Boolean
+            Public Property ModifiedFamilyOutputFolder As String
 
             Public Shared Function FromPayload(payload As Object) As SharedParamRunRequest
                 Dim req As New SharedParamRunRequest With {
@@ -628,7 +650,9 @@ Namespace Services
                     .ParamGuids = New List(Of String)(),
                     .TargetGroup = CInt(BuiltInParameterGroup.PG_TEXT),
                     .IsInstance = True,
-                    .ExcludeDummy = True
+                    .ExcludeDummy = True,
+                    .SaveModifiedFamilies = False,
+                    .ModifiedFamilyOutputFolder = String.Empty
                 }
 
                 Try
@@ -666,6 +690,12 @@ Namespace Services
 
                     Dim dummyObj = ReadProp(payload, "excludeDummy")
                     If dummyObj IsNot Nothing Then req.ExcludeDummy = Convert.ToBoolean(dummyObj)
+
+                    Dim saveObj = ReadProp(payload, "saveModifiedFamilies")
+                    If saveObj IsNot Nothing Then req.SaveModifiedFamilies = Convert.ToBoolean(saveObj)
+
+                    Dim folderObj = ReadProp(payload, "modifiedFamilyOutputFolder")
+                    If folderObj IsNot Nothing Then req.ModifiedFamilyOutputFolder = NormalizeFolderPath(folderObj.ToString())
                 Catch
                 End Try
 
@@ -799,12 +829,39 @@ Namespace Services
                 Return result
             End If
 
+            If request.SaveModifiedFamilies Then
+                request.ModifiedFamilyOutputFolder = NormalizeFolderPath(request.ModifiedFamilyOutputFolder)
+                If String.IsNullOrWhiteSpace(request.ModifiedFamilyOutputFolder) Then
+                    result.Message = "수정된 패밀리(.rfa)를 저장할 폴더를 선택해 주세요."
+                    result.Status = RunStatus.Cancelled
+                    Return result
+                End If
+
+                Try
+                    Directory.CreateDirectory(request.ModifiedFamilyOutputFolder)
+                Catch ex As Exception
+                    result.Message = "수정된 패밀리(.rfa) 저장 폴더를 준비하지 못했습니다: " & ex.Message
+                    Return result
+                End Try
+            End If
+
+            _saveModifiedFamilies = If(request IsNot Nothing AndAlso request.SaveModifiedFamilies, True, False)
+            _modifiedFamilyOutputFolder = If(request Is Nothing, String.Empty, request.ModifiedFamilyOutputFolder)
+
             Dim chosenPG As BuiltInParameterGroup = BuiltInParameterGroup.PG_TEXT
+#If REVIT2025 Then
+            Try
+                chosenPG = BuiltInParameterGroupCompat.FromSerializedValue(request.TargetGroup, BuiltInParameterGroup.PG_TEXT)
+            Catch
+                chosenPG = BuiltInParameterGroup.PG_TEXT
+            End Try
+#Else
             Try
                 chosenPG = CType(request.TargetGroup, BuiltInParameterGroup)
             Catch
                 chosenPG = BuiltInParameterGroup.PG_TEXT
             End Try
+#End If
 
             Dim extDefs As List(Of ExternalDefinition) = ResolveDefinitions(app.Application, request.ParamNames, request.ParamGuids)
             If extDefs Is Nothing OrElse extDefs.Count = 0 Then
@@ -1066,17 +1123,17 @@ Namespace Services
                         Dim isChild As Boolean = childNames.Contains(famName)
 
                         ProcessFamilyBottomUp(doc,
-                                              fam,
-                                              extDefs,
-                                              paramNames,
-                                              parentToChildren,
-                                              excludeDummy,
-                                              chosenIsInstance,
-                                              chosenPG,
-                                              isParent,
-                                              isChild,
-                                              addedHost,
-                                              addedChild,
+                                             fam,
+                                             extDefs,
+                                             paramNames,
+                                             parentToChildren,
+                                             excludeDummy,
+                                             chosenIsInstance,
+                                             chosenPG,
+                                             isParent,
+                                             isChild,
+                                             addedHost,
+                                             addedChild,
                                               linkCnt,
                                               verifyOk,
                                               verifyFail,
@@ -1319,7 +1376,12 @@ Namespace Services
                 End If
 
                 ' 4) 프로젝트에 로드
-                TxnUtil.SafeLoadFamily(famDoc, projDoc, $"KKY Load '{famName}'")
+                TxnUtil.SafeLoadFamily(
+                    famDoc,
+                    projDoc,
+                    $"KKY Load '{famName}'",
+                    _saveModifiedFamilies,
+                    _modifiedFamilyOutputFolder)
                 If ok AndAlso hasChildren Then
                     compositeSuccessCount += 1
                 End If
@@ -1353,24 +1415,9 @@ Namespace Services
 
             Dim gtid As ForgeTypeId = Nothing
 
-            ' 1) enum 값을 "직접" GroupTypeId로 매핑 (안정)
+            ' 1) compat layer를 통해 직접 GroupTypeId로 매핑 (동적 1000+ 그룹 id 포함)
             Try
-                Select Case groupPG
-                    Case BuiltInParameterGroup.PG_TEXT
-                        gtid = GroupTypeId.Text
-                    Case BuiltInParameterGroup.PG_GEOMETRY
-                        gtid = GroupTypeId.Geometry
-                    Case BuiltInParameterGroup.PG_CONSTRAINTS
-                        gtid = GroupTypeId.Constraints
-                    Case BuiltInParameterGroup.PG_MATERIALS
-                        gtid = GroupTypeId.Materials
-                    Case BuiltInParameterGroup.PG_GRAPHICS
-                        gtid = GroupTypeId.Graphics
-                    Case BuiltInParameterGroup.PG_IDENTITY_DATA
-                        gtid = GroupTypeId.IdentityData
-                    Case Else
-                        gtid = GroupTypeId.Data
-                End Select
+                gtid = BuiltInParameterGroupCompat.ToGroupTypeId(groupPG)
             Catch
                 gtid = Nothing
             End Try
@@ -1385,20 +1432,6 @@ Namespace Services
                 Try : gtid = GroupTypeId.Data : Catch : End Try
             End If
             If gtid Is Nothing Then gtid = New ForgeTypeId()
-
-            ' 4) FamilyManager에서 assign 가능한 그룹인지 보정
-            Try
-                If fm IsNot Nothing AndAlso gtid IsNot Nothing Then
-                    If Not fm.IsUserAssignableParameterGroup(gtid) Then
-                        Try : gtid = GroupTypeId.IdentityData : Catch : End Try
-                        If gtid Is Nothing Then
-                            Try : gtid = GroupTypeId.Data : Catch : End Try
-                        End If
-                        If gtid Is Nothing Then gtid = New ForgeTypeId()
-                    End If
-                End If
-            Catch
-            End Try
 
             Return gtid
         End Function
@@ -1728,6 +1761,13 @@ Namespace Services
 
             Return sb.ToString().Trim()
         End Function
+        Private Shared Function NormalizeFolderPath(path As String) As String
+            Dim s As String = If(path, String.Empty).Trim()
+            If s.Length >= 2 AndAlso s.StartsWith("""", StringComparison.Ordinal) AndAlso s.EndsWith("""", StringComparison.Ordinal) Then
+                s = s.Substring(1, s.Length - 2).Trim()
+            End If
+            Return s
+        End Function
         Private Shared Function ResolveDefinitions(app As Application,
                                                    names As IEnumerable(Of String),
                                                    guids As IEnumerable(Of String)) As List(Of ExternalDefinition)
@@ -1798,86 +1838,12 @@ Namespace Services
         Private Shared Function BuildGroupOptions() As List(Of ParameterGroupOption)
 #If REVIT2025 Then
             Dim items As New List(Of ParameterGroupOption)()
-            Dim preferred As BuiltInParameterGroup() = {
-                BuiltInParameterGroup.PG_TEXT,
-                BuiltInParameterGroup.PG_IDENTITY_DATA,
-                BuiltInParameterGroup.PG_DATA,
-                BuiltInParameterGroup.PG_CONSTRAINTS
-            }
-
-            Dim added As New HashSet(Of Integer)()
-
-            For Each pg In preferred
-                Dim nm As String = ""
-                Dim gtid As ForgeTypeId = Nothing
-
-                Try
-                    Select Case pg
-                        Case BuiltInParameterGroup.PG_TEXT
-                            gtid = GroupTypeId.Text
-                        Case BuiltInParameterGroup.PG_IDENTITY_DATA
-                            gtid = GroupTypeId.IdentityData
-                        Case BuiltInParameterGroup.PG_CONSTRAINTS
-                            gtid = GroupTypeId.Constraints
-                        Case BuiltInParameterGroup.PG_GEOMETRY
-                            gtid = GroupTypeId.Geometry
-                        Case BuiltInParameterGroup.PG_MATERIALS
-                            gtid = GroupTypeId.Materials
-                        Case BuiltInParameterGroup.PG_GRAPHICS
-                            gtid = GroupTypeId.Graphics
-                        Case Else
-                            gtid = GroupTypeId.Data
-                    End Select
-                Catch
-                    gtid = Nothing
-                End Try
-
-                Try
-                    If gtid IsNot Nothing Then nm = LabelUtils.GetLabelForGroup(gtid)
-                Catch
-                    nm = ""
-                End Try
-                If String.IsNullOrWhiteSpace(nm) Then nm = pg.ToString()
-
-                items.Add(New ParameterGroupOption With {.Id = CInt(pg), .Name = nm})
-                added.Add(CInt(pg))
-            Next
-
-            For Each pg As BuiltInParameterGroup In [Enum].GetValues(GetType(BuiltInParameterGroup))
-                If Not added.Contains(CInt(pg)) Then
-                    Dim nm As String = ""
-                    Dim gtid As ForgeTypeId = Nothing
-
-                    Try
-                        Select Case pg
-                            Case BuiltInParameterGroup.PG_TEXT
-                                gtid = GroupTypeId.Text
-                            Case BuiltInParameterGroup.PG_IDENTITY_DATA
-                                gtid = GroupTypeId.IdentityData
-                            Case BuiltInParameterGroup.PG_CONSTRAINTS
-                                gtid = GroupTypeId.Constraints
-                            Case BuiltInParameterGroup.PG_GEOMETRY
-                                gtid = GroupTypeId.Geometry
-                            Case BuiltInParameterGroup.PG_MATERIALS
-                                gtid = GroupTypeId.Materials
-                            Case BuiltInParameterGroup.PG_GRAPHICS
-                                gtid = GroupTypeId.Graphics
-                            Case Else
-                                gtid = GroupTypeId.Data
-                        End Select
-                    Catch
-                        gtid = Nothing
-                    End Try
-
-                    Try
-                        If gtid IsNot Nothing Then nm = LabelUtils.GetLabelForGroup(gtid)
-                    Catch
-                        nm = ""
-                    End Try
-                    If String.IsNullOrWhiteSpace(nm) Then nm = pg.ToString()
-
-                    items.Add(New ParameterGroupOption With {.Id = CInt(pg), .Name = nm})
-                End If
+            For Each opt In BuiltInParameterGroupCompat.GetGroupOptions()
+                If opt Is Nothing Then Continue For
+                items.Add(New ParameterGroupOption With {
+                    .Id = opt.Id,
+                    .Name = If(String.IsNullOrWhiteSpace(opt.Label), opt.Key, opt.Label)
+                })
             Next
 
             Return items

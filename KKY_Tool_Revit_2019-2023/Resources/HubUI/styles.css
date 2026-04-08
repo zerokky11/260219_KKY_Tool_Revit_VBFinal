@@ -166,3 +166,46 @@ body[data-theme="dark"].is-busy::before { background:rgba(0,0,0,0.45); }
 .excelmode-desc { font-size:13px; color:var(--text-muted); margin-bottom:14px; line-height:1.5; }
 .excelmode-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
 .excelmode-actions .btn { min-width:120px; }
+
+/* Lateral Nozzle */
+.lateralnozzle-page .deliverycleaner-top-grid {
+    align-items: start;
+}
+
+.lateralnozzle-card {
+    min-height: 0;
+}
+
+.lateralnozzle-drop-zone {
+    min-height: 280px;
+}
+
+.lateralnozzle-table {
+    margin-top: 0;
+}
+
+.lateralnozzle-card--run {
+    gap: 10px;
+}
+
+.lateralnozzle-result-box {
+    display: grid;
+    gap: 8px;
+    white-space: normal;
+}
+
+.lateralnozzle-result-box strong {
+    color: var(--text-main);
+}
+
+.lateralnozzle-result-box span {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.55;
+}
+
+.lateralnozzle-path {
+    display: block;
+    max-width: 100%;
+    word-break: break-all;
+}

@@ -146,11 +146,14 @@ function openCompletionResultDialog(state, payload) {
       onClick: () => post('excel:open', { path: workbookPath })
     });
   } else {
-    actions.push({
-      label: '결과 엑셀 추출',
-      variant: 'primary',
-      onClick: () => post('parammodifier:export-results', {})
-    });
+      actions.push({
+        label: '결과 엑셀 추출',
+        variant: 'primary',
+        onClick: () => {
+          beginParamModifierProgress('파라미터 수정기', '결과 엑셀 생성을 준비 중입니다.');
+          post('parammodifier:export-results', {});
+        }
+      });
   }
   if (logPath) {
     actions.push({
@@ -460,6 +463,7 @@ function runActiveDocument(state) {
 
   state.acceptProgress = true;
   setPageBusy(state, true);
+  beginParamModifierProgress('파라미터 수정기', '활성 문서 적용을 준비 중입니다.');
   post('parammodifier:run', buildPayload(state, true));
 }
 
@@ -472,6 +476,7 @@ function runBatchDocuments(state) {
   state.acceptProgress = true;
   setPageBusy(state, true);
   closeRvtModal(state);
+  beginParamModifierProgress('파라미터 수정기', '여러 RVT 적용을 준비 중입니다.');
   post('parammodifier:run', buildPayload(state, false));
 }
 
@@ -487,6 +492,12 @@ function openRvtModal(state) {
 
 function closeRvtModal(state) {
   if (state.ui.rvtOverlay) state.ui.rvtOverlay.classList.add('is-hidden');
+}
+
+function beginParamModifierProgress(title, message, detail = '', percent = 0) {
+  ProgressDialog.setActions({});
+  ProgressDialog.show(title || '파라미터 수정기', message || '준비 중...');
+  ProgressDialog.update(percent, message || '준비 중...', detail || '');
 }
 
 function updateSyncComment(state, value) {
@@ -705,13 +716,18 @@ function getBatchOpenBlockingReason(state) {
 function getBatchBlockingReason(state) {
   if (!getAssignmentRows(state).length) return '입력 파라미터를 1개 이상 설정해 주세요.';
   if (!state.rvtPaths.length) return '적용할 RVT를 1개 이상 등록해 주세요.';
+  if (!getCheckedRvtPaths(state).length) return '적용할 RVT를 1개 이상 선택해 주세요.';
   return '';
+}
+
+function getCheckedRvtPaths(state) {
+  return state.rvtPaths.filter((path) => state.checked.has(path));
 }
 
 function buildPayload(state, useActiveDocument) {
   return {
     useActiveDocument: !!useActiveDocument,
-    rvtPaths: useActiveDocument ? [] : [...state.rvtPaths],
+    rvtPaths: useActiveDocument ? [] : getCheckedRvtPaths(state),
     outputFolder: '',
     closeAllWorksetsOnOpen: true,
     synchronizeAfterProcessing: useActiveDocument ? !!state.synchronizeAfterProcessing : true,

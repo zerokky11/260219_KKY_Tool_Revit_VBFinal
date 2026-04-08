@@ -1,4 +1,4 @@
-// Resources/HubUI/js/views/dup.js
+﻿// Resources/HubUI/js/views/dup.js
 import { clear, div, toast, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
 import { onHost, post } from '../core/bridge.js';

@@ -4,7 +4,9 @@ Option Strict On
 Imports System
 Imports System.Collections.Generic
 Imports System.Data
+Imports System.Globalization
 Imports System.IO
+Imports System.Text.RegularExpressions
 Imports System.Text
 Imports System.Threading
 Imports System.Windows.Forms
@@ -62,18 +64,41 @@ Namespace UI.Hub
             Dim enumerable = TryCast(raw, System.Collections.IEnumerable)
             If enumerable IsNot Nothing AndAlso Not (TypeOf raw Is String) Then
                 For Each o As Object In enumerable
-                    Dim s = If(o, String.Empty).ToString()
+                    Dim s = NormalizeSegmentPmsPayloadText(If(o, String.Empty).ToString())
                     If Not String.IsNullOrWhiteSpace(s) AndAlso Not list.Contains(s) Then
                         list.Add(s)
                     End If
                 Next
             Else
-                Dim s = If(raw, String.Empty).ToString()
+                Dim s = NormalizeSegmentPmsPayloadText(If(raw, String.Empty).ToString())
                 If Not String.IsNullOrWhiteSpace(s) Then
                     list.Add(s)
                 End If
             End If
             Return list
+        End Function
+
+        Private Shared Function NormalizeSegmentPmsPayloadText(value As String) As String
+            Dim s As String = NormalizeWrappedQuotesText(value)
+
+            If s.IndexOf("\u", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                s = Regex.Replace(
+                    s,
+                    "(?i)(?:\\\\u|\\u)([0-9a-f]{4})",
+                    Function(m)
+                        Try
+                            Return ChrW(Integer.Parse(m.Groups(1).Value, NumberStyles.HexNumber, CultureInfo.InvariantCulture))
+                        Catch
+                            Return m.Value
+                        End Try
+                    End Function)
+            End If
+
+            If s.Contains("\""") Then
+                s = s.Replace("\""", """")
+            End If
+
+            Return NormalizeWrappedQuotesText(s)
         End Function
 
         Private Shared Function ParseExtractOptions(payload As Dictionary(Of String, Object)) As SegmentPmsCheckService.ExtractOptions

@@ -1,4 +1,4 @@
-// Resources/HubUI/js/dev-entry.js
+﻿// Resources/HubUI/js/dev-entry.js
 // 브라우저에서 index.html을 직접 열 때(#app이 숨겨져 있으면) 0.3초 후 대체 렌더.
 // Revit(WebView2) 환경에서는 main.js가 이미 렌더하므로 아무것도 하지 않음.
 

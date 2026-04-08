@@ -40,6 +40,13 @@ Namespace UI.Hub
         Private _lastConnectorTargetFilter As String = String.Empty
         Private _lastConnectorExcludeEndDummy As Boolean = False
 
+        Private Const ConnectorPointXExtraName As String = "Point X"
+        Private Const ConnectorPointYExtraName As String = "Point Y"
+        Private Const ConnectorCurveLengthExtraName As String = "Curve Length"
+        Private Const ConnectorDirectionXExtraName As String = "Direction X"
+        Private Const ConnectorDirectionYExtraName As String = "Direction Y"
+        Private Const ConnectorDirectionZExtraName As String = "Direction Z"
+
         ' 디버그 로그를 웹(F12 콘솔)로 보내는 헬퍼
         Private Sub LogDebug(message As String)
             Try
@@ -153,7 +160,22 @@ Namespace UI.Hub
                 End If
                 paramCsvNormalized = String.Join(",", reviewParams)
 
-                _connectorExtraParams = ParseExtraParams(TryCast(GetProp(payload, "extraParams"), String))
+                Dim includePointXY As Boolean = False
+                Dim includeLinearMetrics As Boolean = False
+                Try
+                    Dim vIncludePointXY = GetProp(payload, "includePointXY")
+                    If vIncludePointXY IsNot Nothing Then includePointXY = Convert.ToBoolean(vIncludePointXY)
+                Catch
+                    includePointXY = False
+                End Try
+                Try
+                    Dim vIncludeLinearMetrics = GetProp(payload, "includeLinearMetrics")
+                    If vIncludeLinearMetrics IsNot Nothing Then includeLinearMetrics = Convert.ToBoolean(vIncludeLinearMetrics)
+                Catch
+                    includeLinearMetrics = False
+                End Try
+
+                _connectorExtraParams = BuildConnectorExtraParams(TryCast(GetProp(payload, "extraParams"), String), includePointXY, includeLinearMetrics)
                 Try
                     Dim vFilter = TryCast(GetProp(payload, "targetFilter"), String)
                     _connectorTargetFilter = If(vFilter, String.Empty)
@@ -170,7 +192,7 @@ Namespace UI.Hub
                 Catch
                     _connectorExcludeEndDummy = False
                 End Try
-                LogDebug($"[connector] 파라미터 파싱 완료 (tol={tol}, unit={unit}, param={param}, paramsCsv={paramCsvNormalized}, extra={String.Join(",", _connectorExtraParams)} )")
+                LogDebug($"[connector] 파라미터 파싱 완료 (tol={tol}, unit={unit}, param={param}, paramsCsv={paramCsvNormalized}, extra={String.Join(",", _connectorExtraParams)}, includePointXY={includePointXY}, includeLinearMetrics={includeLinearMetrics} )")
 
                 ' 직전 실행 단위 저장(엑셀 내보내기에서 기본값으로 사용)
                 _connectorUiUnit = NormalizeUiUnit(unit)
@@ -832,6 +854,32 @@ Namespace UI.Hub
             Next
             Return result
         End Function
+
+        Private Shared Function BuildConnectorExtraParams(raw As String,
+                                                          includePointXY As Boolean,
+                                                          includeLinearMetrics As Boolean) As List(Of String)
+            Dim result = ParseExtraParams(raw)
+
+            If includePointXY Then
+                AppendUniqueIgnoreCase(result, ConnectorPointXExtraName)
+                AppendUniqueIgnoreCase(result, ConnectorPointYExtraName)
+            End If
+
+            If includeLinearMetrics Then
+                AppendUniqueIgnoreCase(result, ConnectorCurveLengthExtraName)
+                AppendUniqueIgnoreCase(result, ConnectorDirectionXExtraName)
+                AppendUniqueIgnoreCase(result, ConnectorDirectionYExtraName)
+                AppendUniqueIgnoreCase(result, ConnectorDirectionZExtraName)
+            End If
+
+            Return result
+        End Function
+
+        Private Shared Sub AppendUniqueIgnoreCase(target As IList(Of String), value As String)
+            If target Is Nothing OrElse String.IsNullOrWhiteSpace(value) Then Return
+            If target.Any(Function(item) String.Equals(item, value, StringComparison.OrdinalIgnoreCase)) Then Return
+            target.Add(value)
+        End Sub
 
         Private Shared Function ParseParamsArray(raw As Object) As List(Of String)
             Dim result As New List(Of String)()

@@ -10,8 +10,12 @@ const FILTER_OPERATORS = [
   'EndsWith', 'NotEndsWith', 'Greater', 'GreaterOrEqual', 'Less', 'LessOrEqual',
   'HasValue', 'HasNoValue'
 ];
+const TEXT_FILTER_OPERATORS = [
+  'Equals', 'NotEquals', 'Contains', 'NotContains', 'BeginsWith', 'NotBeginsWith',
+  'EndsWith', 'NotEndsWith', 'HasValue', 'HasNoValue'
+];
 
-const TAB_KEYS = ['view', 'element', 'filter'];
+const TAB_KEYS = ['view', 'element', 'filter', 'vg'];
 const EXCEL_PHASE_WEIGHT = { EXCEL_INIT: 0.05, EXCEL_WRITE: 0.85, EXCEL_SAVE: 0.08, AUTOFIT: 0.02, DONE: 1, ERROR: 1 };
 
 function refreshUiAfterHostDialog(render, delay = 120) {
@@ -87,6 +91,13 @@ export function renderDeliveryCleaner(root) {
     applyFilterInitially: true,
     autoEnableFilterIfEmpty: false,
     filterProfile: null,
+    visibilityRules: createVisibilityRuleState(),
+    availableVisibilityCategories: [],
+    visibilityCategoryPicker: {
+      rowIndex: -1,
+      searchText: '',
+      selectedNames: []
+    },
     elementParameterUpdate: createElementUpdateState(),
     logs: [],
     lastLogExportPath: '',
@@ -116,10 +127,11 @@ export function renderDeliveryCleaner(root) {
   const settingsModal = buildSettingsModal(state);
   const extractModal = buildExtractModal(state);
   const filterDocModal = buildFilterDocModal(state);
+  const visibilityCategoryModal = buildVisibilityCategoryModal(state);
   const topGrid = div('deliverycleaner-top-grid');
   topGrid.append(controlCard, filesCard);
 
-  page.append(topGrid, settingsModal, extractModal, filterDocModal);
+  page.append(topGrid, settingsModal, extractModal, filterDocModal, visibilityCategoryModal);
   target.append(page);
 
   onHost('deliverycleaner:init', (payload) => applyHostState(state, payload));
@@ -159,6 +171,19 @@ export function renderDeliveryCleaner(root) {
   });
   onHost('deliverycleaner:filter-saved', (payload) => {
     if (payload?.path) toast(`필터 XML을 저장했습니다: ${payload.path}`, 'ok');
+  });
+  onHost('deliverycleaner:visibility-rules-loaded', (payload) => {
+    if (!payload?.visibilityRules) return;
+    state.visibilityRules = normalizeVisibilityRules(payload.visibilityRules);
+    refreshUiAfterHostDialog(() => {
+      syncStateToInputs(state);
+      renderVisibilityRuleRows(state);
+      renderVisibilityCategoryModal(state);
+    });
+    if (payload?.source) toast(`VV 규칙을 불러왔습니다: ${payload.source}`, 'ok');
+  });
+  onHost('deliverycleaner:visibility-rules-saved', (payload) => {
+    if (payload?.path) toast(`VV 규칙 XML을 저장했습니다: ${payload.path}`, 'ok');
   });
   onHost('deliverycleaner:filter-doc-list', (payload) => {
     state.filterDocItems = Array.isArray(payload?.items) ? payload.items : [];
@@ -266,6 +291,11 @@ export function renderDeliveryCleaner(root) {
   post('deliverycleaner:init', {});
 }
 
+function beginDeliveryCleanerProgress(title, message, detail = '', percent = 0) {
+  ProgressDialog.show(title || 'RVT 정리 (납품용)', message || '준비 중...');
+  ProgressDialog.update(percent, message || '준비 중...', detail || '');
+}
+
 function buildControlCard(state) {
   const card = div('deliverycleaner-card deliverycleaner-card--control');
   card.innerHTML = `
@@ -279,18 +309,36 @@ function buildControlCard(state) {
 
   const buttonGrid = div('deliverycleaner-action-grid');
   const runBtn = actionButton('정리 시작', () => {
+    if (!canUseSelectedDeliveryCleanerFiles(state)) {
+      toast('정리할 RVT를 1개 이상 선택하세요.', 'warn');
+      updateActionState(state);
+      return;
+    }
     setPageBusy(state, true);
+    beginDeliveryCleanerProgress('RVT 정리 (납품용)', '정리 작업을 준비 중입니다.');
     post('deliverycleaner:run', buildPayload(state));
   }, 'primary');
   const verifyBtn = actionButton('정리 결과 검토', () => {
+    if (!canUseSelectedDeliveryCleanerFiles(state, { allowSessionFallback: true })) {
+      toast('검토할 RVT를 1개 이상 선택하세요.', 'warn');
+      updateActionState(state);
+      return;
+    }
     setPageBusy(state, true);
+    beginDeliveryCleanerProgress('정리 결과 검토', '검토 작업을 준비 중입니다.');
     post('deliverycleaner:verify', buildPayload(state));
   });
   const extractBtn = actionButton('속성값 추출', () => {
     openExtractModal(state);
   });
   const purgeBtn = actionButton('Purge 일괄처리', () => {
+    if (!canUseSelectedDeliveryCleanerFiles(state, { allowSessionFallback: true })) {
+      toast('Purge 대상 RVT를 1개 이상 선택하세요.', 'warn');
+      updateActionState(state);
+      return;
+    }
     setPageBusy(state, true);
+    beginDeliveryCleanerProgress('Purge 일괄처리', 'Purge 작업을 준비 중입니다.');
     post('deliverycleaner:purge', buildPayload(state));
   });
   const folderBtn = actionButton('결과 폴더 열기', () => {
@@ -298,6 +346,7 @@ function buildControlCard(state) {
   });
   const exportLogBtn = actionButton('로그 엑셀 저장', () => {
     setPageBusy(state, true);
+    beginDeliveryCleanerProgress('로그 엑셀 저장', '로그 엑셀 저장을 준비 중입니다.');
     post('deliverycleaner:export-log', { outputFolder: state.outputFolder || state.session?.outputFolder || '' });
   });
 
@@ -471,7 +520,7 @@ function buildWorkspaceCard(state) {
     <div class="deliverycleaner-card__head">
       <div>
         <h3>세부 설정</h3>
-        <p>뷰 파라미터, 객체 파라미터, 뷰 필터를 탭으로 전환하며 설정합니다.</p>
+        <p>뷰 파라미터, 객체 파라미터, 뷰 필터, V/G 설정을 탭으로 전환하며 설정합니다.</p>
       </div>
     </div>
   `;
@@ -481,7 +530,13 @@ function buildWorkspaceCard(state) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'deliverycleaner-tab';
-    btn.textContent = key === 'view' ? '뷰 파라미터' : key === 'element' ? '객체 파라미터' : '뷰 필터';
+    btn.textContent = key === 'view'
+      ? '뷰 파라미터'
+      : key === 'element'
+        ? '객체 파라미터'
+        : key === 'filter'
+          ? '뷰 필터'
+          : 'V/G 설정';
     btn.addEventListener('click', () => {
       state.activeTab = key;
       renderTabs(state);
@@ -492,7 +547,9 @@ function buildWorkspaceCard(state) {
   const panelWrap = div('deliverycleaner-panels');
 
   const viewPanel = div('deliverycleaner-panel');
-  viewPanel.innerHTML = `<div class="deliverycleaner-note">최대 5개까지 뷰 파라미터를 지정해 정리용 3D 뷰에 입력합니다.</div>`;
+  viewPanel.innerHTML = `
+    <div class="deliverycleaner-note">최대 5개까지 뷰 파라미터를 지정해 정리용 3D 뷰에 입력합니다.</div>
+  `;
   const viewScroll = div('deliverycleaner-table-scroll deliverycleaner-table-scroll--grid');
   const viewTable = document.createElement('table');
   viewTable.className = 'deliverycleaner-grid-table deliverycleaner-grid-table--view';
@@ -589,12 +646,74 @@ function buildWorkspaceCard(state) {
     <div class="deliverycleaner-summary-box" data-filter-summary></div>
   `;
 
-  panelWrap.append(viewPanel, elementPanel, filterPanel);
+  const vgPanel = div('deliverycleaner-panel');
+  vgPanel.innerHTML = `
+    <section class="deliverycleaner-subsection">
+      <div class="deliverycleaner-subsection__head">
+        <h4>V/G 설정</h4>
+        <p>Imported 카테고리 표시 상태와 커스텀 서브카테고리 숨김 규칙을 정리용 3D 뷰에 적용합니다.</p>
+      </div>
+      <div class="deliverycleaner-vg-import-row">
+        <span class="deliverycleaner-vg-import-row__label">Imported 표시</span>
+        <div class="deliverycleaner-vg-import-row__controls">
+          <label class="deliverycleaner-inline-select deliverycleaner-inline-select--compact">
+            <span>Categories</span>
+            <select data-visibility-imported-toggle>
+              <option value="">적용 안 함</option>
+              <option value="show">체크</option>
+              <option value="hide">해제</option>
+            </select>
+          </label>
+          <label class="deliverycleaner-inline-select deliverycleaner-inline-select--compact">
+            <span>Families</span>
+            <select data-visibility-imports-family-toggle>
+              <option value="">적용 안 함</option>
+              <option value="show">체크</option>
+              <option value="hide">해제</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="deliverycleaner-vg-rulebar">
+        <div class="deliverycleaner-vg-rulebar__text">
+          <strong>서브카테고리 숨김 규칙</strong>
+          <span>주 카테고리, 연산자, 서브카테고리 텍스트를 입력해 정리용 3D 뷰의 V/G 기준을 맞춥니다.</span>
+        </div>
+        <div class="deliverycleaner-vg-rulebar__controls">
+          <label class="deliverycleaner-inline-select deliverycleaner-inline-select--compact">
+            <span>규칙 결합</span>
+            <select data-visibility-combination-mode>
+              <option value="Or">OR</option>
+              <option value="And">AND</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn--secondary" data-visibility-import>규칙 불러오기</button>
+          <button type="button" class="btn btn--secondary" data-visibility-save>규칙 저장</button>
+        </div>
+      </div>
+      <div class="deliverycleaner-table-scroll deliverycleaner-table-scroll--grid deliverycleaner-table-scroll--visibility-rules">
+        <table class="deliverycleaner-grid-table deliverycleaner-grid-table--visibility-rules">
+          <thead><tr><th>주 카테고리들</th><th>연산자</th><th>서브카테고리 텍스트</th></tr></thead>
+          <tbody data-visibility-rule-body></tbody>
+        </table>
+      </div>
+      <div class="deliverycleaner-summary-box" data-visibility-summary></div>
+    </section>
+  `;
+
+  panelWrap.append(viewPanel, elementPanel, filterPanel, vgPanel);
   card.append(tabBar, panelWrap);
 
   state.ui.tabButtons = Array.from(tabBar.querySelectorAll('.deliverycleaner-tab'));
-  state.ui.panels = { view: viewPanel, element: elementPanel, filter: filterPanel };
+  state.ui.panels = { view: viewPanel, element: elementPanel, filter: filterPanel, vg: vgPanel };
   state.ui.viewParamBody = viewTable.querySelector('tbody');
+  state.ui.visibilityCombinationMode = vgPanel.querySelector('[data-visibility-combination-mode]');
+  state.ui.visibilityImportBtn = vgPanel.querySelector('[data-visibility-import]');
+  state.ui.visibilitySaveBtn = vgPanel.querySelector('[data-visibility-save]');
+  state.ui.visibilityImportedToggle = vgPanel.querySelector('[data-visibility-imported-toggle]');
+  state.ui.visibilityImportsFamilyToggle = vgPanel.querySelector('[data-visibility-imports-family-toggle]');
+  state.ui.visibilityRuleBody = vgPanel.querySelector('[data-visibility-rule-body]');
+  state.ui.visibilitySummary = vgPanel.querySelector('[data-visibility-summary]');
   state.ui.combinationMode = elementPanel.querySelector('[data-combination-mode]');
   state.ui.duplicateMode = elementPanel.querySelector('[data-duplicate-mode]');
   state.ui.conditionBody = elementPanel.querySelector('[data-condition-body]');
@@ -610,6 +729,22 @@ function buildWorkspaceCard(state) {
   state.ui.filterConditionBody = filterPanel.querySelector('[data-filter-condition-body]');
   state.ui.filterSummary = filterPanel.querySelector('[data-filter-summary]');
 
+  state.ui.visibilityCombinationMode.addEventListener('change', () => {
+    state.visibilityRules.combinationMode = state.ui.visibilityCombinationMode.value;
+    renderVisibilityRuleSummary(state);
+  });
+  state.ui.visibilityImportedToggle.addEventListener('change', () => {
+    state.visibilityRules.showImportedCategoriesInView = parseVisibilityToggleValue(state.ui.visibilityImportedToggle.value);
+    renderVisibilityRuleSummary(state);
+  });
+  state.ui.visibilityImportsFamilyToggle.addEventListener('change', () => {
+    state.visibilityRules.showImportsInFamilies = parseVisibilityToggleValue(state.ui.visibilityImportsFamilyToggle.value);
+    renderVisibilityRuleSummary(state);
+  });
+  state.ui.visibilityImportBtn.addEventListener('click', () => post('deliverycleaner:visibility-rules-import', {}));
+  state.ui.visibilitySaveBtn.addEventListener('click', () => {
+    post('deliverycleaner:visibility-rules-save', { visibilityRules: buildPayload(state).visibilityRules });
+  });
   state.ui.combinationMode.addEventListener('change', () => {
     state.elementParameterUpdate.combinationMode = state.ui.combinationMode.value;
     renderElementUpdateSummary(state);
@@ -664,6 +799,55 @@ function buildFilterDocModal(state) {
   state.ui.filterDocOverlay = overlay;
   state.ui.filterDocTitle = overlay.querySelector('[data-doc-title]');
   state.ui.filterDocList = overlay.querySelector('[data-doc-list]');
+  return overlay;
+}
+
+function buildVisibilityCategoryModal(state) {
+  const overlay = div('deliverycleaner-modal deliverycleaner-category-modal is-hidden');
+  overlay.innerHTML = `
+    <div class="deliverycleaner-modal__dialog deliverycleaner-category-modal__dialog">
+      <div class="deliverycleaner-modal__head">
+        <div>
+          <h3>카테고리 선택</h3>
+          <p>현재 문서의 V/G 카테고리 중에서 규칙에 적용할 주 카테고리를 여러 개 선택합니다.</p>
+        </div>
+        <button type="button" class="deliverycleaner-modal__close" data-close>&times;</button>
+      </div>
+      <div class="deliverycleaner-modal__body">
+        <div class="deliverycleaner-field">
+          <label>카테고리 검색</label>
+          <input type="text" data-category-search placeholder="카테고리 이름 검색">
+        </div>
+        <div class="deliverycleaner-note" data-category-selection-summary></div>
+        <div class="deliverycleaner-category-picker-list" data-category-picker-list></div>
+      </div>
+      <div class="deliverycleaner-modal__foot">
+        <button type="button" class="btn btn--secondary" data-cancel>취소</button>
+        <button type="button" class="btn btn--primary" data-apply>적용</button>
+      </div>
+    </div>
+  `;
+
+  overlay.querySelector('[data-close]').addEventListener('click', () => closeVisibilityCategoryModal(state));
+  overlay.querySelector('[data-cancel]').addEventListener('click', () => closeVisibilityCategoryModal(state));
+  overlay.addEventListener('click', (ev) => {
+    if (ev.target === overlay) closeVisibilityCategoryModal(state);
+  });
+
+  const searchInput = overlay.querySelector('[data-category-search]');
+  searchInput.addEventListener('input', () => {
+    state.visibilityCategoryPicker.searchText = String(searchInput.value || '').trim();
+    renderVisibilityCategoryModal(state);
+  });
+
+  overlay.querySelector('[data-apply]').addEventListener('click', () => {
+    applyVisibilityCategorySelection(state);
+  });
+
+  state.ui.visibilityCategoryOverlay = overlay;
+  state.ui.visibilityCategorySearch = searchInput;
+  state.ui.visibilityCategoryList = overlay.querySelector('[data-category-picker-list]');
+  state.ui.visibilityCategorySummary = overlay.querySelector('[data-category-selection-summary]');
   return overlay;
 }
 
@@ -722,8 +906,14 @@ function buildExtractModal(state) {
       toast('추출할 파라미터를 하나 이상 입력해주세요.', 'err', 3200);
       return;
     }
+    if (!canUseSelectedDeliveryCleanerFiles(state, { allowSessionFallback: true })) {
+      toast('추출할 RVT를 1개 이상 선택하세요.', 'err', 3200);
+      updateActionState(state);
+      return;
+    }
 
     setPageBusy(state, true);
+    beginDeliveryCleanerProgress('속성값 추출', '속성값 추출을 준비 중입니다.');
     post('deliverycleaner:extract', buildPayload(state));
   });
 
@@ -753,6 +943,15 @@ function fieldBlock(labelText) {
 
 function createViewParameterRows() {
   return Array.from({ length: 5 }, () => ({ enabled: false, parameterName: '', parameterValue: '' }));
+}
+
+function createVisibilityRuleState() {
+  return {
+    combinationMode: 'Or',
+    showImportedCategoriesInView: null,
+    showImportsInFamilies: null,
+    rules: Array.from({ length: 6 }, () => ({ enabled: false, parentCategoryNames: [], operatorName: 'Contains', subCategoryText: '' }))
+  };
 }
 
 function createElementUpdateState() {
@@ -829,6 +1028,60 @@ function renderViewParameterRows(state) {
     );
     body.append(tr);
   });
+
+  renderVisibilityRuleRows(state);
+}
+
+function renderVisibilityRuleRows(state) {
+  const body = state.ui.visibilityRuleBody;
+  if (!body) return;
+  body.innerHTML = '';
+
+  state.visibilityRules.rules.forEach((row, index) => {
+    const tr = document.createElement('tr');
+    tr.append(
+      tdWithCategoryPicker(state, row, index),
+      tdWithSelect(row.operatorName, TEXT_FILTER_OPERATORS, (value) => {
+        state.visibilityRules.rules[index].operatorName = value;
+        renderVisibilityRuleSummary(state);
+      }),
+      tdWithInput(row.subCategoryText, '예: End Cut', (value) => {
+        state.visibilityRules.rules[index].subCategoryText = value;
+        renderVisibilityRuleSummary(state);
+      })
+    );
+    body.append(tr);
+  });
+
+  renderVisibilityRuleSummary(state);
+}
+
+function renderVisibilityRuleSummary(state) {
+  if (!state.ui.visibilitySummary) return;
+  const rules = state.visibilityRules.rules.filter((row) => (row.parentCategoryNames || []).length);
+  const joiner = state.visibilityRules.combinationMode === 'And' ? ' AND ' : ' OR ';
+  const importedLines = [
+    formatVisibilityToggleSummary('Imported Categories 표시', state.visibilityRules.showImportedCategoriesInView),
+    formatVisibilityToggleSummary('Imports in Families 표시', state.visibilityRules.showImportsInFamilies)
+  ].filter(Boolean);
+  const ruleText = rules.length
+    ? rules.map((row) => {
+      const categories = (row.parentCategoryNames || []).join(', ');
+      if (row.operatorName === 'HasValue' || row.operatorName === 'HasNoValue') {
+        return `${categories} / ${row.operatorName}`;
+      }
+      return `${categories} / ${row.operatorName} / ${row.subCategoryText || ''}`;
+    }).join(joiner)
+    : '커스텀 VV 서브카테고리 규칙이 없습니다.';
+  if (rules.length || importedLines.length) {
+    const lines = [`규칙 결합: ${state.visibilityRules.combinationMode === 'And' ? 'AND' : 'OR'}`];
+    if (importedLines.length) lines.push(...importedLines);
+    if (rules.length) lines.push(ruleText);
+    state.ui.visibilitySummary.textContent = lines.join('\n');
+    return;
+  }
+
+  state.ui.visibilitySummary.textContent = '카테고리 선택 버튼으로 주 카테고리를 고르고, 서브카테고리 텍스트 조건을 지정하면 커스텀 VV 숨김 규칙으로 반영됩니다.';
 }
 
 function renderElementUpdateRows(state) {
@@ -1036,9 +1289,20 @@ function isDeliveryCleanerConfigured(state) {
 }
 
 function getDeliveryCleanerExtractionTargetCount(state) {
-  if (state.filePaths.length) return state.filePaths.length;
+  if (state.filePaths.length) return getCheckedDeliveryCleanerFilePaths(state).length;
   if (Array.isArray(state.session?.cleanedOutputPaths)) return state.session.cleanedOutputPaths.length;
   return 0;
+}
+
+function getCheckedDeliveryCleanerFilePaths(state) {
+  return state.filePaths.filter((path) => state.checked.has(path));
+}
+
+function canUseSelectedDeliveryCleanerFiles(state, options = {}) {
+  const allowSessionFallback = !!options.allowSessionFallback;
+  if (state.filePaths.length) return getCheckedDeliveryCleanerFilePaths(state).length > 0;
+  if (!allowSessionFallback) return false;
+  return Array.isArray(state.session?.cleanedOutputPaths) && state.session.cleanedOutputPaths.length > 0;
 }
 
 function stripLogStamp(line) {
@@ -1153,6 +1417,7 @@ function buildProgressSnapshot(state) {
 
 function renderStatusBox(state, hasFiles, isConfigured, hasSessionTargets, isPurging) {
   const progress = buildProgressSnapshot(state);
+  const checkedFileCount = getCheckedDeliveryCleanerFilePaths(state).length;
   const lines = [];
   let tone = 'idle';
 
@@ -1168,12 +1433,12 @@ function renderStatusBox(state, hasFiles, isConfigured, hasSessionTargets, isPur
     lines.push('RVT를 추가한 뒤 설정하기에서 기본 설정을 완료하면 정리 시작이 활성화됩니다.');
   } else if (!isConfigured) {
     tone = 'required';
-    lines.push(`대상 RVT ${state.filePaths.length}개가 준비되었습니다.`);
+    lines.push(`대상 RVT ${state.filePaths.length}개가 등록되었고 ${checkedFileCount}개가 선택되었습니다.`);
     lines.push('설정하기에서 결과 폴더를 지정하면 정리 시작 버튼이 활성화됩니다.');
     lines.push('설정 버튼이 강조되어 있으면 아직 필수 설정이 남아 있다는 뜻입니다.');
   } else {
     tone = 'ready';
-    lines.push(`대상 RVT ${state.filePaths.length}개가 준비되었고 필수 설정도 완료되었습니다.`);
+    lines.push(`대상 RVT ${state.filePaths.length}개가 등록되었고 ${checkedFileCount}개가 실행 대상으로 준비되었습니다.`);
     lines.push('정리 시작을 눌러 정리 작업을 실행할 수 있습니다.');
     if (hasSessionTargets) lines.push(`최근 정리 결과 파일 ${state.session.cleanedOutputPaths.length}개가 세션에 연결되어 있습니다.`);
   }
@@ -1189,16 +1454,19 @@ function renderStatusBox(state, hasFiles, isConfigured, hasSessionTargets, isPur
 
 function updateActionState(state) {
   const hasFiles = state.filePaths.length > 0;
-  const hasOutput = !!state.outputFolder;
+  const checkedFileCount = getCheckedDeliveryCleanerFilePaths(state).length;
+  const hasCheckedFiles = checkedFileCount > 0;
   const isConfigured = isDeliveryCleanerConfigured(state);
   const hasSessionTargets = Array.isArray(state.session?.cleanedOutputPaths) && state.session.cleanedOutputPaths.length > 0;
   const isPurging = !!state.purgeSnapshot?.isRunning;
-  const canRun = !state.busy && hasFiles && isConfigured;
+  const canRun = !state.busy && hasCheckedFiles && isConfigured;
+  const canReuseSessionTargets = !hasFiles && hasSessionTargets;
+  const canVerifyLikeAction = !state.busy && (hasCheckedFiles || canReuseSessionTargets);
 
   state.ui.runBtn.disabled = !canRun;
-  state.ui.verifyBtn.disabled = state.busy || !(hasFiles || hasSessionTargets);
-  state.ui.extractBtn.disabled = state.busy || !(hasFiles || hasSessionTargets);
-  state.ui.purgeBtn.disabled = state.busy || isPurging || !(hasFiles || hasSessionTargets);
+  state.ui.verifyBtn.disabled = !canVerifyLikeAction;
+  state.ui.extractBtn.disabled = !canVerifyLikeAction;
+  state.ui.purgeBtn.disabled = state.busy || isPurging || !(hasCheckedFiles || canReuseSessionTargets);
   state.ui.folderBtn.disabled = state.busy || !(state.outputFolder || state.session?.outputFolder);
   state.ui.exportLogBtn.disabled = state.busy || !state.logs.length;
 
@@ -1229,6 +1497,8 @@ function applyHostState(state, payload) {
   if (typeof settings.applyFilterInitially === 'boolean') state.applyFilterInitially = settings.applyFilterInitially;
   if (typeof settings.autoEnableFilterIfEmpty === 'boolean') state.autoEnableFilterIfEmpty = settings.autoEnableFilterIfEmpty;
   if (settings.filterProfile) state.filterProfile = normalizeFilterProfile(settings.filterProfile);
+  if (settings.visibilityRules) state.visibilityRules = normalizeVisibilityRules(settings.visibilityRules);
+  if (Array.isArray(payload?.availableVisibilityCategories)) state.availableVisibilityCategories = normalizeVisibilityCategoryOptions(payload.availableVisibilityCategories);
   if (settings.elementParameterUpdate) state.elementParameterUpdate = normalizeElementUpdate(settings.elementParameterUpdate);
   if (typeof payload?.extractParameterNamesCsv === 'string') state.extractParameterNamesCsv = payload.extractParameterNamesCsv;
   if (Array.isArray(payload?.logs)) state.logs = [...payload.logs];
@@ -1242,6 +1512,7 @@ function applyHostState(state, payload) {
   renderFilterPreview(state);
   renderRvtList(state);
   renderPurgeStatus(state);
+  renderVisibilityCategoryModal(state);
   updateActionState(state);
 }
 
@@ -1249,6 +1520,18 @@ function syncStateToInputs(state) {
   state.ui.outputFolderInput.value = state.outputFolder || '';
   state.ui.viewNameInput.value = state.target3DViewName || '';
   if (state.ui.extractInput) state.ui.extractInput.value = state.extractParameterNamesCsv || '';
+  if (state.ui.visibilityCombinationMode) {
+    state.ui.visibilityCombinationMode.value = state.visibilityRules.combinationMode || 'Or';
+  }
+  if (state.ui.visibilityImportedToggle) {
+    state.ui.visibilityImportedToggle.value = formatVisibilityToggleValue(state.visibilityRules.showImportedCategoriesInView);
+  }
+  if (state.ui.visibilityImportsFamilyToggle) {
+    state.ui.visibilityImportsFamilyToggle.value = formatVisibilityToggleValue(state.visibilityRules.showImportsInFamilies);
+  }
+  if (state.ui.visibilityCategorySearch) {
+    state.ui.visibilityCategorySearch.value = state.visibilityCategoryPicker.searchText || '';
+  }
   state.ui.combinationMode.value = state.elementParameterUpdate.combinationMode || 'And';
   if (state.ui.duplicateMode) {
     state.ui.duplicateMode.value = state.elementParameterUpdate.applyToAllMatchingParameters ? 'all' : 'single';
@@ -1265,6 +1548,22 @@ function normalizeFilterProfile(profile) {
     filterDefinitionXml: profile.filterDefinitionXml || '',
     structureSummary: profile.structureSummary || ''
   };
+}
+
+function normalizeVisibilityRules(source) {
+  const base = createVisibilityRuleState();
+  base.combinationMode = source.combinationMode || 'Or';
+  base.showImportedCategoriesInView = normalizeVisibilityToggleValue(source.showImportedCategoriesInView);
+  base.showImportsInFamilies = normalizeVisibilityToggleValue(source.showImportsInFamilies);
+  base.rules = base.rules.map((row, index) => {
+    const raw = Array.isArray(source.rules) ? source.rules[index] || {} : {};
+    return {
+      ...row,
+      ...raw,
+      parentCategoryNames: splitVisibilityCategoryNames(raw.parentCategoryNames || raw.parentCategoryName || '')
+    };
+  });
+  return base;
 }
 
 function normalizeElementUpdate(source) {
@@ -1286,6 +1585,11 @@ function buildPayload(state) {
     ...row,
     enabled: !!String(row.parameterName || '').trim()
   }));
+  const normalizedVisibilityRules = state.visibilityRules.rules.map((row) => ({
+    ...row,
+    parentCategoryNames: splitVisibilityCategoryNames(row.parentCategoryNames || ''),
+    enabled: splitVisibilityCategoryNames(row.parentCategoryNames || '').length > 0 && ((row.operatorName === 'HasValue' || row.operatorName === 'HasNoValue') || !!String(row.subCategoryText || '').trim())
+  }));
   const normalizedAssignments = state.elementParameterUpdate.assignments.map((row) => ({
     ...row,
     enabled: !!String(row.parameterName || '').trim()
@@ -1295,6 +1599,7 @@ function buildPayload(state) {
 
   return {
     filePaths: [...state.filePaths],
+    selectedFilePaths: state.filePaths.length ? getCheckedDeliveryCleanerFilePaths(state) : [],
     outputFolder: state.outputFolder,
     target3DViewName: state.target3DViewName,
     extractParameterNamesCsv: state.extractParameterNamesCsv,
@@ -1303,6 +1608,12 @@ function buildPayload(state) {
     applyFilterInitially: state.applyFilterInitially,
     autoEnableFilterIfEmpty: state.autoEnableFilterIfEmpty,
     filterProfile: state.filterProfile ? { ...state.filterProfile } : null,
+    visibilityRules: {
+      combinationMode: state.visibilityRules.combinationMode,
+      showImportedCategoriesInView: state.visibilityRules.showImportedCategoriesInView,
+      showImportsInFamilies: state.visibilityRules.showImportsInFamilies,
+      rules: normalizedVisibilityRules
+    },
     elementParameterUpdate: {
       enabled: hasConditions && hasAssignments,
       combinationMode: state.elementParameterUpdate.combinationMode,
@@ -1351,6 +1662,7 @@ async function promptDeliveryCleanerExcelExport(state, eventName) {
   const excelMode = await chooseExcelMode();
   if (!excelMode) return;
   setPageBusy(state, true);
+  beginDeliveryCleanerProgress('엑셀 내보내기', '엑셀 저장을 준비 중입니다.');
   post(eventName, { excelMode: excelMode || 'fast' });
 }
 
@@ -1634,6 +1946,166 @@ function getCategoryTokens(csv) {
     .filter((token, index, arr) => arr.indexOf(token) === index);
 }
 
+function splitVisibilityCategoryNames(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .filter((item, index, arr) => arr.findIndex((x) => x.toLowerCase() === item.toLowerCase()) === index);
+  }
+
+  return String(value || '')
+    .split(/[,\n\r;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+      .filter((item, index, arr) => arr.findIndex((x) => x.toLowerCase() === item.toLowerCase()) === index);
+}
+
+function normalizeVisibilityCategoryOptions(items) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .filter((item, index, arr) => arr.findIndex((x) => x.toLowerCase() === item.toLowerCase()) === index)
+    .sort((a, b) => a.localeCompare(b, 'ko'));
+}
+
+function tdWithCategoryPicker(state, row, index) {
+  const td = document.createElement('td');
+  const wrap = div('deliverycleaner-category-picker-cell');
+  const preview = document.createElement('textarea');
+  preview.rows = 2;
+  preview.readOnly = true;
+  preview.className = 'deliverycleaner-cell-textarea deliverycleaner-cell-textarea--readonly';
+  preview.placeholder = '카테고리 선택';
+  preview.value = (row.parentCategoryNames || []).join(', ');
+
+  const meta = div('deliverycleaner-category-picker-meta');
+  const count = document.createElement('span');
+  count.className = 'deliverycleaner-category-picker-count';
+  count.textContent = row.parentCategoryNames?.length ? `${row.parentCategoryNames.length}개 선택` : '선택 없음';
+
+  const actions = div('deliverycleaner-category-picker-actions');
+  const pickBtn = actionButton('카테고리 선택', () => openVisibilityCategoryModal(state, index), 'secondary');
+  const clearBtn = actionButton('초기화', () => {
+    state.visibilityRules.rules[index].parentCategoryNames = [];
+    renderVisibilityRuleRows(state);
+  }, 'secondary');
+  clearBtn.disabled = !(row.parentCategoryNames || []).length;
+
+  actions.append(pickBtn, clearBtn);
+  meta.append(count);
+  wrap.append(preview, meta, actions);
+  td.append(wrap);
+  return td;
+}
+
+function openVisibilityCategoryModal(state, rowIndex) {
+  state.visibilityCategoryPicker.rowIndex = rowIndex;
+  state.visibilityCategoryPicker.searchText = '';
+  state.visibilityCategoryPicker.selectedNames = splitVisibilityCategoryNames(state.visibilityRules.rules[rowIndex]?.parentCategoryNames || []);
+  renderVisibilityCategoryModal(state);
+  state.ui.visibilityCategoryOverlay?.classList.remove('is-hidden');
+  state.ui.visibilityCategorySearch?.focus();
+}
+
+function closeVisibilityCategoryModal(state) {
+  state.visibilityCategoryPicker.rowIndex = -1;
+  state.visibilityCategoryPicker.searchText = '';
+  state.visibilityCategoryPicker.selectedNames = [];
+  state.ui.visibilityCategoryOverlay?.classList.add('is-hidden');
+}
+
+function renderVisibilityCategoryModal(state) {
+  const listWrap = state.ui.visibilityCategoryList;
+  const summary = state.ui.visibilityCategorySummary;
+  if (!listWrap || !summary) return;
+
+  if (state.ui.visibilityCategorySearch) {
+    state.ui.visibilityCategorySearch.value = state.visibilityCategoryPicker.searchText || '';
+  }
+
+  const search = String(state.visibilityCategoryPicker.searchText || '').trim().toLowerCase();
+  const selected = new Set(splitVisibilityCategoryNames(state.visibilityCategoryPicker.selectedNames || []));
+  const options = normalizeVisibilityCategoryOptions(state.availableVisibilityCategories);
+  const filtered = search
+    ? options.filter((name) => name.toLowerCase().includes(search))
+    : options;
+
+  listWrap.innerHTML = '';
+  if (!filtered.length) {
+    const empty = div('deliverycleaner-note');
+    empty.textContent = options.length
+      ? '검색 조건에 맞는 카테고리가 없습니다.'
+      : '현재 문서에서 선택할 수 있는 V/G 카테고리를 찾지 못했습니다.';
+    listWrap.append(empty);
+  } else {
+    filtered.forEach((name) => {
+      const label = document.createElement('label');
+      label.className = 'deliverycleaner-category-option';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = selected.has(name);
+      checkbox.addEventListener('change', () => {
+        const next = new Set(splitVisibilityCategoryNames(state.visibilityCategoryPicker.selectedNames || []));
+        if (checkbox.checked) next.add(name);
+        else next.forEach((item) => {
+          if (item.toLowerCase() === name.toLowerCase()) next.delete(item);
+        });
+        state.visibilityCategoryPicker.selectedNames = Array.from(next).sort((a, b) => a.localeCompare(b, 'ko'));
+        renderVisibilityCategoryModal(state);
+      });
+      const text = document.createElement('span');
+      text.textContent = name;
+      label.append(checkbox, text);
+      listWrap.append(label);
+    });
+  }
+
+  const count = splitVisibilityCategoryNames(state.visibilityCategoryPicker.selectedNames || []).length;
+  summary.textContent = count ? `${count}개 카테고리를 선택했습니다.` : '선택한 카테고리가 없습니다.';
+}
+
+function applyVisibilityCategorySelection(state) {
+  const rowIndex = state.visibilityCategoryPicker.rowIndex;
+  if (rowIndex < 0 || rowIndex >= state.visibilityRules.rules.length) {
+    closeVisibilityCategoryModal(state);
+    return;
+  }
+
+  state.visibilityRules.rules[rowIndex].parentCategoryNames = splitVisibilityCategoryNames(state.visibilityCategoryPicker.selectedNames || []);
+  closeVisibilityCategoryModal(state);
+  renderVisibilityRuleRows(state);
+}
+
+function parseVisibilityToggleValue(value) {
+  if (value === 'show') return true;
+  if (value === 'hide') return false;
+  return null;
+}
+
+function normalizeVisibilityToggleValue(value) {
+  if (typeof value === 'boolean') return value;
+  if (value == null) return null;
+
+  const text = String(value).trim().toLowerCase();
+  if (!text) return null;
+  if (['show', 'shown', 'checked', 'check', 'true', 'on', 'visible', 'yes'].includes(text)) return true;
+  if (['hide', 'hidden', 'unchecked', 'uncheck', 'false', 'off', 'invisible', 'no'].includes(text)) return false;
+  return null;
+}
+
+function formatVisibilityToggleValue(value) {
+  if (value === true) return 'show';
+  if (value === false) return 'hide';
+  return '';
+}
+
+function formatVisibilityToggleSummary(label, value) {
+  if (value === true) return `${label}: 체크`;
+  if (value === false) return `${label}: 해제`;
+  return '';
+}
+
 function tdWithInput(value, placeholder, onChange) {
   const td = document.createElement('td');
   const input = document.createElement('input');
@@ -1641,6 +2113,18 @@ function tdWithInput(value, placeholder, onChange) {
   input.value = value || '';
   input.placeholder = placeholder || '';
   input.addEventListener('input', () => onChange(input.value.trim()));
+  td.append(input);
+  return td;
+}
+
+function tdWithTextarea(value, placeholder, onChange) {
+  const td = document.createElement('td');
+  const input = document.createElement('textarea');
+  input.rows = 2;
+  input.value = value || '';
+  input.placeholder = placeholder || '';
+  input.className = 'deliverycleaner-cell-textarea';
+  input.addEventListener('input', () => onChange(input.value));
   td.append(input);
   return td;
 }

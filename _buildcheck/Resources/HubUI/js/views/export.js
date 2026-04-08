@@ -1,4 +1,4 @@
-import { clear, div, tdText, toast, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
+﻿import { clear, div, tdText, toast, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';

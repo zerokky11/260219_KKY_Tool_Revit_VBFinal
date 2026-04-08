@@ -1,4 +1,4 @@
-Imports System.Diagnostics
+﻿Imports System.Diagnostics
 Imports System.Reflection
 Imports System.Windows.Media
 Imports System.Windows.Media.Imaging
@@ -7,6 +7,7 @@ Imports Autodesk.Revit.UI
 Imports Autodesk.Revit.DB
 Imports Autodesk.Revit.UI.Events
 Imports System.Linq
+Imports KKY_Tool_Revit.Infrastructure
 Imports KKY_Tool_Revit.UI
 Imports KKY_Tool_Revit.UI.Hub
 '커밋 확인용'
@@ -59,6 +60,7 @@ Namespace KKY_Tool_Revit
             AddHandler a.ControlledApplication.DocumentOpened, AddressOf OnDocumentListChanged
             AddHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentListChanged
             AddHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentClosedForActiveLinkWorksetReopen
+            ThirdPartyWarningSuppressor.Start()
 
             Return Result.Succeeded
         End Function
@@ -69,6 +71,7 @@ Namespace KKY_Tool_Revit
                 RemoveHandler a.ControlledApplication.DocumentOpened, AddressOf OnDocumentListChanged
                 RemoveHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentListChanged
                 RemoveHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentClosedForActiveLinkWorksetReopen
+                ThirdPartyWarningSuppressor.Stop()
             Catch
             End Try
             Return Result.Succeeded

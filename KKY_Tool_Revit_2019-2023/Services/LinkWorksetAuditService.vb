@@ -1,4 +1,4 @@
-Option Explicit On
+﻿Option Explicit On
 Option Strict On
 
 Imports System
@@ -54,7 +54,8 @@ Namespace Services
         Public Shared Function RunOnDocument(hostDoc As Document,
                                              hostPath As String,
                                              applyDefaultWorksetOnly As Boolean,
-                                             progress As Action(Of Integer, String)) As List(Of LinkWorksetAuditRow)
+                                             progress As Action(Of Integer, String),
+                                             Optional uiReloadPrimed As Boolean = False) As List(Of LinkWorksetAuditRow)
 
             Dim rows As New List(Of LinkWorksetAuditRow)()
             If hostDoc Is Nothing Then Return rows
@@ -77,7 +78,7 @@ Namespace Services
                 Dim linkType = linkTypes(i)
                 Dim linkName As String = SafeStr(linkType.Name)
                 ReportProgress(progress, linkTypes.Count, i + 1, $"[{hostFileName}] 링크 점검 중 ({i + 1}/{linkTypes.Count}) · {linkName}")
-                rows.Add(AuditLinkType(hostDoc, hostPath, hostFileName, linkType, applyDefaultWorksetOnly))
+                rows.Add(AuditLinkType(hostDoc, hostPath, hostFileName, linkType, applyDefaultWorksetOnly, uiReloadPrimed))
             Next
 
             ReportProgress(progress, linkTypes.Count, linkTypes.Count, $"[{hostFileName}] 링크 점검 완료")
@@ -88,7 +89,8 @@ Namespace Services
                                               hostPath As String,
                                               hostFileName As String,
                                               linkType As RevitLinkType,
-                                              applyDefaultWorksetOnly As Boolean) As LinkWorksetAuditRow
+                                              applyDefaultWorksetOnly As Boolean,
+                                              uiReloadPrimed As Boolean) As LinkWorksetAuditRow
 
             Dim row As New LinkWorksetAuditRow With {
                 .HostFileName = hostFileName,
@@ -182,9 +184,14 @@ Namespace Services
             End If
 
             Dim stateForApply = beforeState
-            If applyDefaultWorksetOnly AndAlso (Not stateForApply.IsKnown OrElse Not stateForApply.IsLoaded) Then
+            If uiReloadPrimed Then
+                diag.Add("uiReloadPrimed=Y")
+            End If
+            If applyDefaultWorksetOnly AndAlso Not uiReloadPrimed AndAlso (Not stateForApply.IsKnown OrElse Not stateForApply.IsLoaded) Then
                 stateForApply = PrimeLinkStateForApply(hostDoc, linkType, stateForApply, diag)
                 MergeWorksetMetadata(row, stateForApply, previewState)
+                diag.Add("applyState=" & DescribeState(stateForApply))
+            ElseIf uiReloadPrimed Then
                 diag.Add("applyState=" & DescribeState(stateForApply))
             End If
 
@@ -255,7 +262,6 @@ Namespace Services
                                          $"기본 웍셋 적용 후 링크를 다시 로드하지 못했습니다. ({loadResultText})")
                         Return FinalizeAuditRow(row, diag)
                     End If
-                    row.Applied = True
                 Catch ex As Exception
                     diag.Add("exception=" & SafeStr(ex.Message))
                     row.Status = "error"
@@ -265,7 +271,7 @@ Namespace Services
                 End Try
             End If
 
-            If row.Applied Then
+            If False AndAlso row.Applied Then
                 row.IsLoadedAfter = True
                 row.OpenUserWorksetCountAfter = 1
                 If String.IsNullOrWhiteSpace(row.DefaultWorksetName) AndAlso previewState IsNot Nothing Then
@@ -285,13 +291,16 @@ Namespace Services
             diag.Add("after=" & DescribeState(afterState))
             If afterState.IsKnown Then
                 If afterState.DefaultOnlyOpen = True Then
+                    row.Applied = needsApply
                     row.Status = If(row.Applied, "changed", "ok")
                     row.Message = If(row.Applied, "기본 workset1 만 열리도록 재로드했습니다.", "이미 기본 workset1 만 열려 있습니다.")
                 Else
+                    row.Applied = False
                     row.Status = "warning"
                     row.Message = "기본 user workset 외 다른 workset도 열려 있습니다."
                 End If
-            ElseIf row.Applied Then
+            ElseIf needsApply Then
+                row.Applied = False
                 row.Status = "warning"
                 row.Message = "적용은 수행했지만 재로드 후 링크 상태를 다시 확인하지 못했습니다."
             ElseIf row.WasLoadedBefore Then

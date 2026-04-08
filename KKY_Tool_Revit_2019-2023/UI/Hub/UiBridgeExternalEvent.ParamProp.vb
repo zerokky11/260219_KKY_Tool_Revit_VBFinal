@@ -6,6 +6,7 @@ Imports System.Linq
 Imports System.Data
 Imports Autodesk.Revit.UI
 Imports KKY_Tool_Revit.Services
+Imports WinForms = System.Windows.Forms
 
 Namespace UI.Hub
 
@@ -203,6 +204,14 @@ Namespace UI.Hub
                 SendToWeb("sharedparam:exported", New With {.ok = False, .message = ex.Message})
                 SendToWeb("revit:error", New With {.message = "엑셀 내보내기 실패: " & ex.Message})
             End Try
+        End Sub
+
+        Private Sub HandleSharedParamBrowseOutputFolder(app As UIApplication, payload As Object)
+            Using dlg As New WinForms.FolderBrowserDialog()
+                dlg.Description = "수정된 패밀리(.rfa) 저장 폴더 선택"
+                If dlg.ShowDialog() <> WinForms.DialogResult.OK Then Return
+                SendToWebAfterDialog("paramprop:output-folder-picked", New With {.ok = True, .path = dlg.SelectedPath})
+            End Using
         End Sub
 
     End Class

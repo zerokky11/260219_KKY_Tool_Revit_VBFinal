@@ -1,4 +1,4 @@
-// Resources/HubUI/js/core/progress.js
+﻿// Resources/HubUI/js/core/progress.js
 // 공용 중앙 진행 다이얼로그 (SegmentPMS / ParamPropagate 등에서 재사용)
 
 const MIN_UPDATE_MS = 140;

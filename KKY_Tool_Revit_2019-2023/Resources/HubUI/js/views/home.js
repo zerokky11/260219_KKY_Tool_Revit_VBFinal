@@ -1,4 +1,4 @@
-// Resources/HubUI/js/views/home.js
+﻿// Resources/HubUI/js/views/home.js
 import { clear, div } from '../core/dom.js';
 
 const MULTI_MODE_KEY = 'kky.hub.multiMode';
@@ -39,6 +39,7 @@ export function renderHome(root) {
         '중복 / 자체간섭 검토',
         '패밀리 공유파라미터 추가/연동',
         'Segment↔PMS 비교 검토',
+        '노즐코드 KTA 단일화',
         '파라미터 수정기',
         'Project 파라미터 일괄 추가'
       ],

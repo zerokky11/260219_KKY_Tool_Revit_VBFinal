@@ -1,4 +1,4 @@
-// Resources/HubUI/js/core/bridge.js
+﻿// Resources/HubUI/js/core/bridge.js
 // 공개 API: post, onHost, setConn, ping
 // - WebView2(Revit) : window.chrome.webview.postMessage
 // - DEV(브라우저 단독) : 간단 목업 동작
@@ -231,6 +231,39 @@ export function post(ev, payload = {}) {
         }
         case "familylink:export": {
             _emitHost("familylink:exported", { ok: true, path: "C:\\Temp\\FamilyLinkAudit.xlsx" }, { __seq: seq });
+            break;
+        }
+        case "lateralnozzle:init": {
+            _emitHost("lateralnozzle:init", {
+                settings: { excelPaths: [], outputFolder: "" },
+                result: null
+            }, { __seq: seq });
+            break;
+        }
+        case "lateralnozzle:pick-excels": {
+            _emitHost("lateralnozzle:excels-picked", {
+                ok: true,
+                paths: ["C:\\Sample\\KTA_Form_A.xlsx", "C:\\Sample\\KTA_Form_B.xlsx"]
+            }, { __seq: seq });
+            break;
+        }
+        case "lateralnozzle:run": {
+            _emitHost("lateralnozzle:progress", { title: "노즐코드 KTA 단일화", percent: 35, message: "(DEV) 엑셀 읽는 중...", detail: "KTA_Form_A.xlsx" }, { __seq: seq });
+            _emitHost("lateralnozzle:done", {
+                ok: true,
+                message: "(DEV) 추출 완료: 12건",
+                outputFolder: "C:\\Temp",
+                resultWorkbookPath: "C:\\Temp\\노즐코드_KTA_단일화.xlsx",
+                fileCount: 2,
+                summary: {
+                    totalFileCount: 2,
+                    successCount: 2,
+                    failCount: 0,
+                    noDataCount: 0,
+                    extractedRowCount: 12,
+                    remarkRowCount: 3
+                }
+            }, { __seq: seq });
             break;
         }
         default: {

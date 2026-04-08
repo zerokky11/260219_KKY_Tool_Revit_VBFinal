@@ -1,4 +1,4 @@
-// Resources/HubUI/js/views/paramprop.js
+﻿// Resources/HubUI/js/views/paramprop.js
 import { clear, div, toast, setBusy, showExcelSavedDialog, debounce, chooseExcelMode } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';

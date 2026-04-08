@@ -1,4 +1,4 @@
-import { clear, div, toast, setBusy, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
+﻿import { clear, div, toast, setBusy, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
@@ -145,7 +145,20 @@ export function renderSegmentPms(root) {
     if (!state.results) { toast('저장할 결과가 없습니다.', 'err'); return; }
     chooseExcelMode((mode) => post('segmentpms:save-result', { excelMode: mode || 'fast' }));
   });
+  btnSaveExtract.onclick = () => chooseExcelMode((mode) => {
+    beginSegmentPmsProgress('Preparing extract export...');
+    post('segmentpms:save-extract', { excelMode: mode || 'fast' });
+  });
+  btnSave.onclick = () => {
+    if (!state.results) { toast('내보낼 결과가 없습니다.', 'err'); return; }
+    chooseExcelMode((mode) => {
+      beginSegmentPmsProgress('Preparing result export...');
+      post('segmentpms:save-result', { excelMode: mode || 'fast' });
+    });
+  };
   chActions.append(btnLoadExtract, btnRegisterPms, btnTemplate, btnPrepare, btnRun, btnSave);
+  btnSaveExtract.onclick = () => startSegmentPmsExport('extract');
+  btnSave.onclick = () => startSegmentPmsExport('result');
   chHeader.append(chActions);
   const pmsGuide = div('segmentpms-summary');
   pmsGuide.textContent = "처음 사용자는 ‘PMS 양식 추출하기’로 샘플을 내려받아 동일 형식으로 작성하세요.";
@@ -217,12 +230,15 @@ export function renderSegmentPms(root) {
     const targets = state.rvtList.filter(p => state.rvtChecked.has(p));
     if (!targets.length) { toast('추출할 RVT를 선택하세요.', 'err'); return; }
     state.busy = true; updateButtons();
+    ProgressDialog.show('Segment 매핑/검증', '추출 작업을 준비 중입니다.');
+    ProgressDialog.update(0, '추출 작업을 준비 중입니다.', '');
     post('segmentpms:extract', { files: targets });
   }
 
   function onPrepareMapping() {
     if (!state.extractLoaded) { toast('추출 결과를 먼저 불러오세요.', 'err'); return; }
     setBusy(true, '매핑 준비'); state.busy = true; updateButtons();
+    beginSegmentPmsProgress('Preparing mapping...');
     post('segmentpms:prepare-mapping', {});
   }
 
@@ -297,14 +313,134 @@ export function renderSegmentPms(root) {
     const groups = [...state.selections.values()];
     state.results = null;
     setBusy(true, '검토 실행'); state.busy = true; updateButtons();
+    ProgressDialog.show('Segment 매핑/검증', '검토를 준비 중입니다.');
+    ProgressDialog.update(0, '검토를 준비 중입니다.', '');
     post('segmentpms:run', { groups });
   }
 
   function paintResults(payload) {
     state.results = payload || { hasResult: true };
-    const total = payload?.totalCount ?? (Array.isArray(payload?.compare) ? payload.compare.length : 0);
-    resInfo.textContent = total > 0 ? `총 ${total}건의 결과가 준비되었습니다. 엑셀 내보내기 후 확인하세요.` : '결과 없음';
+    const resultSummary = summarizeSegmentPmsResults(payload);
+    const total = resultSummary.totalCount;
+    resInfo.textContent = total > 0
+      ? `총 ${total}건의 결과가 준비되었습니다. 정상 ${resultSummary.okCount}건 / 검토 필요 ${resultSummary.reviewCount}건 / 오류 ${resultSummary.errorCount}건`
+      : '결과 없음';
     toast('검토가 완료되었습니다. 엑셀로 내보내세요.', 'ok');
+  }
+
+  function beginSegmentPmsProgress(subtitle) {
+    ProgressDialog.show('Segment PMS', subtitle || 'Preparing...');
+    ProgressDialog.update(0, subtitle || 'Preparing...', '');
+  }
+
+  async function startSegmentPmsExport(kind) {
+    if (state.busy) return;
+    if (kind === 'extract' && !state.extractLoaded) {
+      toast('내보낼 추출 결과가 없습니다.', 'err');
+      return;
+    }
+    if (kind === 'result' && !state.results) {
+      toast('저장할 결과가 없습니다.', 'err');
+      return;
+    }
+
+    const excelMode = await chooseExcelMode();
+    state.busy = true;
+    setBusy(true, '엑셀 내보내기 중...');
+    updateButtons();
+
+    if (kind === 'extract') {
+      beginSegmentPmsProgress('추출 결과를 저장하는 중...');
+      post('segmentpms:save-extract', { excelMode: excelMode || 'fast' });
+      return;
+    }
+
+    beginSegmentPmsProgress('검토 결과를 저장하는 중...');
+    post('segmentpms:save-result', { excelMode: excelMode || 'fast' });
+  }
+
+  function showSegmentPmsCompletionDialog(payload, totalCount) {
+    const mappedCount = [...state.selections.values()].filter((item) => item && item.segment).length;
+    const groupCount = state.groups.length || 0;
+    const resultSummary = summarizeSegmentPmsResults(payload, totalCount);
+    const notes = [];
+
+    if (state.extractSummary) notes.push(`추출 기준: ${state.extractSummary}`);
+    if (payload?.message) notes.push(String(payload.message));
+    if (resultSummary.uncertainCount > 0) notes.push(`분류가 애매한 항목 ${resultSummary.uncertainCount}건은 검토 필요로 집계했습니다.`);
+
+    showCompletionSummaryDialog({
+      title: 'Segment PMS 검토 완료',
+      message: '검토가 끝났습니다. 그룹 매핑과 결과를 확인하고 필요하면 바로 엑셀로 내보낼 수 있습니다.',
+      summaryItems: [
+        { label: '대상 그룹 수', value: String(groupCount) },
+        { label: '매핑 적용 그룹 수', value: String(mappedCount) },
+        { label: '정상 건수', value: String(resultSummary.okCount) },
+        { label: '검토 필요 건수', value: String(resultSummary.reviewCount) },
+        { label: '오류 건수', value: String(resultSummary.errorCount) },
+        { label: '검토 결과 건수', value: String(resultSummary.totalCount) }
+      ],
+      notes,
+      exportDisabled: !!btnSave.disabled,
+      onExport: () => btnSave.click()
+    });
+  }
+
+  function summarizeSegmentPmsResults(payload, totalCountOverride) {
+    const rows = Array.isArray(payload?.compare) ? payload.compare : [];
+    const summary = {
+      totalCount: Number(totalCountOverride ?? payload?.totalCount) || rows.length || 0,
+      okCount: 0,
+      reviewCount: 0,
+      errorCount: 0,
+      uncertainCount: 0
+    };
+
+    rows.forEach((row) => {
+      const verdict = classifySegmentPmsRow(row);
+      if (verdict === 'ok') summary.okCount += 1;
+      else if (verdict === 'error') summary.errorCount += 1;
+      else if (verdict === 'review') summary.reviewCount += 1;
+      else summary.uncertainCount += 1;
+    });
+
+    if (!rows.length) return summary;
+    if (summary.uncertainCount > 0) {
+      summary.reviewCount += summary.uncertainCount;
+    }
+    const classifiedTotal = summary.okCount + summary.reviewCount + summary.errorCount;
+    if (summary.totalCount < classifiedTotal) {
+      summary.totalCount = classifiedTotal;
+    } else if (summary.totalCount > classifiedTotal) {
+      summary.reviewCount += summary.totalCount - classifiedTotal;
+    }
+    return summary;
+  }
+
+  function classifySegmentPmsRow(row) {
+    if (!row || typeof row !== 'object') return 'unknown';
+
+    const boolTrue = (...keys) => keys.some((key) => row?.[key] === true);
+    const boolFalse = (...keys) => keys.some((key) => row?.[key] === false);
+    const tokens = [
+      row.status,
+      row.result,
+      row.compareResult,
+      row.issue,
+      row.message,
+      row.detail,
+      row.note,
+      row.errorMessage,
+      typeof row.error === 'string' ? row.error : ''
+    ]
+      .map((value) => String(value || '').trim().toLowerCase())
+      .filter(Boolean);
+    const joined = tokens.join(' | ');
+
+    if (boolTrue('isError', 'hasError', 'error') || /(error|fail|exception|invalid)/.test(joined)) return 'error';
+    if (boolFalse('isMatch', 'matched', 'isMatched', 'same', 'isSame', 'ok', 'success') || /(mismatch|different|diff|review|warning|missing|unmapped|not match|not matched)/.test(joined)) return 'review';
+    if (boolTrue('isMatch', 'matched', 'isMatched', 'same', 'isSame', 'ok', 'success') || /(^|\W)(ok|match|same|equal|pass|mapped)(\W|$)/.test(joined)) return 'ok';
+    return 'unknown';
   }
 
   function updateButtons() {
@@ -336,6 +472,19 @@ export function renderSegmentPms(root) {
 
   function handleHost(msg) {
     if (!msg || !msg.ev) return;
+    if (msg.ev === 'segmentpms:saved') {
+      setBusy(false); state.busy = false;
+      ProgressDialog.hide();
+      updateButtons();
+      requestAnimationFrame(() => {
+        showExcelSavedDialog('결과를 저장했습니다.', msg.payload?.path, (p) => {
+          const target = p || msg.payload?.path;
+          if (!target) { toast('열 수 있는 경로가 없습니다.', 'err'); return; }
+          post('excel:open', { path: target });
+        });
+      });
+      return;
+    }
     switch (msg.ev) {
       case 'segmentpms:rvt-picked-files':
       case 'segmentpms:rvt-picked-folder': {
@@ -373,10 +522,12 @@ export function renderSegmentPms(root) {
         break;
       case 'segmentpms:mapping-ready':
         setBusy(false); state.busy = false;
+        ProgressDialog.hide();
         state.groups = msg.payload?.groups || [];
         state.pmsOpts = msg.payload?.pms || state.pmsOpts;
         state.suggestions = buildSuggestionMap(msg.payload?.suggestions || []);
         buildGroupTable();
+        toast('매핑 준비가 완료되었습니다.', 'ok');
         updateButtons();
         break;
       case 'segmentpms:pms-registered':
@@ -403,17 +554,11 @@ export function renderSegmentPms(root) {
         setBusy(false); state.busy = false;
         ProgressDialog.hide();
         paintResults(msg.payload || {});
+        requestAnimationFrame(() => showSegmentPmsCompletionDialog(msg.payload || {}, msg.payload?.totalCount ?? (Array.isArray(msg.payload?.compare) ? msg.payload.compare.length : 0)));
         updateButtons();
         break;
       case 'segmentpms:progress':
         handleProgress(msg.payload || {});
-        break;
-      case 'segmentpms:saved':
-        showExcelSavedDialog('결과를 저장했습니다.', msg.payload?.path, (p) => {
-          const target = p || msg.payload?.path;
-          if (!target) { toast('열 수 있는 경로가 없습니다.', 'err'); return; }
-          post('excel:open', { path: target });
-        });
         break;
       case 'segmentpms:error':
         setBusy(false); state.busy = false;

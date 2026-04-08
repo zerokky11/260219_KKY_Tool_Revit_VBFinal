@@ -3,6 +3,7 @@ Option Strict On
 
 Imports System
 Imports System.Collections.Generic
+Imports System.Collections.Specialized
 Imports System.Diagnostics
 Imports System.IO
 Imports System.Linq
@@ -29,6 +30,7 @@ Namespace UI.Hub
 
         Private Shared _instance As HubHostWindow
         Private Shared ReadOnly _gate As New Object()
+        Private Shared _currentThemeKey As String = "dark"
 
         Private ReadOnly _web As New WebView2()
         Private ReadOnly _dropOverlayHideTimer As New DispatcherTimer()
@@ -93,6 +95,12 @@ Namespace UI.Hub
             If inst Is Nothing OrElse inst.IsClosing Then Return
             inst.RefreshDocumentContext()
         End Sub
+
+        Friend Shared ReadOnly Property CurrentThemeKey As String
+            Get
+                Return _currentThemeKey
+            End Get
+        End Property
 
         Public Sub New(uiApp As UIApplication)
             _uiApp = uiApp
@@ -188,12 +196,46 @@ Namespace UI.Hub
             End If
         End Sub
 
+        Private Shared Iterator Function EnumerateUiFolderCandidates(baseDir As String) As IEnumerable(Of String)
+            If Not String.IsNullOrWhiteSpace(baseDir) Then
+                Yield Path.Combine(baseDir, "Resources", "HubUI")
+
+                Dim sourceFallback = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "Resources", "HubUI"))
+                Yield sourceFallback
+            End If
+
+            Dim commonAppData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)
+            Dim roamingAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
+
+            For Each revitYear As String In New String() {"2019", "2021", "2023", "2025"}
+                Yield Path.Combine(commonAppData, "Autodesk", "Revit", "Addins", revitYear, "KKY_Tool_Revit", "Resources", "HubUI")
+                Yield Path.Combine(roamingAppData, "Autodesk", "Revit", "Addins", revitYear, "KKY_Tool_Revit", "Resources", "HubUI")
+            Next
+        End Function
+
         Private Function ResolveUiFolder() As String
             Try
                 Dim asm = Assembly.GetExecutingAssembly()
                 Dim baseDir = Path.GetDirectoryName(asm.Location)
-                Dim ui = Path.Combine(baseDir, "Resources", "HubUI")
-                If Directory.Exists(ui) Then Return Path.GetFullPath(ui)
+                Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+                For Each candidate In EnumerateUiFolderCandidates(baseDir)
+                    If String.IsNullOrWhiteSpace(candidate) Then Continue For
+
+                    Dim fullPath As String
+                    Try
+                        fullPath = Path.GetFullPath(candidate)
+                    Catch
+                        Continue For
+                    End Try
+
+                    If Not seen.Add(fullPath) Then Continue For
+
+                    Dim indexPath = Path.Combine(fullPath, "index.html")
+                    If Directory.Exists(fullPath) AndAlso File.Exists(indexPath) Then
+                        Return fullPath
+                    End If
+                Next
             Catch
             End Try
             Return Nothing
@@ -308,6 +350,10 @@ Namespace UI.Hub
                     End If
                 End If
 
+                name = NormalizeWrappedQuotesText(name)
+                If Not String.IsNullOrWhiteSpace(name) Then
+                    name = name.Trim().ToLowerInvariant()
+                End If
                 If String.IsNullOrEmpty(name) Then Return
 
                 Dim payload As Object = Nothing
@@ -340,17 +386,28 @@ Namespace UI.Hub
                             .route = _currentRouteKey
                         })
 
-                    Case "ui:rvt-drop-overlay"
+                    Case "ui:theme-changed"
+                        Dim themePayload = TryCast(payload, Dictionary(Of String, Object))
+                        Dim theme As String = "dark"
+                        If themePayload IsNot Nothing AndAlso themePayload.ContainsKey("theme") AndAlso themePayload("theme") IsNot Nothing Then
+                            theme = Convert.ToString(themePayload("theme"))
+                        End If
+                        theme = If(String.Equals(theme, "light", StringComparison.OrdinalIgnoreCase), "light", "dark")
+                        _currentThemeKey = theme
+
+                    Case "ui:rvt-drop-overlay", "ui:excel-drop-overlay"
                         Dim overlayPayload = TryCast(payload, Dictionary(Of String, Object))
                         Dim active As Boolean = False
                         If overlayPayload IsNot Nothing AndAlso overlayPayload.ContainsKey("active") Then
                             active = SafeBoolObj(overlayPayload("active"), False)
                         End If
                         Dim routeKey = GetCurrentRouteKey()
+                        Dim dropKind = GetNativeDropKind(routeKey)
                         SendHostDebug("overlay-request", New With {
                             .active = active,
                             .route = routeKey,
-                            .supported = SupportsDroppedRvtRoute(routeKey),
+                            .dropKind = dropKind,
+                            .supported = SupportsNativeDropRoute(routeKey),
                             .overlayVisible = _isNativeDropOverlayVisible
                         })
                         SetNativeDropOverlay(active)
@@ -368,7 +425,7 @@ Namespace UI.Hub
                             Process.Start(psi)
                         End If
 
-                    Case "ui:rvt-drop-commit"
+                    Case "ui:rvt-drop-commit", "ui:excel-drop-commit"
                         Dim routeKey = GetCurrentRouteKey()
                         Dim pending = ConsumePendingNativeDropPaths(routeKey)
                         Dim commitPayload = TryCast(payload, Dictionary(Of String, Object))
@@ -389,18 +446,15 @@ Namespace UI.Hub
                         End If
                         SendHostDebug("overlay-commit", New With {
                             .route = routeKey,
+                            .dropKind = GetNativeDropKind(routeKey),
                             .cachedPathCount = pending.Count,
                             .fileNames = fileNames,
                             .filesLength = filesLength
                         })
                         If pending.Count > 0 Then
-                            DispatchDroppedRvts(routeKey, pending)
+                            DispatchDroppedPaths(routeKey, pending)
                         ElseIf fileNames.Count > 0 OrElse filesLength > 0 Then
-                            SendToWeb("host:rvt-drop-invalid", New With {
-                                .route = routeKey,
-                                .fileNames = fileNames,
-                                .message = "RVT 파일만 추가할 수 있습니다."
-                            })
+                            SendInvalidNativeDrop(routeKey, fileNames)
                         End If
 
                     Case Else
@@ -419,11 +473,13 @@ Namespace UI.Hub
 
         Private Sub HandlePreviewDragEnter(sender As Object, e As DragEventArgs)
             If Not HasFileDrop(e.Data) Then Return
-            Dim paths = ExtractDroppedRvtPaths(e.Data)
-            CachePendingNativeDropPaths(GetCurrentRouteKey(), paths)
+            Dim routeKey = GetCurrentRouteKey()
+            Dim paths = ExtractDroppedPaths(e.Data, routeKey)
+            CachePendingNativeDropPaths(routeKey, paths)
             SendHostDebug("drag-enter", New With {
                 .sender = DescribeSender(sender),
-                .route = GetCurrentRouteKey(),
+                .route = routeKey,
+                .dropKind = GetNativeDropKind(routeKey),
                 .formats = GetDataFormats(e.Data),
                 .pathCount = paths.Count
             })
@@ -433,11 +489,13 @@ Namespace UI.Hub
 
         Private Sub HandlePreviewDragOver(sender As Object, e As DragEventArgs)
             If Not HasFileDrop(e.Data) Then Return
-            Dim paths = ExtractDroppedRvtPaths(e.Data)
-            CachePendingNativeDropPaths(GetCurrentRouteKey(), paths)
+            Dim routeKey = GetCurrentRouteKey()
+            Dim paths = ExtractDroppedPaths(e.Data, routeKey)
+            CachePendingNativeDropPaths(routeKey, paths)
             SendHostDebug("drag-over", New With {
                 .sender = DescribeSender(sender),
-                .route = GetCurrentRouteKey(),
+                .route = routeKey,
+                .dropKind = GetNativeDropKind(routeKey),
                 .overlayVisible = _isNativeDropOverlayVisible,
                 .pathCount = paths.Count
             })
@@ -447,20 +505,22 @@ Namespace UI.Hub
 
         Private Sub HandlePreviewDrop(sender As Object, e As DragEventArgs)
             Try
-                Dim paths = ExtractDroppedRvtPaths(e.Data)
+                Dim routeKey = GetCurrentRouteKey()
+                Dim paths = ExtractDroppedPaths(e.Data, routeKey)
                 If paths.Count = 0 Then
-                    paths = ConsumePendingNativeDropPaths(GetCurrentRouteKey())
+                    paths = ConsumePendingNativeDropPaths(routeKey)
                 End If
                 SendHostDebug("drop-received", New With {
                     .sender = DescribeSender(sender),
-                    .route = GetCurrentRouteKey(),
+                    .route = routeKey,
+                    .dropKind = GetNativeDropKind(routeKey),
                     .formats = GetDataFormats(e.Data),
                     .pathCount = paths.Count,
                     .paths = paths
                 })
                 If paths.Count = 0 Then Return
 
-                DispatchDroppedRvts(GetCurrentRouteKey(), paths)
+                DispatchDroppedPaths(routeKey, paths)
                 SetNativeDropOverlay(False, True)
                 e.Handled = True
             Catch ex As Exception
@@ -484,16 +544,18 @@ Namespace UI.Hub
 
         Private Sub OnNavigationStarting(sender As Object, e As CoreWebView2NavigationStartingEventArgs)
             Try
-                Dim paths = ExtractDroppedRvtPathsFromUri(e.Uri)
+                Dim routeKey = GetCurrentRouteKey()
+                Dim paths = ExtractDroppedPathsFromUri(e.Uri, routeKey)
                 SendHostDebug("navigation-starting", New With {
                     .uri = TrimForLog(e.Uri),
                     .pathCount = paths.Count,
-                    .route = GetCurrentRouteKey()
+                    .route = routeKey,
+                    .dropKind = GetNativeDropKind(routeKey)
                 })
                 If paths.Count = 0 Then Return
 
                 e.Cancel = True
-                DispatchDroppedRvts(GetCurrentRouteKey(), paths)
+                DispatchDroppedPaths(routeKey, paths)
             Catch ex As Exception
                 SendHostDebug("navigation-error", New With {
                     .message = ex.Message,
@@ -505,16 +567,18 @@ Namespace UI.Hub
 
         Private Sub OnNewWindowRequested(sender As Object, e As CoreWebView2NewWindowRequestedEventArgs)
             Try
-                Dim paths = ExtractDroppedRvtPathsFromUri(e.Uri)
+                Dim routeKey = GetCurrentRouteKey()
+                Dim paths = ExtractDroppedPathsFromUri(e.Uri, routeKey)
                 SendHostDebug("new-window-requested", New With {
                     .uri = TrimForLog(e.Uri),
                     .pathCount = paths.Count,
-                    .route = GetCurrentRouteKey()
+                    .route = routeKey,
+                    .dropKind = GetNativeDropKind(routeKey)
                 })
                 If paths.Count = 0 Then Return
 
                 e.Handled = True
-                DispatchDroppedRvts(GetCurrentRouteKey(), paths)
+                DispatchDroppedPaths(routeKey, paths)
             Catch ex As Exception
                 SendHostDebug("new-window-error", New With {
                     .message = ex.Message,
@@ -557,22 +621,96 @@ Namespace UI.Hub
             End Try
         End Function
 
-        Private Shared Function ExtractDroppedRvtPaths(data As IDataObject) As List(Of String)
-            If Not HasFileDrop(data) Then Return New List(Of String)()
+        Private Shared Function ExtractDroppedPaths(data As IDataObject, routeKey As String) As List(Of String)
+            If data Is Nothing Then Return New List(Of String)()
 
-            Dim raw = TryCast(data.GetData(DataFormats.FileDrop), String())
-            If raw Is Nothing OrElse raw.Length = 0 Then Return New List(Of String)()
+            Dim dropKind = GetNativeDropKind(routeKey)
+            If String.IsNullOrWhiteSpace(dropKind) Then Return New List(Of String)()
 
-            Return raw _
-                .Select(AddressOf NormalizeDroppedRvtPath) _
+            Return EnumerateDroppedPathCandidates(data) _
+                .Select(Function(candidate) NormalizeDroppedPath(candidate, dropKind)) _
                 .Where(Function(path) Not String.IsNullOrWhiteSpace(path)) _
                 .Distinct(StringComparer.OrdinalIgnoreCase) _
                 .ToList()
         End Function
 
-        Private Shared Function ExtractDroppedRvtPathsFromUri(uriText As String) As List(Of String)
+        Private Shared Iterator Function EnumerateDroppedPathCandidates(data As IDataObject) As IEnumerable(Of String)
+            If data Is Nothing Then Return
+
+            If HasFileDrop(data) Then
+                For Each candidate In EnumerateDroppedPathCandidates(data.GetData(DataFormats.FileDrop))
+                    Yield candidate
+                Next
+            End If
+
+            For Each formatName In New String() {DataFormats.UnicodeText, DataFormats.Text}
+                Dim text As String = Nothing
+                Try
+                    If Not data.GetDataPresent(formatName) Then Continue For
+                    text = TryCast(data.GetData(formatName), String)
+                Catch
+                    text = Nothing
+                End Try
+
+                If String.IsNullOrWhiteSpace(text) Then Continue For
+                For Each candidate In SplitDroppedPathText(text)
+                    Yield candidate
+                Next
+            Next
+        End Function
+
+        Private Shared Iterator Function EnumerateDroppedPathCandidates(raw As Object) As IEnumerable(Of String)
+            If raw Is Nothing Then Return
+
+            If TypeOf raw Is String Then
+                For Each candidate In SplitDroppedPathText(DirectCast(raw, String))
+                    Yield candidate
+                Next
+                Return
+            End If
+
+            If TypeOf raw Is String() Then
+                For Each candidate In DirectCast(raw, String())
+                    Yield candidate
+                Next
+                Return
+            End If
+
+            If TypeOf raw Is StringCollection Then
+                For Each candidate As String In DirectCast(raw, StringCollection)
+                    Yield candidate
+                Next
+                Return
+            End If
+
+            Dim sequence = TryCast(raw, System.Collections.IEnumerable)
+            If sequence Is Nothing Then Return
+
+            For Each item In sequence
+                If item Is Nothing Then Continue For
+                Yield Convert.ToString(item)
+            Next
+        End Function
+
+        Private Shared Iterator Function SplitDroppedPathText(text As String) As IEnumerable(Of String)
+            Dim raw = If(text, String.Empty)
+            If String.IsNullOrWhiteSpace(raw) Then Return
+
+            raw = raw.Replace(ControlChars.NullChar, ControlChars.Lf)
+
+            For Each item In raw.Split({ControlChars.Cr, ControlChars.Lf}, StringSplitOptions.RemoveEmptyEntries)
+                Dim candidate = item.Trim()
+                If String.IsNullOrWhiteSpace(candidate) Then Continue For
+                Yield candidate
+            Next
+        End Function
+
+        Private Shared Function ExtractDroppedPathsFromUri(uriText As String, routeKey As String) As List(Of String)
             Dim raw = If(uriText, String.Empty).Trim()
             If String.IsNullOrWhiteSpace(raw) Then Return New List(Of String)()
+
+            Dim dropKind = GetNativeDropKind(routeKey)
+            If String.IsNullOrWhiteSpace(dropKind) Then Return New List(Of String)()
 
             Dim candidates As IEnumerable(Of String) =
                 raw.Split({ControlChars.Cr, ControlChars.Lf}, StringSplitOptions.RemoveEmptyEntries) _
@@ -596,7 +734,7 @@ Namespace UI.Hub
                     End Try
                 End If
 
-                Dim normalized = NormalizeDroppedRvtPath(localPath)
+                Dim normalized = NormalizeDroppedPath(localPath, dropKind)
                 If String.IsNullOrWhiteSpace(normalized) Then Continue For
                 If seen.Add(normalized) Then results.Add(normalized)
             Next
@@ -604,12 +742,44 @@ Namespace UI.Hub
             Return results
         End Function
 
-        Private Shared Function NormalizeDroppedRvtPath(pathText As String) As String
+        Private Shared Function NormalizeDroppedPath(pathText As String, dropKind As String) As String
             Dim text = If(pathText, String.Empty).Trim()
             If String.IsNullOrWhiteSpace(text) Then Return Nothing
+            text = text.Trim(""""c, "'"c)
+            If String.IsNullOrWhiteSpace(text) Then Return Nothing
+            Try
+                If text.IndexOf("\u", StringComparison.OrdinalIgnoreCase) >= 0 OrElse text.Contains("\\") Then
+                    text = System.Text.RegularExpressions.Regex.Unescape(text)
+                End If
+            Catch
+            End Try
+            If text.StartsWith("file:", StringComparison.OrdinalIgnoreCase) Then
+                Try
+                    Dim uri As New Uri(text)
+                    If uri.IsFile Then
+                        text = uri.LocalPath
+                    End If
+                Catch
+                    text = text.Replace("file:///", "") _
+                               .Replace("file://", "") _
+                               .Replace("/"c, "\"c)
+                End Try
+            ElseIf System.Text.RegularExpressions.Regex.IsMatch(text, "^[A-Za-z]:/") Then
+                text = text.Replace("/"c, "\"c)
+            End If
             If Directory.Exists(text) Then Return Nothing
-            If Not text.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) Then Return Nothing
-            If Not File.Exists(text) Then Return Nothing
+
+            Select Case NormalizeWrappedQuotesText(dropKind).ToLowerInvariant()
+                Case "rvt"
+                    If Not text.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) Then Return Nothing
+                Case "excel"
+                    If Not text.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) AndAlso
+                       Not text.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) Then
+                        Return Nothing
+                    End If
+                Case Else
+                    Return Nothing
+            End Select
 
             Try
                 Return System.IO.Path.GetFullPath(text)
@@ -654,6 +824,31 @@ Namespace UI.Hub
             Return If(routeKey, String.Empty).Trim().TrimStart("#"c).ToLowerInvariant()
         End Function
 
+        Private Shared Function NormalizeWrappedQuotesText(value As String) As String
+            Dim s As String = If(value, String.Empty).Trim()
+
+            For i As Integer = 0 To 1
+                If s.Length >= 2 AndAlso s(0) = """"c AndAlso s(s.Length - 1) = """"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                If s.Length >= 2 AndAlso s(0) = "'"c AndAlso s(s.Length - 1) = "'"c Then
+                    s = s.Substring(1, s.Length - 2).Trim()
+                    Continue For
+                End If
+                Exit For
+            Next
+
+            Try
+                If s.IndexOf("\u", StringComparison.OrdinalIgnoreCase) >= 0 OrElse s.Contains("\\") Then
+                    s = System.Text.RegularExpressions.Regex.Unescape(s)
+                End If
+            Catch
+            End Try
+
+            Return s
+        End Function
+
         Private Shared Function SafeBoolObj(value As Object, fallback As Boolean) As Boolean
             Try
                 If value Is Nothing Then Return fallback
@@ -673,11 +868,13 @@ Namespace UI.Hub
 
         Private Sub SetNativeDropOverlay(active As Boolean, Optional immediateHide As Boolean = False)
             Dim routeKey = GetCurrentRouteKey()
-            Dim shouldShow = active AndAlso SupportsDroppedRvtRoute(routeKey)
+            Dim dropKind = GetNativeDropKind(routeKey)
+            Dim shouldShow = active AndAlso SupportsNativeDropRoute(routeKey)
             SendHostDebug("set-overlay", New With {
                 .requested = active,
                 .immediateHide = immediateHide,
                 .route = routeKey,
+                .dropKind = dropKind,
                 .shouldShow = shouldShow,
                 .overlayVisible = _isNativeDropOverlayVisible
             })
@@ -730,6 +927,7 @@ Namespace UI.Hub
                 _dropOverlayWindow = Nothing
             End If
             SendToWeb("host:rvt-drop-overlay", New With {.active = active})
+            SendToWeb("host:excel-drop-overlay", New With {.active = active})
         End Sub
 
         Private Sub EnsureDropOverlayWindow()
@@ -774,14 +972,29 @@ Namespace UI.Hub
             e.Handled = True
         End Sub
 
-        Private Shared Function SupportsDroppedRvtRoute(routeKey As String) As Boolean
+        Private Shared Function SupportsNativeDropRoute(routeKey As String) As Boolean
+            Return Not String.IsNullOrWhiteSpace(GetNativeDropKind(routeKey))
+        End Function
+
+        Private Shared Function GetNativeDropKind(routeKey As String) As String
             Select Case NormalizeRouteKey(routeKey)
-                Case "multi", "sharedparambatch", "deliverycleaner", "familylink", "guid", "segmentpms", "export", "parammodifier"
-                    Return True
+                Case "multi", "sharedparambatch", "deliverycleaner", "familylink", "guid", "segmentpms", "export", "parammodifier", "conditionextract"
+                    Return "rvt"
+                Case "lateralnozzle"
+                    Return "excel"
                 Case Else
-                    Return False
+                    Return String.Empty
             End Select
         End Function
+
+        Private Sub DispatchDroppedPaths(routeKey As String, paths As IList(Of String))
+            Select Case GetNativeDropKind(routeKey)
+                Case "rvt"
+                    DispatchDroppedRvts(routeKey, paths)
+                Case "excel"
+                    DispatchDroppedExcels(routeKey, paths)
+            End Select
+        End Sub
 
         Private Sub DispatchDroppedRvts(routeKey As String, paths As IList(Of String))
             If paths Is Nothing OrElse paths.Count = 0 Then Return
@@ -809,7 +1022,40 @@ Namespace UI.Hub
                     SendToWeb("export:rvt-files", New With {.files = paths})
                 Case "parammodifier"
                     SendToWeb("parammodifier:rvts-picked", New With {.ok = True, .paths = paths})
+                Case "conditionextract"
+                    SendToWeb("conditionextract:rvts-picked", New With {.ok = True, .paths = paths})
             End Select
+        End Sub
+
+        Private Sub DispatchDroppedExcels(routeKey As String, paths As IList(Of String))
+            If paths Is Nothing OrElse paths.Count = 0 Then Return
+            ClearPendingNativeDropPaths()
+            SendHostDebug("dispatch-dropped-excels", New With {
+                .route = NormalizeRouteKey(routeKey),
+                .pathCount = paths.Count,
+                .firstPath = paths(0)
+            })
+
+            Select Case NormalizeRouteKey(routeKey)
+                Case "lateralnozzle"
+                    SendToWeb("lateralnozzle:excels-picked", New With {.ok = True, .paths = paths})
+            End Select
+        End Sub
+
+        Private Sub SendInvalidNativeDrop(routeKey As String, fileNames As IList(Of String))
+            Dim payload = New With {
+                .route = routeKey,
+                .fileNames = If(fileNames, New List(Of String)()),
+                .message = If(String.Equals(GetNativeDropKind(routeKey), "excel", StringComparison.OrdinalIgnoreCase),
+                              "엑셀 파일(.xlsx, .xls)만 추가할 수 있습니다.",
+                              "RVT 파일만 추가할 수 있습니다.")
+            }
+
+            If String.Equals(GetNativeDropKind(routeKey), "excel", StringComparison.OrdinalIgnoreCase) Then
+                SendToWeb("host:excel-drop-invalid", payload)
+            Else
+                SendToWeb("host:rvt-drop-invalid", payload)
+            End If
         End Sub
 
         ' .NET → JS (양쪽 호환: ev & name 둘 다 포함해서 송신)
@@ -872,7 +1118,9 @@ Namespace UI.Hub
                 ClearPendingNativeDropPaths()
                 Return New List(Of String)()
             End If
-            If Not String.Equals(_pendingNativeDropRouteKey, normalizedRoute, StringComparison.OrdinalIgnoreCase) Then
+            Dim routeMatches = String.Equals(_pendingNativeDropRouteKey, normalizedRoute, StringComparison.OrdinalIgnoreCase)
+            Dim routeFallbackAllowed = String.IsNullOrWhiteSpace(_pendingNativeDropRouteKey) OrElse String.IsNullOrWhiteSpace(normalizedRoute)
+            If Not routeMatches AndAlso Not routeFallbackAllowed Then
                 Return New List(Of String)()
             End If
 
