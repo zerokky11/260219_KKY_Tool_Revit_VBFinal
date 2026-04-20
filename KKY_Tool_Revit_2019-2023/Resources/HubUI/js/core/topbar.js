@@ -3,7 +3,7 @@ import { div, toast } from './dom.js';
 import { toggleTheme } from './theme.js';
 import { setConn, ping, post } from './bridge.js';
 
-const APP_VERSION_FALLBACK = 'v2.20';
+const APP_VERSION_FALLBACK = 'v2.21';
 const STARTUP_NOTICE_DURATION_MS = 4800;
 const REQUESTS_PAGE_URL = 'https://update.zerokky.com/requests.html';
 
