@@ -963,16 +963,22 @@ function showUpdateResultDialog(payload = {}) {
         body.append(progress);
     }
 
-    const notes = [];
-    if (_updateState.publishedAt) notes.push(`${TEXT.publishedAt}: ${_updateState.publishedAt}`);
-    if (_updateState.notes) notes.push(`${TEXT.releaseNotes}: ${_updateState.notes}`);
-    if (_updateState.feedUrl) notes.push(`${TEXT.feedUrl}: ${_updateState.feedUrl}`);
-    notes.forEach((noteText) => {
-        const note = document.createElement('div');
-        note.className = 'update-result-note';
-        note.textContent = noteText;
-        body.append(note);
-    });
+    if (_updateState.notes) {
+        const notesLabel = document.createElement('div');
+        notesLabel.className = 'update-result-section-label';
+        notesLabel.textContent = TEXT.releaseNotes;
+        body.append(notesLabel);
+
+        const notesSection = buildUpdateNotesSection(_updateState.notes);
+        if (notesSection) {
+            body.append(notesSection);
+        }
+    }
+
+    const metaSection = buildUpdateMetaSection();
+    if (metaSection) {
+        body.append(metaSection);
+    }
 
     const footer = document.createElement('div');
     footer.className = 'update-result-footer';
@@ -1074,6 +1080,83 @@ function showUpdateStartupNotice() {
         _updateNeedsAttention = true;
         applyUpdateVisualState();
     }, STARTUP_NOTICE_DURATION_MS);
+}
+
+function normalizeUpdateNotes(value) {
+    return String(value || '')
+        .split(/\r?\n|\|/)
+        .map((item) => String(item || '').trim())
+        .filter(Boolean);
+}
+
+function splitUpdateNote(noteText) {
+    const raw = String(noteText || '').trim();
+    if (!raw) {
+        return { label: '', body: '' };
+    }
+
+    const colonIndex = raw.indexOf(':');
+    if (colonIndex < 0) {
+        return { label: '', body: raw };
+    }
+
+    return {
+        label: raw.slice(0, colonIndex).trim(),
+        body: raw.slice(colonIndex + 1).trim()
+    };
+}
+
+function buildUpdateNotesSection(noteText) {
+    const entries = normalizeUpdateNotes(noteText);
+    if (!entries.length) return null;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'update-result-notes';
+
+    entries.forEach((entry) => {
+        const item = document.createElement('div');
+        item.className = 'update-result-note-item';
+
+        const parts = splitUpdateNote(entry);
+        if (parts.label) {
+            const tag = document.createElement('span');
+            tag.className = 'update-result-note-tag';
+            tag.textContent = parts.label;
+            item.append(tag);
+        }
+
+        const text = document.createElement('span');
+        text.className = 'update-result-note-text';
+        text.textContent = parts.body || entry;
+        item.append(text);
+
+        wrap.append(item);
+    });
+
+    return wrap;
+}
+
+function buildUpdateMetaSection() {
+    const meta = [];
+    if (_updateState.publishedAt) {
+        meta.push({ label: TEXT.publishedAt, value: _updateState.publishedAt, mono: false });
+    }
+    if (_updateState.feedUrl) {
+        meta.push({ label: TEXT.feedUrl, value: _updateState.feedUrl, mono: true });
+    }
+    if (!meta.length) return null;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'update-result-meta';
+
+    meta.forEach((entry) => {
+        const item = document.createElement('div');
+        item.className = `update-result-note${entry.mono ? ' update-result-note--mono' : ''}`;
+        item.textContent = `${entry.label}: ${entry.value}`;
+        wrap.append(item);
+    });
+
+    return wrap;
 }
 
 function formatVersionText(versionText) {
