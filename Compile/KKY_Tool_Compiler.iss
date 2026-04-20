@@ -6,7 +6,7 @@
   #define MyAppName "KKY_Tool_Revit"
 #endif
 #ifndef MyAppVersion
-#define MyAppVersion "2.13"
+#define MyAppVersion "2.20"
 #endif
 #ifndef MyOutputBaseName
   #define MyOutputBaseName "KKY_Tool_Revit(2019,21,23,25)_v" + MyAppVersion
@@ -113,6 +113,7 @@ Source: "{#MyBuildRoot}\Rvt2025\net8.0-windows\*"; \
     Flags: ignoreversion recursesubdirs createallsubdirs; \
     Tasks: revit2025
 
+
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 ; --------------------------------------------------------
@@ -190,7 +191,7 @@ begin
       WizardForm.TasksList.ItemCaption[i] := MakeCaption('2025', has2025);
       WizardForm.TasksList.Checked[i] := has2025;
       WizardForm.TasksList.ItemEnabled[i] := has2025;
-    end;
+    end
   end;
 end;
 

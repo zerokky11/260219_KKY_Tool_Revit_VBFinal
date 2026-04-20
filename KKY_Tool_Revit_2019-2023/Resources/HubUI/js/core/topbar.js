@@ -3,7 +3,7 @@ import { div, toast } from './dom.js';
 import { toggleTheme } from './theme.js';
 import { setConn, ping, post } from './bridge.js';
 
-const APP_VERSION_FALLBACK = 'v2.14';
+const APP_VERSION_FALLBACK = 'v2.20';
 const STARTUP_NOTICE_DURATION_MS = 4800;
 const REQUESTS_PAGE_URL = 'https://update.zerokky.com/requests.html';
 
@@ -44,6 +44,22 @@ const TEXT = {
     readySummary: '\uc5c5\ub370\uc774\ud2b8 \ud328\ud0a4\uc9c0 \ub2e4\uc6b4\ub85c\ub4dc\uac00 \uc644\ub8cc\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \ud604\uc7ac \uc2e4\ud589 \uc911\uc778 \u0052\u0065\u0076\u0069\u0074\uc744 \ubaa8\ub450 \uc885\ub8cc\ud558\uba74 \uc5c5\ub370\uc774\ud2b8\uac00 \uc801\uc6a9\ub429\ub2c8\ub2e4. \uc801\uc6a9 \ud6c4 \u0052\u0065\u0076\u0069\u0074\uc744 \ub2e4\uc2dc \uc2e4\ud589\ud574 \uc8fc\uc138\uc694.',
     preparingDownload: '\uc5c5\ub370\uc774\ud2b8 \ud328\ud0a4\uc9c0 \ub2e4\uc6b4\ub85c\ub4dc\ub97c \uc900\ube44\ud558\ub294 \uc911\uc785\ub2c8\ub2e4.',
     installing: '\uc124\uce58\ud558\uae30',
+    settings: '\uc124\uc815',
+    documentNavigator: '\u0044\u006f\u0063\u0075\u006d\u0065\u006e\u0074 \u004e\u0061\u0076\u0069\u0067\u0061\u0074\u006f\u0072',
+    documentNavigatorPanelTitle: '\ud5c8\ube0c \uc124\uc815',
+    documentNavigatorIntro: '\ud5c8\ube0c\uc5d0\uc11c \ubb38\uc11c\ubcc4 \ud0ed \uc0c9\uacfc \u0044\u006f\u0063\u0075\u006d\u0065\u006e\u0074 \u0043\u006f\u006c\u006f\u0072\u0073 \ucc3d \uc801\uc6a9 \uc5ec\ubd80\ub97c \ubc14\ub85c \ubc14꿀 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',
+    documentNavigatorSectionTitle: '\ud0ed \uc0c9 + \ubc94\ub840 \ucc3d',
+    documentNavigatorSectionHint: '\ubb38\uc11c\ubcc4 \ud0ed \uc0c9 \uad6c\ubd84\uacfc \u004b\u004b\u0059 \u0044\u006f\u0063\u0075\u006d\u0065\u006e\u0074 \u0043\u006f\u006c\u006f\u0072\u0073 \ucc3d\uc744 \ud568\uaed8 \ucf1c\uace0 \ub055\ub2c8\ub2e4.',
+    documentNavigatorToggleLabel: '\u0044\u006f\u0063\u0075\u006d\u0065\u006e\u0074 \u004e\u0061\u0076\u0069\u0067\u0061\u0074\u006f\u0072 \uc0ac\uc6a9',
+    documentNavigatorToggleHint: '\uaebc\ub450\uba74 \ud0ed\uc740 \uae30\ubcf8 \uc0c1\ud0dc\ub85c \ub3cc\uc544\uac00\uace0, \ubc94\ub840/\ub0b4\ube44\uac8c\uc774\ud130 \ucc3d\uc740 \uc228\uae41\ub2c8\ub2e4.',
+    documentNavigatorStatusLabel: '\ud604\uc7ac \uc0c1\ud0dc',
+    documentNavigatorFeatureTabs: '\ud0ed \uc0c9 \uad6c\ubd84',
+    documentNavigatorFeatureLegend: '\ubc94\ub840 \ucc3d + \ubdf0 \uc774\ub3d9',
+    documentNavigatorFeatureSync: '\ud65c\uc131 \ucc3d \uc790\ub3d9 \ucd94\uc801',
+    documentNavigatorApplyInstant: '\uc989\uc2dc \uc801\uc6a9',
+    documentNavigatorSavedLocal: '\ub85c\uceec \uc800\uc7a5',
+    featureEnabled: '\ucf1c\uc9d0',
+    featureDisabled: '\uaebc\uc9d0',
     close: '\ub2eb\uae30',
     shortcutsTitle: '\ub3c4\uc6c0\ub9d0 - \u004b\u004b\u0059 \u0054\u006f\u006f\u006c \u0048\u0075\u0062',
     shortcutsHtml: `
@@ -72,11 +88,15 @@ let _progressPct = null;
 let _versionEl = null;
 let _updateBtn = null;
 let _updateHintEl = null;
+let _settingsBtn = null;
 let _updateDialogBackdrop = null;
 let _updateStartupNoticeShown = false;
 let _updateNeedsAttention = false;
 let _updateDismissTimer = 0;
 let _lastReadyNoticeKey = '';
+let _documentVisualAidState = {
+    enabled: true
+};
 let _updateState = {
     currentVersion: APP_VERSION_FALLBACK.replace(/^v/i, ''),
     currentVersionDisplay: APP_VERSION_FALLBACK.replace(/^v/i, ''),
@@ -143,6 +163,7 @@ export function renderTopbar(root, withBack = false, onBack = null, canGoBack = 
     configureBackButton(withBack, onBack, canGoBack, onNavBack);
     setConn(true);
     applyActiveDocumentState();
+    applyDocumentVisualAidState();
     applyUpdateVisualState();
 }
 
@@ -341,6 +362,18 @@ export function renderTopbarChips() {
     };
     chipRow.append(pin);
 
+    const settingsBtn = createIconButton({
+        id: 'documentNavigatorSettingsBtn',
+        label: TEXT.settings,
+        icon: 'gear',
+        classes: 'topbar-settings-btn'
+    });
+    settingsBtn.setAttribute('aria-haspopup', 'dialog');
+    settingsBtn.setAttribute('aria-expanded', 'false');
+    settingsBtn.addEventListener('click', () => toggleDocumentNavigatorSettingsPanel(settingsBtn));
+    _settingsBtn = settingsBtn;
+    chipRow.append(settingsBtn);
+
     const requestBtn = createControlButton({
         label: TEXT.request,
         icon: 'request',
@@ -352,6 +385,7 @@ export function renderTopbarChips() {
     actions.append(chipRow);
 
     applyActiveDocumentState();
+    applyDocumentVisualAidState();
     applyUpdateVisualState();
 }
 
@@ -364,6 +398,19 @@ export function updateTopMost(on) {
     pin.setAttribute('aria-pressed', active ? 'true' : 'false');
     const label = pin.querySelector('.chip-text');
     if (label) label.textContent = TEXT.pin;
+}
+
+export function setDocumentVisualAidSettings(payload = {}) {
+    const enabled = typeof payload?.enabled === 'boolean'
+        ? payload.enabled
+        : (typeof payload?.Enabled === 'boolean' ? payload.Enabled : _documentVisualAidState.enabled);
+
+    _documentVisualAidState = {
+        ..._documentVisualAidState,
+        enabled
+    };
+
+    applyDocumentVisualAidState();
 }
 
 export function setTopbarProgress(state) {
@@ -391,6 +438,33 @@ function applyActiveDocumentState() {
     const label = document.querySelector('#connChip .chip-text');
     if (!label) return;
     label.textContent = _activeDoc.name ? `${TEXT.connected} \u00b7 ${_activeDoc.name}` : TEXT.connectedNone;
+}
+
+function applyDocumentVisualAidState() {
+    const enabled = !!_documentVisualAidState.enabled;
+    const button = _settingsBtn || document.querySelector('#documentNavigatorSettingsBtn');
+    if (button) {
+        button.classList.toggle('is-active', enabled);
+        button.classList.toggle('is-off', !enabled);
+        const stateText = enabled ? TEXT.featureEnabled : TEXT.featureDisabled;
+        button.title = `${TEXT.documentNavigator} ${stateText}`;
+        button.setAttribute('aria-label', `${TEXT.documentNavigator} ${stateText}`);
+    }
+
+    updateDocumentNavigatorSettingsPanel();
+}
+
+function updateDocumentNavigatorSettingsPanel() {
+    const enabled = !!_documentVisualAidState.enabled;
+
+    const toggle = document.querySelector('#documentNavigatorToggle');
+    if (toggle) toggle.checked = enabled;
+
+    document.querySelectorAll('[data-doc-nav-status]').forEach((status) => {
+        status.textContent = enabled ? TEXT.featureEnabled : TEXT.featureDisabled;
+        status.classList.toggle('is-off', !enabled);
+        status.classList.toggle('is-on', enabled);
+    });
 }
 
 export function setActiveDocument(doc = {}) {
@@ -504,8 +578,8 @@ function showReadyRestartNotice(payload = {}) {
     toast(message, 'warn', 5600);
 }
 
-function toggleHelpPanel(trigger) {
-    const existing = document.querySelector('.settings-backdrop');
+function toggleDocumentNavigatorSettingsPanel(trigger) {
+    const existing = document.querySelector('.settings-backdrop[data-panel="document-navigator"]');
     if (existing) {
         if (existing._escListener) {
             document.removeEventListener('keydown', existing._escListener);
@@ -517,18 +591,144 @@ function toggleHelpPanel(trigger) {
 
     const backdrop = document.createElement('div');
     backdrop.className = 'settings-backdrop';
+    backdrop.dataset.panel = 'document-navigator';
 
     const panel = document.createElement('section');
     panel.className = 'settings-panel';
 
     const header = document.createElement('header');
-    const headerText = document.createElement('span');
-    headerText.textContent = TEXT.shortcutsTitle;
-    header.append(headerText);
+    const headerTitle = document.createElement('div');
+    headerTitle.className = 'settings-panel-title';
+    headerTitle.innerHTML = `<span class="settings-panel-kicker">${TEXT.documentNavigatorPanelTitle}</span><strong>${TEXT.documentNavigator}</strong>`;
+
+    const closeIconBtn = createIconButton({
+        label: TEXT.close,
+        icon: 'close',
+        classes: 'settings-close-btn'
+    });
+    closeIconBtn.type = 'button';
+    header.append(headerTitle, closeIconBtn);
 
     const body = document.createElement('div');
     body.className = 'body';
-    body.innerHTML = TEXT.shortcutsHtml;
+
+    const hero = document.createElement('section');
+    hero.className = 'settings-hero';
+
+    const heroTop = document.createElement('div');
+    heroTop.className = 'settings-hero-top';
+
+    const heroIcon = document.createElement('span');
+    heroIcon.className = 'settings-hero-icon';
+    heroIcon.setAttribute('aria-hidden', 'true');
+    heroIcon.innerHTML = iconSvg('gear');
+
+    const heroCopy = document.createElement('div');
+    heroCopy.className = 'settings-hero-copy';
+
+    const heroTitle = document.createElement('strong');
+    heroTitle.textContent = TEXT.documentNavigator;
+
+    const intro = document.createElement('p');
+    intro.className = 'settings-panel-intro';
+    intro.textContent = TEXT.documentNavigatorIntro;
+    heroCopy.append(heroTitle, intro);
+
+    const heroMeta = document.createElement('div');
+    heroMeta.className = 'settings-hero-meta';
+
+    const heroMetaLabel = document.createElement('span');
+    heroMetaLabel.className = 'settings-state-label';
+    heroMetaLabel.textContent = TEXT.documentNavigatorStatusLabel;
+
+    const heroStatus = document.createElement('span');
+    heroStatus.className = 'settings-state-pill settings-hero-status';
+    heroStatus.dataset.docNavStatus = 'true';
+
+    heroMeta.append(heroMetaLabel, heroStatus);
+    heroTop.append(heroIcon, heroCopy, heroMeta);
+
+    const featureList = document.createElement('div');
+    featureList.className = 'settings-feature-list';
+    [TEXT.documentNavigatorFeatureTabs, TEXT.documentNavigatorFeatureLegend, TEXT.documentNavigatorFeatureSync]
+        .forEach((labelText) => {
+            const pill = document.createElement('span');
+            pill.className = 'settings-feature-pill';
+            pill.textContent = labelText;
+            featureList.append(pill);
+        });
+
+    hero.append(heroTop, featureList);
+
+    const section = document.createElement('section');
+    section.className = 'settings-section settings-control-card';
+
+    const sectionHead = document.createElement('div');
+    sectionHead.className = 'settings-section-head';
+
+    const sectionTitle = document.createElement('strong');
+    sectionTitle.className = 'settings-section-title';
+    sectionTitle.textContent = TEXT.documentNavigatorSectionTitle;
+
+    const sectionHint = document.createElement('p');
+    sectionHint.className = 'settings-section-hint';
+    sectionHint.textContent = TEXT.documentNavigatorSectionHint;
+    sectionHead.append(sectionTitle, sectionHint);
+
+    const toggleRow = document.createElement('label');
+    toggleRow.className = 'settings-toggle-row';
+
+    const toggleCopy = document.createElement('span');
+    toggleCopy.className = 'settings-toggle-copy';
+    toggleCopy.innerHTML = `<strong>${TEXT.documentNavigatorToggleLabel}</strong><span>${TEXT.documentNavigatorToggleHint}</span>`;
+
+    const toggleMeta = document.createElement('div');
+    toggleMeta.className = 'settings-toggle-meta';
+
+    const status = document.createElement('span');
+    status.className = 'settings-state-pill settings-toggle-status';
+    status.dataset.docNavStatus = 'true';
+    toggleMeta.append(status);
+
+    const switchWrap = document.createElement('span');
+    switchWrap.className = 'settings-switch';
+
+    const toggleInput = document.createElement('input');
+    toggleInput.id = 'documentNavigatorToggle';
+    toggleInput.type = 'checkbox';
+    toggleInput.checked = !!_documentVisualAidState.enabled;
+    toggleInput.addEventListener('change', () => {
+        const enabled = !!toggleInput.checked;
+        setDocumentVisualAidSettings({ enabled });
+        post('documentvisualaid:set-enabled', { enabled });
+    });
+
+    const switchTrack = document.createElement('span');
+    switchTrack.className = 'settings-switch-track';
+
+    const switchThumb = document.createElement('span');
+    switchThumb.className = 'settings-switch-thumb';
+    switchTrack.append(switchThumb);
+
+    switchWrap.append(toggleInput, switchTrack);
+    toggleMeta.append(switchWrap);
+    toggleRow.append(toggleCopy, toggleMeta);
+
+    const noteRow = document.createElement('div');
+    noteRow.className = 'settings-note-row';
+    [TEXT.documentNavigatorApplyInstant, TEXT.documentNavigatorSavedLocal].forEach((labelText) => {
+        const chip = document.createElement('span');
+        chip.className = 'settings-note-chip';
+        chip.textContent = labelText;
+        noteRow.append(chip);
+    });
+
+    const controlSurface = document.createElement('div');
+    controlSurface.className = 'settings-control-surface';
+    controlSurface.append(toggleRow);
+
+    section.append(sectionHead, noteRow, controlSurface);
+    body.append(hero, section);
 
     const actions = document.createElement('div');
     actions.className = 'actions';
@@ -550,12 +750,14 @@ function toggleHelpPanel(trigger) {
     document.addEventListener('keydown', escListener);
     backdrop._escListener = escListener;
     closeBtn.onclick = closePanel;
+    closeIconBtn.onclick = closePanel;
     actions.append(closeBtn);
 
     panel.append(header, body, actions);
     backdrop.append(panel);
     document.body.append(backdrop);
     trigger?.setAttribute('aria-expanded', 'true');
+    updateDocumentNavigatorSettingsPanel();
 
     backdrop.addEventListener('click', (e) => {
         if (e.target === backdrop) closePanel();
@@ -599,6 +801,23 @@ function createControlButton({ id, label, icon, classes = '', statusDot = false 
     return btn;
 }
 
+function createIconButton({ id, label, icon, classes = '' }) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `icon-btn ${classes}`.trim();
+    if (id) btn.id = id;
+    btn.title = label;
+    btn.setAttribute('aria-label', label);
+
+    const glyph = document.createElement('span');
+    glyph.className = 'chip-glyph';
+    glyph.setAttribute('aria-hidden', 'true');
+    glyph.innerHTML = iconSvg(icon);
+
+    btn.append(glyph);
+    return btn;
+}
+
 function iconSvg(name) {
     switch (name) {
         case 'plug':
@@ -613,6 +832,8 @@ function iconSvg(name) {
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 13.5v-3l-2.1-.6a6.1 6.1 0 0 0-.6-1.4l1.2-1.8-2.1-2.1-1.8 1.2a6.1 6.1 0 0 0-1.4-.6L13.5 2h-3l-.6 2.1a6.1 6.1 0 0 0-1.4.6L6.7 3.5 4.6 5.6l1.2 1.8c-.26.44-.47.91-.6 1.4L3 10.5v3l2.1.6c.13.49.34.96.6 1.4l-1.2 1.8 2.1 2.1 1.8-1.2c.44.26.91.47 1.4.6l.6 2.1h3l.6-2.1c.49-.13.96-.34 1.4-.6l1.8 1.2 2.1-2.1-1.2-1.8c.26-.44.47-.91.6-1.4Z" fill="none"/><circle cx="12" cy="12" r="3.2" fill="none"/></svg>';
         case 'request':
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 7.25A2.25 2.25 0 0 1 8.25 5h7.5A2.25 2.25 0 0 1 18 7.25v4.5A2.25 2.25 0 0 1 15.75 14h-4.1l-3.15 2.6V14.9A2.25 2.25 0 0 1 6 12.75v-5.5Z" stroke-linejoin="round"/><path d="M9 8.75h6M9 11.25h4" stroke-linecap="round"/></svg>';
+        case 'close':
+            return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round"/></svg>';
         default:
             return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8"/></svg>';
     }
