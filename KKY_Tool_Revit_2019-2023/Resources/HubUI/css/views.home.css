@@ -21,7 +21,8 @@
 }
 
 .home-search,
-.home-frequent {
+.home-frequent,
+.home-manual {
     display: grid;
     gap: 14px;
     padding: 16px 18px;
@@ -36,13 +37,15 @@
 }
 
 .home-search__top h3,
-.home-frequent__header h3 {
+.home-frequent__header h3,
+.home-manual__header h3 {
     margin: 4px 0 6px;
     font-size: 1.08rem;
 }
 
 .home-search__top p:last-child,
-.home-frequent__header p:last-child {
+.home-frequent__header p:last-child,
+.home-manual__header p:last-child {
     margin: 0;
     color: var(--text-soft);
 }
@@ -230,6 +233,92 @@
     line-height: 1.5;
 }
 
+.home-manual-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.home-feature-group {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+}
+
+.home-feature-group__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-soft);
+    border-radius: 14px;
+    background: var(--surface-help);
+}
+
+.home-feature-group__head div {
+    display: grid;
+    gap: 4px;
+}
+
+.home-feature-group__head strong {
+    color: var(--text-main);
+    font-size: 0.98rem;
+}
+
+.home-feature-group__head span,
+.home-feature-group__head em {
+    color: var(--text-soft);
+    font-size: 0.82rem;
+    font-style: normal;
+}
+
+.home-feature-group__head em {
+    flex: 0 0 auto;
+    padding: 3px 8px;
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    background: var(--surface-subtle);
+}
+
+.home-feature-list {
+    display: grid;
+    gap: 8px;
+}
+
+.home-feature-item {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    min-height: 74px;
+    padding: 12px 14px;
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    background: var(--surface-subtle);
+    color: inherit;
+    text-align: left;
+    transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.home-feature-item:hover,
+.home-feature-item:focus-visible {
+    border-color: var(--accent);
+    background: var(--surface-card);
+    transform: translateY(-1px);
+}
+
+.home-feature-item__title {
+    color: var(--text-main);
+    font-size: 0.92rem;
+    line-height: 1.35;
+}
+
+.home-feature-item__desc {
+    color: var(--text-soft);
+    font-size: 0.8rem;
+    line-height: 1.42;
+}
+
 .home-choice-card,
 .active-menu-card {
     border: 1px solid var(--border-soft);
@@ -299,6 +388,7 @@
 @media (max-width: 1180px) {
     .home-search__results,
     .home-frequent-grid,
+    .home-manual-grid,
     .home-choice-grid,
     .active-menu-grid {
         grid-template-columns: 1fr;

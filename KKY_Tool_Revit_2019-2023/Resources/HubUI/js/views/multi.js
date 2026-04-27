@@ -16,7 +16,7 @@ import {
   recordHubEntryUse,
   searchHubEntries,
   setHubPanelSearch
-} from '../core/hubFavorites.js?v=20260417c';
+} from '../core/hubFavorites.js?v=20260427a';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 
 const FEATURE_META = {

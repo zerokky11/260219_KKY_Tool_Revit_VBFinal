@@ -17,8 +17,8 @@ const HUB_ENTRY_CATALOG = Object.freeze({
   },
   floorinfo: {
     id: 'floorinfo',
-    label: '층 정보 파라미터 검토',
-    desc: '선택한 층 정보 기준으로 파라미터 값 일치 여부를 검토합니다.',
+    label: '레벨 영역별 파라미터 검토',
+    desc: '선택한 레벨 영역을 기준으로 파라미터 일치 여부를 검토합니다.',
     route: 'multi',
     multiMode: 'bqc',
     groupLabel: '납품 시 BQC 검토'
@@ -42,7 +42,7 @@ const HUB_ENTRY_CATALOG = Object.freeze({
   dupclash: {
     id: 'dupclash',
     label: '중복 / 자체간섭 검토',
-    desc: '여러 RVT를 대상으로 중복검토 또는 자체간섭검토를 실행합니다.',
+    desc: '여러 RVT를 대상으로 중복검토 또는 자체간섭검토 중 하나를 선택해 배치 검토합니다.',
     route: 'multi',
     multiMode: 'bqc',
     groupLabel: '납품 시 BQC 검토'
@@ -50,7 +50,7 @@ const HUB_ENTRY_CATALOG = Object.freeze({
   worksetassignment: {
     id: 'worksetassignment',
     label: '웍셋 배정 검토',
-    desc: '모델 객체가 기본 Workset1 기준에 맞게 배정되었는지 검토합니다.',
+    desc: '모델 객체의 workset 배정을 Workset1 또는 입력한 특정 workset 기준으로 검토합니다.',
     route: 'multi',
     multiMode: 'bqc',
     groupLabel: '납품 시 BQC 검토'
@@ -74,14 +74,14 @@ const HUB_ENTRY_CATALOG = Object.freeze({
   deliverycleaner: {
     id: 'deliverycleaner',
     label: 'RVT 정리 (납품용)',
-    desc: '납품 파일 작성을 위한 뷰 정리, Purge, 검토용 속성 추출을 진행합니다.',
+    desc: '납품파일 작성을 위한 뷰정리, Purge, 검토용 속성 추출을 진행합니다.',
     route: 'deliverycleaner',
     groupLabel: '납품 시 BQC 검토'
   },
   conditionextract: {
     id: 'conditionextract',
     label: '조건별 객체 대상 속성 추출',
-    desc: '조건식으로 객체를 추려 지정한 속성값과 좌표, 수량 정보를 함께 추출합니다.',
+    desc: '조건식으로 객체를 추려 지정 속성과 좌표, 선형 정보를 함께 추출합니다.',
     route: 'conditionextract',
     groupLabel: '납품 시 BQC 검토'
   },
@@ -101,29 +101,29 @@ const HUB_ENTRY_CATALOG = Object.freeze({
   },
   segmentpms: {
     id: 'segmentpms',
-    label: 'Segment와 PMS 비교 검토',
-    desc: 'PMS 양식을 기준으로 Segment의 OD, ID 값을 비교 검토합니다.',
+    label: 'Segment↔PMS 비교 검토',
+    desc: 'PMS 양식을 입력받아 Segment와 OD, ID 값을 비교 검토합니다.',
     route: 'segmentpms',
     groupLabel: '유틸리티'
   },
   parammodifier: {
     id: 'parammodifier',
     label: '파라미터 수정기',
-    desc: '입력 조건 기반 필터만 대상으로 지정한 파라미터 값을 일괄 입력합니다.',
+    desc: '입력 조건 기반 필터링 대상으로 지정 파라미터에 지정 속성을 일괄 입력합니다.',
     route: 'parammodifier',
     groupLabel: '유틸리티'
   },
   linkpath: {
     id: 'linkpath',
-    label: 'Revit 링크 경로 추출/적용',
-    desc: '여러 RVT의 링크 경로를 추출하고 수정 기준으로 반영합니다.',
+    label: 'Revit 링크 경로 추출/재지정',
+    desc: '닫힌 RVT의 Revit 링크 경로를 추출하고 엑셀 기준으로 대상 경로를 반영합니다.',
     route: 'linkpath',
     groupLabel: '유틸리티'
   },
   lateralnozzle: {
     id: 'lateralnozzle',
-    label: '인접코드 KTA 추출',
-    desc: '정리된 KTA 양식에 맞춰 필요한 시트 형식으로 출력합니다.',
+    label: '노즐코드 KTA 단일화',
+    desc: '접수받은 KTA 양식을 정해진 하나의 시트 양식으로 추출합니다.',
     route: 'lateralnozzle',
     groupLabel: '유틸리티'
   },
@@ -144,16 +144,16 @@ const HUB_ENTRY_CATALOG = Object.freeze({
   },
   points: {
     id: 'points',
-    label: '프로젝트 좌표 Point 추출',
-    desc: '지정한 RVT 파일의 Project/Survey 기준 좌표를 추출합니다.',
+    label: '프로젝트대상 Point 좌표 추출',
+    desc: '지정한 RVT 파일의 Project/Survey 북각 좌표를 추출합니다.',
     route: 'multi',
     multiMode: 'utility',
     groupLabel: '유틸리티'
   },
   linkworkset: {
     id: 'linkworkset',
-    label: '링크 기본 웍셋 닫기/적용',
-    desc: '각 RVT의 Revit 링크를 닫고 기본 Workset1만 열리도록 적용합니다.',
+    label: '링크 기본 웍셋 점검/적용',
+    desc: '링크별 로드 상태와 open workset 현황을 확인하고 기본 Workset1만 열리도록 재적용합니다.',
     route: 'multi',
     multiMode: 'utility',
     groupLabel: '유틸리티'
@@ -449,6 +449,15 @@ function showContextMenu(x, y, entryId) {
 
 export function getHubEntry(entryId) {
   return HUB_ENTRY_CATALOG[entryId] || null;
+}
+
+export function getHubEntries(options = {}) {
+  const groupLabel = String(options?.groupLabel || '').trim();
+  const multiMode = String(options?.multiMode || '').trim();
+  return Object.values(HUB_ENTRY_CATALOG)
+    .filter((entry) => !groupLabel || entry.groupLabel === groupLabel)
+    .filter((entry) => !multiMode || entry.multiMode === multiMode)
+    .map((entry) => ({ ...entry }));
 }
 
 export function isHubEntryFavorite(entryId) {

@@ -3,13 +3,16 @@ import { clear, div } from '../core/dom.js';
 import {
   bindHubEntryContextMenu,
   getFavoriteEntries,
+  getHubEntries,
   HUB_QUICK_ACCESS_CHANGE_EVENT,
   openHubEntry,
   searchHubEntries,
   setHubPanelSearch
-} from '../core/hubFavorites.js?v=20260416f';
+} from '../core/hubFavorites.js?v=20260427a';
 
 const MULTI_MODE_KEY = 'kky.hub.multiMode';
+const BQC_GROUP_LABEL = '납품 시 BQC 검토';
+const UTILITY_GROUP_LABEL = '유틸리티';
 
 export function renderHome(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');
@@ -22,6 +25,8 @@ export function renderHome(root) {
     <h2>검토 방식을 선택하세요</h2>
     <p>납품 시 BQC 검토와 유틸리티 기능카드에서 원하는 기능을 빠르게 시작할 수 있습니다.</p>`;
 
+  const bqcEntries = getHomeEntries(BQC_GROUP_LABEL);
+  const utilityEntries = getHomeEntries(UTILITY_GROUP_LABEL);
   const searchSection = buildSearchSection();
   const favorites = getFavoriteEntries(4);
   const favoriteItems = favorites.length
@@ -32,34 +37,21 @@ export function renderHome(root) {
   grid.append(
     buildCard(
       '납품 시 BQC 검토',
-      '납품 검토에 필요한 핵심 기능을 선택해 실행합니다.',
+      '납품 검토에 필요한 선택형 검토와 별도 워크플로우를 실행합니다.',
       'multi',
-      [
-        '파라미터 연속성 검토',
-        '레벨 영역별 파라미터 검토',
-        'RVT 정리 (납품용)',
-        '중복 / 자체간섭 검토'
-      ],
-      'bqc'
+      bqcEntries.map((entry) => entry.label),
+      'bqc',
+      null,
+      `현재 기능 ${bqcEntries.length}개`
     ),
     buildCard(
       '유틸리티',
       '보조 검토와 일괄 작업 기능을 실행합니다.',
       'multi',
-      [
-        '파라미터 GUID 검토 및 정리',
-        '패밀리 공유파라미터 연동 검토',
-        'Revit 링크 경로 추출/수정',
-        '프로젝트대상 Point 좌표 추출',
-        '중복 / 자체간섭 검토',
-        '패밀리 공유파라미터 추가/연동',
-        'Segment-PMS 비교 검토',
-        '노즐코드 KTA 정리',
-        '파라미터 수정기',
-        'Project 파라미터 일괄 추가'
-      ],
+      utilityEntries.map((entry) => entry.label),
       'utility',
-      'utilities'
+      'utilities',
+      `현재 기능 ${utilityEntries.length}개`
     ),
     buildCard(
       '자주 사용하는 기능',
@@ -69,8 +61,105 @@ export function renderHome(root) {
     )
   );
 
-  view.append(hero, searchSection, grid);
+  const featureListSection = buildFeatureListSection(bqcEntries, utilityEntries);
+  view.append(hero, searchSection, grid, featureListSection);
   target.append(view);
+
+  function getHomeEntries(groupLabel) {
+    return getHubEntries({ groupLabel })
+      .sort((left, right) => {
+        const a = getEntrySortRank(left);
+        const b = getEntrySortRank(right);
+        if (a !== b) return a - b;
+        return String(left.label || '').localeCompare(String(right.label || ''), 'ko');
+      });
+  }
+
+  function getEntrySortRank(entry) {
+    const order = [
+      'deliverycleaner',
+      'conditionextract',
+      'connector',
+      'floorinfo',
+      'familysuitability',
+      'tapalign',
+      'dupclash',
+      'worksetassignment',
+      'parameterduplication',
+      'parametermissing',
+      'dup',
+      'paramprop',
+      'segmentpms',
+      'parammodifier',
+      'linkpath',
+      'lateralnozzle',
+      'guid',
+      'familylink',
+      'points',
+      'linkworkset',
+      'sharedparambatch'
+    ];
+    const index = order.indexOf(entry?.id);
+    return index >= 0 ? index : order.length;
+  }
+
+  function buildFeatureListSection(bqcItems, utilityItems) {
+    const section = div('home-manual');
+    const header = div('home-manual__header');
+    header.innerHTML = `
+      <p class="home-choice-kicker">Manual</p>
+      <h3>현재 기능 목록</h3>
+      <p>홈 검색과 즐겨찾기에 연결된 기능 기준입니다. 항목을 누르면 해당 화면으로 바로 이동합니다.</p>`;
+
+    const grid = div('home-manual-grid');
+    grid.append(
+      buildFeatureListGroup(BQC_GROUP_LABEL, '선택형 검토 + 별도 워크플로우', bqcItems),
+      buildFeatureListGroup(UTILITY_GROUP_LABEL, '보조 검토 + 일괄 작업', utilityItems)
+    );
+    section.append(header, grid);
+    return section;
+  }
+
+  function buildFeatureListGroup(title, desc, entries) {
+    const group = div('home-feature-group');
+    const head = div('home-feature-group__head');
+    const count = Array.isArray(entries) ? entries.length : 0;
+    head.innerHTML = `
+      <div>
+        <strong>${title}</strong>
+        <span>${desc}</span>
+      </div>
+      <em>${count}개</em>`;
+
+    const list = div('home-feature-list');
+    entries.forEach((entry) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'home-feature-item';
+      item.dataset.entryId = entry.id || '';
+
+      const titleEl = document.createElement('strong');
+      titleEl.className = 'home-feature-item__title';
+      titleEl.textContent = entry.label || '';
+
+      const descEl = document.createElement('span');
+      descEl.className = 'home-feature-item__desc';
+      descEl.textContent = entry.desc || '';
+
+      item.append(titleEl, descEl);
+      item.addEventListener('click', () => openHomeEntry(entry));
+      bindHubEntryContextMenu(item, entry.id);
+      list.append(item);
+    });
+
+    group.append(head, list);
+    return group;
+  }
+
+  function openHomeEntry(entry) {
+    if (!entry?.id) return;
+    openHubEntry(entry.id);
+  }
 
   function buildSearchSection() {
     const section = div('home-search');
@@ -245,14 +334,14 @@ export function renderHome(root) {
     openHubEntry(entry.id, { panelRoute: 'multi', recordUsage: false });
   }
 
-  function buildCard(title, desc, hash, items, multiMode, anchorId) {
+  function buildCard(title, desc, hash, items, multiMode, anchorId, metaLabel = '대표 기능') {
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'home-choice-card';
-    const previewItems = Array.isArray(items) ? items.slice(0, 2) : [];
+    const previewItems = Array.isArray(items) ? items.slice(0, 3) : [];
     const remainingCount = Array.isArray(items) ? Math.max(0, items.length - previewItems.length) : 0;
     const previewText = previewItems.length
-      ? `대표 기능: ${previewItems.join(', ')}${remainingCount > 0 ? ` 외 ${remainingCount}개` : ''}`
+      ? `${metaLabel}: ${previewItems.join(', ')}${remainingCount > 0 ? ` 외 ${remainingCount}개` : ''}`
       : '';
     const listHtml = previewText
       ? `<p class="home-choice-meta">${previewText}</p>`
