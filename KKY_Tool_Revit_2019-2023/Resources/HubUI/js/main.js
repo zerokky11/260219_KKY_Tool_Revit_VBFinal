@@ -2,7 +2,7 @@ import { initTheme } from './core/theme.js';
 import { onHost, post } from './core/bridge.js';
 import { updateTopMost, setActiveDocument, setDocList, renderTopbar } from './core/topbar.js';
 import { initLogConsole, toggleLogConsole, log } from './core/dom.js';
-import { renderHome } from './views/home.js';
+import { renderHome } from './views/home.js?v=20260427b';
 import { renderActiveMenu } from './views/activeMenu.js';
 import { renderDup } from './views/dup.js';
 import { renderConn } from './views/conn.js';
