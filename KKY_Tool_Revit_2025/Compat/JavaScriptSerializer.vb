@@ -25,6 +25,9 @@ Namespace Global.System.Web.Script.Serialization
             .Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         }
 
+        ' Legacy API compatibility only. System.Text.Json does not enforce the old serializer size cap here.
+        Public Property MaxJsonLength As Integer = Integer.MaxValue
+
         Public Function Deserialize(Of T)(input As String) As T
             If String.IsNullOrWhiteSpace(input) Then
                 Return Nothing

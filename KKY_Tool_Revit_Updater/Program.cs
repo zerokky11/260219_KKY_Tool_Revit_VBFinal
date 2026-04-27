@@ -340,13 +340,13 @@ namespace KKY_Tool_Revit_Updater
             logger.Log("ZIP extracted.");
             progressWindow?.UpdateProgress(34, "압축 해제 완료", "설치된 Revit 버전을 확인하는 중입니다.");
 
-            var installedYears = new[] { "2019", "2021", "2023", "2025" }
+            var installedYears = new[] { "2019", "2021", "2023", "2025", "2027" }
                 .Where(IsRevitInstalled)
                 .ToList();
             var totalTargets = Math.Max(1, installedYears.Count);
             var appliedCount = 0;
 
-            foreach (var year in new[] { "2019", "2021", "2023", "2025" })
+            foreach (var year in new[] { "2019", "2021", "2023", "2025", "2027" })
             {
                 if (!IsRevitInstalled(year))
                 {

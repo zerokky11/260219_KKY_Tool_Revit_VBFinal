@@ -1,6 +1,6 @@
 ﻿import { clear, div, toast, setBusy, showCompletionSummaryDialog, showExcelSavedDialog } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
-import { chooseExcelMode } from '../core/dom.js';
+import { chooseExcelMode, getLastExcelExportLocale } from '../core/dom.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { post, onHost } from '../core/bridge.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
@@ -14,6 +14,7 @@ const TEXT_FILTER_OPERATORS = [
   'Equals', 'NotEquals', 'Contains', 'NotContains', 'BeginsWith', 'NotBeginsWith',
   'EndsWith', 'NotEndsWith', 'HasValue', 'HasNoValue'
 ];
+const DELIVERYCLEANER_DEFAULT_HIDDEN_CATEGORIES = ['Mass', 'Parts', 'Site', 'Lines', '매스', '파트', '대지', '선'];
 
 const TAB_KEYS = ['view', 'element', 'filter', 'vg'];
 const EXCEL_PHASE_WEIGHT = { EXCEL_INIT: 0.05, EXCEL_WRITE: 0.85, EXCEL_SAVE: 0.08, AUTOFIT: 0.02, DONE: 1, ERROR: 1 };
@@ -93,6 +94,8 @@ export function renderDeliveryCleaner(root) {
     filterProfile: null,
     visibilityRules: createVisibilityRuleState(),
     availableVisibilityCategories: [],
+    visibilityConfigExpanded: new Set(),
+    visibilityConfigSearchText: '',
     visibilityCategoryPicker: {
       rowIndex: -1,
       searchText: '',
@@ -127,11 +130,12 @@ export function renderDeliveryCleaner(root) {
   const settingsModal = buildSettingsModal(state);
   const extractModal = buildExtractModal(state);
   const filterDocModal = buildFilterDocModal(state);
+  const visibilityConfigModal = buildVisibilityConfigModal(state);
   const visibilityCategoryModal = buildVisibilityCategoryModal(state);
   const topGrid = div('deliverycleaner-top-grid');
   topGrid.append(controlCard, filesCard);
 
-  page.append(topGrid, settingsModal, extractModal, filterDocModal, visibilityCategoryModal);
+  page.append(topGrid, settingsModal, extractModal, filterDocModal, visibilityConfigModal, visibilityCategoryModal);
   target.append(page);
 
   onHost('deliverycleaner:init', (payload) => applyHostState(state, payload));
@@ -177,7 +181,8 @@ export function renderDeliveryCleaner(root) {
     state.visibilityRules = normalizeVisibilityRules(payload.visibilityRules);
     refreshUiAfterHostDialog(() => {
       syncStateToInputs(state);
-      renderVisibilityRuleRows(state);
+      renderVisibilityRuleSummary(state);
+      renderVisibilityConfigModal(state);
       renderVisibilityCategoryModal(state);
     });
     if (payload?.source) toast(`VV 규칙을 불러왔습니다: ${payload.source}`, 'ok');
@@ -251,7 +256,11 @@ export function renderDeliveryCleaner(root) {
     resetDeliveryCleanerProgress(state);
     setPageBusy(state, false);
     applyHostState(state, payload?.state || {});
-    if (payload?.path) toast(`로그 엑셀을 저장했습니다: ${payload.path}`, 'ok', 3200);
+    if (payload?.path) {
+      showExcelSavedDialog('로그 엑셀을 저장했습니다.', payload.path, (path) => post('excel:open', { path }));
+    } else if (payload?.message) {
+      toast(payload.message, payload?.ok === false ? 'info' : 'ok', 2600);
+    }
   });
   onHost('deliverycleaner:verify-exported', (payload) => {
     handleDeliveryCleanerWorkbookExported(state, '정리 결과 검토 엑셀을 저장했습니다.', payload);
@@ -344,10 +353,16 @@ function buildControlCard(state) {
   const folderBtn = actionButton('결과 폴더 열기', () => {
     post('deliverycleaner:open-folder', { path: state.outputFolder || state.session?.outputFolder || '' });
   });
-  const exportLogBtn = actionButton('로그 엑셀 저장', () => {
+  const exportLogBtn = actionButton('로그 엑셀 저장', async () => {
+    const excelMode = await chooseExcelMode();
+    if (!excelMode) return;
     setPageBusy(state, true);
     beginDeliveryCleanerProgress('로그 엑셀 저장', '로그 엑셀 저장을 준비 중입니다.');
-    post('deliverycleaner:export-log', { outputFolder: state.outputFolder || state.session?.outputFolder || '' });
+    post('deliverycleaner:export-log', {
+      outputFolder: state.outputFolder || state.session?.outputFolder || '',
+      excelMode: excelMode || 'fast',
+      locale: getLastExcelExportLocale()
+    });
   });
 
   buttonGrid.append(runBtn, verifyBtn, extractBtn, purgeBtn, folderBtn, exportLogBtn);
@@ -654,48 +669,27 @@ function buildWorkspaceCard(state) {
         <p>Imported 카테고리 표시 상태와 커스텀 서브카테고리 숨김 규칙을 정리용 3D 뷰에 적용합니다.</p>
       </div>
       <div class="deliverycleaner-vg-import-row">
-        <span class="deliverycleaner-vg-import-row__label">Imported 표시</span>
+        <div class="deliverycleaner-vg-import-row__label">
+          <strong>Imported 카테고리 표시</strong>
+          <span>체크하면 표시되고, 체크를 해제하면 숨김으로 적용됩니다.</span>
+        </div>
         <div class="deliverycleaner-vg-import-row__controls">
-          <label class="deliverycleaner-inline-select deliverycleaner-inline-select--compact">
-            <span>Categories</span>
-            <select data-visibility-imported-toggle>
-              <option value="">적용 안 함</option>
-              <option value="show">체크</option>
-              <option value="hide">해제</option>
-            </select>
+          <label class="deliverycleaner-checkline deliverycleaner-checkline--boxed">
+            <input type="checkbox" data-visibility-imported-toggle>
+            <span>이 뷰에서 Imported Categories 표시</span>
           </label>
-          <label class="deliverycleaner-inline-select deliverycleaner-inline-select--compact">
-            <span>Families</span>
-            <select data-visibility-imports-family-toggle>
-              <option value="">적용 안 함</option>
-              <option value="show">체크</option>
-              <option value="hide">해제</option>
-            </select>
+          <label class="deliverycleaner-checkline deliverycleaner-checkline--boxed">
+            <input type="checkbox" data-visibility-imports-family-toggle>
+            <span>이 뷰에서 Imports in Families 표시</span>
           </label>
         </div>
       </div>
-      <div class="deliverycleaner-vg-rulebar">
-        <div class="deliverycleaner-vg-rulebar__text">
+      <div class="deliverycleaner-vg-rule-launch">
+        <div class="deliverycleaner-vg-rule-launch__text">
           <strong>서브카테고리 숨김 규칙</strong>
-          <span>주 카테고리, 연산자, 서브카테고리 텍스트를 입력해 정리용 3D 뷰의 V/G 기준을 맞춥니다.</span>
+          <span>별도 창에서 카테고리별 표시 여부를 조정하고, 각 카테고리의 하위 규칙을 추가해 V/G 기준을 맞춥니다.</span>
         </div>
-        <div class="deliverycleaner-vg-rulebar__controls">
-          <label class="deliverycleaner-inline-select deliverycleaner-inline-select--compact">
-            <span>규칙 결합</span>
-            <select data-visibility-combination-mode>
-              <option value="Or">OR</option>
-              <option value="And">AND</option>
-            </select>
-          </label>
-          <button type="button" class="btn btn--secondary" data-visibility-import>규칙 불러오기</button>
-          <button type="button" class="btn btn--secondary" data-visibility-save>규칙 저장</button>
-        </div>
-      </div>
-      <div class="deliverycleaner-table-scroll deliverycleaner-table-scroll--grid deliverycleaner-table-scroll--visibility-rules">
-        <table class="deliverycleaner-grid-table deliverycleaner-grid-table--visibility-rules">
-          <thead><tr><th>주 카테고리들</th><th>연산자</th><th>서브카테고리 텍스트</th></tr></thead>
-          <tbody data-visibility-rule-body></tbody>
-        </table>
+        <button type="button" class="btn btn--secondary" data-open-visibility-config>규칙 설정 열기</button>
       </div>
       <div class="deliverycleaner-summary-box" data-visibility-summary></div>
     </section>
@@ -712,7 +706,7 @@ function buildWorkspaceCard(state) {
   state.ui.visibilitySaveBtn = vgPanel.querySelector('[data-visibility-save]');
   state.ui.visibilityImportedToggle = vgPanel.querySelector('[data-visibility-imported-toggle]');
   state.ui.visibilityImportsFamilyToggle = vgPanel.querySelector('[data-visibility-imports-family-toggle]');
-  state.ui.visibilityRuleBody = vgPanel.querySelector('[data-visibility-rule-body]');
+  state.ui.visibilityOpenBtn = vgPanel.querySelector('[data-open-visibility-config]');
   state.ui.visibilitySummary = vgPanel.querySelector('[data-visibility-summary]');
   state.ui.combinationMode = elementPanel.querySelector('[data-combination-mode]');
   state.ui.duplicateMode = elementPanel.querySelector('[data-duplicate-mode]');
@@ -729,22 +723,15 @@ function buildWorkspaceCard(state) {
   state.ui.filterConditionBody = filterPanel.querySelector('[data-filter-condition-body]');
   state.ui.filterSummary = filterPanel.querySelector('[data-filter-summary]');
 
-  state.ui.visibilityCombinationMode.addEventListener('change', () => {
-    state.visibilityRules.combinationMode = state.ui.visibilityCombinationMode.value;
-    renderVisibilityRuleSummary(state);
-  });
   state.ui.visibilityImportedToggle.addEventListener('change', () => {
-    state.visibilityRules.showImportedCategoriesInView = parseVisibilityToggleValue(state.ui.visibilityImportedToggle.value);
+    state.visibilityRules.showImportedCategoriesInView = !!state.ui.visibilityImportedToggle.checked;
     renderVisibilityRuleSummary(state);
   });
   state.ui.visibilityImportsFamilyToggle.addEventListener('change', () => {
-    state.visibilityRules.showImportsInFamilies = parseVisibilityToggleValue(state.ui.visibilityImportsFamilyToggle.value);
+    state.visibilityRules.showImportsInFamilies = !!state.ui.visibilityImportsFamilyToggle.checked;
     renderVisibilityRuleSummary(state);
   });
-  state.ui.visibilityImportBtn.addEventListener('click', () => post('deliverycleaner:visibility-rules-import', {}));
-  state.ui.visibilitySaveBtn.addEventListener('click', () => {
-    post('deliverycleaner:visibility-rules-save', { visibilityRules: buildPayload(state).visibilityRules });
-  });
+  state.ui.visibilityOpenBtn.addEventListener('click', () => openVisibilityConfigModal(state));
   state.ui.combinationMode.addEventListener('change', () => {
     state.elementParameterUpdate.combinationMode = state.ui.combinationMode.value;
     renderElementUpdateSummary(state);
@@ -802,6 +789,79 @@ function buildFilterDocModal(state) {
   return overlay;
 }
 
+function buildVisibilityConfigModal(state) {
+  const overlay = div('deliverycleaner-modal deliverycleaner-visibility-config-modal is-hidden');
+  overlay.innerHTML = `
+    <div class="deliverycleaner-modal__dialog deliverycleaner-visibility-config-modal__dialog">
+      <div class="deliverycleaner-modal__head">
+        <div>
+          <h3>서브카테고리 숨김 규칙</h3>
+          <p>V/G 창처럼 카테고리 표시를 조정하고, 각 카테고리의 + 버튼으로 하위 규칙을 추가합니다.</p>
+        </div>
+        <button type="button" class="deliverycleaner-modal__close" data-close>&times;</button>
+      </div>
+      <div class="deliverycleaner-modal__body">
+        <div class="deliverycleaner-vg-config-toolbar">
+          <div class="deliverycleaner-field deliverycleaner-vg-config-search">
+            <label>카테고리 검색</label>
+            <input type="text" data-visibility-config-search placeholder="예: Pipe, Duct, Fitting">
+          </div>
+          <div class="deliverycleaner-inline-select deliverycleaner-inline-select--compact">
+            <span>규칙 결합</span>
+            <select data-visibility-combination-mode>
+              <option value="Or">OR</option>
+              <option value="And">AND</option>
+            </select>
+          </div>
+          <div class="deliverycleaner-inline-actions">
+            <button type="button" class="btn btn--secondary" data-visibility-import>규칙 불러오기</button>
+            <button type="button" class="btn btn--secondary" data-visibility-save>규칙 저장</button>
+          </div>
+        </div>
+        <div class="deliverycleaner-note">카테고리 체크를 해제하면 해당 주 카테고리와 하위 항목이 모두 숨겨집니다. 카테고리를 체크한 상태에서 + 버튼으로 규칙을 추가하면, 조건에 맞는 서브카테고리만 부분적으로 숨길 수 있습니다.</div>
+        <div class="deliverycleaner-vg-config-list" data-visibility-config-list></div>
+      </div>
+      <div class="deliverycleaner-modal__foot">
+        <button type="button" class="btn btn--secondary" data-cancel>닫기</button>
+        <button type="button" class="btn btn--primary" data-apply>적용</button>
+      </div>
+    </div>
+  `;
+
+  overlay.querySelector('[data-close]').addEventListener('click', () => closeVisibilityConfigModal(state));
+  overlay.querySelector('[data-cancel]').addEventListener('click', () => closeVisibilityConfigModal(state));
+  overlay.querySelector('[data-apply]').addEventListener('click', () => {
+    closeVisibilityConfigModal(state);
+    renderVisibilityRuleSummary(state);
+  });
+  overlay.addEventListener('click', (ev) => {
+    if (ev.target === overlay) closeVisibilityConfigModal(state);
+  });
+
+  state.ui.visibilityConfigOverlay = overlay;
+  state.ui.visibilityConfigList = overlay.querySelector('[data-visibility-config-list]');
+  state.ui.visibilityConfigSearch = overlay.querySelector('[data-visibility-config-search]');
+  state.ui.visibilityCombinationMode = overlay.querySelector('[data-visibility-combination-mode]');
+  state.ui.visibilityImportBtn = overlay.querySelector('[data-visibility-import]');
+  state.ui.visibilitySaveBtn = overlay.querySelector('[data-visibility-save]');
+
+  state.ui.visibilityCombinationMode.addEventListener('change', () => {
+    state.visibilityRules.combinationMode = state.ui.visibilityCombinationMode.value;
+    renderVisibilityRuleSummary(state);
+    renderVisibilityConfigModal(state);
+  });
+  state.ui.visibilityConfigSearch.addEventListener('input', () => {
+    state.visibilityConfigSearchText = String(state.ui.visibilityConfigSearch.value || '').trim();
+    renderVisibilityConfigModal(state);
+  });
+  state.ui.visibilityImportBtn.addEventListener('click', () => post('deliverycleaner:visibility-rules-import', {}));
+  state.ui.visibilitySaveBtn.addEventListener('click', () => {
+    post('deliverycleaner:visibility-rules-save', { visibilityRules: buildPayload(state).visibilityRules });
+  });
+
+  return overlay;
+}
+
 function buildVisibilityCategoryModal(state) {
   const overlay = div('deliverycleaner-modal deliverycleaner-category-modal is-hidden');
   overlay.innerHTML = `
@@ -849,6 +909,143 @@ function buildVisibilityCategoryModal(state) {
   state.ui.visibilityCategoryList = overlay.querySelector('[data-category-picker-list]');
   state.ui.visibilityCategorySummary = overlay.querySelector('[data-category-selection-summary]');
   return overlay;
+}
+
+function openVisibilityConfigModal(state) {
+  state.ui.visibilityConfigOverlay?.classList.remove('is-hidden');
+  renderVisibilityConfigModal(state);
+}
+
+function closeVisibilityConfigModal(state) {
+  state.ui.visibilityConfigOverlay?.classList.add('is-hidden');
+}
+
+function renderVisibilityConfigModal(state) {
+  const wrap = state.ui.visibilityConfigList;
+  if (!wrap) return;
+  wrap.innerHTML = '';
+
+  const search = String(state.visibilityConfigSearchText || '').trim().toLowerCase();
+  const categories = getVisibilityConfigCategories(state)
+    .filter((name) => !search || name.toLowerCase().includes(search));
+  if (state.ui.visibilityCombinationMode) {
+    state.ui.visibilityCombinationMode.value = state.visibilityRules.combinationMode || 'Or';
+  }
+  if (state.ui.visibilityConfigSearch) {
+    state.ui.visibilityConfigSearch.value = state.visibilityConfigSearchText || '';
+  }
+
+  if (!categories.length) {
+    const empty = div('deliverycleaner-note');
+    empty.textContent = search
+      ? '검색 조건에 맞는 카테고리가 없습니다.'
+      : '현재 문서에서 표시 제어할 카테고리를 찾지 못했습니다.';
+    wrap.append(empty);
+    return;
+  }
+
+  categories.forEach((categoryName) => {
+    const isExpanded = state.visibilityConfigExpanded.has(categoryName);
+    const card = div('deliverycleaner-vg-category-card');
+    card.classList.toggle('is-expanded', isExpanded);
+    const header = div('deliverycleaner-vg-category-card__head');
+    const left = div('deliverycleaner-vg-category-card__title');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = getVisibilityCategoryVisible(state, categoryName);
+    checkbox.addEventListener('change', () => {
+      setVisibilityCategoryVisible(state, categoryName, checkbox.checked);
+      renderVisibilityRuleSummary(state);
+    });
+    const title = document.createElement('span');
+    title.textContent = categoryName;
+    left.append(checkbox, title);
+
+    const actions = div('deliverycleaner-vg-category-card__actions');
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'btn btn--secondary deliverycleaner-vg-mini-btn';
+    addBtn.textContent = '+';
+    addBtn.title = `${categoryName} 서브카테고리 규칙 추가`;
+    addBtn.addEventListener('click', () => {
+      state.visibilityConfigExpanded.add(categoryName);
+      addVisibilityRuleForCategory(state, categoryName);
+      renderVisibilityConfigModal(state);
+      renderVisibilityRuleSummary(state);
+    });
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'btn btn--secondary deliverycleaner-vg-mini-btn';
+    toggleBtn.textContent = state.visibilityConfigExpanded.has(categoryName) ? '−' : '+ 규칙';
+    toggleBtn.addEventListener('click', () => {
+      if (state.visibilityConfigExpanded.has(categoryName)) state.visibilityConfigExpanded.delete(categoryName);
+      else state.visibilityConfigExpanded.add(categoryName);
+      renderVisibilityConfigModal(state);
+    });
+    actions.append(addBtn, toggleBtn);
+    header.append(left, actions);
+    card.append(header);
+
+    const rules = getVisibilityRulesForCategory(state, categoryName);
+    if (isExpanded) {
+      const summary = div('deliverycleaner-vg-category-card__summary');
+      summary.textContent = getVisibilityCategoryVisible(state, categoryName)
+        ? (rules.length
+          ? `주 카테고리는 표시되고, 현재 ${rules.length}개의 서브카테고리 규칙이 연결되어 있습니다.`
+          : '주 카테고리는 표시됩니다. 아래에서 특정 서브카테고리만 숨기는 규칙을 추가할 수 있습니다.')
+        : '주 카테고리 체크가 해제되어 있어, 이 카테고리와 하위 항목이 모두 숨겨집니다.';
+      card.append(summary);
+
+      const ruleWrap = div('deliverycleaner-vg-subrule-list');
+      if (!rules.length) {
+        const empty = div('deliverycleaner-note');
+        empty.textContent = '추가된 서브카테고리 규칙이 없습니다. + 버튼으로 새 규칙을 추가하세요.';
+        ruleWrap.append(empty);
+      } else {
+        rules.forEach(({ rule, index }) => {
+          const row = div('deliverycleaner-vg-subrule-row');
+          const operatorSelect = document.createElement('select');
+          TEXT_FILTER_OPERATORS.forEach((name) => {
+            const option = document.createElement('option');
+            option.value = name;
+            option.textContent = name;
+            operatorSelect.append(option);
+          });
+          operatorSelect.value = rule.operatorName || 'Contains';
+          operatorSelect.addEventListener('change', () => {
+            state.visibilityRules.rules[index].operatorName = operatorSelect.value;
+            renderVisibilityRuleSummary(state);
+          });
+
+          const textInput = document.createElement('input');
+          textInput.type = 'text';
+          textInput.placeholder = '예: End Cut';
+          textInput.value = rule.subCategoryText || '';
+          textInput.addEventListener('input', () => {
+            state.visibilityRules.rules[index].subCategoryText = textInput.value.trim();
+            renderVisibilityRuleSummary(state);
+          });
+
+          const removeBtn = document.createElement('button');
+          removeBtn.type = 'button';
+          removeBtn.className = 'btn btn--secondary';
+          removeBtn.textContent = '삭제';
+          removeBtn.addEventListener('click', () => {
+            state.visibilityRules.rules.splice(index, 1);
+            renderVisibilityConfigModal(state);
+            renderVisibilityRuleSummary(state);
+          });
+
+          row.append(operatorSelect, textInput, removeBtn);
+          ruleWrap.append(row);
+        });
+      }
+      card.append(ruleWrap);
+    }
+
+    wrap.append(card);
+  });
 }
 
 function buildExtractModal(state) {
@@ -950,7 +1147,8 @@ function createVisibilityRuleState() {
     combinationMode: 'Or',
     showImportedCategoriesInView: null,
     showImportsInFamilies: null,
-    rules: Array.from({ length: 6 }, () => ({ enabled: false, parentCategoryNames: [], operatorName: 'Contains', subCategoryText: '' }))
+    categoryOverrides: [],
+    rules: []
   };
 }
 
@@ -1028,8 +1226,6 @@ function renderViewParameterRows(state) {
     );
     body.append(tr);
   });
-
-  renderVisibilityRuleRows(state);
 }
 
 function renderVisibilityRuleRows(state) {
@@ -1058,8 +1254,9 @@ function renderVisibilityRuleRows(state) {
 
 function renderVisibilityRuleSummary(state) {
   if (!state.ui.visibilitySummary) return;
-  const rules = state.visibilityRules.rules.filter((row) => (row.parentCategoryNames || []).length);
+  const rules = state.visibilityRules.rules.filter((row) => splitVisibilityCategoryNames(row.parentCategoryNames || []).length);
   const joiner = state.visibilityRules.combinationMode === 'And' ? ' AND ' : ' OR ';
+  const hiddenCategories = getVisibilityConfigCategories(state).filter((name) => !getVisibilityCategoryVisible(state, name));
   const importedLines = [
     formatVisibilityToggleSummary('Imported Categories 표시', state.visibilityRules.showImportedCategoriesInView),
     formatVisibilityToggleSummary('Imports in Families 표시', state.visibilityRules.showImportsInFamilies)
@@ -1073,15 +1270,16 @@ function renderVisibilityRuleSummary(state) {
       return `${categories} / ${row.operatorName} / ${row.subCategoryText || ''}`;
     }).join(joiner)
     : '커스텀 VV 서브카테고리 규칙이 없습니다.';
-  if (rules.length || importedLines.length) {
+  if (rules.length || importedLines.length || hiddenCategories.length) {
     const lines = [`규칙 결합: ${state.visibilityRules.combinationMode === 'And' ? 'AND' : 'OR'}`];
     if (importedLines.length) lines.push(...importedLines);
+    if (hiddenCategories.length) lines.push(`숨김 카테고리: ${hiddenCategories.join(', ')}`);
     if (rules.length) lines.push(ruleText);
     state.ui.visibilitySummary.textContent = lines.join('\n');
     return;
   }
 
-  state.ui.visibilitySummary.textContent = '카테고리 선택 버튼으로 주 카테고리를 고르고, 서브카테고리 텍스트 조건을 지정하면 커스텀 VV 숨김 규칙으로 반영됩니다.';
+  state.ui.visibilitySummary.textContent = '규칙 설정 창에서 카테고리 체크를 해제하거나 + 버튼으로 서브카테고리 규칙을 추가하면 커스텀 V/G 숨김 기준으로 반영됩니다.';
 }
 
 function renderElementUpdateRows(state) {
@@ -1524,10 +1722,10 @@ function syncStateToInputs(state) {
     state.ui.visibilityCombinationMode.value = state.visibilityRules.combinationMode || 'Or';
   }
   if (state.ui.visibilityImportedToggle) {
-    state.ui.visibilityImportedToggle.value = formatVisibilityToggleValue(state.visibilityRules.showImportedCategoriesInView);
+    state.ui.visibilityImportedToggle.checked = state.visibilityRules.showImportedCategoriesInView !== false;
   }
   if (state.ui.visibilityImportsFamilyToggle) {
-    state.ui.visibilityImportsFamilyToggle.value = formatVisibilityToggleValue(state.visibilityRules.showImportsInFamilies);
+    state.ui.visibilityImportsFamilyToggle.checked = state.visibilityRules.showImportsInFamilies !== false;
   }
   if (state.ui.visibilityCategorySearch) {
     state.ui.visibilityCategorySearch.value = state.visibilityCategoryPicker.searchText || '';
@@ -1555,13 +1753,20 @@ function normalizeVisibilityRules(source) {
   base.combinationMode = source.combinationMode || 'Or';
   base.showImportedCategoriesInView = normalizeVisibilityToggleValue(source.showImportedCategoriesInView);
   base.showImportsInFamilies = normalizeVisibilityToggleValue(source.showImportsInFamilies);
-  base.rules = base.rules.map((row, index) => {
-    const raw = Array.isArray(source.rules) ? source.rules[index] || {} : {};
-    return {
-      ...row,
-      ...raw,
-      parentCategoryNames: splitVisibilityCategoryNames(raw.parentCategoryNames || raw.parentCategoryName || '')
-    };
+  base.categoryOverrides = normalizeVisibilityCategoryOverrides(source.categoryOverrides);
+  const rawRules = Array.isArray(source.rules) ? source.rules : [];
+  base.rules = [];
+  rawRules.forEach((raw) => {
+    const parentNames = splitVisibilityCategoryNames(raw?.parentCategoryNames || raw?.parentCategoryName || raw?.categoryName || '');
+    if (!parentNames.length) return;
+    parentNames.forEach((categoryName) => {
+      base.rules.push({
+        enabled: true,
+        parentCategoryNames: [categoryName],
+        operatorName: raw?.operatorName || 'Contains',
+        subCategoryText: String(raw?.subCategoryText || '').trim()
+      });
+    });
   });
   return base;
 }
@@ -1585,11 +1790,14 @@ function buildPayload(state) {
     ...row,
     enabled: !!String(row.parameterName || '').trim()
   }));
-  const normalizedVisibilityRules = state.visibilityRules.rules.map((row) => ({
-    ...row,
-    parentCategoryNames: splitVisibilityCategoryNames(row.parentCategoryNames || ''),
-    enabled: splitVisibilityCategoryNames(row.parentCategoryNames || '').length > 0 && ((row.operatorName === 'HasValue' || row.operatorName === 'HasNoValue') || !!String(row.subCategoryText || '').trim())
-  }));
+  const normalizedVisibilityRules = state.visibilityRules.rules
+    .map((row) => ({
+      ...row,
+      parentCategoryNames: splitVisibilityCategoryNames(row.parentCategoryNames || ''),
+      enabled: splitVisibilityCategoryNames(row.parentCategoryNames || '').length > 0 && ((row.operatorName === 'HasValue' || row.operatorName === 'HasNoValue') || !!String(row.subCategoryText || '').trim())
+    }))
+    .filter((row) => row.enabled);
+  const normalizedCategoryOverrides = normalizeVisibilityCategoryOverrides(state.visibilityRules.categoryOverrides);
   const normalizedAssignments = state.elementParameterUpdate.assignments.map((row) => ({
     ...row,
     enabled: !!String(row.parameterName || '').trim()
@@ -1612,6 +1820,7 @@ function buildPayload(state) {
       combinationMode: state.visibilityRules.combinationMode,
       showImportedCategoriesInView: state.visibilityRules.showImportedCategoriesInView,
       showImportsInFamilies: state.visibilityRules.showImportsInFamilies,
+      categoryOverrides: normalizedCategoryOverrides,
       rules: normalizedVisibilityRules
     },
     elementParameterUpdate: {
@@ -1663,7 +1872,7 @@ async function promptDeliveryCleanerExcelExport(state, eventName) {
   if (!excelMode) return;
   setPageBusy(state, true);
   beginDeliveryCleanerProgress('엑셀 내보내기', '엑셀 저장을 준비 중입니다.');
-  post(eventName, { excelMode: excelMode || 'fast' });
+  post(eventName, { excelMode: excelMode || 'fast', locale: getLastExcelExportLocale() });
 }
 
 function showDeliveryCleanerRunDialog(state, payload = {}) {
@@ -1827,8 +2036,7 @@ function computeDeliveryCleanerExcelPercent(state, phase, current, total, phaseP
   const weight = EXCEL_PHASE_WEIGHT[norm] || 0;
   const ratio = total > 0 ? Math.max(0, Math.min(1, current / total)) : 0;
   const staged = Math.max(ratio, clampDeliveryCleanerRatio(phaseProgress));
-  const denominator = completed + weight || 1;
-  const percent = (completed + weight * staged) / denominator * 100;
+  const percent = (completed + weight * staged) * 100;
   state.progressPercent = Math.max(state.progressPercent || 0, Math.min(100, percent));
   return state.progressPercent;
 }
@@ -1967,6 +2175,68 @@ function normalizeVisibilityCategoryOptions(items) {
     .filter(Boolean)
     .filter((item, index, arr) => arr.findIndex((x) => x.toLowerCase() === item.toLowerCase()) === index)
     .sort((a, b) => a.localeCompare(b, 'ko'));
+}
+
+function normalizeVisibilityCategoryOverrides(items) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      categoryName: String(item?.categoryName || '').trim(),
+      visible: item?.visible !== false
+    }))
+    .filter((item) => item.categoryName)
+    .filter((item, index, arr) => arr.findIndex((x) => x.categoryName.toLowerCase() === item.categoryName.toLowerCase()) === index)
+    .sort((a, b) => a.categoryName.localeCompare(b.categoryName, 'ko'));
+}
+
+function getVisibilityConfigCategories(state) {
+  const names = new Set();
+  normalizeVisibilityCategoryOptions(state.availableVisibilityCategories).forEach((name) => names.add(name));
+  normalizeVisibilityCategoryOverrides(state.visibilityRules.categoryOverrides).forEach((item) => names.add(item.categoryName));
+  (Array.isArray(state.visibilityRules.rules) ? state.visibilityRules.rules : []).forEach((rule) => {
+    splitVisibilityCategoryNames(rule?.parentCategoryNames || []).forEach((name) => names.add(name));
+  });
+  return Array.from(names).sort((a, b) => a.localeCompare(b, 'ko'));
+}
+
+function isDefaultHiddenVisibilityCategory(categoryName) {
+  const normalized = String(categoryName || '').trim().toLowerCase();
+  return DELIVERYCLEANER_DEFAULT_HIDDEN_CATEGORIES.some((name) => String(name).trim().toLowerCase() === normalized);
+}
+
+function getVisibilityCategoryVisible(state, categoryName) {
+  const normalized = String(categoryName || '').trim().toLowerCase();
+  const override = normalizeVisibilityCategoryOverrides(state.visibilityRules.categoryOverrides)
+    .find((item) => item.categoryName.toLowerCase() === normalized);
+  if (override) return override.visible !== false;
+  return !isDefaultHiddenVisibilityCategory(categoryName);
+}
+
+function setVisibilityCategoryVisible(state, categoryName, visible) {
+  const normalized = String(categoryName || '').trim();
+  if (!normalized) return;
+  const matchesDefault = visible ? !isDefaultHiddenVisibilityCategory(normalized) : isDefaultHiddenVisibilityCategory(normalized);
+  const next = normalizeVisibilityCategoryOverrides(state.visibilityRules.categoryOverrides)
+    .filter((item) => item.categoryName.toLowerCase() !== normalized.toLowerCase());
+  if (!matchesDefault) next.push({ categoryName: normalized, visible: !!visible });
+  state.visibilityRules.categoryOverrides = normalizeVisibilityCategoryOverrides(next);
+}
+
+function getVisibilityRulesForCategory(state, categoryName) {
+  const normalized = String(categoryName || '').trim().toLowerCase();
+  return (Array.isArray(state.visibilityRules.rules) ? state.visibilityRules.rules : [])
+    .map((rule, index) => ({ rule, index }))
+    .filter(({ rule }) => splitVisibilityCategoryNames(rule?.parentCategoryNames || []).some((name) => name.toLowerCase() === normalized));
+}
+
+function addVisibilityRuleForCategory(state, categoryName) {
+  const normalized = String(categoryName || '').trim();
+  if (!normalized) return;
+  state.visibilityRules.rules.push({
+    enabled: true,
+    parentCategoryNames: [normalized],
+    operatorName: 'Contains',
+    subCategoryText: ''
+  });
 }
 
 function tdWithCategoryPicker(state, row, index) {

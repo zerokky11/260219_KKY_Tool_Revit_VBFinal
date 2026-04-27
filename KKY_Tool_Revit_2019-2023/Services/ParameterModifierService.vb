@@ -154,26 +154,30 @@ Namespace Services
             Return result
         End Function
 
-        Public Shared Sub ExportArtifacts(uiapp As UIApplication, settings As Settings, result As RunResult)
+        Public Shared Sub ExportArtifacts(uiapp As UIApplication,
+                                          settings As Settings,
+                                          result As RunResult,
+                                          workbookPath As String,
+                                          Optional autoFit As Boolean = True,
+                                          Optional exportLocale As String = "ko")
             If uiapp Is Nothing Then Throw New ArgumentNullException(NameOf(uiapp))
             If result Is Nothing Then Throw New ArgumentNullException(NameOf(result))
+            If String.IsNullOrWhiteSpace(workbookPath) Then Throw New ArgumentException("저장할 엑셀 경로가 없습니다.", NameOf(workbookPath))
 
             Dim effectiveSettings = If(settings, New Settings())
             If effectiveSettings.ElementParameterUpdate Is Nothing Then
                 effectiveSettings.ElementParameterUpdate = New ElementParameterUpdateSettings()
             End If
 
-            Dim hasWorkbook = Not String.IsNullOrWhiteSpace(result.ResultWorkbookPath) AndAlso File.Exists(result.ResultWorkbookPath)
-            Dim hasLog = Not String.IsNullOrWhiteSpace(result.LogTextPath) AndAlso File.Exists(result.LogTextPath)
-            If hasWorkbook AndAlso hasLog Then Return
-
             If String.IsNullOrWhiteSpace(result.OutputFolder) Then
                 result.OutputFolder = ResolveOutputFolder(uiapp, effectiveSettings)
             End If
-            Directory.CreateDirectory(result.OutputFolder)
+
+            Dim folder = Path.GetDirectoryName(workbookPath)
+            If Not String.IsNullOrWhiteSpace(folder) Then Directory.CreateDirectory(folder)
 
             Dim assignmentNames = GetAssignmentParameterNames(effectiveSettings)
-            SaveArtifacts(result, assignmentNames)
+            SaveArtifacts(result, assignmentNames, workbookPath, autoFit, exportLocale)
         End Sub
 
         Private Shared Function ProcessActiveDocument(doc As Document,
@@ -748,11 +752,13 @@ Namespace Services
             }
         End Function
 
-        Private Shared Sub SaveArtifacts(result As RunResult, assignmentNames As List(Of String))
+        Private Shared Sub SaveArtifacts(result As RunResult,
+                                         assignmentNames As List(Of String),
+                                         workbookPath As String,
+                                         autoFit As Boolean,
+                                         exportLocale As String)
             If result Is Nothing Then Return
-            Dim timeStamp = DateTime.Now.ToString("yyyyMMdd_HHmmss")
-            Dim workbookPath = Path.Combine(result.OutputFolder, "ParameterModifierResult_" & timeStamp & ".xlsx")
-            Dim logPath = Path.Combine(result.OutputFolder, "ParameterModifierLog_" & timeStamp & ".txt")
+            If String.IsNullOrWhiteSpace(workbookPath) Then Throw New ArgumentException("저장할 엑셀 경로가 없습니다.", NameOf(workbookPath))
 
             Dim sheets As New List(Of KeyValuePair(Of String, DataTable)) From {
                 New KeyValuePair(Of String, DataTable)("Summary", BuildSummaryTable(result.Files)),
@@ -760,11 +766,10 @@ Namespace Services
                 New KeyValuePair(Of String, DataTable)("Logs", BuildLogTable(result.Logs))
             }
 
-            ExcelCore.SaveXlsxMulti(workbookPath, sheets, autoFit:=True)
-            File.WriteAllLines(logPath, BuildLogLines(result.Logs), New UTF8Encoding(True))
+            ExcelCore.SaveXlsxMulti(workbookPath, sheets, autoFit:=autoFit, exportKind:="parammodifier", exportLocale:=exportLocale)
 
             result.ResultWorkbookPath = workbookPath
-            result.LogTextPath = logPath
+            result.LogTextPath = String.Empty
         End Sub
 
         Private Shared Function BuildSummaryTable(fileResults As IEnumerable(Of FileRunResult)) As DataTable

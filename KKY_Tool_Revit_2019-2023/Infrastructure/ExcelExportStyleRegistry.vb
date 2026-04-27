@@ -20,6 +20,8 @@ Namespace Infrastructure
             Register("paramprop", AddressOf ResolveParamProp)
             Register("points", AddressOf ResolveResultLike)
             Register("pms", AddressOf ResolveResultLike)
+            Register("worksetassignment", AddressOf ResolveResultLike)
+            Register("parameterduplication", AddressOf ResolveResultLike)
             Register("familylink", AddressOf ResolveIssueLike)
             Register("sharedparambatch", AddressOf ResolveSharedParamBatch)
 
@@ -101,6 +103,10 @@ Namespace Infrastructure
                     wb.Write(outFs)
                 End Using
             End Using
+
+            If autoFit AndAlso Not String.Equals(If(excelMode, "normal"), "fast", StringComparison.OrdinalIgnoreCase) Then
+                ExcelCore.TryAutoFitWithExcel(xlsxPath)
+            End If
         End Sub
 
         Private Sub ApplyStandardSheetStyle(wb As IWorkbook, sh As ISheet)
@@ -129,6 +135,7 @@ Namespace Infrastructure
             If wb Is Nothing OrElse sh Is Nothing Then Return
             Dim lastRow As Integer = sh.LastRowNum
             If lastRow < 0 Then Return
+            Dim styleCache As New Dictionary(Of Integer, ICellStyle)()
 
             For r As Integer = 0 To lastRow
                 Dim row = sh.GetRow(r)
@@ -145,14 +152,19 @@ Namespace Infrastructure
                     End If
 
                     Dim src = cell.CellStyle
-                    Dim dst = wb.CreateCellStyle()
-                    If src IsNot Nothing Then
-                        dst.CloneStyleFrom(src)
+                    Dim styleKey As Integer = If(src Is Nothing, -1, CInt(src.Index))
+                    Dim dst As ICellStyle = Nothing
+                    If Not styleCache.TryGetValue(styleKey, dst) Then
+                        dst = wb.CreateCellStyle()
+                        If src IsNot Nothing Then
+                            dst.CloneStyleFrom(src)
+                        End If
+                        dst.BorderBottom = BorderStyle.Thin
+                        dst.BorderTop = BorderStyle.Thin
+                        dst.BorderLeft = BorderStyle.Thin
+                        dst.BorderRight = BorderStyle.Thin
+                        styleCache(styleKey) = dst
                     End If
-                    dst.BorderBottom = BorderStyle.Thin
-                    dst.BorderTop = BorderStyle.Thin
-                    dst.BorderLeft = BorderStyle.Thin
-                    dst.BorderRight = BorderStyle.Thin
                     cell.CellStyle = dst
                 Next
             Next
@@ -182,11 +194,13 @@ Namespace Infrastructure
             Dim s = sheetNameOrKey.Trim().ToLowerInvariant()
             If s.Contains("connector") Then Return "connector"
             If s.Contains("guid") Then Return "guid"
+            If s.Contains("parameterduplication") OrElse s.Contains("project parameter duplication") Then Return "parameterduplication"
             If s.Contains("param") Then Return "paramprop"
             If s.Contains("point") Then Return "points"
             If s.Contains("sharedparambatch") Then Return "sharedparambatch"
             If s.Contains("familylink") OrElse s.Contains("family link") Then Return "familylink"
             If s.Contains("pms") OrElse s.Contains("segment") Then Return "pms"
+            If s.Contains("worksetassignment") OrElse s.Contains("workset assignment") Then Return "worksetassignment"
             Return s
         End Function
 

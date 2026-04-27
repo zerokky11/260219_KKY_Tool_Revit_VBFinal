@@ -7,14 +7,15 @@
     flex-direction: column;
     gap: 12px;
     box-sizing: border-box;
+    min-height: 100%;
 }
 
 .paramprop-layout {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
     gap: 14px;
-    align-items: stretch;
-    grid-auto-rows: 1fr;
+    align-items: start;
+    grid-auto-rows: auto;
 }
 
 .paramprop-card {
@@ -25,7 +26,7 @@
     box-shadow: var(--shadow-soft);
     box-sizing: border-box;
     overflow: visible;
-    height: 100%;
+    height: auto;
 }
 
 .paramprop-picker-card {
@@ -33,7 +34,6 @@
     flex-direction: column;
     gap: 10px;
     min-height: 460px;
-    max-height: 520px;
     padding: 16px 18px 26px;
     overflow: visible;
 }
@@ -107,6 +107,7 @@
     min-height: 220px;
     max-height: 280px;
     overflow-y: auto;
+    scrollbar-gutter: stable;
 }
 
 .paramprop-group-wrap {
@@ -155,6 +156,23 @@
     text-align: left;
     white-space: nowrap;
     vertical-align: middle;
+}
+
+.paramprop-table th,
+.paramprop-group-table th {
+    white-space: nowrap;
+}
+
+.paramprop-table td,
+.paramprop-group-table td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.paramprop-table td:first-child,
+.paramprop-group-table td:first-child {
+    white-space: nowrap;
 }
 
 .paramprop-table th:first-child,
@@ -225,14 +243,14 @@
 
 .paramprop-opt-group {
     display: inline-flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 6px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
 }
 
 .paramprop-select {
-    min-width: 190px;
-    max-width: 240px;
+    min-width: min(190px, 100%);
+    max-width: 100%;
     padding: 8px 10px;
     border-radius: var(--radius-md);
     border: 1px solid var(--border-soft);
@@ -257,7 +275,8 @@
 .paramprop-opt .opt-label,
 .paramprop-options .opt-label {
     font-size: 0.9rem;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .paramprop-opt:last-child {
@@ -290,7 +309,6 @@
     flex-direction: column;
     gap: 10px;
     min-height: 460px;
-    max-height: 520px;
 }
 
 .paramprop-report {
@@ -334,6 +352,7 @@
     flex: 1;
     max-height: 240px;
     overflow-y: auto;
+    scrollbar-gutter: stable;
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-lg);
     background: var(--surface-panel);

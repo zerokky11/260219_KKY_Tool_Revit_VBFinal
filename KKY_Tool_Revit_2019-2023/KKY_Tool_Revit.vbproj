@@ -26,12 +26,13 @@
 		<OutputPath>bin\Rvt$(AddinYear)\net48\</OutputPath>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 
-		<!-- ✅ 1회 빌드로 함께 배포할 버전(출력 폴더 + ProgramData addins) -->
+		<!-- ✅ 1회 빌드로 함께 배포할 버전(출력 폴더 + 사용자 addins) -->
 		<DeployYears Condition="'$(DeployYears)'==''">2019;2021;2023</DeployYears>
 
-		<!-- ✅ Revit addin 위치: C:\ProgramData\Autodesk\Revit\Addins\(연도) -->
+		<!-- ✅ Revit addin 위치: %AppData%\Autodesk\Revit\Addins\(연도) -->
 		<ProgramDataPath>$([System.Environment]::GetFolderPath(SpecialFolder.CommonApplicationData))</ProgramDataPath>
-		<AddinRoot>$(ProgramDataPath)\Autodesk\Revit\Addins</AddinRoot>
+		<UserAddinRoot>$([System.Environment]::GetFolderPath(SpecialFolder.ApplicationData))\Autodesk\Revit\Addins</UserAddinRoot>
+		<AddinRoot>$(UserAddinRoot)</AddinRoot>
 		<AddinFileName>KKY_Tool_Revit.addin</AddinFileName>
 	</PropertyGroup>
 
@@ -91,6 +92,10 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<TargetPath>Resources\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
 		</Content>
+		<Content Include="..\docs\review_export_feature_sheet_matrix.xlsx" Condition="Exists('..\docs\review_export_feature_sheet_matrix.xlsx')">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+			<TargetPath>docs\review_export_feature_sheet_matrix.xlsx</TargetPath>
+		</Content>
 	</ItemGroup>
 	<ItemGroup>
 	  <Content Remove="Resources\icons\hub_16.png" />
@@ -105,7 +110,7 @@
 	  <EmbeddedResource Include="Resources\icons\KKY_TOOL_64_source.png" />
 	</ItemGroup>
 
-	<!-- ✅ 1회 빌드로 2019/2021/2023 출력 폴더 + ProgramData addin 파일 생성 -->
+	<!-- ✅ 1회 빌드로 2019/2021/2023 출력 폴더 + 사용자 addin 파일 생성 -->
 	<Target Name="DeployAllYears" AfterTargets="Build" Condition="'$(SkipDeployAllYears)'!='true'">
 		<ItemGroup>
 			<!-- MSBuild는 Include에 세미콜론을 자동 분리 -->
@@ -127,6 +132,9 @@
 
 			<AddinOutDir>$(AddinRoot)\$(DeployYear)\</AddinOutDir>
 			<AddinOutPath>$(AddinOutDir)$(AddinFileName)</AddinOutPath>
+			<LegacyProgramDataAddinDir>$(ProgramDataPath)\Autodesk\Revit\Addins\$(DeployYear)\</LegacyProgramDataAddinDir>
+			<LegacyProgramDataAddinPath>$(LegacyProgramDataAddinDir)$(AddinFileName)</LegacyProgramDataAddinPath>
+			<LegacyProgramDataDisabledAddinPath>$(LegacyProgramDataAddinDir)$(AddinFileName).disabled</LegacyProgramDataDisabledAddinPath>
 		</PropertyGroup>
 
 		<!-- 산출물 존재 체크 -->
@@ -142,7 +150,7 @@
 
 		<Copy SourceFiles="@(_DeployFiles)" DestinationFiles="@(_DeployFiles->'$(DeployDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" Condition="'$(DeployYear)' != '$(BuildYear)'" />
 
-		<!-- addin 파일 생성 (ProgramData) -->
+		<!-- addin 파일 생성 (사용자 AppData) -->
 		<MakeDir Directories="$(AddinOutDir)" />
 
 		<ItemGroup>
@@ -161,6 +169,17 @@
 
 		<WriteLinesToFile File="$(AddinOutPath)" Lines="@(_AddinXml)" Overwrite="true" Encoding="UTF-8" />
 		<Message Importance="high" Text="Created Revit addin file: $(AddinOutPath) -&gt; $(DeployDll)" />
+
+		<Delete Files="$(LegacyProgramDataDisabledAddinPath)"
+				Condition="Exists('$(LegacyProgramDataDisabledAddinPath)')"
+				ContinueOnError="WarnAndContinue" />
+		<Move SourceFiles="$(LegacyProgramDataAddinPath)"
+			  DestinationFiles="$(LegacyProgramDataDisabledAddinPath)"
+			  Condition="Exists('$(LegacyProgramDataAddinPath)')"
+			  ContinueOnError="WarnAndContinue" />
+		<Message Importance="high"
+				 Text="Disabled legacy ProgramData addin file: $(LegacyProgramDataAddinPath)"
+				 Condition="Exists('$(LegacyProgramDataDisabledAddinPath)')" />
 	</Target>
 
 	<Target Name="BuildAndCopyUpdater" AfterTargets="Build" Condition="'$(SkipUpdaterBuild)'!='true'">

@@ -1,5 +1,6 @@
 ﻿import { clear, div, toast, setBusy, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
+import { getLastExcelExportLocale } from '../core/dom.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 import { ProgressDialog } from '../core/progress.js';
@@ -102,7 +103,7 @@ export function renderSegmentPms(root) {
   const btnRemoveSel = cardBtn('선택 제거', removeCheckedRvt);
   const btnClearAll = cardBtn('등록 목록 비우기', () => { state.rvtList = []; state.rvtChecked.clear(); persistRvt(); renderRvtList(); updateButtons(); });
   const btnExtract = cardBtn('추출 시작', onExtract);
-  const btnSaveExtract = cardBtn('엑셀 내보내기', () => chooseExcelMode((mode) => post('segmentpms:save-extract', { excelMode: mode || 'fast' })));
+  const btnSaveExtract = cardBtn('엑셀 내보내기', () => chooseExcelMode((mode) => post('segmentpms:save-extract', { excelMode: mode || 'fast', locale: getLastExcelExportLocale() })));
   exActions.append(btnAddRvt, btnAddFolder, btnRemoveSel, btnClearAll, btnExtract, btnSaveExtract);
   exHeader.append(exActions);
   const rvtHint = div('rvt-drop-hint');
@@ -143,17 +144,17 @@ export function renderSegmentPms(root) {
   const btnRun = cardBtn('검토 시작', onRun);
   const btnSave = cardBtn('엑셀 내보내기', () => {
     if (!state.results) { toast('저장할 결과가 없습니다.', 'err'); return; }
-    chooseExcelMode((mode) => post('segmentpms:save-result', { excelMode: mode || 'fast' }));
+    chooseExcelMode((mode) => post('segmentpms:save-result', { excelMode: mode || 'fast', locale: getLastExcelExportLocale() }));
   });
   btnSaveExtract.onclick = () => chooseExcelMode((mode) => {
-    beginSegmentPmsProgress('Preparing extract export...');
-    post('segmentpms:save-extract', { excelMode: mode || 'fast' });
+    beginSegmentPmsProgress('추출 결과 내보내기를 준비하는 중...');
+    post('segmentpms:save-extract', { excelMode: mode || 'fast', locale: getLastExcelExportLocale() });
   });
   btnSave.onclick = () => {
     if (!state.results) { toast('내보낼 결과가 없습니다.', 'err'); return; }
     chooseExcelMode((mode) => {
-      beginSegmentPmsProgress('Preparing result export...');
-      post('segmentpms:save-result', { excelMode: mode || 'fast' });
+      beginSegmentPmsProgress('검토 결과 내보내기를 준비하는 중...');
+      post('segmentpms:save-result', { excelMode: mode || 'fast', locale: getLastExcelExportLocale() });
     });
   };
   chActions.append(btnLoadExtract, btnRegisterPms, btnTemplate, btnPrepare, btnRun, btnSave);
@@ -231,7 +232,7 @@ export function renderSegmentPms(root) {
     if (!targets.length) { toast('추출할 RVT를 선택하세요.', 'err'); return; }
     state.busy = true; updateButtons();
     ProgressDialog.show('Segment 매핑/검증', '추출 작업을 준비 중입니다.');
-    ProgressDialog.update(0, '추출 작업을 준비 중입니다.', '');
+    ProgressDialog.update(0, '추출 작업을 준비 중입니다.', '선택한 RVT와 추출 대상을 정리하는 중...');
     post('segmentpms:extract', { files: targets });
   }
 
@@ -314,7 +315,7 @@ export function renderSegmentPms(root) {
     state.results = null;
     setBusy(true, '검토 실행'); state.busy = true; updateButtons();
     ProgressDialog.show('Segment 매핑/검증', '검토를 준비 중입니다.');
-    ProgressDialog.update(0, '검토를 준비 중입니다.', '');
+    ProgressDialog.update(0, '검토를 준비 중입니다.', '매핑 선택과 PMS 데이터를 확인하는 중...');
     post('segmentpms:run', { groups });
   }
 
@@ -330,7 +331,7 @@ export function renderSegmentPms(root) {
 
   function beginSegmentPmsProgress(subtitle) {
     ProgressDialog.show('Segment PMS', subtitle || 'Preparing...');
-    ProgressDialog.update(0, subtitle || 'Preparing...', '');
+    ProgressDialog.update(0, subtitle || 'Preparing...', '단계별 입력 데이터를 확인하는 중...');
   }
 
   async function startSegmentPmsExport(kind) {
@@ -345,18 +346,19 @@ export function renderSegmentPms(root) {
     }
 
     const excelMode = await chooseExcelMode();
+    if (!excelMode) return;
     state.busy = true;
     setBusy(true, '엑셀 내보내기 중...');
     updateButtons();
 
     if (kind === 'extract') {
       beginSegmentPmsProgress('추출 결과를 저장하는 중...');
-      post('segmentpms:save-extract', { excelMode: excelMode || 'fast' });
+      post('segmentpms:save-extract', { excelMode: excelMode || 'fast', locale: getLastExcelExportLocale() });
       return;
     }
 
     beginSegmentPmsProgress('검토 결과를 저장하는 중...');
-    post('segmentpms:save-result', { excelMode: excelMode || 'fast' });
+    post('segmentpms:save-result', { excelMode: excelMode || 'fast', locale: getLastExcelExportLocale() });
   }
 
   function showSegmentPmsCompletionDialog(payload, totalCount) {

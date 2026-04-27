@@ -1,5 +1,5 @@
 ﻿// Resources/HubUI/js/views/dup.js
-import { clear, div, toast, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
+import { clear, div, toast, showExcelSavedDialog, chooseExcelMode, getLastExcelExportLocale, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
 import { onHost, post } from '../core/bridge.js';
 
@@ -902,11 +902,12 @@ export function renderDup(root){
         if (list.length){
           handleRows(list);
         } else if (!rows.length && !lastPairs.length && lastRun){
-          exportBtn.disabled = true;
+          syncExportButton();
           showNoResultsState();
           refreshSummary();
           renderAppliedBar();
         } else {
+          syncExportButton();
           paint();
           refreshSummary();
           renderAppliedBar();
@@ -919,7 +920,7 @@ export function renderDup(root){
         setLoading(false);
         lastPairs = Array.isArray(payload) ? payload : extractList(payload);
         lastPairs = dedupPairs(lastPairs);
-        exportBtn.disabled = (busy || (!rows.length && !lastPairs.length));
+        syncExportButton();
         if (!lastPairs.length && !rows.length && lastRun){
           showNoResultsState();
         } else {
@@ -952,7 +953,7 @@ export function renderDup(root){
         } else {
           toast(asStr(payload && payload.message, '엑셀 내보내기 실패'), 'err', 2800);
         }
-        exportBtn.disabled = (busy || (!rows.length && !lastPairs.length));
+        syncExportButton();
         return;
       }
 
@@ -1000,7 +1001,7 @@ export function renderDup(root){
         exporting = false;
         ProgressDialog.hide();
         toast(asStr(payload && payload.message, '오류가 발생했습니다.'), 'err', 3400);
-        exportBtn.disabled = (busy || (!rows.length && !lastPairs.length));
+        syncExportButton();
         return;
       }
     } catch(ex){
@@ -1069,8 +1070,9 @@ export function renderDup(root){
       ruleConfig: cfg
     };
     renderAppliedBar();
-    ProgressDialog.show(mode === 'clash' ? '자체간섭 검토' : '중복 검토', '준비 중...');
-    ProgressDialog.update(0, '준비 중...', '');
+    const prepTitle = mode === 'clash' ? '자체간섭 검토' : '중복 검토';
+    ProgressDialog.show(prepTitle, '검토 대상을 준비하는 중...');
+    ProgressDialog.update(0, '검토 대상을 준비하는 중...', '허용 오차와 제외 규칙을 적용하는 중...');
     post(EV_RUN_REQ, {
       mode: mode,
       tolFeet: tolFeet,
@@ -1100,17 +1102,18 @@ export function renderDup(root){
 
   exportBtn.addEventListener('click', function(){
     if (exporting) return;
-    if (!rows.length && !lastPairs.length) return;
+    if (!hasExportableResult()) return;
 
     exporting = true;
     exportBtn.disabled = true;
     var exportParamNames = getExportParamNames();
 
     chooseExcelMode(function(excelMode){
-      ProgressDialog.show('엑셀 내보내기', '준비 중...');
-      ProgressDialog.update(0, '준비 중...', '');
+      ProgressDialog.show('엑셀 내보내기', '엑셀 내보내기를 준비하는 중...');
+      ProgressDialog.update(0, '엑셀 내보내기를 준비하는 중...', '결과 시트와 저장 옵션을 정리하는 중...');
       post(EV_EXPORT_REQ, {
         excelMode: excelMode || 'fast',
+        locale: getLastExcelExportLocale(),
         exportParamNames: exportParamNames
       });
     });
@@ -1185,12 +1188,13 @@ export function renderDup(root){
     expanded = {};
     lastPairs = [];
     lastResult = null;
+    lastRun = null;
 
     body.innerHTML = '';
     renderIntro();
     refreshSummary();
     renderAppliedBar();
-    exportBtn.disabled = true;
+    syncExportButton();
   }
 
   function syncModeButtons(){
@@ -1209,13 +1213,21 @@ export function renderDup(root){
       '<p class="feature-sub">' + esc(sub2) + '</p>';
   }
 
+  function hasExportableResult(){
+    return !!lastResult || rows.length > 0 || lastPairs.length > 0;
+  }
+
+  function syncExportButton(){
+    exportBtn.disabled = !!(busy || exporting || !hasExportableResult());
+  }
+
   function setLoading(on){
     busy = !!on;
     runBtn.disabled = busy;
     btnDup.disabled = busy;
     btnClash.disabled = busy;
     settingsBtn.disabled = busy;
-    exportBtn.disabled = busy || exporting || (!rows.length && !lastPairs.length);
+    syncExportButton();
     runBtn.textContent = busy ? '검토 중…' : '검토 시작';
   }
 
@@ -1235,7 +1247,7 @@ export function renderDup(root){
     expanded = {};
     for (var i=0;i<groups.length;i++) expanded[groups[i].key] = 1;
 
-    exportBtn.disabled = (busy || (!rows.length && !lastPairs.length));
+    syncExportButton();
     if (!rows.length && !lastPairs.length){
       showNoResultsState();
     } else {

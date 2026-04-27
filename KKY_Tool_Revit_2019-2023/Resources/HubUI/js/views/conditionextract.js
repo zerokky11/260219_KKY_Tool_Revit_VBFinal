@@ -1,5 +1,6 @@
 ﻿import { clear, div, toast, setBusy, showCompletionSummaryDialog } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
+import { chooseExcelMode, getLastExcelExportLocale, showExcelSavedDialog } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { post, onHost } from '../core/bridge.js';
@@ -18,6 +19,7 @@ export function renderConditionExtract(root) {
   const state = {
     rvtPaths: [],
     checked: new Set(),
+    includeActiveLinkedDocuments: false,
     includeCoordinates: false,
     includeLinearMetrics: false,
     lengthUnit: 'mm',
@@ -79,6 +81,7 @@ export function renderConditionExtract(root) {
       ok: payload?.ok,
       message: payload?.message || '',
       outputFolder: payload?.outputFolder || '',
+      canExport: payload?.canExport !== false,
       resultWorkbookPath: payload?.resultWorkbookPath || '',
       logTextPath: payload?.logTextPath || '',
       summary: payload?.summary || null,
@@ -96,13 +99,21 @@ export function renderConditionExtract(root) {
     ProgressDialog.hide();
     if (!state.lastResult) state.lastResult = {};
     if (payload?.outputFolder) state.lastResult.outputFolder = payload.outputFolder;
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'canExport')) state.lastResult.canExport = payload.canExport !== false;
     if (payload?.resultWorkbookPath) state.lastResult.resultWorkbookPath = payload.resultWorkbookPath;
-    if (payload?.logTextPath) state.lastResult.logTextPath = payload.logTextPath;
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'logTextPath')) state.lastResult.logTextPath = payload.logTextPath || '';
     renderRunSummary(state);
     renderRvtModal(state);
     updateActionState(state);
-    requestAnimationFrame(() => openCompletionResultDialog(state, payload || {}));
-    toast(payload?.message || '결과 파일을 저장했습니다.', payload?.ok === false ? 'err' : 'ok', 3200);
+    const savedPath = payload?.path || payload?.resultWorkbookPath || '';
+    if (payload?.ok && savedPath) {
+      requestAnimationFrame(() => {
+        showExcelSavedDialog(payload?.message || '결과 엑셀을 저장했습니다.', savedPath, (path) => post('excel:open', { path }));
+      });
+    } else {
+      requestAnimationFrame(() => openCompletionResultDialog(state, payload || {}));
+      toast(payload?.message || '결과 파일을 저장했습니다.', payload?.ok === false ? 'err' : 'ok', 3200);
+    }
   });
   onHost('conditionextract:error', (payload) => {
     state.acceptProgress = false;
@@ -129,22 +140,25 @@ function buildRunCard(state) {
     <div class="deliverycleaner-card__head">
       <div>
         <h3>실행</h3>
-        <p>활성 문서를 바로 검토하거나 여러 RVT를 목록에 등록해 한 번에 추출합니다.</p>
+        <p>활성 문서, 활성 문서의 전체 Revit Link, 또는 여러 RVT를 대상으로 조건 추출을 실행합니다.</p>
       </div>
     </div>
   `;
 
   const actionRow = div('deliverycleaner-inline-actions multi-action-card__actions');
   const activeBtn = actionButton('활성문서 검토', () => runActiveDocument(state), 'primary');
+  const activeLinksBtn = actionButton('활성문서 + Link 검토', () => runActiveDocumentWithLinks(state), 'secondary');
   const batchBtn = actionButton('여러 RVT 검토', () => openRvtModal(state), 'secondary');
+  activeLinksBtn.classList.add('btn--multi');
   batchBtn.classList.add('btn--multi');
-  actionRow.append(activeBtn, batchBtn);
+  actionRow.append(activeBtn, activeLinksBtn, batchBtn);
 
   const summary = div('deliverycleaner-note');
   const guide = div('deliverycleaner-note');
   card.append(actionRow, summary, guide);
 
   state.ui.applyActiveBtn = activeBtn;
+  state.ui.applyActiveLinksBtn = activeLinksBtn;
   state.ui.openBatchBtn = batchBtn;
   state.ui.runSummary = summary;
   state.ui.runGuide = guide;
@@ -246,31 +260,32 @@ function buildConditionPanel(state) {
   const extractOptionsText = div('deliverycleaner-vg-rulebar__text');
   extractOptionsText.innerHTML = `
     <strong>추출 옵션</strong>
-    <span>좌표는 X / Y / Z 열로 저장되고, 선형 객체는 DirectionX / DirectionY / DirectionZ 와 Length 열을 함께 기록합니다.</span>
+    <span>좌표는 X / Y / Z 열로 저장되고, 선형 객체는 DirectionX / DirectionY / DirectionZ 와 Length 열을 함께 기록합니다. 단위는 단위 탭 설정을 따릅니다.</span>
   `;
   const extractOptionsControls = div('deliverycleaner-inline-controls');
-  const lengthSelectWrap = createUnitField('좌표 / 길이 단위', [
+  extractOptionsControls.append(coordLine, linearLine);
+  extractOptions.append(extractOptionsText, extractOptionsControls);
+
+  const extractNote = div('deliverycleaner-note');
+  extractNote.textContent = '값은 인스턴스 우선으로 찾고, 없으면 타입 파라미터에서 찾습니다. 좌표, 길이, 면적, 체적 단위는 단위 탭 설정으로 변환됩니다.';
+  extractSection.append(extractField, extractOptions, extractNote);
+  extractPanel.append(extractSection);
+
+  const unitsPanel = div('deliverycleaner-panel');
+  const unitsSection = createCompactSection('단위 설정', '좌표/길이, 면적, 체적 파라미터를 선택한 단위로 출력합니다.');
+  const unitGrid = div('conditionextract-unit-grid');
+  const lengthSelect = createUnitField('좌표 / 길이', [
     { value: 'mm', label: 'mm' },
+    { value: 'm', label: 'm' },
     { value: 'inch', label: 'inch' },
     { value: 'ft', label: 'ft' }
   ], (value) => {
     state.lengthUnit = value;
     renderSettingSummary(state);
   });
-  lengthSelectWrap.wrap.classList.add('deliverycleaner-inline-select', 'deliverycleaner-inline-select--stacked');
-  extractOptionsControls.append(coordLine, linearLine, lengthSelectWrap.wrap);
-  extractOptions.append(extractOptionsText, extractOptionsControls);
-
-  const extractNote = div('deliverycleaner-note');
-  extractNote.textContent = '값은 인스턴스 우선으로 찾고, 없으면 타입 파라미터에서 찾습니다. 좌표와 길이, 길이 파라미터는 위 단위를 따르고, 면적/체적은 단위 탭 설정으로 변환됩니다.';
-  extractSection.append(extractField, extractOptions, extractNote);
-  extractPanel.append(extractSection);
-
-  const unitsPanel = div('deliverycleaner-panel');
-  const unitsSection = createCompactSection('단위 설정', '면적과 체적 파라미터를 선택한 단위로 출력합니다. 좌표와 길이는 추출 탭의 단위를 따릅니다.');
-  const unitGrid = div('conditionextract-unit-grid');
   const areaSelect = createUnitField('면적', [
     { value: 'mm2', label: 'mm^2' },
+    { value: 'm2', label: 'm^2' },
     { value: 'in2', label: 'inch^2' },
     { value: 'ft2', label: 'ft^2' }
   ], (value) => {
@@ -279,15 +294,16 @@ function buildConditionPanel(state) {
   });
   const volumeSelect = createUnitField('체적', [
     { value: 'mm3', label: 'mm^3' },
+    { value: 'm3', label: 'm^3' },
     { value: 'in3', label: 'inch^3' },
     { value: 'ft3', label: 'ft^3' }
   ], (value) => {
     state.volumeUnit = value;
     renderSettingSummary(state);
   });
-  unitGrid.append(areaSelect.wrap, volumeSelect.wrap);
+  unitGrid.append(lengthSelect.wrap, areaSelect.wrap, volumeSelect.wrap);
   const unitNote = div('deliverycleaner-note');
-  unitNote.textContent = '파라미터 타입이 면적, 체적으로 판별되면 선택 단위로 변환하고, 그 외 값은 원래 표시값을 유지합니다.';
+  unitNote.textContent = '좌표 추출과 선형 길이 추출은 좌표 / 길이 단위를 따릅니다. 파라미터 타입이 길이, 면적, 체적으로 판별되면 선택 단위로 변환하고, 그 외 값은 원래 표시값을 유지합니다.';
   unitsSection.append(unitGrid, unitNote);
   unitsPanel.append(unitsSection);
 
@@ -320,7 +336,7 @@ function buildConditionPanel(state) {
   state.ui.extractInput = extractInput;
   state.ui.includeCoordinates = coordInput;
   state.ui.includeLinearMetrics = linearInput;
-  state.ui.lengthUnit = lengthSelectWrap.select;
+  state.ui.lengthUnit = lengthSelect.select;
   state.ui.areaUnit = areaSelect.select;
   state.ui.volumeUnit = volumeSelect.select;
   state.ui.settingSummary = summary;
@@ -458,6 +474,7 @@ function openCompletionResultDialog(state, payload) {
   const workbookPath = payload?.resultWorkbookPath || state.lastResult?.resultWorkbookPath || '';
   const logPath = payload?.logTextPath || state.lastResult?.logTextPath || '';
   const outputFolder = payload?.outputFolder || state.lastResult?.outputFolder || '';
+  const canExport = payload?.canExport !== false && (state.lastResult?.canExport !== false);
 
   const successCount = summary?.SuccessCount ?? summary?.successCount ?? 0;
   const failCount = summary?.FailCount ?? summary?.failCount ?? 0;
@@ -469,9 +486,11 @@ function openCompletionResultDialog(state, payload) {
   const volumeUnitLabel = formatVolumeUnit(state.volumeUnit);
 
   const notes = [];
-  if (outputFolder) notes.push(`결과 폴더: ${outputFolder}`);
+  if (outputFolder) notes.push(`기본 저장 위치: ${outputFolder}`);
   if (workbookPath) notes.push(`결과 파일: ${workbookPath}`);
   if (logPath) notes.push(`로그 파일: ${logPath}`);
+  if (!workbookPath) notes.push('자동 저장은 하지 않습니다. 필요할 때 아래 엑셀 내보내기 버튼으로 저장하세요.');
+  notes.push('Detail 시트에는 ElementId 열이 함께 포함됩니다.');
   notes.push(`좌표와 길이는 ${lengthUnitLabel} 기준으로 저장됩니다.`);
   notes.push(`면적 파라미터는 ${areaUnitLabel}, 체적 파라미터는 ${volumeUnitLabel} 기준으로 저장됩니다.`);
   notes.push('선형 방향은 DirectionX / DirectionY / DirectionZ 열에 기록됩니다.');
@@ -479,15 +498,6 @@ function openCompletionResultDialog(state, payload) {
   const actions = [];
   if (workbookPath) {
     actions.push({ label: '결과 파일 열기', onClick: () => post('excel:open', { path: workbookPath }) });
-  } else {
-    actions.push({
-      label: '결과 파일 추출',
-      variant: 'primary',
-      onClick: () => {
-        beginConditionExtractProgress('조건별 객체 속성 추출', '결과 파일을 준비하고 있습니다.');
-        post('conditionextract:export-results', {});
-      }
-    });
   }
   if (logPath) actions.push({ label: '로그 열기', onClick: () => post('excel:open', { path: logPath }) });
   if (outputFolder) actions.push({ label: '결과 폴더 열기', onClick: () => post('conditionextract:open-folder', { path: outputFolder }) });
@@ -507,7 +517,14 @@ function openCompletionResultDialog(state, payload) {
     notes,
     actions,
     confirmLabel: '닫기',
-    showExport: false
+    showExport: !!canExport,
+    exportDisabled: !canExport,
+    onExport: async () => {
+      const excelMode = await chooseExcelMode();
+      if (!excelMode) return;
+      beginConditionExtractProgress('조건별 객체 속성 추출', '결과 엑셀 저장을 준비 중입니다.');
+      post('conditionextract:export-results', { excelMode: excelMode || 'fast', locale: getLastExcelExportLocale() });
+    }
   });
 }
 
@@ -520,7 +537,19 @@ function runActiveDocument(state) {
   state.acceptProgress = true;
   setPageBusy(state, true);
   beginConditionExtractProgress('조건별 객체 속성 추출', '활성 문서 검토를 준비 중입니다.');
-  post('conditionextract:run', buildPayload(state, true));
+  post('conditionextract:run', buildPayload(state, true, false));
+}
+
+function runActiveDocumentWithLinks(state) {
+  if (getActiveBlockingReason(state)) {
+    updateActionState(state);
+    return;
+  }
+
+  state.acceptProgress = true;
+  setPageBusy(state, true);
+  beginConditionExtractProgress('조건별 객체 속성 추출', '활성 문서와 전체 Link 문서 검토를 준비 중입니다.');
+  post('conditionextract:run', buildPayload(state, true, true));
 }
 
 function runBatchDocuments(state) {
@@ -561,6 +590,7 @@ function applyHostState(state, payload) {
   state.rvtPaths = Array.isArray(settings.rvtPaths) ? [...settings.rvtPaths] : [];
   state.checked = new Set(state.rvtPaths);
   state.elementParameterUpdate = normalizeConditionState(settings.elementParameterUpdate);
+  state.includeActiveLinkedDocuments = !!settings.includeActiveLinkedDocuments;
   state.includeCoordinates = !!settings.includeCoordinates;
   state.includeLinearMetrics = !!settings.includeLinearMetrics;
   state.lengthUnit = settings.lengthUnit || 'mm';
@@ -649,14 +679,14 @@ function renderRunSummary(state) {
   const docType = state.activeDocument?.isWorkshared ? '워크셋 문서' : '일반 문서';
   const extractCount = getExtractParameterRows(state).length;
   const extraCount = Number(!!state.includeCoordinates) + Number(!!state.includeLinearMetrics);
-  state.ui.runSummary.textContent = `현재 문서: ${title}\n문서 유형: ${docType}\n등록된 RVT: ${state.rvtPaths.length}개\n추출 항목: ${extractCount + extraCount}개`;
+  state.ui.runSummary.textContent = `현재 문서: ${title}\n문서 유형: ${docType}\n등록된 RVT: ${state.rvtPaths.length}개\n활성 Link 포함 실행: 가능\n추출 항목: ${extractCount + extraCount}개`;
 
   if (state.busy) {
-    state.ui.runGuide.textContent = '작업이 진행 중입니다. 완료되면 결과 요약과 파일 경로를 보여줍니다.';
+    state.ui.runGuide.textContent = '작업이 진행 중입니다. 완료되면 결과 요약을 보여주고, 필요할 때 엑셀 내보내기로 저장할 수 있습니다.';
   } else if (getBatchOpenBlockingReason(state)) {
     state.ui.runGuide.textContent = '추출 파라미터 또는 좌표/선형 옵션을 1개 이상 설정하면 검토 버튼이 활성화됩니다.';
   } else {
-  state.ui.runGuide.textContent = '필터 파라미터는 인스턴스/타입을 모두 검사합니다. 활성문서는 즉시 검토하고, 여러 RVT는 목록 창에서 시작합니다.';
+  state.ui.runGuide.textContent = '필터 파라미터는 인스턴스/타입을 모두 검사합니다. 활성문서만 검토하거나, 활성문서의 전체 Revit Link까지 함께 검토하거나, 여러 RVT를 배치로 검토할 수 있습니다.';
   }
 }
 
@@ -718,7 +748,8 @@ function renderBatchReadyCard(state) {
     `단위 ${formatLengthUnit(state.lengthUnit)} / ${formatAreaUnit(state.areaUnit)} / ${formatVolumeUnit(state.volumeUnit)}`,
     `추가 옵션 ${[state.includeCoordinates ? '좌표' : null, state.includeLinearMetrics ? '선형' : null].filter(Boolean).join(' / ') || '없음'}`,
     '필터 파라미터는 인스턴스와 타입을 모두 검사합니다.',
-    'Central File은 Detach로 열고, 워크셋은 모두 닫은 상태로 처리합니다.'
+    'Central File은 Detach로 열고, 워크셋은 모두 닫은 상태로 처리합니다.',
+    '활성문서 + Link 검토는 현재 문서에 연결된 Revit Link 문서를 함께 읽습니다.'
   ].forEach((line) => {
     const item = document.createElement('li');
     item.textContent = line;
@@ -732,6 +763,7 @@ function updateActionState(state) {
   const batchRunReason = getBatchBlockingReason(state);
 
   if (state.ui.applyActiveBtn) state.ui.applyActiveBtn.disabled = !!activeReason || state.busy;
+  if (state.ui.applyActiveLinksBtn) state.ui.applyActiveLinksBtn.disabled = !!activeReason || state.busy;
   if (state.ui.openBatchBtn) state.ui.openBatchBtn.disabled = !!batchOpenReason || state.busy;
   if (state.ui.batchReadyRunBtn) state.ui.batchReadyRunBtn.disabled = !!batchRunReason || state.busy;
 }
@@ -748,9 +780,10 @@ function getBatchOpenBlockingReason(state) {
 }
 
 
-function buildPayload(state, useActiveDocument) {
+function buildPayload(state, useActiveDocument, includeActiveLinkedDocuments = false) {
   return {
     useActiveDocument: !!useActiveDocument,
+    includeActiveLinkedDocuments: !!includeActiveLinkedDocuments,
     rvtPaths: useActiveDocument ? [] : getCheckedRvtPaths(state),
     outputFolder: '',
     closeAllWorksetsOnOpen: true,
@@ -940,15 +973,15 @@ function tdWithAction(onRemove, disabled = false) {
 }
 
 function formatLengthUnit(value) {
-  return value === 'ft' ? 'ft' : value === 'inch' ? 'inch' : 'mm';
+  return value === 'ft' ? 'ft' : value === 'inch' ? 'inch' : value === 'm' ? 'm' : 'mm';
 }
 
 function formatAreaUnit(value) {
-  return value === 'ft2' ? 'ft^2' : value === 'in2' ? 'inch^2' : 'mm^2';
+  return value === 'ft2' ? 'ft^2' : value === 'in2' ? 'inch^2' : value === 'm2' ? 'm^2' : 'mm^2';
 }
 
 function formatVolumeUnit(value) {
-  return value === 'ft3' ? 'ft^3' : value === 'in3' ? 'inch^3' : 'mm^3';
+  return value === 'ft3' ? 'ft^3' : value === 'in3' ? 'inch^3' : value === 'm3' ? 'm^3' : 'mm^3';
 }
 
 function tdWithInput(value, placeholder, onChange) {

@@ -56,9 +56,10 @@ Namespace KKY_Tool_Revit
             End If
 
             ' 활성 문서/뷰 변경 이벤트 구독
+            DocumentVisualAidService.Start()
             AddHandler a.ViewActivated, AddressOf OnViewActivated
-            AddHandler a.ControlledApplication.DocumentOpened, AddressOf OnDocumentListChanged
-            AddHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentListChanged
+            AddHandler a.ControlledApplication.DocumentOpened, AddressOf OnDocumentOpened
+            AddHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentClosed
             AddHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentClosedForActiveLinkWorksetReopen
             ThirdPartyWarningSuppressor.Start()
 
@@ -68,9 +69,10 @@ Namespace KKY_Tool_Revit
         Public Function OnShutdown(a As UIControlledApplication) As Result Implements IExternalApplication.OnShutdown
             Try
                 RemoveHandler a.ViewActivated, AddressOf OnViewActivated
-                RemoveHandler a.ControlledApplication.DocumentOpened, AddressOf OnDocumentListChanged
-                RemoveHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentListChanged
+                RemoveHandler a.ControlledApplication.DocumentOpened, AddressOf OnDocumentOpened
+                RemoveHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentClosed
                 RemoveHandler a.ControlledApplication.DocumentClosed, AddressOf OnDocumentClosedForActiveLinkWorksetReopen
+                DocumentVisualAidService.Stop()
                 ThirdPartyWarningSuppressor.Stop()
             Catch
             End Try
@@ -80,13 +82,23 @@ Namespace KKY_Tool_Revit
         Private Sub OnViewActivated(sender As Object, e As ViewActivatedEventArgs)
             Try
                 HubHostWindow.NotifyActiveDocumentChanged(e.Document)
+                DocumentVisualAidService.NotifyActiveDocumentChanged(e.Document)
             Catch
             End Try
         End Sub
 
-        Private Sub OnDocumentListChanged(sender As Object, e As EventArgs)
+        Private Sub OnDocumentOpened(sender As Object, e As Autodesk.Revit.DB.Events.DocumentOpenedEventArgs)
             Try
                 HubHostWindow.NotifyDocumentListChanged()
+                DocumentVisualAidService.NotifyDocumentOpened(e.Document)
+            Catch
+            End Try
+        End Sub
+
+        Private Sub OnDocumentClosed(sender As Object, e As Autodesk.Revit.DB.Events.DocumentClosedEventArgs)
+            Try
+                HubHostWindow.NotifyDocumentListChanged()
+                DocumentVisualAidService.NotifyDocumentClosed()
             Catch
             End Try
         End Sub

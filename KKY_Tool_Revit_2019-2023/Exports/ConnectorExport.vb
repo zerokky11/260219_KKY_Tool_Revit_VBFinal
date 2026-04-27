@@ -17,11 +17,6 @@ Namespace Exports
 
             If String.IsNullOrWhiteSpace(outPath) Then Return outPath
 
-            Try
-                Global.KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey("connector", outPath)
-            Catch
-            End Try
-
             Return outPath
         End Function
 
@@ -31,11 +26,6 @@ Namespace Exports
             EnsureMessageRow(resultTable)
 
             Global.KKY_Tool_Revit.Infrastructure.ExcelCore.SaveXlsx(outPath, "Connector Diagnostics", resultTable)
-
-            Try
-                Global.KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey("connector", outPath)
-            Catch
-            End Try
         End Sub
 
         Private Sub EnsureMessageRow(table As DataTable)

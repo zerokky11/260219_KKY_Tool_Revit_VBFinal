@@ -360,7 +360,7 @@ Namespace Services
             Return ds
         End Function
 
-        Public Shared Sub SaveDataSetToXlsx(ds As DataSet, path As String, Optional doAutoFit As Boolean = False, Optional progressChannel As String = Nothing)
+        Public Shared Sub SaveDataSetToXlsx(ds As DataSet, path As String, Optional doAutoFit As Boolean = False, Optional progressChannel As String = Nothing, Optional exportLocale As String = "ko")
             If ds Is Nothing Then Return
 
             If ds.Tables.Contains(TableRules) Then
@@ -385,9 +385,7 @@ Namespace Services
 
             Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Reset(progressChannel)
             UI.Hub.UiBridgeExternalEvent.LogAutoFitDecision(doAutoFit, "SegmentPmsCheckService.SaveDataSetToXlsx")
-            ExcelCore.SaveXlsxMulti(path, sheets, doAutoFit, progressChannel)
-            ExcelExportStyleRegistry.ApplyStylesForKey("pms", path, autoFit:=doAutoFit, excelMode:=If(doAutoFit, "normal", "fast"))
-            Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "DONE", "엑셀 내보내기 완료", 0, 0, 100.0R, True)
+            ExcelCore.SaveXlsxMulti(path, sheets, doAutoFit, progressChannel, exportKind:="pms", exportLocale:=exportLocale)
         End Sub
 
         Public Shared Function LoadExtractFromXlsx(path As String) As DataSet

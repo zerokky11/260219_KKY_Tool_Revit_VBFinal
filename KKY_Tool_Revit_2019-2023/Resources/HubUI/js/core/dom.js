@@ -21,6 +21,35 @@ export const debounce = (fn, delay = 200) => {
   };
 };
 
+const EXCEL_EXPORT_LOCALE_KEY = 'kky.hub.excelExportLocale';
+
+function normalizeExcelExportLocale(value) {
+  const normalized = String(value || 'ko').trim().toLowerCase();
+  return normalized === 'en' || normalized === 'eng' || normalized === 'english' ? 'en' : 'ko';
+}
+
+function readLastExcelExportLocale() {
+  try {
+    return normalizeExcelExportLocale(localStorage.getItem(EXCEL_EXPORT_LOCALE_KEY));
+  } catch {
+    return 'ko';
+  }
+}
+
+let lastExcelExportLocale = readLastExcelExportLocale();
+
+function setLastExcelExportLocale(value) {
+  lastExcelExportLocale = normalizeExcelExportLocale(value);
+  try {
+    localStorage.setItem(EXCEL_EXPORT_LOCALE_KEY, lastExcelExportLocale);
+  } catch {
+  }
+}
+
+export function getLastExcelExportLocale() {
+  return lastExcelExportLocale;
+}
+
 export function refreshUiAfterHostDialog(render, delay = 120) {
   if (typeof render !== 'function') return;
 
@@ -186,7 +215,12 @@ export function toast(msg, kind = 'info', ms = 2600) {
   }, duration);
 }
 
-export function showExcelSavedDialog(message, filePath, onOpen) {
+export function showExcelSavedDialog(message, filePath, onOpen, options = {}) {
+  const {
+    description = '저장한 파일을 바로 여시겠습니까?',
+    openLabel = '파일 열기'
+  } = options || {};
+
   toast(message || '엑셀 파일을 저장했습니다.', 'ok');
 
   const existing = document.querySelector('.excel-dialog-backdrop');
@@ -204,7 +238,7 @@ export function showExcelSavedDialog(message, filePath, onOpen) {
 
   const desc = document.createElement('div');
   desc.className = 'excel-dialog-desc';
-  desc.textContent = '저장한 파일을 바로 여시겠습니까?';
+  desc.textContent = description;
 
   const path = document.createElement('div');
   path.className = 'excel-dialog-path';
@@ -216,7 +250,7 @@ export function showExcelSavedDialog(message, filePath, onOpen) {
   const btnOpen = document.createElement('button');
   btnOpen.type = 'button';
   btnOpen.className = 'btn btn-primary';
-  btnOpen.textContent = '파일 열기';
+  btnOpen.textContent = openLabel;
 
   const btnClose = document.createElement('button');
   btnClose.type = 'button';
@@ -244,8 +278,9 @@ export function showExcelSavedDialog(message, filePath, onOpen) {
 window.addEventListener('error', (e) => toast(`오류: ${e.message}`, 'err', 4200));
 window.addEventListener('unhandledrejection', (e) => toast(`오류: ${e.reason}`, 'err', 4200));
 
-export function chooseExcelMode(onSelect) {
+export function chooseExcelMode(onSelect, options = {}) {
   return new Promise((resolve) => {
+    const allowSplit = !!(options && options.allowSplit);
     const existing = document.querySelector('.excelmode-backdrop');
     if (existing) existing.remove();
 
@@ -263,14 +298,123 @@ export function chooseExcelMode(onSelect) {
     desc.className = 'excelmode-desc';
     desc.textContent = '빠른 추출은 열 너비 자동 맞춤을 건너뛰고, 일반 추출은 열 너비 AutoFit까지 수행합니다.';
 
+    const localeSection = document.createElement('div');
+    localeSection.className = 'excelmode-locale';
+
+    const localeLabel = document.createElement('div');
+    localeLabel.className = 'excelmode-locale-label';
+    localeLabel.textContent = '엑셀 출력 양식';
+
+    const localeHint = document.createElement('div');
+    localeHint.className = 'excelmode-locale-hint';
+    localeHint.textContent = '한글 선택 시 한글 헤더/문구가 적용되고, 미정의 항목은 원본(raw) 기준으로 유지됩니다. 영문 선택 시 영문 헤더와 문구가 적용됩니다.';
+
+    const localeOptions = document.createElement('div');
+    localeOptions.className = 'excelmode-locale-options';
+
+    let selectedLocale = getLastExcelExportLocale();
+
+    const buildLocaleOption = (value, titleText, descText) => {
+      const label = document.createElement('label');
+      label.className = 'excelmode-locale-option';
+
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = 'excel-export-locale';
+      input.value = value;
+      input.checked = selectedLocale === value;
+      input.addEventListener('change', () => {
+        if (input.checked) selectedLocale = value;
+      });
+
+      const textWrap = document.createElement('span');
+      textWrap.className = 'excelmode-locale-option__text';
+
+      const title = document.createElement('strong');
+      title.textContent = titleText;
+
+      const description = document.createElement('span');
+      description.textContent = descText;
+
+      textWrap.append(title, description);
+      label.append(input, textWrap);
+      return label;
+    };
+
+    localeOptions.append(
+      buildLocaleOption('ko', '한글', '한글 헤더와 검토 문구를 저장합니다.'),
+      buildLocaleOption('en', '영문', '헤더와 검토 문구를 영문으로 저장합니다.')
+    );
+    localeSection.append(localeLabel, localeHint, localeOptions);
+
+    let selectedScope = 'single';
+    let scopeSection = null;
+    if (allowSplit) {
+      scopeSection = document.createElement('div');
+      scopeSection.className = 'excelmode-scope';
+
+      const scopeLabel = document.createElement('div');
+      scopeLabel.className = 'excelmode-scope-label';
+      scopeLabel.textContent = '저장 방식';
+
+      const scopeHint = document.createElement('div');
+      scopeHint.className = 'excelmode-scope-hint';
+      scopeHint.textContent = '여러 RVT 검토 결과를 한 엑셀 파일로 묶거나, 폴더를 선택해 파일별로 따로 저장할 수 있습니다.';
+
+      const scopeOptions = document.createElement('div');
+      scopeOptions.className = 'excelmode-scope-options';
+
+      const buildScopeOption = (value, titleText, descText) => {
+        const label = document.createElement('label');
+        label.className = 'excelmode-scope-option';
+
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'excel-export-scope';
+        input.value = value;
+        input.checked = selectedScope === value;
+        input.addEventListener('change', () => {
+          if (input.checked) selectedScope = value;
+        });
+
+        const textWrap = document.createElement('span');
+        textWrap.className = 'excelmode-scope-option__text';
+
+        const title = document.createElement('strong');
+        title.textContent = titleText;
+
+        const description = document.createElement('span');
+        description.textContent = descText;
+
+        textWrap.append(title, description);
+        label.append(input, textWrap);
+        return label;
+      };
+
+      scopeOptions.append(
+        buildScopeOption('single', '한 파일로 저장', '기존처럼 시트 또는 시트 묶음으로 저장합니다.'),
+        buildScopeOption('split', '파일별로 저장', '폴더를 선택한 뒤 RVT별 개별 엑셀 파일로 저장합니다.')
+      );
+      scopeSection.append(scopeLabel, scopeHint, scopeOptions);
+    }
+
     const actions = document.createElement('div');
     actions.className = 'excelmode-actions';
 
     const close = (mode) => {
       backdrop.remove();
-      const picked = mode || 'fast';
-      if (typeof onSelect === 'function') onSelect(picked);
-      resolve(picked);
+      const picked = mode || null;
+      if (!picked) {
+        resolve(null);
+        return;
+      }
+
+      setLastExcelExportLocale(selectedLocale);
+      const result = allowSplit
+        ? { mode: picked, splitByFile: selectedScope === 'split' }
+        : picked;
+      if (typeof onSelect === 'function') onSelect(result);
+      resolve(result);
     };
 
     const btnFast = document.createElement('button');
@@ -285,13 +429,21 @@ export function chooseExcelMode(onSelect) {
     btnNormal.textContent = '일반 추출(열 너비 AutoFit)';
     btnNormal.addEventListener('click', () => close('normal'));
 
-    actions.append(btnFast, btnNormal);
-    dialog.append(title, desc, actions);
+    const btnCancel = document.createElement('button');
+    btnCancel.type = 'button';
+    btnCancel.className = 'btn';
+    btnCancel.textContent = '취소';
+    btnCancel.addEventListener('click', () => close(null));
+
+    actions.append(btnFast, btnNormal, btnCancel);
+    dialog.append(title, desc, localeSection);
+    if (scopeSection) dialog.append(scopeSection);
+    dialog.append(actions);
     backdrop.append(dialog);
     document.body.append(backdrop);
 
     backdrop.addEventListener('click', (e) => {
-      if (e.target === backdrop) close('fast');
+      if (e.target === backdrop) close(null);
     });
   });
 }

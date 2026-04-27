@@ -17,6 +17,9 @@ namespace KKY_Tool_Revit.Services
         {
             public string ParameterName { get; set; } = string.Empty;
             public List<LevelRule> LevelRules { get; set; } = new List<LevelRule>();
+            public bool HasAllowedElementScope { get; set; }
+            public List<int> AllowedElementIds { get; set; } = new List<int>();
+            public List<string> ExtraParameterNames { get; set; } = new List<string>();
         }
 
         public sealed class LevelRule
@@ -64,6 +67,7 @@ namespace KKY_Tool_Revit.Services
             public bool SpansMultipleZones { get; set; }
             public string Result { get; set; } = string.Empty;
             public string Note { get; set; } = string.Empty;
+            public Dictionary<string, string> ExtraParams { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
 
         public sealed class FileSummary
@@ -160,7 +164,15 @@ namespace KKY_Tool_Revit.Services
                 AbsoluteZFt = GetAbsoluteLevelZ(level)
             }).ToList()));
 
+            HashSet<int> allowedElementIds = new HashSet<int>((settings.AllowedElementIds ?? Enumerable.Empty<int>()).Where(id => id > 0));
+            List<string> extraParameterNames = NormalizeExtraParameterNames(settings.ExtraParameterNames);
             List<Element> elements = CollectTargetElements(doc);
+            if (settings.HasAllowedElementScope)
+            {
+                elements = elements
+                    .Where(element => element?.Id != null && allowedElementIds.Contains(element.Id.IntegerValue))
+                    .ToList();
+            }
             result.TotalElements = elements.Count;
             int total = Math.Max(elements.Count, 1);
 
@@ -174,7 +186,7 @@ namespace KKY_Tool_Revit.Services
                 {
                     result.MissingGeometryCount++;
                     result.IssueCount++;
-                    result.Rows.Add(BuildIssueRow(safeFileLabel, element, parameterName, null, null, null, string.Empty, string.Empty, 0d, 0d, 0d, false, "NO_GEOMETRY", "BoundingBox를 가져오지 못했습니다."));
+                    result.Rows.Add(BuildIssueRow(safeFileLabel, element, parameterName, null, null, null, string.Empty, string.Empty, 0d, 0d, 0d, false, "NO_GEOMETRY", "BoundingBox를 가져오지 못했습니다.", extraParameterNames));
                     continue;
                 }
 
@@ -210,7 +222,8 @@ namespace KKY_Tool_Revit.Services
                         topZ,
                         spansMultipleZones,
                         "RULE_MISSING",
-                        $"레벨 '{lowerLevel.Name}' 에 대한 기대 층정보 값이 설정되지 않았습니다."));
+                        $"레벨 '{lowerLevel.Name}' 에 대한 기대 층정보 값이 설정되지 않았습니다.",
+                        extraParameterNames));
                     continue;
                 }
 
@@ -233,7 +246,8 @@ namespace KKY_Tool_Revit.Services
                         topZ,
                         spansMultipleZones,
                         "PARAMETER_MISSING",
-                        "대상 파라미터를 찾지 못했습니다."));
+                        "대상 파라미터를 찾지 못했습니다.",
+                        extraParameterNames));
                     continue;
                 }
 
@@ -259,7 +273,8 @@ namespace KKY_Tool_Revit.Services
                         "MISMATCH",
                         spansMultipleZones
                             ? "여러 레벨 구간을 관통하여 가장 아래 구간의 층정보를 기대값으로 사용했습니다."
-                            : "객체의 층정보 값이 기대값과 일치하지 않습니다."));
+                            : "객체의 층정보 값이 기대값과 일치하지 않습니다.",
+                        extraParameterNames));
                 }
             }
 
@@ -298,6 +313,11 @@ namespace KKY_Tool_Revit.Services
             table.Columns.Add("Note");
 
             List<ReviewRow> source = (rows ?? Enumerable.Empty<ReviewRow>()).Where(row => row != null).ToList();
+            List<string> extraColumns = CollectExtraParamColumns(source);
+            foreach (string extraColumn in extraColumns)
+            {
+                table.Columns.Add(extraColumn);
+            }
             if (source.Count == 0)
             {
                 DataRow empty = table.NewRow();
@@ -326,6 +346,13 @@ namespace KKY_Tool_Revit.Services
                 dataRow["SpansMultipleZones"] = row.SpansMultipleZones ? "Y" : "N";
                 dataRow["Result"] = row.Result ?? string.Empty;
                 dataRow["Note"] = row.Note ?? string.Empty;
+                foreach (string extraColumn in extraColumns)
+                {
+                    string value;
+                    dataRow[extraColumn] = row.ExtraParams != null && row.ExtraParams.TryGetValue(extraColumn, out value)
+                        ? value ?? string.Empty
+                        : string.Empty;
+                }
                 table.Rows.Add(dataRow);
             }
 
@@ -763,7 +790,8 @@ namespace KKY_Tool_Revit.Services
             double topZ,
             bool spansMultipleZones,
             string result,
-            string note)
+            string note,
+            IList<string> extraParameterNames)
         {
             string familyName = string.Empty;
             string typeName = string.Empty;
@@ -814,8 +842,61 @@ namespace KKY_Tool_Revit.Services
                 TopZMm = Round(ToMillimeters(topZ), 1),
                 SpansMultipleZones = spansMultipleZones,
                 Result = result ?? string.Empty,
-                Note = note ?? string.Empty
+                Note = note ?? string.Empty,
+                ExtraParams = ReadExtraParamValues(element?.Document, element, extraParameterNames)
             };
+        }
+
+        private static List<string> NormalizeExtraParameterNames(IEnumerable<string> extraParameterNames)
+        {
+            var result = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string name in extraParameterNames ?? Enumerable.Empty<string>())
+            {
+                string normalized = (name ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(normalized)) continue;
+                if (seen.Add(normalized))
+                {
+                    result.Add(normalized);
+                }
+            }
+
+            return result;
+        }
+
+        private static Dictionary<string, string> ReadExtraParamValues(Document doc, Element element, IEnumerable<string> extraParameterNames)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (doc == null || element == null) return result;
+
+            foreach (string name in extraParameterNames ?? Enumerable.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(name)) continue;
+                result[name] = ModelParameterExtractionService.GetElementParameterValue(doc, element, name) ?? string.Empty;
+            }
+
+            return result;
+        }
+
+        private static List<string> CollectExtraParamColumns(IEnumerable<ReviewRow> rows)
+        {
+            var result = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (ReviewRow row in rows ?? Enumerable.Empty<ReviewRow>())
+            {
+                if (row?.ExtraParams == null) continue;
+                foreach (string key in row.ExtraParams.Keys)
+                {
+                    string normalized = (key ?? string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(normalized)) continue;
+                    if (seen.Add(normalized))
+                    {
+                        result.Add(normalized);
+                    }
+                }
+            }
+
+            return result;
         }
 
         private readonly struct ParameterMatch

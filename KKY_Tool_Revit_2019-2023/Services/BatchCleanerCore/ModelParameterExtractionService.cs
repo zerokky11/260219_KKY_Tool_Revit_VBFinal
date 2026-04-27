@@ -261,6 +261,9 @@ namespace KKY_Tool_Revit.Services
             if (element is Level) return false;
             if (element is Group) return false;
             if (element is AssemblyInstance) return false;
+            if (element is RevitLinkInstance) return false;
+            if (element is ImportInstance) return false;
+            if (element is BasePoint) return false;
             if (element is Room) return false;
             if (element is Area) return false;
             if (element is MEPSystem) return false;
@@ -274,6 +277,13 @@ namespace KKY_Tool_Revit.Services
             {
                 return false;
             }
+
+            if (categoryId == (int)BuiltInCategory.OST_Levels) return false;
+            if (categoryId == (int)BuiltInCategory.OST_Grids) return false;
+            if (categoryId == (int)BuiltInCategory.OST_RvtLinks) return false;
+            if (categoryId == (int)BuiltInCategory.OST_Cameras) return false;
+            if (categoryId == (int)BuiltInCategory.OST_SectionBox) return false;
+            if (categoryId == (int)BuiltInCategory.OST_VolumeOfInterest) return false;
 
             if (schedulableCategoryIds == null || !schedulableCategoryIds.Contains(categoryId)) return false;
             return !IsExplicitlyExcludedCategory(element.Category);
@@ -347,6 +357,7 @@ namespace KKY_Tool_Revit.Services
                 "Analytical",
                 "Load",
                 "Placeholder",
+                "Tag",
                 "Zone",
                 "Area",
                 "Grid",

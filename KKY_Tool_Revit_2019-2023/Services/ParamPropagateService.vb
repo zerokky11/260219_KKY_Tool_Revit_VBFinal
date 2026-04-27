@@ -625,6 +625,7 @@ Namespace Services
 
         Public Class ParameterGroupOption
             Public Property Id As Integer
+            Public Property Key As String
             Public Property Name As String
         End Class
 
@@ -639,6 +640,7 @@ Namespace Services
             Public Property ParamNames As List(Of String)
             Public Property ParamGuids As List(Of String)
             Public Property TargetGroup As Integer
+            Public Property TargetGroupKey As String
             Public Property IsInstance As Boolean
             Public Property ExcludeDummy As Boolean
             Public Property SaveModifiedFamilies As Boolean
@@ -649,6 +651,7 @@ Namespace Services
                     .ParamNames = New List(Of String)(),
                     .ParamGuids = New List(Of String)(),
                     .TargetGroup = CInt(BuiltInParameterGroup.PG_TEXT),
+                    .TargetGroupKey = String.Empty,
                     .IsInstance = True,
                     .ExcludeDummy = True,
                     .SaveModifiedFamilies = False,
@@ -684,6 +687,10 @@ Namespace Services
 
                     Dim gObj = ReadProp(payload, "group")
                     If gObj IsNot Nothing Then req.TargetGroup = Convert.ToInt32(gObj)
+
+                    Dim gKeyObj = ReadProp(payload, "groupKey")
+                    If gKeyObj Is Nothing Then gKeyObj = ReadProp(payload, "targetGroupKey")
+                    If gKeyObj IsNot Nothing Then req.TargetGroupKey = NormalizeParamName(gKeyObj.ToString())
 
                     Dim instObj = ReadProp(payload, "isInstance")
                     If instObj IsNot Nothing Then req.IsInstance = Convert.ToBoolean(instObj)
@@ -851,7 +858,10 @@ Namespace Services
             Dim chosenPG As BuiltInParameterGroup = BuiltInParameterGroup.PG_TEXT
 #If REVIT2025 Then
             Try
-                chosenPG = BuiltInParameterGroupCompat.FromSerializedValue(request.TargetGroup, BuiltInParameterGroup.PG_TEXT)
+                Dim serializedGroup As Object = If(String.IsNullOrWhiteSpace(request.TargetGroupKey),
+                                                   CType(request.TargetGroup, Object),
+                                                   CType(request.TargetGroupKey, Object))
+                chosenPG = BuiltInParameterGroupCompat.FromSerializedValue(serializedGroup, BuiltInParameterGroup.PG_TEXT)
             Catch
                 chosenPG = BuiltInParameterGroup.PG_TEXT
             End Try
@@ -888,8 +898,12 @@ Namespace Services
         End Function
 
         '==================== 결과를 엑셀로 ====================
-        Public Shared Function ExportResultToExcel(result As SharedParamRunResult, Optional autoFit As Boolean = False) As String
-            If result Is Nothing OrElse result.Details Is Nothing OrElse result.Details.Count = 0 Then Return String.Empty
+        Public Shared Function ExportResultToExcel(result As SharedParamRunResult, Optional autoFit As Boolean = False, Optional exportLocale As String = "ko") As String
+            If result Is Nothing Then Return String.Empty
+
+            Dim hasDetails As Boolean = (result.Details IsNot Nothing AndAlso result.Details.Count > 0)
+            Dim hasReport As Boolean = Not String.IsNullOrWhiteSpace(result.Report)
+            If Not hasDetails AndAlso Not hasReport Then Return String.Empty
 
             Dim defaultName As String = $"ParamProp_{Date.Now:yyMMdd_HHmmss}.xlsx"
 
@@ -903,15 +917,28 @@ Namespace Services
                 dt.Columns.Add("Family")
                 dt.Columns.Add("Detail")
 
-                For Each r In result.Details
-                    Dim row = dt.NewRow()
-                    row("Type") = r.Kind
-                    row("Family") = r.Family
-                    row("Detail") = r.Detail
-                    dt.Rows.Add(row)
-                Next
+                If hasReport Then
+                    For Each line As String In result.Report.Replace(vbCrLf, vbLf).Split({vbLf}, StringSplitOptions.None)
+                        If String.IsNullOrWhiteSpace(line) Then Continue For
+                        Dim row = dt.NewRow()
+                        row("Type") = "Report"
+                        row("Family") = String.Empty
+                        row("Detail") = line.Trim()
+                        dt.Rows.Add(row)
+                    Next
+                End If
 
-                Infrastructure.ExcelCore.SaveXlsx(sfd.FileName, "Results", dt, autoFit, sheetKey:="paramprop", exportKind:="paramprop")
+                If hasDetails Then
+                    For Each r In result.Details
+                        Dim row = dt.NewRow()
+                        row("Type") = r.Kind
+                        row("Family") = r.Family
+                        row("Detail") = r.Detail
+                        dt.Rows.Add(row)
+                    Next
+                End If
+
+                Infrastructure.ExcelCore.SaveXlsx(sfd.FileName, "Results", dt, autoFit, sheetKey:="paramprop", exportKind:="paramprop", exportLocale:=exportLocale)
                 Return sfd.FileName
             End Using
         End Function
@@ -999,47 +1026,29 @@ Namespace Services
                     hostDoc = doc.EditFamily(f)
 
                     Dim hostName As String = f.Name
+                    Dim hostFm As FamilyManager = Nothing
+                    Try : hostFm = hostDoc.FamilyManager : Catch : hostFm = Nothing : End Try
 
                     Dim insts = New FilteredElementCollector(hostDoc).
                                 OfClass(GetType(FamilyInstance)).
                                 Cast(Of FamilyInstance)()
 
                     For Each fi As FamilyInstance In insts
-                        Dim sym As FamilySymbol = TryCast(hostDoc.GetElement(fi.Symbol.Id), FamilySymbol)
-                        If sym Is Nothing Then Continue For
-
-                        Dim childFam As Family = sym.Family
-                        If childFam Is Nothing OrElse Not childFam.IsEditable Then Continue For
-                        If IsAnnotationFamily(childFam) Then Continue For
-
-                        If excludeDummy AndAlso
-                           childFam.Name.IndexOf("Dummy", StringComparison.OrdinalIgnoreCase) >= 0 Then
-                            dummyExcludedCount += 1
-                            Continue For
-                        End If
-
-                        Dim isShared As Boolean = False
-                        Try
-                            isShared = SharedFamilyHelper.IsFamilyShared(hostDoc, childFam)
-                        Catch
-                            isShared = False
-                        End Try
-
-                        ' 공유 체크 안 된 하위 패밀리는 완전히 제외
-                        If Not isShared Then Continue For
-
-                        Dim childName As String = childFam.Name
+                        Dim childNamesForInstance = CollectChildFamiliesForGraph(hostDoc, hostFm, fi, excludeDummy, dummyExcludedCount)
+                        If childNamesForInstance Is Nothing OrElse childNamesForInstance.Count = 0 Then Continue For
 
                         Dim setChildren As HashSet(Of String) = Nothing
                         If Not parentToChildren.TryGetValue(hostName, setChildren) Then
                             setChildren = New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
                             parentToChildren(hostName) = setChildren
                         End If
-                        setChildren.Add(childName)
 
                         allTargetNames.Add(hostName)
-                        allTargetNames.Add(childName)
-                        childNames.Add(childName)
+                        For Each childName In childNamesForInstance
+                            setChildren.Add(childName)
+                            allTargetNames.Add(childName)
+                            childNames.Add(childName)
+                        Next
                     Next
 
                 Catch ex As Exception
@@ -1258,6 +1267,9 @@ Namespace Services
 
                 ' 2) 자식이 있는 패밀리라면 하위 인스턴스와 연동
                 If hasChildren Then
+                    Dim childrenOfHost As HashSet(Of String) = Nothing
+                    parentToChildren.TryGetValue(famName, childrenOfHost)
+
                     Dim hostParams As New Dictionary(Of String, FamilyParameter)(StringComparer.OrdinalIgnoreCase)
                     For Each p As FamilyParameter In fm.Parameters
                         If p.Definition IsNot Nothing Then
@@ -1267,9 +1279,6 @@ Namespace Services
                             End If
                         End If
                     Next
-
-                    Dim childrenOfHost As HashSet(Of String) = Nothing
-                    parentToChildren.TryGetValue(famName, childrenOfHost)
 
                     Using t As New Transaction(famDoc, "KKY: Associate nested shared params")
                         t.Start()
@@ -1314,17 +1323,17 @@ Namespace Services
 
                                     Dim p As Parameter = TryGetElementParameterByName(fi, name)
                                     If p Is Nothing Then
-                                        ' 인스턴스에 파라미터가 없어서 스킵: 건수만 카운트
+                                        TraceAssociateSkipDebug(famDoc, famName, childF, fi, name, hostParam, "child-param-missing", p, fm)
                                         localSkipAssoc += 1
                                         Continue For
                                     End If
                                     If p.IsReadOnly Then
-                                        ' 읽기 전용이라 스킵: 건수만 카운트
+                                        TraceAssociateSkipDebug(famDoc, famName, childF, fi, name, hostParam, "child-param-readonly", p, fm)
                                         localSkipAssoc += 1
                                         Continue For
                                     End If
                                     If Not famDoc.FamilyManager.CanElementParameterBeAssociated(p) Then
-                                        ' 연동 불가라 스킵: 건수만 카운트
+                                        TraceAssociateSkipDebug(famDoc, famName, childF, fi, name, hostParam, "child-param-not-associable", p, fm)
                                         localSkipAssoc += 1
                                         Continue For
                                     End If
@@ -1403,6 +1412,277 @@ Namespace Services
         End Sub
 
         '==================== 공통 헬퍼들 ====================
+
+        Private Shared Sub SaveChildFamilyImmediatelyAfterAdd(famDoc As Document,
+                                                              famName As String,
+                                                              extDefs As IEnumerable(Of ExternalDefinition),
+                                                              chosenPG As BuiltInParameterGroup)
+            If famDoc Is Nothing Then Return
+
+            Dim fm As FamilyManager = Nothing
+            Try : fm = famDoc.FamilyManager : Catch : fm = Nothing : End Try
+
+            If extDefs IsNot Nothing Then
+                For Each extDef In extDefs
+                    If extDef Is Nothing Then Continue For
+                    Dim param As FamilyParameter = FindFamilyParameterByNameForSaveDebug(fm, extDef.Name)
+                    TraceChildSaveDebug(famDoc, "before-save", famName, extDef, chosenPG, param)
+                Next
+            End If
+
+            Dim saveMode As String = "none"
+            Dim savePath As String = ""
+            Dim saveFailureMessage As String = ""
+
+            Try
+                Dim docPath As String = ""
+                Try : docPath = If(famDoc.PathName, String.Empty) : Catch : docPath = "" : End Try
+
+                If Not String.IsNullOrWhiteSpace(docPath) Then
+                    Try
+                        famDoc.Save()
+                        saveMode = "save"
+                        savePath = docPath
+                    Catch ex As Exception
+                        saveFailureMessage = ex.Message
+                    End Try
+                End If
+
+                If saveMode = "none" Then
+                    Dim tempDir As String = Path.Combine(Path.GetTempPath(), "KKY_Tool_Revit", "ParamPropChildSave")
+                    Directory.CreateDirectory(tempDir)
+
+                    Dim baseName As String = Path.GetFileNameWithoutExtension(If(famName, famDoc.Title))
+                    If String.IsNullOrWhiteSpace(baseName) Then baseName = "ChildFamily"
+
+                    For Each ch As Char In Path.GetInvalidFileNameChars()
+                        baseName = baseName.Replace(ch, "_"c)
+                    Next
+
+                    savePath = Path.Combine(tempDir, $"{baseName}_{DateTime.Now:yyyyMMdd_HHmmss}.rfa")
+                    Dim options As New SaveAsOptions()
+                    options.OverwriteExistingFile = True
+                    famDoc.SaveAs(savePath, options)
+                    saveMode = If(String.IsNullOrWhiteSpace(saveFailureMessage), "saveas", "saveas-fallback")
+                End If
+
+                UI.Hub.UiBridgeExternalEvent.HostLog(
+                    "debug",
+                    $"[paramprop][child-save-debug] stage=saved; family={famName}; mode={saveMode}; path=""{savePath}""; saveMessage={If(String.IsNullOrWhiteSpace(saveFailureMessage), "<none>", saveFailureMessage)}")
+            Catch ex As Exception
+                UI.Hub.UiBridgeExternalEvent.HostLog(
+                    "debug",
+                    $"[paramprop][child-save-debug] stage=save-fail; family={famName}; message={ex.Message}")
+                Return
+            End Try
+
+            Try : famDoc.Regenerate() : Catch : End Try
+
+            If extDefs IsNot Nothing Then
+                Try : fm = famDoc.FamilyManager : Catch : fm = Nothing : End Try
+
+                For Each extDef In extDefs
+                    If extDef Is Nothing Then Continue For
+                    Dim param As FamilyParameter = FindFamilyParameterByNameForSaveDebug(fm, extDef.Name)
+                    TraceChildSaveDebug(famDoc, "after-save", famName, extDef, chosenPG, param)
+                Next
+            End If
+        End Sub
+
+        Private Shared Sub SaveParentFamilyImmediatelyAfterProjectLoad(famDoc As Document,
+                                                                       famName As String,
+                                                                       extDefs As IEnumerable(Of ExternalDefinition),
+                                                                       chosenPG As BuiltInParameterGroup)
+            If famDoc Is Nothing Then Return
+
+            Dim fm As FamilyManager = Nothing
+            Try : fm = famDoc.FamilyManager : Catch : fm = Nothing : End Try
+
+            If extDefs IsNot Nothing Then
+                For Each extDef In extDefs
+                    If extDef Is Nothing Then Continue For
+                    Dim param As FamilyParameter = FindFamilyParameterByNameForSaveDebug(fm, extDef.Name)
+                    TraceParentSaveDebug(famDoc, "before-save", famName, extDef, chosenPG, param)
+                Next
+            End If
+
+            Dim saveMode As String = "none"
+            Dim savePath As String = ""
+            Dim saveFailureMessage As String = ""
+
+            Try
+                Dim docPath As String = ""
+                Try : docPath = If(famDoc.PathName, String.Empty) : Catch : docPath = "" : End Try
+
+                If _saveModifiedFamilies AndAlso Not String.IsNullOrWhiteSpace(_modifiedFamilyOutputFolder) Then
+                    Directory.CreateDirectory(_modifiedFamilyOutputFolder)
+
+                    Dim baseName As String = Path.GetFileNameWithoutExtension(If(famName, famDoc.Title))
+                    If String.IsNullOrWhiteSpace(baseName) Then baseName = "ParentFamily"
+
+                    For Each ch As Char In Path.GetInvalidFileNameChars()
+                        baseName = baseName.Replace(ch, "_"c)
+                    Next
+
+                    savePath = Path.Combine(_modifiedFamilyOutputFolder, $"{baseName}.rfa")
+                    Dim options As New SaveAsOptions()
+                    options.OverwriteExistingFile = True
+                    famDoc.SaveAs(savePath, options)
+                    saveMode = "saveas-output"
+                ElseIf Not String.IsNullOrWhiteSpace(docPath) Then
+                    Try
+                        famDoc.Save()
+                        saveMode = "save"
+                        savePath = docPath
+                    Catch ex As Exception
+                        saveFailureMessage = ex.Message
+                    End Try
+                End If
+
+                If saveMode = "none" Then
+                    Dim tempDir As String = Path.Combine(Path.GetTempPath(), "KKY_Tool_Revit", "ParamPropParentSave")
+                    Directory.CreateDirectory(tempDir)
+
+                    Dim baseName As String = Path.GetFileNameWithoutExtension(If(famName, famDoc.Title))
+                    If String.IsNullOrWhiteSpace(baseName) Then baseName = "ParentFamily"
+
+                    For Each ch As Char In Path.GetInvalidFileNameChars()
+                        baseName = baseName.Replace(ch, "_"c)
+                    Next
+
+                    savePath = Path.Combine(tempDir, $"{baseName}_{DateTime.Now:yyyyMMdd_HHmmss}.rfa")
+                    Dim options As New SaveAsOptions()
+                    options.OverwriteExistingFile = True
+                    famDoc.SaveAs(savePath, options)
+                    saveMode = If(String.IsNullOrWhiteSpace(saveFailureMessage), "saveas", "saveas-fallback")
+                End If
+
+                If String.IsNullOrWhiteSpace(savePath) OrElse Not File.Exists(savePath) Then
+                    Throw New IOException($"저장 후 파일을 찾을 수 없습니다: {savePath}")
+                End If
+
+                UI.Hub.UiBridgeExternalEvent.HostLog(
+                    "debug",
+                    $"[paramprop][parent-save-debug] stage=saved; family={famName}; mode={saveMode}; path=""{savePath}""; saveMessage={If(String.IsNullOrWhiteSpace(saveFailureMessage), "<none>", saveFailureMessage)}")
+            Catch ex As Exception
+                UI.Hub.UiBridgeExternalEvent.HostLog(
+                    "debug",
+                    $"[paramprop][parent-save-debug] stage=save-fail; family={famName}; message={ex.Message}")
+                Return
+            End Try
+
+            Try : famDoc.Regenerate() : Catch : End Try
+
+            If extDefs IsNot Nothing Then
+                Try : fm = famDoc.FamilyManager : Catch : fm = Nothing : End Try
+
+                For Each extDef In extDefs
+                    If extDef Is Nothing Then Continue For
+                    Dim param As FamilyParameter = FindFamilyParameterByNameForSaveDebug(fm, extDef.Name)
+                    TraceParentSaveDebug(famDoc, "after-save", famName, extDef, chosenPG, param)
+                Next
+            End If
+        End Sub
+
+        Private Shared Function FindFamilyParameterByNameForSaveDebug(fm As FamilyManager,
+                                                                      name As String) As FamilyParameter
+            If fm Is Nothing OrElse String.IsNullOrWhiteSpace(name) Then Return Nothing
+
+            Try
+                Return fm.Parameters.Cast(Of FamilyParameter)().
+                    FirstOrDefault(Function(x) x IsNot Nothing AndAlso
+                                              x.Definition IsNot Nothing AndAlso
+                                              String.Equals(x.Definition.Name, name, StringComparison.OrdinalIgnoreCase))
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Sub TraceChildSaveDebug(famDoc As Document,
+                                               stage As String,
+                                               famName As String,
+                                               extDef As ExternalDefinition,
+                                               chosenPG As BuiltInParameterGroup,
+                                               param As FamilyParameter)
+            Try
+#If REVIT2025 Then
+                Dim fm As FamilyManager = Nothing
+                Try : fm = famDoc.FamilyManager : Catch : fm = Nothing : End Try
+                Dim requestedGroupTypeId As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, chosenPG, extDef)
+                Dim actualGroupTypeId As ForgeTypeId = TryGetFamilyParameterGroupTypeIdForSaveDebug(param)
+                UI.Hub.UiBridgeExternalEvent.HostLog(
+                    "debug",
+                    $"[paramprop][child-save-debug] stage={stage}; family={famName}; param={extDef.Name}; requested={DescribeGroupTypeIdForSaveDebug(requestedGroupTypeId)}; actual={DescribeGroupTypeIdForSaveDebug(actualGroupTypeId)}; paramFound={param IsNot Nothing}")
+#Else
+                Dim actualGroupName As String = "<null>"
+                Try
+                    If param IsNot Nothing AndAlso param.Definition IsNot Nothing Then
+                        actualGroupName = param.Definition.ParameterGroup.ToString()
+                    End If
+                Catch
+                End Try
+                UI.Hub.UiBridgeExternalEvent.HostLog(
+                    "debug",
+                    $"[paramprop][child-save-debug] stage={stage}; family={famName}; param={extDef.Name}; requested={chosenPG}; actual={actualGroupName}; paramFound={param IsNot Nothing}")
+#End If
+            Catch
+            End Try
+        End Sub
+
+        Private Shared Sub TraceParentSaveDebug(famDoc As Document,
+                                                stage As String,
+                                                famName As String,
+                                                extDef As ExternalDefinition,
+                                                chosenPG As BuiltInParameterGroup,
+                                                param As FamilyParameter)
+            Try
+#If REVIT2025 Then
+                Dim fm As FamilyManager = Nothing
+                Try : fm = famDoc.FamilyManager : Catch : fm = Nothing : End Try
+                Dim requestedGroupTypeId As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, chosenPG, extDef)
+                Dim actualGroupTypeId As ForgeTypeId = TryGetFamilyParameterGroupTypeIdForSaveDebug(param)
+                UI.Hub.UiBridgeExternalEvent.HostLog(
+                    "debug",
+                    $"[paramprop][parent-save-debug] stage={stage}; family={famName}; param={extDef.Name}; requested={DescribeGroupTypeIdForSaveDebug(requestedGroupTypeId)}; actual={DescribeGroupTypeIdForSaveDebug(actualGroupTypeId)}; paramFound={param IsNot Nothing}")
+#Else
+                Dim actualGroupName As String = "<null>"
+                Try
+                    If param IsNot Nothing AndAlso param.Definition IsNot Nothing Then
+                        actualGroupName = param.Definition.ParameterGroup.ToString()
+                    End If
+                Catch
+                End Try
+                UI.Hub.UiBridgeExternalEvent.HostLog(
+                    "debug",
+                    $"[paramprop][parent-save-debug] stage={stage}; family={famName}; param={extDef.Name}; requested={chosenPG}; actual={actualGroupName}; paramFound={param IsNot Nothing}")
+#End If
+            Catch
+            End Try
+        End Sub
+
+#If REVIT2025 Then
+        Private Shared Function TryGetFamilyParameterGroupTypeIdForSaveDebug(param As FamilyParameter) As ForgeTypeId
+            If param Is Nothing OrElse param.Definition Is Nothing Then Return Nothing
+
+            Try
+                Return param.Definition.GetGroupTypeId()
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function DescribeGroupTypeIdForSaveDebug(groupTypeId As ForgeTypeId) As String
+            If groupTypeId Is Nothing Then Return "<null>"
+
+            Try
+                Dim raw As String = groupTypeId.TypeId
+                If String.IsNullOrWhiteSpace(raw) Then Return "<null>"
+                Return raw
+            Catch
+                Return "<null>"
+            End Try
+        End Function
+#End If
 
 #If REVIT2025 Then
         '==================== Revit 2025: Parameter groupTypeId mapping (FIX) ====================
@@ -1584,6 +1864,11 @@ Namespace Services
             Public SkipItems As List(Of String)
         End Structure
 
+        Private Structure TypeDrivenAssociationResult
+            Public Applicable As Boolean
+            Public Success As Boolean
+        End Structure
+
         Private Shared Function VerifyAssociations(hostDoc As Document,
                                                    hostParams As Dictionary(Of String, FamilyParameter),
                                                    paramNames As List(Of String),
@@ -1693,6 +1978,464 @@ Namespace Services
             r.Skip = skipCnt : r.SkipItems = skipItems
             Return r
         End Function
+
+        Private Shared Function TryAssociateAcrossFamilyTypes(hostDoc As Document,
+                                                              fm As FamilyManager,
+                                                              fi As FamilyInstance,
+                                                              paramName As String,
+                                                              hostParam As FamilyParameter) As TypeDrivenAssociationResult
+            Dim result As New TypeDrivenAssociationResult With {.Applicable = False, .Success = False}
+            If hostDoc Is Nothing OrElse fm Is Nothing OrElse fi Is Nothing OrElse hostParam Is Nothing Then Return result
+
+            If Not HasNestedTypeLabelAssociation(hostDoc, fm, fi) Then Return result
+            result.Applicable = True
+
+            Dim originalType As FamilyType = Nothing
+            Try : originalType = fm.CurrentType : Catch : originalType = Nothing : End Try
+
+            Try
+                For Each famType As FamilyType In fm.Types
+                    If famType Is Nothing Then Continue For
+
+                    Try
+                        fm.CurrentType = famType
+                        hostDoc.Regenerate()
+                    Catch
+                        Continue For
+                    End Try
+
+                    Dim p As Parameter = Nothing
+                    Try
+                        p = TryGetElementParameterByName(fi, paramName)
+                    Catch
+                        p = Nothing
+                    End Try
+                    If p Is Nothing Then Continue For
+
+                    Try
+                        Dim associated = fm.GetAssociatedFamilyParameter(p)
+                        If associated IsNot Nothing AndAlso associated.Id = hostParam.Id Then
+                            result.Success = True
+                            Return result
+                        End If
+                    Catch
+                    End Try
+
+                    Try
+                        If (Not p.IsReadOnly) AndAlso fm.CanElementParameterBeAssociated(p) Then
+                            fm.AssociateElementParameterToFamilyParameter(p, hostParam)
+                            result.Success = True
+                            Return result
+                        End If
+                    Catch
+                    End Try
+                Next
+            Finally
+                Try
+                    If originalType IsNot Nothing Then fm.CurrentType = originalType
+                Catch
+                End Try
+                Try : hostDoc.Regenerate() : Catch : End Try
+            End Try
+
+            Return result
+        End Function
+
+        Private Shared Function CollectChildFamiliesForGraph(hostDoc As Document,
+                                                             fm As FamilyManager,
+                                                             fi As FamilyInstance,
+                                                             excludeDummy As Boolean,
+                                                             ByRef dummyExcludedCount As Integer) As HashSet(Of String)
+            Dim names As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            If hostDoc Is Nothing OrElse fi Is Nothing Then Return names
+
+            Dim currentChild As Family = TryGetNestedChildFamily(hostDoc, fi)
+            AddGraphChildFamily(hostDoc, currentChild, excludeDummy, dummyExcludedCount, names)
+
+            If fm Is Nothing Then Return names
+
+            Dim labelKeys As HashSet(Of String) = GetNestedTypeLabelAssociationKeys(hostDoc, fm, fi)
+            If labelKeys Is Nothing OrElse labelKeys.Count = 0 Then Return names
+
+            Dim originalType As FamilyType = Nothing
+            Try : originalType = fm.CurrentType : Catch : originalType = Nothing : End Try
+
+            Try
+                For Each famType As FamilyType In fm.Types
+                    If famType Is Nothing Then Continue For
+
+                    Try
+                        fm.CurrentType = famType
+                        hostDoc.Regenerate()
+                    Catch
+                        Continue For
+                    End Try
+
+                    CollectMatchingChildFamiliesForCurrentType(hostDoc,
+                                                               fm,
+                                                               labelKeys,
+                                                               excludeDummy,
+                                                               dummyExcludedCount,
+                                                               names)
+                Next
+            Finally
+                Try
+                    If originalType IsNot Nothing Then fm.CurrentType = originalType
+                Catch
+                End Try
+                Try : hostDoc.Regenerate() : Catch : End Try
+            End Try
+
+            Return names
+        End Function
+
+        Private Shared Function TryGetNestedChildFamily(hostDoc As Document,
+                                                        fi As FamilyInstance) As Family
+            If hostDoc Is Nothing OrElse fi Is Nothing Then Return Nothing
+
+            Try
+                Dim sym As FamilySymbol = TryCast(hostDoc.GetElement(fi.Symbol.Id), FamilySymbol)
+                If sym Is Nothing Then Return Nothing
+                Return sym.Family
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Sub CollectMatchingChildFamiliesForCurrentType(hostDoc As Document,
+                                                                      fm As FamilyManager,
+                                                                      labelKeys As HashSet(Of String),
+                                                                      excludeDummy As Boolean,
+                                                                      ByRef dummyExcludedCount As Integer,
+                                                                      names As HashSet(Of String))
+            If hostDoc Is Nothing OrElse fm Is Nothing OrElse labelKeys Is Nothing OrElse labelKeys.Count = 0 OrElse names Is Nothing Then Return
+
+            Dim insts As IEnumerable(Of FamilyInstance) = Enumerable.Empty(Of FamilyInstance)()
+            Try
+                insts = New FilteredElementCollector(hostDoc).
+                    OfClass(GetType(FamilyInstance)).
+                    Cast(Of FamilyInstance)().
+                    ToList()
+            Catch
+                Return
+            End Try
+
+            For Each candidate As FamilyInstance In insts
+                If candidate Is Nothing Then Continue For
+
+                Dim candidateKeys As HashSet(Of String) = GetNestedTypeLabelAssociationKeys(hostDoc, fm, candidate)
+                If candidateKeys Is Nothing OrElse candidateKeys.Count = 0 Then Continue For
+                If Not candidateKeys.Overlaps(labelKeys) Then Continue For
+
+                Dim childFam As Family = TryGetNestedChildFamily(hostDoc, candidate)
+                AddGraphChildFamily(hostDoc, childFam, excludeDummy, dummyExcludedCount, names)
+            Next
+        End Sub
+
+        Private Shared Function GetNestedTypeLabelAssociationKeys(hostDoc As Document,
+                                                                  fm As FamilyManager,
+                                                                  fi As FamilyInstance) As HashSet(Of String)
+            Dim keys As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            If hostDoc Is Nothing OrElse fm Is Nothing OrElse fi Is Nothing Then Return keys
+
+            For Each p As Parameter In fi.Parameters
+                If p Is Nothing Then Continue For
+
+                Try
+                    If p.StorageType <> StorageType.ElementId Then Continue For
+                Catch
+                    Continue For
+                End Try
+
+                Try
+                    Dim associated = fm.GetAssociatedFamilyParameter(p)
+                    If associated Is Nothing OrElse Not IsNestedTypeLabelFamilyParameter(associated) Then Continue For
+
+                    Dim key As String = Nothing
+                    Try
+                        key = associated.Id.IntegerValue.ToString()
+                    Catch
+                        key = Nothing
+                    End Try
+
+                    If String.IsNullOrWhiteSpace(key) Then
+                        Try
+                            key = associated.Definition.Name
+                        Catch
+                            key = Nothing
+                        End Try
+                    End If
+
+                    If Not String.IsNullOrWhiteSpace(key) Then
+                        keys.Add(key)
+                    End If
+                Catch
+                End Try
+            Next
+
+            Return keys
+        End Function
+
+        Private Shared Sub ReloadUpdatedChildrenIntoParentFamilyDoc(projDoc As Document,
+                                                                    parentFamDoc As Document,
+                                                                    parentFamilyName As String,
+                                                                    childNames As HashSet(Of String),
+                                                                    parentFails As List(Of String))
+            If projDoc Is Nothing OrElse parentFamDoc Is Nothing OrElse childNames Is Nothing OrElse childNames.Count = 0 Then Return
+
+            For Each childName In childNames
+                If String.IsNullOrWhiteSpace(childName) Then Continue For
+
+                Dim childProjFamily As Family = Nothing
+                Dim childFamDoc As Document = Nothing
+                Try
+                    childProjFamily = FindProjectFamilyByName(projDoc, childName)
+                    If childProjFamily Is Nothing OrElse Not childProjFamily.IsEditable Then
+                        UI.Hub.UiBridgeExternalEvent.HostLog(
+                            "debug",
+                            $"[paramprop][child-reload-debug] stage=skip; host={parentFamilyName}; child={childName}; reason=project-family-missing")
+                        Continue For
+                    End If
+
+                    childFamDoc = projDoc.EditFamily(childProjFamily)
+                    TxnUtil.SafeLoadFamily(childFamDoc, parentFamDoc, $"KKY Reload child '{childName}' into '{parentFamilyName}'")
+                    UI.Hub.UiBridgeExternalEvent.HostLog(
+                        "debug",
+                        $"[paramprop][child-reload-debug] stage=loaded; host={parentFamilyName}; child={childName}")
+                Catch ex As Exception
+                    If parentFails IsNot Nothing Then
+                        parentFails.Add($"{parentFamilyName}: [ChildReload] {childName} - {ex.Message}")
+                    End If
+                    UI.Hub.UiBridgeExternalEvent.HostLog(
+                        "debug",
+                        $"[paramprop][child-reload-debug] stage=fail; host={parentFamilyName}; child={childName}; message={ex.Message}")
+                Finally
+                    If childFamDoc IsNot Nothing Then
+                        Try : childFamDoc.Close(False) : Catch : End Try
+                    End If
+                End Try
+            Next
+        End Sub
+
+        Private Shared Function FindProjectFamilyByName(projDoc As Document,
+                                                        familyName As String) As Family
+            If projDoc Is Nothing OrElse String.IsNullOrWhiteSpace(familyName) Then Return Nothing
+
+            Try
+                Return New FilteredElementCollector(projDoc).
+                    OfClass(GetType(Family)).
+                    Cast(Of Family)().
+                    FirstOrDefault(Function(x) x IsNot Nothing AndAlso
+                                              String.Equals(x.Name, familyName, StringComparison.OrdinalIgnoreCase))
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Sub SyncNestedChildDefinitionsInsideParentDoc(parentFamDoc As Document,
+                                                                     parentFamilyName As String,
+                                                                     childNames As HashSet(Of String),
+                                                                     extDefs As IEnumerable(Of ExternalDefinition),
+                                                                     chosenIsInstance As Boolean,
+                                                                     chosenPG As BuiltInParameterGroup,
+                                                                     parentFails As List(Of String))
+            If parentFamDoc Is Nothing OrElse childNames Is Nothing OrElse childNames.Count = 0 OrElse extDefs Is Nothing Then Return
+
+            For Each childName In childNames
+                If String.IsNullOrWhiteSpace(childName) Then Continue For
+
+                Dim nestedChildFamily As Family = Nothing
+                Dim nestedChildDoc As Document = Nothing
+                Try
+                    nestedChildFamily = FindFamilyByNameInDocument(parentFamDoc, childName)
+                    If nestedChildFamily Is Nothing OrElse Not nestedChildFamily.IsEditable Then
+                        UI.Hub.UiBridgeExternalEvent.HostLog(
+                            "debug",
+                            $"[paramprop][nested-child-sync-debug] stage=skip; host={parentFamilyName}; child={childName}; reason=nested-family-missing")
+                        Continue For
+                    End If
+
+                    nestedChildDoc = parentFamDoc.EditFamily(nestedChildFamily)
+
+                    Dim addedAny As Boolean = False
+                    For Each extDef In extDefs
+                        If extDef Is Nothing Then Continue For
+                        Dim res = EnsureSharedParamInFamily(nestedChildDoc, extDef, chosenIsInstance, chosenPG)
+                        If res.Added Then addedAny = True
+                        If Not String.IsNullOrWhiteSpace(res.ErrorMessage) Then
+                            If parentFails IsNot Nothing Then
+                                parentFails.Add($"{parentFamilyName}: [NestedChildSync] {childName} / {extDef.Name} - {res.ErrorMessage}")
+                            End If
+                        End If
+                    Next
+
+                    Try : nestedChildDoc.Regenerate() : Catch : End Try
+                    TxnUtil.SafeLoadFamily(nestedChildDoc, parentFamDoc, $"KKY Sync nested child '{childName}' in '{parentFamilyName}'")
+
+                    UI.Hub.UiBridgeExternalEvent.HostLog(
+                        "debug",
+                        $"[paramprop][nested-child-sync-debug] stage=loaded; host={parentFamilyName}; child={childName}; addedAny={addedAny}")
+                Catch ex As Exception
+                    If parentFails IsNot Nothing Then
+                        parentFails.Add($"{parentFamilyName}: [NestedChildSync] {childName} - {ex.Message}")
+                    End If
+                    UI.Hub.UiBridgeExternalEvent.HostLog(
+                        "debug",
+                        $"[paramprop][nested-child-sync-debug] stage=fail; host={parentFamilyName}; child={childName}; message={ex.Message}")
+                Finally
+                    If nestedChildDoc IsNot Nothing Then
+                        Try : nestedChildDoc.Close(False) : Catch : End Try
+                    End If
+                End Try
+            Next
+        End Sub
+
+        Private Shared Function FindFamilyByNameInDocument(ownerDoc As Document,
+                                                           familyName As String) As Family
+            If ownerDoc Is Nothing OrElse String.IsNullOrWhiteSpace(familyName) Then Return Nothing
+
+            Try
+                Return New FilteredElementCollector(ownerDoc).
+                    OfClass(GetType(Family)).
+                    Cast(Of Family)().
+                    FirstOrDefault(Function(x) x IsNot Nothing AndAlso
+                                              String.Equals(x.Name, familyName, StringComparison.OrdinalIgnoreCase))
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Sub AddGraphChildFamily(hostDoc As Document,
+                                               childFam As Family,
+                                               excludeDummy As Boolean,
+                                               ByRef dummyExcludedCount As Integer,
+                                               names As HashSet(Of String))
+            If names Is Nothing OrElse childFam Is Nothing Then Return
+            If Not childFam.IsEditable Then Return
+            If IsAnnotationFamily(childFam) Then Return
+
+            If excludeDummy AndAlso childFam.Name.IndexOf("Dummy", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                dummyExcludedCount += 1
+                Return
+            End If
+
+            Dim isShared As Boolean = False
+            Try
+                isShared = SharedFamilyHelper.IsFamilyShared(hostDoc, childFam)
+            Catch
+                isShared = False
+            End Try
+            If Not isShared Then Return
+
+            names.Add(childFam.Name)
+        End Sub
+
+        Private Shared Function VerifyAssociationAcrossFamilyTypes(hostDoc As Document,
+                                                                   fm As FamilyManager,
+                                                                   fi As FamilyInstance,
+                                                                   paramName As String,
+                                                                   hostParam As FamilyParameter) As TypeDrivenAssociationResult
+            Dim result As New TypeDrivenAssociationResult With {.Applicable = False, .Success = False}
+            If hostDoc Is Nothing OrElse fm Is Nothing OrElse fi Is Nothing OrElse hostParam Is Nothing Then Return result
+
+            If Not HasNestedTypeLabelAssociation(hostDoc, fm, fi) Then Return result
+            result.Applicable = True
+
+            Dim originalType As FamilyType = Nothing
+            Try : originalType = fm.CurrentType : Catch : originalType = Nothing : End Try
+
+            Try
+                For Each famType As FamilyType In fm.Types
+                    If famType Is Nothing Then Continue For
+
+                    Try
+                        fm.CurrentType = famType
+                        hostDoc.Regenerate()
+                    Catch
+                        Continue For
+                    End Try
+
+                    Dim p As Parameter = Nothing
+                    Try
+                        p = TryGetElementParameterByName(fi, paramName)
+                    Catch
+                        p = Nothing
+                    End Try
+                    If p Is Nothing Then Continue For
+
+                    Try
+                        Dim associated = fm.GetAssociatedFamilyParameter(p)
+                        If associated IsNot Nothing AndAlso associated.Id = hostParam.Id Then
+                            result.Success = True
+                            Return result
+                        End If
+                    Catch
+                    End Try
+                Next
+            Finally
+                Try
+                    If originalType IsNot Nothing Then fm.CurrentType = originalType
+                Catch
+                End Try
+                Try : hostDoc.Regenerate() : Catch : End Try
+            End Try
+
+            Return result
+        End Function
+
+        Private Shared Function HasNestedTypeLabelAssociation(hostDoc As Document,
+                                                              fm As FamilyManager,
+                                                              fi As FamilyInstance) As Boolean
+            Return GetNestedTypeLabelAssociationKeys(hostDoc, fm, fi).Count > 0
+        End Function
+
+        Private Shared Function IsNestedTypeLabelFamilyParameter(param As FamilyParameter) As Boolean
+            If param Is Nothing OrElse param.Definition Is Nothing Then Return False
+
+#If REVIT2025 Then
+            Try
+                Dim dataType As ForgeTypeId = param.Definition.GetDataType()
+                If dataType Is Nothing Then Return False
+                Return Category.IsBuiltInCategory(dataType)
+            Catch
+                Return False
+            End Try
+#Else
+            Return True
+#End If
+        End Function
+
+        Private Shared Sub TraceAssociateSkipDebug(hostDoc As Document,
+                                                   hostFamilyName As String,
+                                                   childFamily As Family,
+                                                   fi As FamilyInstance,
+                                                   paramName As String,
+                                                   hostParam As FamilyParameter,
+                                                   reason As String,
+                                                   childParam As Parameter,
+                                                   fm As FamilyManager)
+            Try
+                Dim childFamilyName As String = If(childFamily Is Nothing, "<null>", childFamily.Name)
+                Dim childParamFound As Boolean = (childParam IsNot Nothing)
+                Dim childParamReadOnly As String = "<unknown>"
+                Dim childParamAssociable As String = "<unknown>"
+                Dim childParamStorage As String = "<unknown>"
+                Dim labelDriven As Boolean = False
+
+                If childParam IsNot Nothing Then
+                    Try : childParamReadOnly = childParam.IsReadOnly.ToString() : Catch : End Try
+                    Try : childParamAssociable = fm.CanElementParameterBeAssociated(childParam).ToString() : Catch : End Try
+                    Try : childParamStorage = childParam.StorageType.ToString() : Catch : End Try
+                End If
+
+                Try : labelDriven = HasNestedTypeLabelAssociation(hostDoc, fm, fi) : Catch : labelDriven = False : End Try
+
+                UI.Hub.UiBridgeExternalEvent.HostLog(
+                    "debug",
+                    $"[paramprop][associate-skip-debug] host={hostFamilyName}; child={childFamilyName}; instanceId={If(fi Is Nothing, -1, fi.Id.IntegerValue)}; param={paramName}; reason={reason}; childParamFound={childParamFound}; childParamReadOnly={childParamReadOnly}; childParamAssociable={childParamAssociable}; childParamStorage={childParamStorage}; labelDriven={labelDriven}; hostParamFound={hostParam IsNot Nothing}")
+            Catch
+            End Try
+        End Sub
 
         Private Shared Function TryGetElementParameterByName(elem As Element,
                                                              paramName As String) As Parameter
@@ -1842,6 +2585,7 @@ Namespace Services
                 If opt Is Nothing Then Continue For
                 items.Add(New ParameterGroupOption With {
                     .Id = opt.Id,
+                    .Key = opt.Key,
                     .Name = If(String.IsNullOrWhiteSpace(opt.Label), opt.Key, opt.Label)
                 })
             Next
@@ -1860,6 +2604,7 @@ Namespace Services
             For Each pg In preferred
                 items.Add(New ParameterGroupOption With {
                     .Id = CInt(pg),
+                    .Key = pg.ToString(),
                     .Name = pg.ToString()
                 })
                 added.Add(CInt(pg))
@@ -1869,6 +2614,7 @@ Namespace Services
                 If Not added.Contains(CInt(pg)) Then
                     items.Add(New ParameterGroupOption With {
                         .Id = CInt(pg),
+                        .Key = pg.ToString(),
                         .Name = pg.ToString()
                     })
                 End If

@@ -1,5 +1,6 @@
 ﻿import { clear, div, tdText, toast, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
+import { getLastExcelExportLocale } from '../core/dom.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 import { ProgressDialog } from '../core/progress.js';
@@ -49,7 +50,7 @@ export function renderExport(root) {
     preview.id = 'btnExPreview'; preview.disabled = true; preview.classList.add('btn-primary');
     const save = cardBtn('엑셀 내보내기', () => {
       chooseExcelMode((mode) => {
-        const payload = { rows: convertRowsForSave(), unit: state.unit, files: selectedFilePaths(), excelMode: mode || 'fast' };
+        const payload = { rows: convertRowsForSave(), unit: state.unit, files: selectedFilePaths(), excelMode: mode || 'fast', locale: getLastExcelExportLocale() };
         activeTask = 'save';
         setWorking(true);
         startProgress('EXCEL', '엑셀 내보내기 준비 중…', state.rowsRaw.length);

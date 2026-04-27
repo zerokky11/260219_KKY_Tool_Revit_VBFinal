@@ -55,6 +55,7 @@ Namespace UI.Hub
                     .outputFolder = result.OutputFolder,
                     .summary = result.Summary,
                     .fileCount = result.Files.Count,
+                    .canExport = (result.Files.Count > 0 OrElse result.Logs.Count > 0),
                     .resultWorkbookPath = result.ResultWorkbookPath,
                     .logTextPath = result.LogTextPath,
                     .activeDocument = New With {
@@ -85,14 +86,49 @@ Namespace UI.Hub
                     Return
                 End If
 
-                ConditionExtractService.ExportArtifacts(app, settings, result)
-                SendToWeb("conditionextract:artifacts-exported", New With {
-                    .ok = True,
-                    .message = "결과 엑셀과 로그를 저장했습니다.",
-                    .outputFolder = result.OutputFolder,
-                    .resultWorkbookPath = result.ResultWorkbookPath,
-                    .logTextPath = result.LogTextPath
-                })
+                Dim doAutoFit As Boolean = ParseExcelMode(payload)
+                Dim excelMode As String = If(doAutoFit, "normal", "fast")
+                Dim exportLocale As String = ParseExcelLocale(payload)
+
+                Using dlg As New WinForms.SaveFileDialog()
+                    dlg.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
+                    dlg.FileName = $"ConditionExtractResult_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx"
+                    dlg.DefaultExt = "xlsx"
+                    dlg.AddExtension = True
+                    dlg.RestoreDirectory = True
+                    Try
+                        If Not String.IsNullOrWhiteSpace(result.OutputFolder) AndAlso Directory.Exists(result.OutputFolder) Then
+                            dlg.InitialDirectory = result.OutputFolder
+                        End If
+                    Catch
+                    End Try
+
+                    If dlg.ShowDialog() <> WinForms.DialogResult.OK Then
+                        SendToWeb("conditionextract:artifacts-exported", New With {
+                            .ok = False,
+                            .message = "엑셀 내보내기가 취소되었습니다.",
+                            .canExport = True
+                        })
+                        Return
+                    End If
+
+                    Dim workbookPath = dlg.FileName
+                    If Not String.Equals(Path.GetExtension(workbookPath), ".xlsx", StringComparison.OrdinalIgnoreCase) Then
+                        workbookPath = Path.ChangeExtension(workbookPath, ".xlsx")
+                    End If
+
+                    ConditionExtractService.ExportArtifacts(app, settings, result, workbookPath, doAutoFit, exportLocale)
+                    SendToWeb("conditionextract:artifacts-exported", New With {
+                        .ok = True,
+                        .message = "결과 엑셀을 저장했습니다.",
+                        .outputFolder = result.OutputFolder,
+                        .canExport = True,
+                        .path = result.ResultWorkbookPath,
+                        .resultWorkbookPath = result.ResultWorkbookPath,
+                        .logTextPath = result.LogTextPath,
+                        .excelMode = excelMode
+                    })
+                End Using
             Catch ex As Exception
                 SendToWeb("conditionextract:artifacts-exported", New With {.ok = False, .message = ex.Message})
             End Try
@@ -130,6 +166,7 @@ Namespace UI.Hub
             Dim pd = ParsePayloadDict(payload)
             Dim settings As New ConditionExtractService.Settings()
             settings.UseActiveDocument = SafeBoolObj(GetProp(pd, "useActiveDocument"), True)
+            settings.IncludeActiveLinkedDocuments = SafeBoolObj(GetProp(pd, "includeActiveLinkedDocuments"), False)
             settings.RvtPaths = ParseStringList(pd, "rvtPaths")
             settings.OutputFolder = NormalizeDeliveryCleanerText(GetProp(pd, "outputFolder"))
             settings.CloseAllWorksetsOnOpen = SafeBoolObj(GetProp(pd, "closeAllWorksetsOnOpen"), True)
@@ -163,6 +200,7 @@ Namespace UI.Hub
             Return New With {
                 .settings = New With {
                     .useActiveDocument = settings.UseActiveDocument,
+                    .includeActiveLinkedDocuments = settings.IncludeActiveLinkedDocuments,
                     .rvtPaths = If(settings.RvtPaths, New List(Of String)()),
                     .outputFolder = settings.OutputFolder,
                     .closeAllWorksetsOnOpen = settings.CloseAllWorksetsOnOpen,
@@ -178,6 +216,7 @@ Namespace UI.Hub
                     .ok = result.Ok,
                     .message = result.Message,
                     .outputFolder = result.OutputFolder,
+                    .canExport = (result.Files.Count > 0 OrElse result.Logs.Count > 0),
                     .resultWorkbookPath = result.ResultWorkbookPath,
                     .logTextPath = result.LogTextPath,
                     .summary = result.Summary,

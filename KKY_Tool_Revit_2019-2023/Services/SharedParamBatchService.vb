@@ -14,6 +14,7 @@ Imports System.Windows.Forms
 Imports Autodesk.Revit.DB
 Imports Autodesk.Revit.UI
 Imports KKY_Tool_Revit.Infrastructure
+Imports KKY_Tool_Revit.UI.Hub
 Imports RevitApp = Autodesk.Revit.ApplicationServices.Application
 Imports WinForms = System.Windows.Forms
 
@@ -458,7 +459,8 @@ Namespace Services
             End Try
         End Function
 
-        Public Shared Function ExportExcel(resultDtoOrLogsJson As String) As Object
+        Public Shared Function ExportExcel(resultDtoOrLogsJson As String,
+                                           Optional progressChannel As String = Nothing) As Object
             If String.IsNullOrWhiteSpace(resultDtoOrLogsJson) Then
                 Return New With {.ok = False, .message = "로그 데이터가 없습니다."}
             End If
@@ -485,6 +487,17 @@ Namespace Services
                 End If
             Catch
                 doAutoFit = False
+            End Try
+            Dim exportLocale As String = "ko"
+            Try
+                Dim locale As String = TryGetString(payload, "locale")
+                If String.Equals(locale, "en", StringComparison.OrdinalIgnoreCase) OrElse
+                   String.Equals(locale, "eng", StringComparison.OrdinalIgnoreCase) OrElse
+                   String.Equals(locale, "english", StringComparison.OrdinalIgnoreCase) Then
+                    exportLocale = "en"
+                End If
+            Catch
+                exportLocale = "ko"
             End Try
 
             Dim dt As New DataTable("SharedParamBatch")
@@ -521,8 +534,11 @@ Namespace Services
                 saved = sfd.FileName
             End Using
 
-            ExcelCore.SaveXlsx(saved, "Logs", dt, doAutoFit, sheetKey:="sharedparambatch", progressKey:="sharedparambatch:progress")
-            ExcelExportStyleRegistry.ApplyStylesForKey("sharedparambatch", saved, autoFit:=doAutoFit, excelMode:=If(doAutoFit, "normal", "fast"))
+            If Not String.IsNullOrWhiteSpace(progressChannel) Then
+                ExcelProgressReporter.Report(progressChannel, "EXCEL_INIT", "엑셀 워크북을 준비하는 중...", 0, dt.Rows.Count, 0, True)
+            End If
+
+            ExcelCore.SaveXlsx(saved, "Logs", dt, doAutoFit, sheetKey:="sharedparambatch", progressKey:=progressChannel, exportKind:="sharedparambatch", exportLocale:=exportLocale)
             Return New With {.ok = True, .filePath = saved}
         End Function
 

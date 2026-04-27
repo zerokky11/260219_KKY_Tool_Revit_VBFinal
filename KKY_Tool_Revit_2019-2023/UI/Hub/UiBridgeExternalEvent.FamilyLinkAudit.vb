@@ -1,4 +1,4 @@
-Option Explicit On
+﻿Option Explicit On
 Option Strict On
 
 Imports System
@@ -30,7 +30,7 @@ Namespace UI.Hub
                 If String.IsNullOrWhiteSpace(sourcePath) Then
                     SendToWeb("familylink:error", New With {
                         .message = "Shared Parameters 파일이 설정되어 있지 않습니다.",
-                        .detail = "Revit 옵션에서 Shared Parameters 파일 경로를 설정하세요."
+                        .detail = "Revit 옵션에서 Shared Parameters 파일 경로를 설정해 주세요."
                     })
                     Return
                 End If
@@ -111,7 +111,7 @@ Namespace UI.Hub
             If rvtPaths.Count = 0 Then
                 SendToWeb("familylink:error", New With {
                     .message = "검토할 RVT 파일이 없습니다.",
-                    .detail = "RVT 목록을 추가하세요."
+                    .detail = "RVT 목록을 추가해 주세요."
                 })
                 Return
             End If
@@ -119,7 +119,7 @@ Namespace UI.Hub
             If targets.Count = 0 Then
                 SendToWeb("familylink:error", New With {
                     .message = "검토할 파라미터가 없습니다.",
-                    .detail = "Shared Parameters 목록에서 대상 파라미터를 선택하세요."
+                    .detail = "Shared Parameters 목록에서 대상 파라미터를 선택해 주세요."
                 })
                 Return
             End If
@@ -146,15 +146,15 @@ Namespace UI.Hub
         End Sub
 
         Private Function FilterFamilyLinkIssueRows(rows As List(Of FamilyLinkAuditRow)) As List(Of FamilyLinkAuditRow)
-    ' ✅ 전체 결과 출력(커넥터 기능만 이슈 필터링)
-    Return If(rows, New List(Of FamilyLinkAuditRow)())
-End Function
+            ' 전체 결과를 그대로 유지하고, 화면 쪽에서만 필요 시 후처리합니다.
+            Return If(rows, New List(Of FamilyLinkAuditRow)())
+        End Function
 
         Private Sub HandleFamilyLinkExport(payload As Object)
             If _familyLinkLastRows Is Nothing Then
                 SendToWeb("familylink:error", New With {
                     .message = "내보낼 결과가 없습니다.",
-                    .detail = "먼저 스캔을 실행하세요."
+                    .detail = "먼저 검토를 실행해 주세요."
                 })
                 Return
             End If
@@ -166,7 +166,8 @@ End Function
 
             Try
                 ExcelProgressReporter.Reset("familylink:progress")
-                Dim savedPath As String = FamilyLinkAuditExport.Export(_familyLinkLastRows, fastExport, autoFit, "familylink:progress")
+                Dim exportLocale As String = ParseExcelLocale(payload)
+                Dim savedPath As String = FamilyLinkAuditExport.Export(_familyLinkLastRows, fastExport, autoFit, "familylink:progress", exportLocale)
                 If String.IsNullOrWhiteSpace(savedPath) Then
                     SendToWeb("familylink:exported", New With {
                         .ok = False,
@@ -197,11 +198,32 @@ End Function
             Try
                 SendToWeb("familylink:progress", New With {
                     .percent = Math.Max(0, Math.Min(100, percent)),
-                    .message = If(message, "")
+                    .message = If(message, ""),
+                    .detail = If(message, ""),
+                    .stage = ResolveFamilyLinkProgressStage(percent, message)
                 })
             Catch
             End Try
         End Sub
+
+        Private Function ResolveFamilyLinkProgressStage(percent As Integer, detail As String) As String
+            Dim message As String = If(detail, String.Empty).Trim()
+            If message.IndexOf("프로젝트 스캔 시작", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return "문서를 준비하는 중..."
+            End If
+            If message.IndexOf("패밀리 검사 중", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return "패밀리 검사 중 (" & FormatFamilyLinkProgressPercent(percent) & ")"
+            End If
+            If message.IndexOf("완료", StringComparison.OrdinalIgnoreCase) >= 0 OrElse percent >= 100 Then
+                Return "패밀리 연동 검토 완료"
+            End If
+            Return "패밀리 연동 검토 진행 중 (" & FormatFamilyLinkProgressPercent(percent) & ")"
+        End Function
+
+        Private Function FormatFamilyLinkProgressPercent(percent As Integer) As String
+            Dim safePct As Integer = Math.Max(0, Math.Min(100, percent))
+            Return safePct.ToString() & "%"
+        End Function
 
         Private Function ExtractStringList(payload As Object, key As String) As List(Of String)
             Dim res As New List(Of String)()
@@ -209,13 +231,13 @@ End Function
             Dim payloadValue As Object = GetProp(payload, key)
             If payloadValue Is Nothing Then Return res
 
-            ' 문자열은 IEnumerable(문자열 자체가 IEnumerable)로 잡히므로 예외 처리 필요
+            ' 문자열도 IEnumerable 이라서, 단일 문자열인 경우는 별도로 처리합니다.
             Dim payloadItems As System.Collections.IEnumerable = TryCast(payloadValue, System.Collections.IEnumerable)
 
             If payloadItems Is Nothing OrElse TypeOf payloadValue Is String Then
-                Dim singleValue As String = TryCast(payloadValue, String) ' ✅ single(예약어) 금지
+                Dim singleValue As String = TryCast(payloadValue, String)
                 If Not String.IsNullOrWhiteSpace(singleValue) Then
-                    res.Add(singleValue) ' ✅ Add(Of String) 같은 잘못된 제네릭 호출 금지
+                    res.Add(singleValue)
                 End If
                 Return res
             End If
@@ -238,8 +260,8 @@ End Function
             If payloadItems Is Nothing OrElse TypeOf payloadValue Is String Then Return list
 
             For Each o In payloadItems
-                Dim name As String = TryCast(GetProp(o, "name"), String)
-                Dim guidStr As String = TryCast(GetProp(o, "guid"), String)
+                Dim name As String = NormalizeWrappedQuotesText(TryCast(GetProp(o, "name"), String)).Trim()
+                Dim guidStr As String = NormalizeWrappedQuotesText(TryCast(GetProp(o, "guid"), String)).Trim()
                 If String.IsNullOrWhiteSpace(name) OrElse String.IsNullOrWhiteSpace(guidStr) Then Continue For
                 Dim g As Guid
                 If Not Guid.TryParse(guidStr, g) Then Continue For
@@ -268,11 +290,7 @@ End Function
             d("NestedParamName") = row.NestedParamName
             d("TargetParamName") = row.TargetParamName
             d("ExpectedGuid") = row.ExpectedGuid
-            d("FoundScope") = row.FoundScope
             d("NestedParamGuid") = row.NestedParamGuid
-            d("NestedParamDataType") = row.NestedParamDataType
-            d("AssocHostParamName") = row.AssocHostParamName
-            d("HostParamIsShared") = row.HostParamIsShared
             d("Issue") = row.Issue
             d("Notes") = row.Notes
             Return d

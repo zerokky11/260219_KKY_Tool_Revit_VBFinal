@@ -23,6 +23,7 @@ Namespace Services
 
         Public Class Settings
             Public Property UseActiveDocument As Boolean
+            Public Property IncludeActiveLinkedDocuments As Boolean
             Public Property RvtPaths As List(Of String) = New List(Of String)()
             Public Property OutputFolder As String = String.Empty
             Public Property CloseAllWorksetsOnOpen As Boolean = True
@@ -103,6 +104,13 @@ Namespace Services
             Public Property Message As String = String.Empty
         End Class
 
+        Private Class LinkedDocumentTarget
+            Public Property LinkTypeId As Integer
+            Public Property LinkName As String = String.Empty
+            Public Property RequestedPath As String = String.Empty
+            Public Property LoadedDocument As Document
+        End Class
+
         Public Shared Function Run(uiapp As UIApplication,
                                    settings As Settings,
                                    progress As IProgress(Of Object)) As RunResult
@@ -118,24 +126,40 @@ Namespace Services
                 Return result
             End If
 
-            result.OutputFolder = ResolveOutputFolder(uiapp, settings)
-            Directory.CreateDirectory(result.OutputFolder)
-
             Dim parameterNames = GetExtractParameterNames(settings)
             Dim app As RevitApp = uiapp.Application
-            Dim totalTargets As Integer = If(settings.UseActiveDocument, 1, settings.RvtPaths.Count)
-            ReportProgress(progress, 0, totalTargets, "조건별 객체 속성 추출 준비 중...", result.OutputFolder)
+            result.OutputFolder = ResolveOutputFolder(uiapp, settings)
+
+            Dim activeDoc = uiapp.ActiveUIDocument?.Document
+            Dim distinctPaths As List(Of String) = Nothing
+            Dim linkedTargets As List(Of LinkedDocumentTarget) = Nothing
+            Dim totalTargets As Integer
 
             If settings.UseActiveDocument Then
-                Dim activeDoc = uiapp.ActiveUIDocument?.Document
-                Dim fileResult = ProcessActiveDocument(activeDoc, settings, parameterNames, result.Logs, result.Details, progress)
-                result.Files.Add(fileResult)
+                linkedTargets = If(settings.IncludeActiveLinkedDocuments,
+                                   CollectLinkedDocumentTargets(activeDoc, result.Logs),
+                                   New List(Of LinkedDocumentTarget)())
+                totalTargets = 1 + linkedTargets.Count
             Else
-                Dim distinctPaths = settings.RvtPaths _
+                distinctPaths = settings.RvtPaths _
                     .Where(Function(x) Not String.IsNullOrWhiteSpace(x)) _
                     .Distinct(StringComparer.OrdinalIgnoreCase) _
                     .ToList()
+                totalTargets = distinctPaths.Count
+            End If
 
+            If totalTargets <= 0 Then totalTargets = 1
+            ReportProgress(progress, 0, totalTargets, "조건별 객체 속성 추출 준비 중...", result.OutputFolder)
+
+            If settings.UseActiveDocument Then
+                Dim fileResult = ProcessActiveDocument(activeDoc, settings, parameterNames, result.Logs, result.Details, progress)
+                result.Files.Add(fileResult)
+
+                For i As Integer = 0 To linkedTargets.Count - 1
+                    Dim linkResult = ProcessLinkedDocumentTarget(app, linkedTargets(i), settings, parameterNames, result.Logs, result.Details, progress, i + 2, totalTargets)
+                    result.Files.Add(linkResult)
+                Next
+            Else
                 For i As Integer = 0 To distinctPaths.Count - 1
                     Dim pathText = distinctPaths(i)
                     ReportProgress(progress, i, totalTargets, "파일 준비 중...", pathText)
@@ -155,22 +179,28 @@ Namespace Services
                 result.Message = "조건별 객체 속성 추출이 완료되었습니다."
             End If
 
-            SaveArtifacts(result, settings)
-            ReportProgress(progress, totalTargets, totalTargets, "완료", "결과 파일 저장을 마쳤습니다.")
+            ReportProgress(progress, totalTargets, totalTargets, "완료", "결과를 준비했습니다. 결과창의 엑셀 내보내기 버튼으로 저장하세요.")
             Return result
         End Function
 
-        Public Shared Sub ExportArtifacts(uiapp As UIApplication, settings As Settings, result As RunResult)
+        Public Shared Sub ExportArtifacts(uiapp As UIApplication,
+                                          settings As Settings,
+                                          result As RunResult,
+                                          workbookPath As String,
+                                          Optional autoFit As Boolean = True,
+                                          Optional exportLocale As String = "ko")
             If uiapp Is Nothing Then Throw New ArgumentNullException(NameOf(uiapp))
             If result Is Nothing Then Throw New ArgumentNullException(NameOf(result))
+            If String.IsNullOrWhiteSpace(workbookPath) Then Throw New ArgumentException("저장할 엑셀 경로가 없습니다.", NameOf(workbookPath))
 
             Dim effectiveSettings = If(settings, New Settings())
             If String.IsNullOrWhiteSpace(result.OutputFolder) Then
                 result.OutputFolder = ResolveOutputFolder(uiapp, effectiveSettings)
             End If
 
-            Directory.CreateDirectory(result.OutputFolder)
-            SaveArtifacts(result, effectiveSettings)
+            Dim folder = Path.GetDirectoryName(workbookPath)
+            If Not String.IsNullOrWhiteSpace(folder) Then Directory.CreateDirectory(folder)
+            SaveArtifacts(result, effectiveSettings, workbookPath, autoFit, exportLocale)
         End Sub
 
         Private Shared Function ProcessActiveDocument(doc As Document,
@@ -202,6 +232,154 @@ Namespace Services
             End Try
 
             Return fileResult
+        End Function
+
+        Private Shared Function ProcessLinkedDocumentTarget(app As RevitApp,
+                                                            target As LinkedDocumentTarget,
+                                                            settings As Settings,
+                                                            parameterNames As List(Of String),
+                                                            logs As List(Of LogEntry),
+                                                            details As List(Of DetailRow),
+                                                            progress As IProgress(Of Object),
+                                                            currentIndex As Integer,
+                                                            totalCount As Integer) As FileRunResult
+            Dim requestedPath = If(target?.RequestedPath, String.Empty)
+            Dim loadedDoc = target?.LoadedDocument
+            Dim fileName = If(target?.LinkName, String.Empty)
+            If String.IsNullOrWhiteSpace(fileName) Then
+                fileName = GetDisplayFileName(requestedPath, "Link")
+            End If
+
+            Dim fileResult As New FileRunResult() With {
+                .FilePath = requestedPath,
+                .FileName = fileName
+            }
+
+            Dim doc As Document = loadedDoc
+            Dim shouldCloseDoc As Boolean = False
+
+            Try
+                If doc Is Nothing AndAlso Not String.IsNullOrWhiteSpace(requestedPath) Then
+                    doc = GetOpenDocument(app, requestedPath)
+                End If
+
+                If doc Is Nothing Then
+                    If String.IsNullOrWhiteSpace(requestedPath) Then
+                        fileResult.Status = "Fail"
+                        fileResult.Message = "링크 문서 경로를 찾을 수 없습니다."
+                        AddLog(logs, "FAIL", requestedPath, fileResult.FileName & " 링크 경로 확인 실패")
+                        Return fileResult
+                    End If
+
+                    Dim fileInfo As BasicFileInfo = Nothing
+                    If File.Exists(requestedPath) Then
+                        fileInfo = TryExtractBasicFileInfo(requestedPath)
+                    End If
+
+                    If fileInfo IsNot Nothing AndAlso fileInfo.IsCentral Then
+                        fileResult.WasCentralFile = True
+                        AddLog(logs, "INFO", requestedPath, "링크 중앙 파일은 Detach + CloseAllWorksets 방식으로 엽니다.")
+                    End If
+
+                    ReportProgress(progress, currentIndex - 1, totalCount, "링크 RVT 열기 중...", fileResult.FileName)
+                    doc = OpenProjectDocument(app, requestedPath, settings.CloseAllWorksetsOnOpen, fileInfo)
+                    shouldCloseDoc = (doc IsNot Nothing)
+                Else
+                    ReportProgress(progress, currentIndex - 1, totalCount, "링크 문서 검토 중...", fileResult.FileName)
+                End If
+
+                If doc Is Nothing Then
+                    fileResult.Status = "Fail"
+                    fileResult.Message = "링크 문서를 열지 못했습니다."
+                    AddLog(logs, "FAIL", requestedPath, fileResult.Message)
+                    Return fileResult
+                End If
+
+                fileResult.FilePath = If(String.IsNullOrWhiteSpace(doc.PathName), requestedPath, doc.PathName)
+                fileResult.FileName = GetDisplayFileName(fileResult.FilePath, If(doc.Title, fileResult.FileName))
+
+                Dim docResult = ProcessDocument(doc, fileResult.FileName, fileResult.FilePath, settings, parameterNames, details, logs)
+                ApplyDocumentProcessResult(fileResult, docResult)
+                fileResult.Status = If(docResult.ExtractedElementCount > 0, "Success", "NoData")
+            Catch ex As Exception
+                fileResult.Status = "Fail"
+                fileResult.Message = ex.Message
+                AddLog(logs, "FAIL", requestedPath, fileResult.FileName & " 링크 처리 실패: " & ex.Message)
+            Finally
+                If shouldCloseDoc Then
+                    SafeClose(doc)
+                End If
+            End Try
+
+            Return fileResult
+        End Function
+
+        Private Shared Function CollectLinkedDocumentTargets(hostDoc As Document,
+                                                             logs As List(Of LogEntry)) As List(Of LinkedDocumentTarget)
+            Dim targets As New List(Of LinkedDocumentTarget)()
+            If hostDoc Is Nothing Then Return targets
+
+            Dim loadedDocsByTypeId As New Dictionary(Of Integer, Document)()
+            Try
+                Dim instances = New FilteredElementCollector(hostDoc) _
+                    .OfClass(GetType(RevitLinkInstance)) _
+                    .WhereElementIsNotElementType() _
+                    .Cast(Of RevitLinkInstance)() _
+                    .ToList()
+
+                For Each inst In instances
+                    If inst Is Nothing Then Continue For
+
+                    Dim typeId = inst.GetTypeId()
+                    If typeId Is Nothing OrElse typeId.IntegerValue <= 0 Then Continue For
+                    If loadedDocsByTypeId.ContainsKey(typeId.IntegerValue) Then Continue For
+
+                    Try
+                        Dim linkDoc = inst.GetLinkDocument()
+                        If linkDoc IsNot Nothing Then
+                            loadedDocsByTypeId(typeId.IntegerValue) = linkDoc
+                        End If
+                    Catch
+                    End Try
+                Next
+            Catch ex As Exception
+                AddLog(logs, "WARN", hostDoc.PathName, "링크 인스턴스 확인 중 일부 항목을 읽지 못했습니다: " & ex.Message)
+            End Try
+
+            Dim seenKeys As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            Dim linkTypes As IEnumerable(Of RevitLinkType) =
+                New FilteredElementCollector(hostDoc) _
+                    .OfClass(GetType(RevitLinkType)) _
+                    .Cast(Of RevitLinkType)()
+
+            For Each linkType In linkTypes
+                If linkType Is Nothing Then Continue For
+
+                Dim loadedDoc As Document = Nothing
+                loadedDocsByTypeId.TryGetValue(linkType.Id.IntegerValue, loadedDoc)
+
+                Dim requestedPath = GetLinkedDocumentPath(hostDoc, linkType)
+                Dim linkName = GetLinkedDocumentName(linkType, loadedDoc, requestedPath)
+                Dim key = BuildLinkedDocumentKey(linkType, loadedDoc, requestedPath, linkName)
+
+                If seenKeys.Contains(key) Then Continue For
+                seenKeys.Add(key)
+
+                targets.Add(New LinkedDocumentTarget With {
+                    .LinkTypeId = linkType.Id.IntegerValue,
+                    .LinkName = linkName,
+                    .RequestedPath = requestedPath,
+                    .LoadedDocument = loadedDoc
+                })
+            Next
+
+            If targets.Count = 0 Then
+                AddLog(logs, "INFO", hostDoc.PathName, "활성 문서에서 검토할 Revit 링크를 찾지 못했습니다.")
+            Else
+                AddLog(logs, "INFO", hostDoc.PathName, targets.Count.ToString(CultureInfo.InvariantCulture) & "개 링크 문서를 함께 검토합니다.")
+            End If
+
+            Return targets
         End Function
 
         Private Shared Function ProcessBatchFile(app As RevitApp,
@@ -502,12 +680,14 @@ Namespace Services
             }
         End Function
 
-        Private Shared Sub SaveArtifacts(result As RunResult, settings As Settings)
+        Private Shared Sub SaveArtifacts(result As RunResult,
+                                         settings As Settings,
+                                         workbookPath As String,
+                                         autoFit As Boolean,
+                                         exportLocale As String)
             If result Is Nothing Then Return
+            If String.IsNullOrWhiteSpace(workbookPath) Then Throw New ArgumentException("저장할 엑셀 경로가 없습니다.", NameOf(workbookPath))
 
-            Dim timeStamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture)
-            Dim workbookPath = Path.Combine(result.OutputFolder, "ConditionExtractResult_" & timeStamp & ".xlsx")
-            Dim logPath = Path.Combine(result.OutputFolder, "ConditionExtractLog_" & timeStamp & ".txt")
             Dim parameterNames = GetExtractParameterNames(settings)
 
             Dim sheets As New List(Of KeyValuePair(Of String, DataTable)) From {
@@ -516,11 +696,10 @@ Namespace Services
                 New KeyValuePair(Of String, DataTable)("Logs", BuildLogTable(result.Logs))
             }
 
-            ExcelCore.SaveXlsxMulti(workbookPath, sheets, autoFit:=True)
-            File.WriteAllLines(logPath, BuildLogLines(result.Logs), New UTF8Encoding(True))
+            ExcelCore.SaveXlsxMulti(workbookPath, sheets, autoFit:=autoFit, exportKind:="conditionextract", exportLocale:=exportLocale)
 
             result.ResultWorkbookPath = workbookPath
-            result.LogTextPath = logPath
+            result.LogTextPath = String.Empty
         End Sub
 
         Private Shared Function BuildSummaryTable(fileResults As IEnumerable(Of FileRunResult)) As DataTable
@@ -794,6 +973,8 @@ Namespace Services
             Dim normalized = NormalizeLengthUnit(unitName)
 #If REVIT2021 Or REVIT2023 Or REVIT2025 Then
             Select Case normalized
+                Case "m"
+                    Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalLength, UnitTypeId.Meters), 3)
                 Case "inch"
                     Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalLength, UnitTypeId.Inches), 3)
                 Case "ft"
@@ -803,6 +984,8 @@ Namespace Services
             End Select
 #Else
             Select Case normalized
+                Case "m"
+                    Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalLength, DisplayUnitType.DUT_METERS), 3)
                 Case "inch"
                     Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalLength, DisplayUnitType.DUT_DECIMAL_INCHES), 3)
                 Case "ft"
@@ -817,6 +1000,8 @@ Namespace Services
             Dim normalized = NormalizeAreaUnit(unitName)
 #If REVIT2021 Or REVIT2023 Or REVIT2025 Then
             Select Case normalized
+                Case "m2"
+                    Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalArea, UnitTypeId.SquareMeters), 3)
                 Case "in2"
                     Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalArea, UnitTypeId.SquareInches), 3)
                 Case "ft2"
@@ -826,6 +1011,8 @@ Namespace Services
             End Select
 #Else
             Select Case normalized
+                Case "m2"
+                    Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalArea, DisplayUnitType.DUT_SQUARE_METERS), 3)
                 Case "in2"
                     Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalArea, DisplayUnitType.DUT_SQUARE_INCHES), 3)
                 Case "ft2"
@@ -840,6 +1027,8 @@ Namespace Services
             Dim normalized = NormalizeVolumeUnit(unitName)
 #If REVIT2021 Or REVIT2023 Or REVIT2025 Then
             Select Case normalized
+                Case "m3"
+                    Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalVolume, UnitTypeId.CubicMeters), 3)
                 Case "in3"
                     Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalVolume, UnitTypeId.CubicInches), 3)
                 Case "ft3"
@@ -849,6 +1038,8 @@ Namespace Services
             End Select
 #Else
             Select Case normalized
+                Case "m3"
+                    Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalVolume, DisplayUnitType.DUT_CUBIC_METERS), 3)
                 Case "in3"
                     Return Math.Round(UnitUtils.ConvertFromInternalUnits(internalVolume, DisplayUnitType.DUT_CUBIC_INCHES), 3)
                 Case "ft3"
@@ -865,6 +1056,7 @@ Namespace Services
 
         Private Shared Function GetAreaUnitLabel(settings As Settings) As String
             Select Case NormalizeAreaUnit(If(settings?.AreaUnit, "mm2"))
+                Case "m2" : Return "m^2"
                 Case "in2" : Return "inch^2"
                 Case "ft2" : Return "ft^2"
                 Case Else : Return "mm^2"
@@ -873,6 +1065,7 @@ Namespace Services
 
         Private Shared Function GetVolumeUnitLabel(settings As Settings) As String
             Select Case NormalizeVolumeUnit(If(settings?.VolumeUnit, "mm3"))
+                Case "m3" : Return "m^3"
                 Case "in3" : Return "inch^3"
                 Case "ft3" : Return "ft^3"
                 Case Else : Return "mm^3"
@@ -882,6 +1075,8 @@ Namespace Services
         Private Shared Function NormalizeLengthUnit(unitName As String) As String
             Dim raw = If(unitName, String.Empty).Trim().ToLowerInvariant()
             Select Case raw
+                Case "m", "meter", "meters", "metre", "metres"
+                    Return "m"
                 Case "inch", "in", "inches"
                     Return "inch"
                 Case "ft", "foot", "feet"
@@ -894,6 +1089,8 @@ Namespace Services
         Private Shared Function NormalizeAreaUnit(unitName As String) As String
             Dim raw = If(unitName, String.Empty).Trim().ToLowerInvariant()
             Select Case raw
+                Case "m2", "m^2", "sqm", "squaremeter", "squaremeters", "squaremetre", "squaremetres"
+                    Return "m2"
                 Case "in2", "inch2", "in^2", "inch^2", "sqin", "squareinch", "squareinches"
                     Return "in2"
                 Case "ft2", "ft^2", "sqft", "squarefoot", "squarefeet"
@@ -906,6 +1103,8 @@ Namespace Services
         Private Shared Function NormalizeVolumeUnit(unitName As String) As String
             Dim raw = If(unitName, String.Empty).Trim().ToLowerInvariant()
             Select Case raw
+                Case "m3", "m^3", "cubicmeter", "cubicmeters", "cubicmetre", "cubicmetres"
+                    Return "m3"
                 Case "in3", "inch3", "in^3", "inch^3", "cuin", "cubicinch", "cubicinches"
                     Return "in3"
                 Case "ft3", "ft^3", "cuft", "cubicfoot", "cubicfeet"
@@ -958,6 +1157,118 @@ Namespace Services
             Return If(fallback, String.Empty)
         End Function
 
+        Private Shared Function GetLinkedDocumentPath(hostDoc As Document, linkType As RevitLinkType) As String
+            Dim currentVisiblePath As String = SafeModelPathToUserVisiblePath(TryGetAbsoluteModelPath(linkType))
+            If String.IsNullOrWhiteSpace(currentVisiblePath) Then
+                currentVisiblePath = SafeModelPathToUserVisiblePath(TryGetStoredModelPath(linkType))
+            End If
+            If String.IsNullOrWhiteSpace(currentVisiblePath) Then Return String.Empty
+
+            Return ResolveLinkPath(If(hostDoc?.PathName, String.Empty), currentVisiblePath)
+        End Function
+
+        Private Shared Function GetLinkedDocumentName(linkType As RevitLinkType,
+                                                      loadedDoc As Document,
+                                                      requestedPath As String) As String
+            If loadedDoc IsNot Nothing Then
+                Return GetDisplayFileName(loadedDoc.PathName, loadedDoc.Title)
+            End If
+
+            If Not String.IsNullOrWhiteSpace(requestedPath) Then
+                Return GetDisplayFileName(requestedPath, Path.GetFileName(requestedPath))
+            End If
+
+            Try
+                Return If(linkType.Name, "Link")
+            Catch
+                Return "Link"
+            End Try
+        End Function
+
+        Private Shared Function BuildLinkedDocumentKey(linkType As RevitLinkType,
+                                                       loadedDoc As Document,
+                                                       requestedPath As String,
+                                                       linkName As String) As String
+            If loadedDoc IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(loadedDoc.PathName) Then
+                Return loadedDoc.PathName.Trim()
+            End If
+
+            If Not String.IsNullOrWhiteSpace(requestedPath) Then
+                Return requestedPath.Trim()
+            End If
+
+            Return "linktype:" & linkType.Id.IntegerValue.ToString(CultureInfo.InvariantCulture) & ":" & If(linkName, String.Empty)
+        End Function
+
+        Private Shared Function TryGetAbsoluteModelPath(linkType As RevitLinkType) As ModelPath
+            Return TryGetAbsoluteModelPath(TryGetExternalFileReference(linkType))
+        End Function
+
+        Private Shared Function TryGetAbsoluteModelPath(extRef As ExternalFileReference) As ModelPath
+            If extRef Is Nothing Then Return Nothing
+            Try
+                Return extRef.GetAbsolutePath()
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function TryGetStoredModelPath(linkType As RevitLinkType) As ModelPath
+            Return TryGetStoredModelPath(TryGetExternalFileReference(linkType))
+        End Function
+
+        Private Shared Function TryGetStoredModelPath(extRef As ExternalFileReference) As ModelPath
+            If extRef Is Nothing Then Return Nothing
+            Try
+                Return extRef.GetPath()
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function TryGetExternalFileReference(linkType As RevitLinkType) As ExternalFileReference
+            If linkType Is Nothing Then Return Nothing
+            Try
+                Return linkType.GetExternalFileReference()
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function SafeModelPathToUserVisiblePath(modelPath As ModelPath) As String
+            If modelPath Is Nothing Then Return String.Empty
+            Try
+                Return If(ModelPathUtils.ConvertModelPathToUserVisiblePath(modelPath), String.Empty)
+            Catch
+                Try
+                    Return If(modelPath.ToString(), String.Empty)
+                Catch
+                    Return String.Empty
+                End Try
+            End Try
+        End Function
+
+        Private Shared Function ResolveLinkPath(hostPath As String, linkPath As String) As String
+            If String.IsNullOrWhiteSpace(linkPath) Then Return String.Empty
+
+            Try
+                If Path.IsPathRooted(linkPath) Then Return linkPath
+            Catch
+            End Try
+
+            Try
+                If String.IsNullOrWhiteSpace(hostPath) Then Return linkPath
+                Dim hostDir = Path.GetDirectoryName(hostPath)
+                If String.IsNullOrWhiteSpace(hostDir) Then Return linkPath
+
+                Dim candidate = Path.GetFullPath(Path.Combine(hostDir, linkPath))
+                If File.Exists(candidate) Then Return candidate
+            Catch
+            End Try
+
+            Return linkPath
+        End Function
+
         Private Shared Function OpenProjectDocument(app As RevitApp,
                                                     userVisiblePath As String,
                                                     closeAllWorksets As Boolean,
@@ -987,16 +1298,20 @@ Namespace Services
         End Function
 
         Private Shared Function IsAlreadyOpen(app As RevitApp, userVisiblePath As String) As Boolean
+            Return GetOpenDocument(app, userVisiblePath) IsNot Nothing
+        End Function
+
+        Private Shared Function GetOpenDocument(app As RevitApp, userVisiblePath As String) As Document
             Try
                 For Each doc As Document In app.Documents
                     If doc Is Nothing Then Continue For
                     If String.Equals(doc.PathName, userVisiblePath, StringComparison.OrdinalIgnoreCase) Then
-                        Return True
+                        Return doc
                     End If
                 Next
             Catch
             End Try
-            Return False
+            Return Nothing
         End Function
 
         Private Shared Sub SafeClose(doc As Document)

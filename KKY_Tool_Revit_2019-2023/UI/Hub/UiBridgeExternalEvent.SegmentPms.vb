@@ -326,7 +326,8 @@ Namespace UI.Hub
                     _lastExtractPath = dlg.FileName
                     ReportProgress(files.Count, files.Count, "save", "엑셀 내보내기 중", dlg.FileName)
                     Dim doAutoFit As Boolean = ParseExcelMode(payload)
-                    SegmentPmsCheckService.SaveDataSetToXlsx(_extractData, dlg.FileName, doAutoFit, "segmentpms:progress")
+                    Dim exportLocale As String = ParseExcelLocale(payload)
+                    SegmentPmsCheckService.SaveDataSetToXlsx(_extractData, dlg.FileName, doAutoFit, "segmentpms:progress", exportLocale)
                     WaitForFileReady(dlg.FileName)
                     Dim summary = BuildExtractSummary(_extractData)
                     ReportProgress(files.Count, files.Count, "done", "추출 완료", dlg.FileName)
@@ -353,7 +354,8 @@ Namespace UI.Hub
                 End If
                 Try
                     Dim doAutoFit As Boolean = ParseExcelMode(payload)
-                    SegmentPmsCheckService.SaveDataSetToXlsx(_extractData, dlg.FileName, doAutoFit, "segmentpms:progress")
+                    Dim exportLocale As String = ParseExcelLocale(payload)
+                    SegmentPmsCheckService.SaveDataSetToXlsx(_extractData, dlg.FileName, doAutoFit, "segmentpms:progress", exportLocale)
                     _lastExtractPath = dlg.FileName
                     WaitForFileReady(dlg.FileName)
                     Dim summary = BuildExtractSummary(_extractData)
@@ -539,6 +541,7 @@ Namespace UI.Hub
         Private Sub HandleSegmentPmsSaveResult(app As UIApplication, payload As Object)
             Dim pd = ParsePayloadDict(payload)
             Dim doAutoFit As Boolean = ParseExcelMode(payload)
+            Dim exportLocale As String = ParseExcelLocale(payload)
             Using dlg As New SaveFileDialog()
                 dlg.Filter = "Excel (*.xlsx)|*.xlsx"
                 dlg.FileName = "SegmentPmsResult.xlsx"
@@ -598,7 +601,7 @@ Namespace UI.Hub
                     Catch
                     End Try
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report("segmentpms:progress", "EXCEL_SAVE", "파일 저장 중", written, totalRowsCount, Nothing, True)
-                    ExcelCore.SaveXlsxMulti(savePath, sheets, doAutoFit, "segmentpms:progress")
+                    ExcelCore.SaveXlsxMulti(savePath, sheets, doAutoFit, "segmentpms:progress", exportKind:="pms", exportLocale:=exportLocale)
                     ExcelExportStyleRegistry.ApplyStylesForKey("pms", savePath, autoFit:=doAutoFit, excelMode:=If(doAutoFit, "normal", "fast"))
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report("segmentpms:progress", "DONE", "엑셀 내보내기 완료", written, totalRowsCount, 100.0R, True)
                     SendToWeb("segmentpms:saved", New With {.path = savePath})

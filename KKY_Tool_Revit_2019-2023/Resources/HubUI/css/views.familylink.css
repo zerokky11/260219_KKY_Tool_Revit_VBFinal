@@ -4,14 +4,15 @@
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
+  height: auto;
 }
 
 .familylink-body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  flex: 1;
+  flex: 0 0 auto;
   min-height: 0;
 }
 
@@ -19,11 +20,14 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
-  min-height: 340px;
+  min-height: 0;
+  align-items: start;
 }
 
 .familylink-card {
   min-height: 0;
+  height: auto;
+  overflow: hidden;
 }
 
 .familylink-source {
@@ -53,8 +57,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  flex: 1;
-  min-height: 240px;
+  flex: 0 0 auto;
+  min-height: 280px;
   overflow: hidden;
 }
 
@@ -77,8 +81,9 @@
 
 .familylink-results-body {
   overflow: auto;
-  flex: 1;
+  flex: 0 0 auto;
   min-height: 220px;
+  max-height: 480px;
 }
 
 .familylink-table {
@@ -119,7 +124,7 @@
   margin-left: 6px;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 1220px) {
   .familylink-top-panels {
     grid-template-columns: minmax(0, 1fr);
   }

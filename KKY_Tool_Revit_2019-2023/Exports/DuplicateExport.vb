@@ -40,16 +40,58 @@ End Class
 
     Public Module DuplicateExport
 
+        Private Const DuplicateGroupHeader As String = "group"
+        Private Const DuplicateReviewGuidanceKo As String = "객체를 확인 후 중복 객체를 수정해주세요."
+        Private Const DuplicateReviewGuidanceEn As String = "Please review duplicated elements by referring to the report and delete unnecessary elements."
+        Private Const DuplicateNoIssueKo As String = "중복 객체가 없습니다."
+        Private Const DuplicateNoIssueEn As String = "No duplicated elements found."
+        Private Const DuplicateNoTargetKo As String = "검사 대상 요소가 없습니다 !!!"
+        Private Const DuplicateNoTargetEn As String = "No target elements found."
+        Private Const DuplicateNoResultKo As String = "검토 결과가 없습니다."
+        Private Const DuplicateNoResultEn As String = "No review results."
+
+        Public Function GetDuplicateReviewGuidance(Optional exportLocale As String = "ko") As String
+            If IsEnglishLocale(exportLocale) Then Return DuplicateReviewGuidanceEn
+            Return DuplicateReviewGuidanceKo
+        End Function
+
+        Public Function GetDuplicateNoIssueComment(Optional exportLocale As String = "ko") As String
+            If IsEnglishLocale(exportLocale) Then Return DuplicateNoIssueEn
+            Return DuplicateNoIssueKo
+        End Function
+
+        Public Function GetDuplicateNoTargetComment(Optional exportLocale As String = "ko") As String
+            If IsEnglishLocale(exportLocale) Then Return DuplicateNoTargetEn
+            Return DuplicateNoTargetKo
+        End Function
+
+        Public Function GetDuplicateNoResultComment(Optional exportLocale As String = "ko") As String
+            If IsEnglishLocale(exportLocale) Then Return DuplicateNoResultEn
+            Return DuplicateNoResultKo
+        End Function
+
         ' ✅ 기존 호출 호환: reportTitle은 마지막 Optional로만 추가
         Public Function Save(rows As System.Collections.IEnumerable,
                              Optional doAutoFit As Boolean = False,
                              Optional progressChannel As String = Nothing,
                              Optional reportTitle As String = Nothing,
-                             Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing) As String
+                             Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing,
+                             Optional exportLocale As String = "ko") As String
+            Return SaveWithDefaultName(rows, "Duplicates.xlsx", doAutoFit, progressChannel, reportTitle, extraParamNames, exportLocale)
+        End Function
+
+        Public Function SaveWithDefaultName(rows As System.Collections.IEnumerable,
+                                            defaultFileName As String,
+                                            Optional doAutoFit As Boolean = False,
+                                            Optional progressChannel As String = Nothing,
+                                            Optional reportTitle As String = Nothing,
+                                            Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing,
+                                            Optional exportLocale As String = "ko") As String
             Dim mapped = MapRows(rows)
-            Dim dt = BuildSimpleTable(mapped, extraParamNames)
             Dim title = If(String.IsNullOrWhiteSpace(reportTitle), "Duplicates (Simple)", reportTitle)
-            Return ExcelCore.PickAndSaveXlsx(title, dt, "Duplicates.xlsx", doAutoFit, progressChannel)
+            Dim dt = BuildSimpleTable(mapped, extraParamNames, If(IsDuplicateReportTitle(title), GetDuplicateReviewGuidance(exportLocale), Nothing))
+            Dim saveName = If(String.IsNullOrWhiteSpace(defaultFileName), "Duplicates.xlsx", defaultFileName)
+            Return ExcelCore.PickAndSaveStyledSimple(title, dt, saveName, DuplicateGroupHeader, doAutoFit, progressChannel, exportKind:="dupclash", exportLocale:=exportLocale)
         End Function
 
         ' ✅ 기존 호출 호환: reportTitle은 마지막 Optional로만 추가
@@ -58,8 +100,9 @@ End Class
                         Optional doAutoFit As Boolean = False,
                         Optional progressChannel As String = Nothing,
                         Optional reportTitle As String = Nothing,
-                        Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing)
-            Export(outPath, rows, doAutoFit, progressChannel, reportTitle, extraParamNames)
+                        Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing,
+                        Optional exportLocale As String = "ko")
+            Export(outPath, rows, doAutoFit, progressChannel, reportTitle, extraParamNames, exportLocale)
         End Sub
 
         Public Sub Export(outPath As String,
@@ -67,11 +110,12 @@ End Class
                           Optional doAutoFit As Boolean = False,
                           Optional progressChannel As String = Nothing,
                           Optional reportTitle As String = Nothing,
-                          Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing)
+                          Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing,
+                          Optional exportLocale As String = "ko")
             Dim mapped = MapRows(rows)
-            Dim dt = BuildSimpleTable(mapped, extraParamNames)
             Dim title = If(String.IsNullOrWhiteSpace(reportTitle), "Duplicates (Simple)", reportTitle)
-            ExcelCore.SaveStyledSimple(outPath, title, dt, "Group", doAutoFit, progressChannel)
+            Dim dt = BuildSimpleTable(mapped, extraParamNames, If(IsDuplicateReportTitle(title), GetDuplicateReviewGuidance(exportLocale), Nothing))
+            ExcelCore.SaveStyledSimple(outPath, title, dt, DuplicateGroupHeader, doAutoFit, progressChannel, exportKind:="dupclash", exportLocale:=exportLocale)
         End Sub
 
         
@@ -81,11 +125,23 @@ Public Function SavePairs(pairs As System.Collections.IEnumerable,
                           Optional doAutoFit As Boolean = False,
                           Optional progressChannel As String = Nothing,
                           Optional reportTitle As String = Nothing,
-                          Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing) As String
+                          Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing,
+                          Optional exportLocale As String = "ko") As String
+    Return SavePairsWithDefaultName(pairs, "ClashPairs.xlsx", doAutoFit, progressChannel, reportTitle, extraParamNames, exportLocale)
+End Function
+
+Public Function SavePairsWithDefaultName(pairs As System.Collections.IEnumerable,
+                                         defaultFileName As String,
+                                         Optional doAutoFit As Boolean = False,
+                                         Optional progressChannel As String = Nothing,
+                                         Optional reportTitle As String = Nothing,
+                                         Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing,
+                                         Optional exportLocale As String = "ko") As String
     Dim mapped = MapPairs(pairs)
     Dim dt = BuildPairTable(mapped, extraParamNames)
     Dim title = If(String.IsNullOrWhiteSpace(reportTitle), "Self Clash Pairs", reportTitle)
-    Return ExcelCore.PickAndSaveXlsx(title, dt, "ClashPairs.xlsx", doAutoFit, progressChannel)
+    Dim saveName = If(String.IsNullOrWhiteSpace(defaultFileName), "ClashPairs.xlsx", defaultFileName)
+    Return ExcelCore.PickAndSaveStyledSimple(title, dt, saveName, "Group", doAutoFit, progressChannel, exportKind:="dupclash", exportLocale:=exportLocale)
 End Function
 
 Public Sub ExportPairs(outPath As String,
@@ -93,11 +149,40 @@ Public Sub ExportPairs(outPath As String,
                        Optional doAutoFit As Boolean = False,
                        Optional progressChannel As String = Nothing,
                        Optional reportTitle As String = Nothing,
-                       Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing)
+                       Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing,
+                       Optional exportLocale As String = "ko")
     Dim mapped = MapPairs(pairs)
     Dim dt = BuildPairTable(mapped, extraParamNames)
     Dim title = If(String.IsNullOrWhiteSpace(reportTitle), "Self Clash Pairs", reportTitle)
-    ExcelCore.SaveStyledSimple(outPath, title, dt, "Group", doAutoFit, progressChannel)
+    ExcelCore.SaveStyledSimple(outPath, title, dt, "Group", doAutoFit, progressChannel, exportKind:="dupclash", exportLocale:=exportLocale)
+End Sub
+
+Public Sub ExportCombined(outPath As String,
+                          duplicateRows As System.Collections.IEnumerable,
+                          clashRows As System.Collections.IEnumerable,
+                          clashPairs As System.Collections.IEnumerable,
+                          Optional doAutoFit As Boolean = False,
+                          Optional progressChannel As String = Nothing,
+                          Optional duplicateTitle As String = Nothing,
+                          Optional clashTitle As String = Nothing,
+                          Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing,
+                          Optional exportLocale As String = "ko")
+    Dim duplicateTable = BuildSimpleTable(MapRows(duplicateRows), extraParamNames)
+    Dim mappedPairs = MapPairs(clashPairs)
+    Dim clashTable As DataTable
+
+    If mappedPairs IsNot Nothing AndAlso mappedPairs.Count > 0 Then
+        clashTable = BuildPairTable(mappedPairs, extraParamNames)
+    Else
+        clashTable = BuildSimpleTable(MapRows(clashRows), extraParamNames)
+    End If
+
+    Dim sheets As New System.Collections.Generic.List(Of System.Collections.Generic.KeyValuePair(Of String, DataTable)) From {
+        New System.Collections.Generic.KeyValuePair(Of String, DataTable)(If(String.IsNullOrWhiteSpace(duplicateTitle), "Duplicates", duplicateTitle), duplicateTable),
+        New System.Collections.Generic.KeyValuePair(Of String, DataTable)(If(String.IsNullOrWhiteSpace(clashTitle), "Self Clash", clashTitle), clashTable)
+    }
+
+    ExcelCore.SaveXlsxMulti(outPath, sheets, doAutoFit, progressChannel, exportKind:="dupclash", exportLocale:=exportLocale)
 End Sub
 
 Private Function MapPairs(pairs As System.Collections.IEnumerable) As System.Collections.Generic.List(Of PairRowDto)
@@ -209,17 +294,18 @@ Private Function MapRows(rows As System.Collections.IEnumerable) As System.Colle
             Return list
         End Function
 
-        Private Function BuildSimpleTable(rows As System.Collections.Generic.List(Of DupRowDto),
-                                          Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing) As DataTable
+Private Function BuildSimpleTable(rows As System.Collections.Generic.List(Of DupRowDto),
+                                          Optional extraParamNames As System.Collections.Generic.IList(Of String) = Nothing,
+                                          Optional commentOverride As String = Nothing) As DataTable
             Dim dt As New DataTable("simple")
             Dim orderedExtraNames = BuildOrderedExtraParamNames(extraParamNames, rows.Select(Function(r) r.ExtraParams))
             dt.Columns.Add("File")
-            dt.Columns.Add("Group")
+            dt.Columns.Add(DuplicateGroupHeader)
             dt.Columns.Add("ID")
             dt.Columns.Add("Category")
             dt.Columns.Add("Family")
             dt.Columns.Add("Type")
-            dt.Columns.Add("Comment")
+            dt.Columns.Add("Comments")
             For Each paramName In orderedExtraNames
                 dt.Columns.Add(paramName)
             Next
@@ -235,15 +321,14 @@ Private Function MapRows(rows As System.Collections.IEnumerable) As System.Colle
                 If Not String.IsNullOrWhiteSpace(gk) Then gName = gk
 
                 For Each r In groupList(i)
-                    Dim famOut As String = If(String.IsNullOrWhiteSpace(r.Family), If(String.IsNullOrWhiteSpace(r.Category), "", r.Category & " Type"), r.Family)
                     Dim dr = dt.NewRow()
                     dr("File") = Nz(r.FileName)
-                    dr("Group") = gName
+                    dr(DuplicateGroupHeader) = If(IsDuplicatePlaceholderRow(r), "", gName)
                     dr("ID") = Nz(r.Id)
                     dr("Category") = Nz(r.Category)
-                    dr("Family") = Nz(famOut)
+                    dr("Family") = Nz(r.Family)
                     dr("Type") = Nz(r.Type)
-                    dr("Comment") = Nz(r.Comment)
+                    dr("Comments") = ResolveDuplicateExportComment(r, commentOverride)
                     For Each paramName In orderedExtraNames
                         dr(paramName) = GetMapValue(r.ExtraParams, paramName)
                     Next
@@ -253,11 +338,41 @@ Private Function MapRows(rows As System.Collections.IEnumerable) As System.Colle
 
             If dt.Rows.Count = 0 Then
                 Dim dr = dt.NewRow()
-                dr(0) = "오류가 없습니다."
+                dr("Comments") = DuplicateNoIssueKo
                 dt.Rows.Add(dr)
             End If
 
             Return dt
+        End Function
+
+        Private Function ResolveDuplicateExportComment(row As DupRowDto, commentOverride As String) As String
+            If row Is Nothing Then
+                If String.IsNullOrWhiteSpace(commentOverride) Then Return ""
+                Return commentOverride
+            End If
+
+            Dim sourceComment As String = Nz(row.Comment)
+            If IsDuplicatePlaceholderRow(row) Then Return sourceComment
+
+            If String.IsNullOrWhiteSpace(commentOverride) Then Return sourceComment
+            Return commentOverride
+        End Function
+
+        Private Function IsDuplicatePlaceholderRow(row As DupRowDto) As Boolean
+            If row Is Nothing Then Return False
+
+            Return String.IsNullOrWhiteSpace(Nz(row.Id)) AndAlso
+                   String.IsNullOrWhiteSpace(Nz(row.Category)) AndAlso
+                   String.IsNullOrWhiteSpace(Nz(row.Family)) AndAlso
+                   String.IsNullOrWhiteSpace(Nz(row.Type)) AndAlso
+                   Not String.IsNullOrWhiteSpace(Nz(row.Comment))
+        End Function
+
+        Private Function IsDuplicateReportTitle(title As String) As Boolean
+            Dim value As String = If(title, String.Empty).Trim()
+            If value = String.Empty Then Return False
+            Return value.IndexOf("duplicate", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
+                   value.IndexOf("중복", StringComparison.OrdinalIgnoreCase) >= 0
         End Function
 
         Private Function GroupByLogic(items As System.Collections.Generic.List(Of DupRowDto)) As System.Collections.Generic.List(Of System.Collections.Generic.List(Of DupRowDto))
@@ -313,6 +428,11 @@ Private Function MapRows(rows As System.Collections.IEnumerable) As System.Colle
         Private Function Nz(s As String) As String
             If String.IsNullOrWhiteSpace(s) Then Return ""
             Return s
+        End Function
+
+        Private Function IsEnglishLocale(value As String) As Boolean
+            Dim normalized As String = If(value, String.Empty).Trim().ToLowerInvariant()
+            Return normalized = "en" OrElse normalized = "eng" OrElse normalized = "english"
         End Function
 
         Private Function ReadProp(obj As Object, ParamArray names() As String) As String

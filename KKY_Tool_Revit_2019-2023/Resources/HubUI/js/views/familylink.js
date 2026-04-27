@@ -1,5 +1,5 @@
 ﻿// Resources/HubUI/js/views/familylink.js
-import { clear, div, toast, debounce, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog } from '../core/dom.js';
+import { clear, div, toast, debounce, showExcelSavedDialog, chooseExcelMode, getLastExcelExportLocale, showCompletionSummaryDialog } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { ProgressDialog } from '../core/progress.js';
@@ -20,11 +20,7 @@ const DEFAULT_SCHEMA = [
   'NestedParamName',
   'TargetParamName',
   'ExpectedGuid',
-  'FoundScope',
   'NestedParamGuid',
-  'NestedParamDataType',
-  'AssocHostParamName',
-  'HostParamIsShared',
   'Issue',
   'Notes'
 ];
@@ -260,9 +256,10 @@ export function renderFamilyLink(root) {
     }
     clearProgressHideTimer();
     const pct = Math.max(0, Math.min(100, Number(payload.percent) || 0));
-    const msg = payload.message || '';
-    ProgressDialog.show('패밀리 연동 검토', msg || '진행 중...');
-    ProgressDialog.update(pct, msg || '진행 중...', '');
+    const msg = payload.detail || payload.message || '';
+    const subtitle = payload.stage || buildRunProgressSubtitle(pct, msg);
+    ProgressDialog.show('패밀리 연동 검토', subtitle);
+    ProgressDialog.update(pct, subtitle, buildRunProgressDetail(pct, msg));
     if (pct >= 100) {
       scheduleProgressHide(350);
     }
@@ -367,8 +364,8 @@ export function renderFamilyLink(root) {
 
     setBusy(true);
     exportBtn.disabled = true;
-    ProgressDialog.show('패밀리 연동 검토', '준비 중...');
-    ProgressDialog.update(0, '준비 중...', '');
+    ProgressDialog.show('패밀리 연동 검토', '검토 구성을 준비하는 중...');
+    ProgressDialog.update(0, '검토 구성을 준비하는 중...', '선택한 RVT와 대상 파라미터를 정리하는 중...');
 
     post('familylink:run', {
       rvtPaths: selectedRvts,
@@ -378,16 +375,17 @@ export function renderFamilyLink(root) {
 
   function onExport() {
     if (state.busy || !state.rows.length) return;
-    exportBtn.disabled = true;
     chooseExcelMode((mode) => {
+      exportBtn.disabled = true;
       const selected = mode || 'fast';
       lastExcelPct = 0;
       setBusy(true);
-      ProgressDialog.show('엑셀 내보내기', '준비 중...');
-      ProgressDialog.update(0, '준비 중...', '');
+      ProgressDialog.show('엑셀 내보내기', '엑셀 내보내기를 준비하는 중...');
+      ProgressDialog.update(0, '엑셀 내보내기를 준비하는 중...', '결과 행과 저장 옵션을 정리하는 중...');
       post('familylink:export', {
         fastExport: selected === 'fast',
-        autoFit: selected === 'normal'
+        autoFit: selected === 'normal',
+        locale: getLastExcelExportLocale()
       });
     });
   }
@@ -549,8 +547,7 @@ export function renderFamilyLink(root) {
     const weight = EXCEL_PHASE_WEIGHT[norm] || 0;
     const ratio = total > 0 ? Math.max(0, Math.min(1, current / total)) : 0;
     const staged = Math.max(ratio, clamp01(phaseProgress));
-    const denominator = completed + weight || 1;
-    const pct = (completed + weight * staged) / denominator * 100;
+    const pct = (completed + weight * staged) * 100;
     lastExcelPct = Math.max(lastExcelPct, Math.min(100, pct));
     return lastExcelPct;
   }
@@ -571,6 +568,27 @@ export function renderFamilyLink(root) {
   function formatExcelDetail(phase, message) {
     if (message) return message;
     return normalizeExcelPhase(phase) === 'DONE' ? '엑셀 내보내기 완료' : '';
+  }
+
+  function buildRunProgressSubtitle(percent, message) {
+    const raw = String(message || '').trim();
+    if (!raw) return '진행 중...';
+    if (raw.includes('프로젝트 스캔 시작')) return '문서를 준비하는 중...';
+    if (raw.includes('패밀리 검사 중')) return `패밀리 검사 중 (${formatRunPercent(percent)})`;
+    if (raw.includes('완료')) return '패밀리 연동 검토 완료';
+    return `패밀리 연동 검토 진행 중 (${formatRunPercent(percent)})`;
+  }
+
+  function buildRunProgressDetail(percent, message) {
+    const raw = String(message || '').trim();
+    if (raw) return raw;
+    return `전체 진행률 ${formatRunPercent(percent)}`;
+  }
+
+  function formatRunPercent(percent) {
+    const safe = Number(percent);
+    if (!Number.isFinite(safe)) return '0%';
+    return `${Math.max(0, Math.min(100, Math.round(safe * 10) / 10))}%`;
   }
 
   function renderRvtList() {

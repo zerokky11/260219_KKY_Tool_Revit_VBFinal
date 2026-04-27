@@ -1,5 +1,6 @@
 ﻿import { clear, div, toast, setBusy, showCompletionSummaryDialog } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
+import { chooseExcelMode, getLastExcelExportLocale, showExcelSavedDialog } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { post, onHost } from '../core/bridge.js';
@@ -95,15 +96,22 @@ export function renderParamModifier(root) {
     if (!state.lastResult) state.lastResult = {};
     if (payload?.outputFolder) state.lastResult.outputFolder = payload.outputFolder;
     if (payload?.resultWorkbookPath) state.lastResult.resultWorkbookPath = payload.resultWorkbookPath;
-    if (payload?.logTextPath) state.lastResult.logTextPath = payload.logTextPath;
+    if (Object.prototype.hasOwnProperty.call(payload || {}, 'logTextPath')) state.lastResult.logTextPath = payload.logTextPath || '';
     renderRunSummary(state);
     renderRvtModal(state);
     updateActionState(state);
-    requestAnimationFrame(() => {
-      ProgressDialog.hide();
-      openCompletionResultDialog(state, payload || {});
-    });
-    toast(payload?.message || '결과 파일을 저장했습니다.', payload?.ok === false ? 'err' : 'ok', 3200);
+    const savedPath = payload?.path || payload?.resultWorkbookPath || '';
+    if (payload?.ok && savedPath) {
+      requestAnimationFrame(() => {
+        showExcelSavedDialog(payload?.message || '결과 엑셀을 저장했습니다.', savedPath, (path) => post('excel:open', { path }));
+      });
+    } else {
+      requestAnimationFrame(() => {
+        ProgressDialog.hide();
+        openCompletionResultDialog(state, payload || {});
+      });
+      toast(payload?.message || '결과 파일을 저장했습니다.', payload?.ok === false ? 'err' : 'ok', 3200);
+    }
   });
   onHost('parammodifier:error', (payload) => {
     state.acceptProgress = false;
@@ -137,7 +145,7 @@ function openCompletionResultDialog(state, payload) {
   if (outputFolder) notes.push(`결과 폴더: ${outputFolder}`);
   if (workbookPath) notes.push(`결과 엑셀: ${workbookPath}`);
   if (logPath) notes.push(`로그 파일: ${logPath}`);
-  if (!workbookPath) notes.push('엑셀과 로그는 완료 후 이 창에서 필요할 때 추출합니다.');
+  if (!workbookPath) notes.push('자동 저장은 하지 않습니다. 필요할 때 이 창에서 엑셀을 추출합니다.');
 
   const actions = [];
   if (workbookPath) {
@@ -149,9 +157,11 @@ function openCompletionResultDialog(state, payload) {
       actions.push({
         label: '결과 엑셀 추출',
         variant: 'primary',
-        onClick: () => {
+        onClick: async () => {
+          const excelMode = await chooseExcelMode();
+          if (!excelMode) return;
           beginParamModifierProgress('파라미터 수정기', '결과 엑셀 생성을 준비 중입니다.');
-          post('parammodifier:export-results', {});
+          post('parammodifier:export-results', { excelMode: excelMode || 'fast', locale: getLastExcelExportLocale() });
         }
       });
   }

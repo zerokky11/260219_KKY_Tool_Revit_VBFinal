@@ -124,13 +124,16 @@ Namespace UI.Hub
                 Dim payloadJson As String = serializer.Serialize(New With {
                     .logs = logsPayload,
                     .excelMode = mode,
+                    .locale = ParseExcelLocale(payload),
                     .rvtPaths = rvtPaths,
                     .parameters = parameters
                 })
 
-                Dim res = SharedParamBatchService.ExportExcel(payloadJson)
+                ExcelProgressReporter.Reset("sharedparambatch:progress")
+                Dim res = SharedParamBatchService.ExportExcel(payloadJson, "sharedparambatch:progress")
                 SendToWeb("sharedparambatch:exported", res)
             Catch ex As Exception
+                ExcelProgressReporter.Report("sharedparambatch:progress", "ERROR", ex.Message, 0, 0, Nothing, True)
                 SendToWeb("sharedparambatch:exported", New With {.ok = False, .message = ex.Message})
                 SendToWeb("revit:error", New With {.message = "엑셀 내보내기 실패: " & ex.Message})
             End Try

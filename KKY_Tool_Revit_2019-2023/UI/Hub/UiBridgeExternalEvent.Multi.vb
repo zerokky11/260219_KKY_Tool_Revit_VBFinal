@@ -19,6 +19,7 @@ Namespace UI.Hub
         Private Class MultiCommonOptions
             Public Property ExtraParams As String = String.Empty
             Public Property TargetFilter As String = String.Empty
+            Public Property ExcludeTargetFilter As String = String.Empty
             Public Property ExcludeEndDummy As Boolean
             Public Property IncludePointXY As Boolean
             Public Property IncludeLinearMetrics As Boolean
@@ -31,7 +32,8 @@ Namespace UI.Hub
                 SendToWeb("commonoptions:loaded", New With {
                     .extraParamsText = stored.ExtraParamsText,
                     .targetFilterText = stored.TargetFilterText,
-                    .excludeEndDummy = stored.ExcludeEndDummy,
+                    .excludeTargetFilterText = stored.ExcludeTargetFilterText,
+                    .excludeEndDummy = False,
                     .includePointXY = stored.IncludePointXY,
                     .includeLinearMetrics = stored.IncludeLinearMetrics
                 })
@@ -39,6 +41,7 @@ Namespace UI.Hub
                 SendToWeb("commonoptions:loaded", New With {
                     .extraParamsText = "",
                     .targetFilterText = "",
+                    .excludeTargetFilterText = "",
                     .excludeEndDummy = False,
                     .includePointXY = False,
                     .includeLinearMetrics = False,
@@ -52,13 +55,17 @@ Namespace UI.Hub
             Dim pd = ParsePayloadDict(payload)
             Dim extraText As String = Convert.ToString(GetProp(pd, "extraParamsText"))
             Dim filterText As String = Convert.ToString(GetProp(pd, "targetFilterText"))
-            Dim excludeEndDummy As Boolean = SafeBoolObj(GetProp(pd, "excludeEndDummy"), False)
+            Dim excludeFilterText As String = Convert.ToString(GetProp(pd, "excludeTargetFilterText"))
+            If String.IsNullOrWhiteSpace(excludeFilterText) Then
+                excludeFilterText = Convert.ToString(GetProp(pd, "excludeTargetFilter"))
+            End If
             Dim includePointXY As Boolean = SafeBoolObj(GetProp(pd, "includePointXY"), False)
             Dim includeLinearMetrics As Boolean = SafeBoolObj(GetProp(pd, "includeLinearMetrics"), False)
             Dim options As New HubCommonOptionsStorageService.HubCommonOptions() With {
                 .ExtraParamsText = If(extraText, String.Empty),
                 .TargetFilterText = If(filterText, String.Empty),
-                .ExcludeEndDummy = excludeEndDummy,
+                .ExcludeTargetFilterText = If(excludeFilterText, String.Empty),
+                .ExcludeEndDummy = False,
                 .IncludePointXY = includePointXY,
                 .IncludeLinearMetrics = includeLinearMetrics
             }
@@ -72,8 +79,24 @@ Namespace UI.Hub
             Public Property Tol As Double = 1.0R
             Public Property Unit As String = "inch"
             Public Property Param As String = "Comments"
+            Public Property ExcludeEndDummy As Boolean
             Public Property IncludePointXY As Boolean
             Public Property IncludeLinearMetrics As Boolean
+        End Class
+
+        Private Class MultiTapAlignOptions
+            Public Property Enabled As Boolean
+            Public Property Tol As Double = 0.5R
+            Public Property Unit As String = "mm"
+            Public Property Domain As String = "all"
+            Public Property FeatureTargetFilter As String = String.Empty
+            Public Property ExportLocale As String = "ko"
+        End Class
+
+        Private Class MultiDupClashOptions
+            Public Property Enabled As Boolean
+            Public Property Mode As String = "duplicate"
+            Public Property TolFeet As Double = 1.0R / 64.0R
         End Class
 
         Private Class MultiPmsOptions
@@ -110,6 +133,12 @@ Namespace UI.Hub
             Public Property Common As MultiCommonOptions = New MultiCommonOptions()
             Public Property Connector As MultiConnectorOptions = New MultiConnectorOptions()
             Public Property FloorInfo As MultiFloorInfoOptions = New MultiFloorInfoOptions()
+            Public Property FamilySuitability As MultiFamilySuitabilityOptions = New MultiFamilySuitabilityOptions()
+            Public Property TapAlign As MultiTapAlignOptions = New MultiTapAlignOptions()
+            Public Property DupClash As MultiDupClashOptions = New MultiDupClashOptions()
+            Public Property WorksetAssignment As MultiWorksetAssignmentOptions = New MultiWorksetAssignmentOptions()
+            Public Property ProjectParameterDuplication As MultiProjectParameterDuplicationOptions = New MultiProjectParameterDuplicationOptions()
+            Public Property ParameterMissing As MultiParameterMissingOptions = New MultiParameterMissingOptions()
             Public Property Pms As MultiPmsOptions = New MultiPmsOptions()
             Public Property Guid As MultiGuidOptions = New MultiGuidOptions()
             Public Property FamilyLink As MultiFamilyLinkOptions = New MultiFamilyLinkOptions()
@@ -144,6 +173,15 @@ Namespace UI.Hub
 
         Private Shared _multiConnectorRows As List(Of Dictionary(Of String, Object))
         Private Shared _multiConnectorExtras As List(Of String)
+        Private Shared _multiTapAlignRows As List(Of Dictionary(Of String, Object))
+        Private Shared _multiTapAlignExtras As List(Of String)
+        Private Shared _multiTapAlignUnit As String = "mm"
+        Private Shared _multiTapAlignLocale As String = "ko"
+        Private Shared _multiLastExportFolder As String = String.Empty
+        Private Shared _multiDupRows As List(Of Exports.DupRowDto)
+        Private Shared _multiDupTargetCounts As Dictionary(Of String, Integer)
+        Private Shared _multiClashRows As List(Of Exports.DupRowDto)
+        Private Shared _multiClashPairs As List(Of Exports.PairRowDto)
         Private Shared _multiPmsClassRows As List(Of Dictionary(Of String, Object))
         Private Shared _multiPmsSizeRows As List(Of Dictionary(Of String, Object))
         Private Shared _multiPmsRoutingRows As List(Of Dictionary(Of String, Object))
@@ -182,8 +220,24 @@ Namespace UI.Hub
                 Case "connector"
                     _multiConnectorRows = Nothing
                     _multiConnectorExtras = Nothing
+                Case "tapalign"
+                    _multiTapAlignRows = Nothing
+                    _multiTapAlignExtras = Nothing
+                    _multiTapAlignUnit = "mm"
+                    _multiTapAlignLocale = "ko"
+                Case "dupclash"
+                    _multiDupRows = Nothing
+                    _multiDupTargetCounts = Nothing
+                    _multiClashRows = Nothing
+                    _multiClashPairs = Nothing
+                Case "worksetassignment"
+                    ClearMultiWorksetAssignmentCache()
+                Case "parameterduplication"
+                    ClearMultiProjectParameterDuplicationCache()
                 Case "floorinfo"
                     ClearMultiFloorInfoCache()
+                Case "familysuitability"
+                    ClearMultiFamilySuitabilityCache()
                 Case "pms"
                     _multiPmsClassRows = Nothing
                     _multiPmsSizeRows = Nothing
@@ -203,7 +257,7 @@ Namespace UI.Hub
 
         ' === hub:multi-run ===
         ' payload:
-        '  { rvtPaths:[], commonOptions:{extraParams,targetFilter,excludeEndDummy},
+        '  { rvtPaths:[], commonOptions:{extraParams,targetFilter,excludeTargetFilter},
         '    features:{connector,pms,guid,familylink,points} }
         ' response:
         '  hub:multi-progress {percent,message,detail}
@@ -218,6 +272,13 @@ Namespace UI.Hub
                 SendToWeb("hub:multi-error", New With {.message = "선택된 기능이 없습니다."})
                 Return
             End If
+
+            Try
+                PrepareFamilySuitabilityCriteria(req)
+            Catch ex As Exception
+                SendToWeb("hub:multi-error", New With {.message = ex.Message})
+                Return
+            End Try
 
             If ShouldOfferLegacyManageLinksSwitch(app, req) Then
                 Dim choice = ConfirmLegacyManageLinksSwitch(app)
@@ -757,7 +818,7 @@ NextItem:
                 Dim extras = BuildConnectorExtraParams(_multiRequest.Common.ExtraParams,
                                                        _multiRequest.Connector.IncludePointXY,
                                                        _multiRequest.Connector.IncludeLinearMetrics)
-                Dim rows = ConnectorDiagnosticsService.RunOnDocument(doc, _multiRequest.Connector.Tol, _multiRequest.Connector.Unit, _multiRequest.Connector.Param, extras, _multiRequest.Common.TargetFilter, _multiRequest.Common.ExcludeEndDummy, Sub(pct, msg)
+                Dim rows = ConnectorDiagnosticsService.RunOnDocument(doc, _multiRequest.Connector.Tol, _multiRequest.Connector.Unit, _multiRequest.Connector.Param, extras, _multiRequest.Common.TargetFilter, _multiRequest.Common.ExcludeTargetFilter, _multiRequest.Connector.ExcludeEndDummy, Sub(pct, msg)
                                                                                                                                                                                                                                                          Dim overallPct = ((basePct + (pct / 100.0R) / Math.Max(_multiTotal, 1)) * 100.0R)
                                                                                                                                                                                                                                                          ReportMultiProgress(overallPct, "커넥터 진단 실행 중", $"{safeName} · {msg}")
                                                                                                                                                                                                                                                      End Sub)
@@ -787,6 +848,91 @@ NextItem:
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "층정보 검토 실행 중", safeName)
                 RunFloorInfoMultiForDocument(doc, safeName, basePct)
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "층정보 검토 완료", safeName)
+            End If
+
+            If _multiRequest.FamilySuitability.Enabled Then
+                stepIndex += 1
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "Family 적합성 검토 실행 중", safeName)
+                RunFamilySuitabilityMultiForDocument(doc, safeName, basePct)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "Family 적합성 검토 완료", safeName)
+            End If
+
+            If _multiRequest.TapAlign.Enabled Then
+                stepIndex += 1
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "탭/분기 축 틀어짐 검토 실행 중", safeName)
+                Dim extras = BuildConnectorExtraParams(_multiRequest.Common.ExtraParams,
+                                                       _multiRequest.Common.IncludePointXY,
+                                                       _multiRequest.Common.IncludeLinearMetrics)
+                Dim combinedTargetFilter = TapAlignmentReviewService.CombineTargetFilterText(_multiRequest.Common.TargetFilter,
+                                                                                            _multiRequest.TapAlign.FeatureTargetFilter)
+                Dim targetCount = TapAlignmentReviewService.CountTargetsOnDocument(doc,
+                                                                                   _multiRequest.TapAlign.Domain,
+                                                                                   combinedTargetFilter,
+                                                                                   _multiRequest.Common.ExcludeTargetFilter)
+                Dim rows = TapAlignmentReviewService.RunOnDocument(doc,
+                                                                   _multiRequest.TapAlign.Tol,
+                                                                   _multiRequest.TapAlign.Unit,
+                                                                   _multiRequest.TapAlign.Domain,
+                                                                   extras,
+                                                                   combinedTargetFilter,
+                                                                   _multiRequest.Common.ExcludeTargetFilter,
+                                                                   Sub(pct, msg)
+                                                                       Dim fraction As Double = Math.Max(0.0R, Math.Min(CDbl(pct), 1.0R))
+                                                                       Dim overallPct = ((basePct + fraction / Math.Max(_multiTotal, 1)) * 100.0R)
+                                                                       ReportMultiProgress(overallPct, "탭/분기 축 틀어짐 검토 실행 중", $"{safeName} · {msg}")
+                                                                   End Sub)
+                If rows IsNot Nothing AndAlso rows.Count > 0 Then
+                    For Each row In rows
+                        If row IsNot Nothing Then row("File") = safeName
+                    Next
+                    If _multiTapAlignRows Is Nothing Then _multiTapAlignRows = New List(Of Dictionary(Of String, Object))()
+                    _multiTapAlignRows.AddRange(rows)
+                Else
+                    If _multiTapAlignRows Is Nothing Then _multiTapAlignRows = New List(Of Dictionary(Of String, Object))()
+                    _multiTapAlignRows.Add(New Dictionary(Of String, Object) From {
+                        {"File", safeName},
+                        {"Status", If(targetCount > 0, "OK", "NO_TARGET")},
+                        {"TargetCount", targetCount.ToString(Globalization.CultureInfo.InvariantCulture)},
+                        {"Message", ""},
+                        {"DistanceFromCenter", ""},
+                        {"ModeledAngle", ""},
+                        {"Domain", ""}
+                    })
+                End If
+                _multiTapAlignExtras = extras
+                _multiTapAlignUnit = NormalizeTapAlignUnit(_multiRequest.TapAlign.Unit)
+                _multiTapAlignLocale = NormalizeTapAlignExportLocale(_multiRequest.TapAlign.ExportLocale)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "탭/분기 축 틀어짐 검토 완료", safeName)
+            End If
+
+            If _multiRequest.DupClash.Enabled Then
+                stepIndex += 1
+                Dim dupClashMode As String = NormalizeMultiDupClashMode(_multiRequest.DupClash.Mode)
+                Dim dupClashLabel As String = ResolveMultiDupClashModeLabel(dupClashMode)
+                ReportMultiProgress(CalcStepProgressPercent(basePct, stepIndex, steps, 0.0R), $"{dupClashLabel} 실행 중", safeName)
+                RunDupClashMultiForDocument(doc, safeName, basePct, stepIndex, steps)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), $"{dupClashLabel} 완료", safeName)
+            End If
+
+            If _multiRequest.WorksetAssignment.Enabled Then
+                stepIndex += 1
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "웍셋 배정 검토 실행 중", safeName)
+                RunWorksetAssignmentMultiForDocument(doc, safeName, basePct)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "웍셋 배정 검토 완료", safeName)
+            End If
+
+            If _multiRequest.ProjectParameterDuplication.Enabled Then
+                stepIndex += 1
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "Project Parameter 중복 검토 실행 중", safeName)
+                RunProjectParameterDuplicationMultiForDocument(doc, safeName, basePct)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "Project Parameter 중복 검토 완료", safeName)
+            End If
+
+            If _multiRequest.ParameterMissing.Enabled Then
+                stepIndex += 1
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "파라미터 누락 검토 실행 중", safeName)
+                RunParameterMissingMultiForDocument(doc, safeName, basePct)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "파라미터 누락 검토 완료", safeName)
             End If
 
             If _multiRequest.Pms.Enabled Then
@@ -824,8 +970,13 @@ NextItem:
 
             If _multiRequest.FamilyLink.Enabled Then
                 stepIndex += 1
-                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "패밀리 연동 검토 실행 중", safeName)
-                Dim rows = FamilyLinkAuditService.RunOnDocument(doc, path, _multiRequest.FamilyLink.Targets, Nothing)
+                ReportMultiProgress(CalcStepProgressPercent(basePct, stepIndex, steps, 0.0R), "패밀리 연동 검토 실행 중", safeName)
+                Dim rows = FamilyLinkAuditService.RunOnDocument(doc, path, _multiRequest.FamilyLink.Targets,
+                                                                Sub(pct, msg)
+                                                                    Dim overallPct As Double = CalcStepProgressPercent(basePct, stepIndex, steps, CDbl(pct) / 100.0R)
+                                                                    Dim detail As String = BuildMultiFamilyLinkProgressDetail(safeName, msg)
+                                                                    ReportMultiProgress(overallPct, "패밀리 연동 검토 실행 중", detail)
+                                                                End Sub)
                 If rows IsNot Nothing Then
                     If _multiFamilyLinkRows Is Nothing Then _multiFamilyLinkRows = New List(Of FamilyLinkAuditRow)()
                     _multiFamilyLinkRows.AddRange(FilterFamilyLinkIssueRows(rows))
@@ -858,6 +1009,328 @@ NextItem:
             End If
             Return saveNeeded
         End Function
+
+        Private Sub RunDupClashMultiForDocument(doc As Document,
+                                                safeName As String,
+                                                basePct As Double,
+                                                stepIndex As Integer,
+                                                steps As Integer)
+            If doc Is Nothing Then Return
+
+            Dim tolFeet As Double = 1.0R / 64.0R
+            Dim mode As String = "duplicate"
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.DupClash IsNot Nothing Then
+                tolFeet = Math.Max(0.000001R, _multiRequest.DupClash.TolFeet)
+                mode = NormalizeMultiDupClashMode(_multiRequest.DupClash.Mode)
+            End If
+
+            Dim targetFilter As String = ""
+            Dim excludeTargetFilter As String = ""
+            Dim extraParamNames As List(Of String) = New List(Of String)()
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.Common IsNot Nothing Then
+                targetFilter = SafeStr(_multiRequest.Common.TargetFilter)
+                excludeTargetFilter = SafeStr(_multiRequest.Common.ExcludeTargetFilter)
+                extraParamNames = ParseExtraParams(_multiRequest.Common.ExtraParams)
+            End If
+
+            Dim previousRows = _lastRows
+            Dim previousPairs = _lastPairs
+            Dim previousMode = _lastMode
+            Dim previousTargetCount = _lastDupClashTargetCount
+            Dim dupStart As Integer = If(_multiDupRows, New List(Of Exports.DupRowDto)()).Count
+            Dim clashRowStart As Integer = If(_multiClashRows, New List(Of Exports.DupRowDto)()).Count
+            Dim clashPairStart As Integer = If(_multiClashPairs, New List(Of Exports.PairRowDto)()).Count
+
+            Try
+                PrepareNestedSharedIds(doc)
+                Dim scopeIds = BuildDupClashScopeIds(doc, targetFilter, excludeTargetFilter)
+
+                If String.Equals(mode, "clash", StringComparison.OrdinalIgnoreCase) Then
+                    RunSelfClash(doc, tolFeet, scopeIds, Nothing, Nothing)
+                    If _multiClashRows Is Nothing Then _multiClashRows = New List(Of Exports.DupRowDto)()
+                    _multiClashRows.AddRange(BuildMultiDupExportRows(doc, safeName, _lastRows, extraParamNames))
+
+                    If _multiClashPairs Is Nothing Then _multiClashPairs = New List(Of Exports.PairRowDto)()
+                    _multiClashPairs.AddRange(BuildMultiClashExportPairs(doc, safeName, _lastPairs, extraParamNames))
+                Else
+                    RunDuplicate(doc, tolFeet, scopeIds, Nothing, Nothing)
+                    If _multiDupRows Is Nothing Then _multiDupRows = New List(Of Exports.DupRowDto)()
+                    _multiDupRows.AddRange(BuildMultiDupExportRows(doc, safeName, _lastRows, extraParamNames))
+                    If _multiDupTargetCounts Is Nothing Then _multiDupTargetCounts = New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+                    _multiDupTargetCounts(ResolveRequestedMultiFileName(safeName)) = _lastDupClashTargetCount
+                End If
+            Catch
+                TrimMultiDupRows(dupStart)
+                TrimMultiClashRows(clashRowStart)
+                TrimMultiClashPairs(clashPairStart)
+                Throw
+            Finally
+                _lastRows = previousRows
+                _lastPairs = previousPairs
+                _lastMode = previousMode
+                _lastDupClashTargetCount = previousTargetCount
+            End Try
+        End Sub
+
+        Private Shared Function NormalizeMultiDupClashMode(value As String) As String
+            Dim normalized As String = SafeStr(value).Trim().ToLowerInvariant()
+            If normalized = "clash" OrElse normalized = "selfclash" OrElse normalized = "self-clash" OrElse normalized = "interference" Then
+                Return "clash"
+            End If
+            Return "duplicate"
+        End Function
+
+        Private Shared Function ResolveMultiDupClashModeLabel(value As String) As String
+            If String.Equals(NormalizeMultiDupClashMode(value), "clash", StringComparison.OrdinalIgnoreCase) Then
+                Return "자체간섭 검토"
+            End If
+            Return "중복 검토"
+        End Function
+
+        Private Function GetCurrentMultiDupClashMode() As String
+            If _multiRequest Is Nothing OrElse _multiRequest.DupClash Is Nothing Then
+                Return "duplicate"
+            End If
+            Return NormalizeMultiDupClashMode(_multiRequest.DupClash.Mode)
+        End Function
+
+        Private Function BuildDupClashScopeIds(doc As Document,
+                                               targetFilter As String,
+                                               excludeTargetFilter As String) As HashSet(Of Integer)
+            If doc Is Nothing Then Return Nothing
+            If String.IsNullOrWhiteSpace(targetFilter) AndAlso String.IsNullOrWhiteSpace(excludeTargetFilter) Then Return Nothing
+
+            Dim evaluator = ConnectorDiagnosticsService.CreateCommonOptionsElementEvaluator(targetFilter, excludeTargetFilter)
+            If evaluator Is Nothing Then Return Nothing
+
+            Dim allowed As New HashSet(Of Integer)()
+            Dim collector As New FilteredElementCollector(doc)
+            collector.WhereElementIsNotElementType()
+
+            For Each e As Element In collector
+                If e Is Nothing Then Continue For
+
+                Dim ok As Boolean = False
+                Try
+                    ok = evaluator(e)
+                Catch
+                    ok = False
+                End Try
+
+                If ok Then
+                    allowed.Add(e.Id.IntegerValue)
+                End If
+            Next
+
+            If allowed.Count = 0 Then
+                allowed.Add(Integer.MinValue)
+            End If
+
+            Return allowed
+        End Function
+
+        Private Function TryBuildCommonScopeIds(doc As Document,
+                                                targetFilter As String,
+                                                excludeTargetFilter As String,
+                                                ByRef allowedElementIds As List(Of Integer)) As Boolean
+            allowedElementIds = New List(Of Integer)()
+            If doc Is Nothing Then Return False
+            If String.IsNullOrWhiteSpace(targetFilter) AndAlso String.IsNullOrWhiteSpace(excludeTargetFilter) Then Return False
+
+            Dim scopeIds = BuildDupClashScopeIds(doc, targetFilter, excludeTargetFilter)
+            If scopeIds Is Nothing Then Return False
+
+            allowedElementIds = scopeIds.
+                Where(Function(id) id > 0).
+                Distinct().
+                ToList()
+            Return True
+        End Function
+
+        Private Function BuildMultiDupExportRows(doc As Document,
+                                                 safeName As String,
+                                                 rows As IEnumerable(Of DupRowDto),
+                                                 extraParamNames As IList(Of String)) As List(Of Exports.DupRowDto)
+            Dim result As New List(Of Exports.DupRowDto)()
+            If rows Is Nothing Then Return result
+
+            For Each row In rows
+                If row Is Nothing Then Continue For
+
+                result.Add(New Exports.DupRowDto With {
+                    .FileName = ResolveRequestedMultiFileName(ResolveMultiDupFileName(safeName, row.FileName)),
+                    .Id = row.ElementId.ToString(),
+                    .Category = SafeStr(row.Category),
+                    .Family = SafeStr(row.Family),
+                    .Type = SafeStr(row.Type),
+                    .Comment = SafeStr(row.Comment),
+                    .ConnectedIds = ParseMultiDupConnectedIds(row.ConnectedIds),
+                    .GroupKey = SafeStr(row.GroupKey),
+                    .ExtraParams = ReadElementParameterMap(doc, row.ElementId, extraParamNames)
+                })
+            Next
+
+            Return result
+        End Function
+
+        Private Function BuildMultiClashExportPairs(doc As Document,
+                                                    safeName As String,
+                                                    pairs As IEnumerable(Of PairRowDto),
+                                                    extraParamNames As IList(Of String)) As List(Of Exports.PairRowDto)
+            Dim result As New List(Of Exports.PairRowDto)()
+            If pairs Is Nothing Then Return result
+
+            For Each pair In pairs
+                If pair Is Nothing Then Continue For
+
+                Dim aId As Integer = SafeToInt(pair.AId)
+                Dim bId As Integer = SafeToInt(pair.BId)
+
+                result.Add(New Exports.PairRowDto With {
+                    .FileName = ResolveRequestedMultiFileName(ResolveMultiDupFileName(safeName, pair.FileName)),
+                    .GroupKey = SafeStr(pair.GroupKey),
+                    .AId = SafeStr(pair.AId),
+                    .ACategory = SafeStr(pair.ACategory),
+                    .AFamily = SafeStr(pair.AFamily),
+                    .AType = SafeStr(pair.AType),
+                    .BId = SafeStr(pair.BId),
+                    .BCategory = SafeStr(pair.BCategory),
+                    .BFamily = SafeStr(pair.BFamily),
+                    .BType = SafeStr(pair.BType),
+                    .Comment = SafeStr(pair.Comment),
+                    .AExtraParams = ReadElementParameterMap(doc, aId, extraParamNames),
+                    .BExtraParams = ReadElementParameterMap(doc, bId, extraParamNames)
+                })
+            Next
+
+            Return result
+        End Function
+
+        Private Shared Function ParseMultiDupConnectedIds(raw As String) As List(Of String)
+            Dim result As New List(Of String)()
+            If String.IsNullOrWhiteSpace(raw) Then Return result
+
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            Dim parts = raw.Split(New Char() {","c, ";"c, "|"c, ControlChars.Tab, ControlChars.Cr, ControlChars.Lf}, StringSplitOptions.RemoveEmptyEntries)
+            For Each part In parts
+                Dim value As String = SafeStr(part).Trim()
+                If String.IsNullOrWhiteSpace(value) Then Continue For
+                If seen.Add(value) Then result.Add(value)
+            Next
+
+            Return result
+        End Function
+
+        Private Shared Function ResolveMultiDupFileName(defaultName As String, candidate As String) As String
+            Dim resolved As String = GetSafeMultiFileName(candidate)
+            If Not String.IsNullOrWhiteSpace(resolved) Then Return resolved
+            Return GetSafeMultiFileName(defaultName)
+        End Function
+
+        Private Function BuildMultiDuplicateExportRowsWithPlaceholders(sourceRows As IEnumerable(Of Exports.DupRowDto),
+                                                                       exportLocale As String) As List(Of Exports.DupRowDto)
+            Dim rows As List(Of Exports.DupRowDto) =
+                If(sourceRows, Enumerable.Empty(Of Exports.DupRowDto)()).
+                Where(Function(item) item IsNot Nothing).
+                ToList()
+            Dim orderedNames = BuildOrderedMultiFileNames(rows.Select(Function(item) If(item Is Nothing, "", item.FileName)))
+            Dim result As New List(Of Exports.DupRowDto)()
+
+            For Each fileName In orderedNames
+                Dim perFileRows = rows.
+                    Where(Function(item) String.Equals(ResolveRequestedMultiFileName(item.FileName), fileName, StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+                If perFileRows.Count > 0 Then
+                    result.AddRange(perFileRows)
+                Else
+                    result.Add(BuildMultiDuplicatePlaceholderRow(fileName, exportLocale))
+                End If
+            Next
+
+            If result.Count = 0 Then
+                result.Add(BuildMultiDuplicatePlaceholderRow("", exportLocale))
+            End If
+
+            Return result
+        End Function
+
+        Private Function BuildMultiDuplicatePlaceholderRowsForFile(fileName As String,
+                                                                   exportLocale As String) As List(Of Exports.DupRowDto)
+            Return New List(Of Exports.DupRowDto) From {
+                BuildMultiDuplicatePlaceholderRow(fileName, exportLocale)
+            }
+        End Function
+
+        Private Function BuildMultiDuplicatePlaceholderRow(fileName As String,
+                                                           exportLocale As String) As Exports.DupRowDto
+            Dim safeFileName As String = ResolveRequestedMultiFileName(fileName)
+            If String.IsNullOrWhiteSpace(safeFileName) Then safeFileName = SafeStr(fileName)
+
+            Dim runReason As String = ""
+            Dim statusText As String = GetMultiRunItemStatus(safeFileName, runReason)
+            Dim comment As String
+
+            If String.Equals(statusText, "failed", StringComparison.OrdinalIgnoreCase) OrElse
+               String.Equals(statusText, "skipped", StringComparison.OrdinalIgnoreCase) Then
+                comment = If(String.IsNullOrWhiteSpace(runReason),
+                             Exports.DuplicateExport.GetDuplicateNoResultComment(exportLocale),
+                             runReason)
+            Else
+                Dim targetCount As Integer = GetMultiDuplicateTargetCount(safeFileName)
+                comment = If(targetCount <= 0,
+                             Exports.DuplicateExport.GetDuplicateNoTargetComment(exportLocale),
+                             Exports.DuplicateExport.GetDuplicateNoIssueComment(exportLocale))
+            End If
+
+            Return New Exports.DupRowDto With {
+                .FileName = safeFileName,
+                .Comment = comment
+            }
+        End Function
+
+        Private Function GetMultiDuplicateTargetCount(fileName As String) As Integer
+            Dim safeFileName As String = ResolveRequestedMultiFileName(fileName)
+            If String.IsNullOrWhiteSpace(safeFileName) Then safeFileName = SafeStr(fileName)
+
+            If _multiDupTargetCounts Is Nothing Then Return 0
+
+            Dim targetCount As Integer = 0
+            If _multiDupTargetCounts.TryGetValue(safeFileName, targetCount) Then
+                Return Math.Max(targetCount, 0)
+            End If
+
+            Return 0
+        End Function
+
+        Private Shared Sub TrimMultiDupRows(startIndex As Integer)
+            If _multiDupRows Is Nothing Then Return
+            If startIndex <= 0 Then
+                _multiDupRows.Clear()
+                Return
+            End If
+            If startIndex >= _multiDupRows.Count Then Return
+            _multiDupRows.RemoveRange(startIndex, _multiDupRows.Count - startIndex)
+        End Sub
+
+        Private Shared Sub TrimMultiClashRows(startIndex As Integer)
+            If _multiClashRows Is Nothing Then Return
+            If startIndex <= 0 Then
+                _multiClashRows.Clear()
+                Return
+            End If
+            If startIndex >= _multiClashRows.Count Then Return
+            _multiClashRows.RemoveRange(startIndex, _multiClashRows.Count - startIndex)
+        End Sub
+
+        Private Shared Sub TrimMultiClashPairs(startIndex As Integer)
+            If _multiClashPairs Is Nothing Then Return
+            If startIndex <= 0 Then
+                _multiClashPairs.Clear()
+                Return
+            End If
+            If startIndex >= _multiClashPairs.Count Then Return
+            _multiClashPairs.RemoveRange(startIndex, _multiClashPairs.Count - startIndex)
+        End Sub
 
         Private Shared Function ShouldWarnActiveLinkWorksetRefresh(req As MultiRunRequest) As Boolean
             Return req IsNot Nothing AndAlso
@@ -1412,6 +1885,28 @@ NextItem:
             If _multiRequest IsNot Nothing AndAlso _multiRequest.FloorInfo IsNot Nothing AndAlso _multiRequest.FloorInfo.Enabled Then
                 summary("floorinfo") = New With {.rows = GetMultiFloorInfoRowCount()}
             End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.FamilySuitability IsNot Nothing AndAlso _multiRequest.FamilySuitability.Enabled Then
+                summary("familysuitability") = New With {.rows = GetMultiFamilySuitabilityRowCount()}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.TapAlign IsNot Nothing AndAlso _multiRequest.TapAlign.Enabled Then
+                summary("tapalign") = New With {.rows = If(_multiTapAlignRows, New List(Of Dictionary(Of String, Object))()).Count}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.DupClash IsNot Nothing AndAlso _multiRequest.DupClash.Enabled Then
+                Dim mode As String = NormalizeMultiDupClashMode(_multiRequest.DupClash.Mode)
+                Dim dupCount As Integer = If(_multiDupRows, New List(Of Exports.DupRowDto)()).Count
+                Dim clashCount As Integer = If(_multiClashPairs, New List(Of Exports.PairRowDto)()).Count
+                If clashCount <= 0 Then clashCount = If(_multiClashRows, New List(Of Exports.DupRowDto)()).Count
+                summary("dupclash") = New With {.rows = If(String.Equals(mode, "clash", StringComparison.OrdinalIgnoreCase), clashCount, dupCount)}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.WorksetAssignment IsNot Nothing AndAlso _multiRequest.WorksetAssignment.Enabled Then
+                summary("worksetassignment") = New With {.rows = If(_multiWorksetAssignmentRows, New List(Of WorksetAssignmentReviewService.ReviewRow)()).Count}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.ProjectParameterDuplication IsNot Nothing AndAlso _multiRequest.ProjectParameterDuplication.Enabled Then
+                summary("parameterduplication") = New With {.rows = If(_multiParameterDuplicationRows, New List(Of ProjectParameterDuplicationReviewService.ReviewRow)()).Count}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.ParameterMissing IsNot Nothing AndAlso _multiRequest.ParameterMissing.Enabled Then
+                summary("parametermissing") = New With {.rows = If(_multiParameterMissingRows, New List(Of ParameterMissingReviewService.ReviewRow)()).Count}
+            End If
             If _multiRequest IsNot Nothing AndAlso _multiRequest.Pms IsNot Nothing AndAlso _multiRequest.Pms.Enabled Then
                 summary("pms") = New With {.rows = If(_multiPmsSizeRows, New List(Of Dictionary(Of String, Object))()).Count}
             End If
@@ -1439,23 +1934,49 @@ NextItem:
             Dim excelModeObj As Object = GetProp(payload, "excelMode")
             Dim excelMode As String = NormalizeEventName(Convert.ToString(excelModeObj))
             Dim doAutoFit As Boolean = ParseExcelMode(payload)
+            Dim exportLocale As String = ParseExcelLocale(payload)
+            Dim outputFolder As String = String.Empty
+
+            If ParseSplitByFile(payload) Then
+                outputFolder = PickMultiExportFolder()
+                If String.IsNullOrWhiteSpace(outputFolder) Then
+                    SendToWeb("hub:multi-exported", New With {
+                        .ok = False,
+                        .cancelled = True,
+                        .message = "폴더 선택이 취소되었습니다."
+                    })
+                    Return
+                End If
+            End If
 
             Try
                 Select Case If(key, "").ToLowerInvariant()
                     Case "connector"
-                        ExportConnector(doAutoFit, excelMode)
+                        ExportConnector(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "floorinfo"
-                        ExportFloorInfo(doAutoFit, excelMode)
+                        ExportFloorInfo(doAutoFit, excelMode, exportLocale, outputFolder)
+                    Case "familysuitability"
+                        ExportFamilySuitability(doAutoFit, excelMode, exportLocale, outputFolder)
+                    Case "tapalign"
+                        ExportTapAlign(doAutoFit, excelMode, exportLocale, outputFolder)
+                    Case "dupclash"
+                        ExportDupClash(doAutoFit, excelMode, exportLocale, outputFolder)
+                    Case "worksetassignment"
+                        ExportWorksetAssignment(doAutoFit, excelMode, exportLocale, outputFolder)
+                    Case "parameterduplication"
+                        ExportProjectParameterDuplication(doAutoFit, excelMode, exportLocale, outputFolder)
+                    Case "parametermissing"
+                        ExportParameterMissing(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "pms"
-                        ExportSegmentPms(doAutoFit, excelMode)
+                        ExportSegmentPms(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "guid"
-                        ExportGuid(excelMode)
+                        ExportGuid(excelMode, exportLocale, outputFolder)
                     Case "familylink"
-                        ExportFamilyLink(doAutoFit, excelMode)
+                        ExportFamilyLink(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "points"
-                        ExportPoints(doAutoFit, excelMode)
+                        ExportPoints(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "linkworkset"
-                        ExportLinkWorkset(doAutoFit, excelMode)
+                        ExportLinkWorkset(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case Else
                         SendToWeb("hub:multi-exported", New With {.ok = False, .message = "알 수 없는 기능 키입니다."})
                         Return
@@ -1466,18 +1987,361 @@ NextItem:
             End Try
         End Sub
 
-        ' [추가] 저장된 파일에 기능별(키별) 스타일 적용 (등록된 키만 적용됨)
-        Private Sub TryApplyExportStyles(exportKey As String, savedPath As String, Optional doAutoFit As Boolean = True, Optional excelMode As String = "normal")
-            If String.IsNullOrWhiteSpace(exportKey) Then Exit Sub
-            If String.IsNullOrWhiteSpace(savedPath) Then Exit Sub
+        Private Shared Function ParseSplitByFile(payload As Object) As Boolean
             Try
-                Global.KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey(exportKey, savedPath, autoFit:=doAutoFit, excelMode:=excelMode)
+                Return SafeBoolObj(GetProp(payload, "splitByFile"), False)
             Catch
-                ' 스타일 실패해도 저장 성공은 유지
+                Return False
             End Try
+        End Function
+
+        Private Function PickMultiExportFolder() As String
+            Dim initialDirectory As String = SafeStr(_multiLastExportFolder).Trim()
+            If String.IsNullOrWhiteSpace(initialDirectory) OrElse Not Directory.Exists(initialDirectory) Then
+                initialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+            End If
+
+            Using dlg As New WinForms.OpenFileDialog()
+                dlg.Title = "파일별 엑셀 저장 폴더 선택"
+                dlg.Filter = "폴더 선택|*.folder"
+                dlg.CheckFileExists = False
+                dlg.CheckPathExists = False
+                dlg.ValidateNames = False
+                dlg.Multiselect = False
+                dlg.RestoreDirectory = True
+                dlg.DereferenceLinks = True
+                dlg.InitialDirectory = initialDirectory
+                dlg.FileName = "이 폴더 선택.folder"
+
+                If dlg.ShowDialog() <> WinForms.DialogResult.OK Then Return String.Empty
+
+                Dim selectedPath As String = NormalizePickedFolderPath(dlg.FileName, dlg.InitialDirectory)
+                If String.IsNullOrWhiteSpace(selectedPath) Then Return String.Empty
+
+                If Not Directory.Exists(selectedPath) Then
+                    Directory.CreateDirectory(selectedPath)
+                End If
+
+                _multiLastExportFolder = selectedPath
+                Return selectedPath
+            End Using
+        End Function
+
+        Private Shared Function NormalizePickedFolderPath(rawPath As String, fallbackDirectory As String) As String
+            Dim value As String = SafeStr(rawPath).Trim()
+            If String.IsNullOrWhiteSpace(value) Then Return String.Empty
+
+            Try
+                value = value.Replace("/"c, Path.DirectorySeparatorChar)
+            Catch
+            End Try
+
+            Try
+                If Directory.Exists(value) Then
+                    Return Path.GetFullPath(value)
+                End If
+            Catch
+            End Try
+
+            Dim fileName As String = ""
+            Try
+                fileName = Path.GetFileName(value)
+            Catch
+                fileName = ""
+            End Try
+
+            If String.Equals(fileName, "이 폴더 선택.folder", StringComparison.OrdinalIgnoreCase) Then
+                Try
+                    Dim parent As String = Path.GetDirectoryName(value)
+                    If Not String.IsNullOrWhiteSpace(parent) Then
+                        Return Path.GetFullPath(parent)
+                    End If
+                Catch
+                End Try
+            End If
+
+            If Not String.IsNullOrWhiteSpace(fallbackDirectory) Then
+                Try
+                    If Not Path.IsPathRooted(value) Then
+                        Dim combined As String = Path.Combine(fallbackDirectory, value)
+                        If Directory.Exists(combined) Then
+                            Return Path.GetFullPath(combined)
+                        End If
+                    End If
+                Catch
+                End Try
+            End If
+
+            Try
+                Return Path.GetFullPath(value)
+            Catch
+                Return String.Empty
+            End Try
+        End Function
+
+        Private Shared Function NormalizeSplitExportLocale(exportLocale As String) As String
+            If String.Equals(SafeStr(exportLocale).Trim(), "en", StringComparison.OrdinalIgnoreCase) Then Return "en"
+            Return "ko"
+        End Function
+
+        Private Shared Function ResolveSplitExportFeatureFileLabel(featureKey As String,
+                                                                  exportLocale As String,
+                                                                  Optional fallbackLabel As String = Nothing,
+                                                                  Optional featureMode As String = Nothing) As String
+            Dim locale As String = NormalizeSplitExportLocale(exportLocale)
+            Dim key As String = SafeStr(featureKey).Trim().ToLowerInvariant()
+            Dim mode As String = SafeStr(featureMode).Trim().ToLowerInvariant()
+
+            If String.Equals(locale, "en", StringComparison.OrdinalIgnoreCase) Then
+                Select Case key
+                    Case "connector"
+                        Return "S5_UTILITY Continuity Error (Location-based)"
+                    Case "tapalign"
+                        Return "Tap Branch Axis Misalignment Review"
+                    Case "dupclash"
+                        If String.Equals(mode, "clash", StringComparison.OrdinalIgnoreCase) Then Return "Self Clash Review"
+                        Return "Modeling Duplication"
+                    Case "worksetassignment"
+                        Return "Workset Assignment Error"
+                    Case "parameterduplication"
+                        Return "Parameter Duplication"
+                    Case "parametermissing"
+                        Return "Parameter Value Omission"
+                    Case "familysuitability"
+                        Return "Not Approved Family Review"
+                End Select
+            Else
+                Select Case key
+                    Case "connector"
+                        Return "파라미터 연속성 검토"
+                    Case "tapalign"
+                        Return "탭분기 축 틀어짐 검토"
+                    Case "dupclash"
+                        If String.Equals(mode, "clash", StringComparison.OrdinalIgnoreCase) Then Return "자체간섭검토"
+                        Return "중복검토"
+                    Case "worksetassignment"
+                        Return "웍셋 배정 검토"
+                    Case "parameterduplication"
+                        Return "Parameter 중복검토"
+                    Case "parametermissing"
+                        Return "속성누락검토"
+                    Case "familysuitability"
+                        Return "패밀리 적합성검토"
+                End Select
+            End If
+
+            Dim fallback As String = SafeStr(fallbackLabel).Trim()
+            If String.IsNullOrWhiteSpace(fallback) Then
+                fallback = If(String.Equals(locale, "en", StringComparison.OrdinalIgnoreCase), "Review Result", "검토결과")
+            End If
+            Return fallback
+        End Function
+
+        Private Shared Function FormatSplitExportIssueCount(issueCount As Integer) As String
+            Dim safeCount As Integer = Math.Max(0, issueCount)
+            Return safeCount.ToString("00", Globalization.CultureInfo.InvariantCulture) & "EA"
+        End Function
+
+        Private Shared Function IsSplitExportMessageText(value As String) As Boolean
+            Dim text As String = SafeStr(value).Trim()
+            If String.IsNullOrWhiteSpace(text) Then Return False
+
+            Select Case text
+                Case "오류가 없습니다.",
+                     "No issues.",
+                     "집계 가능한 객체가 없습니다.",
+                     "No rows to export.",
+                     "추출 결과 없음",
+                     "No data."
+                    Return True
+            End Select
+
+            Return False
+        End Function
+
+        Private Shared Function InferSplitExportIssueCount(table As DataTable) As Integer
+            If table Is Nothing OrElse table.Rows.Count = 0 Then Return 0
+
+            If table.Rows.Count = 1 Then
+                Dim firstRow As DataRow = table.Rows(0)
+                For Each column As DataColumn In table.Columns
+                    If column Is Nothing Then Continue For
+                    If IsSplitExportMessageText(SafeStr(firstRow(column.ColumnName))) Then Return 0
+                Next
+            End If
+
+            Return Math.Max(0, table.Rows.Count)
+        End Function
+
+        Private Shared Function InferSplitExportIssueCount(sheets As IList(Of KeyValuePair(Of String, DataTable))) As Integer
+            If sheets Is Nothing OrElse sheets.Count = 0 Then Return 0
+
+            Dim total As Integer = 0
+            For Each sheet In sheets
+                total += InferSplitExportIssueCount(sheet.Value)
+            Next
+            Return Math.Max(0, total)
+        End Function
+
+        Private Shared Sub SetSplitExportIssueCount(fileIssueCounts As IDictionary(Of String, Integer), fileName As String, issueCount As Integer)
+            If fileIssueCounts Is Nothing Then Return
+
+            Dim safeName As String = GetSafeMultiFileName(fileName)
+            If String.IsNullOrWhiteSpace(safeName) Then Return
+
+            fileIssueCounts(safeName) = Math.Max(0, issueCount)
         End Sub
 
-        Private Sub ExportConnector(doAutoFit As Boolean, excelMode As String)
+        Private Shared Function ResolveSplitExportIssueCount(fileName As String,
+                                                             fileIssueCounts As IDictionary(Of String, Integer),
+                                                             fallbackCount As Integer) As Integer
+            Dim safeName As String = GetSafeMultiFileName(fileName)
+            If fileIssueCounts IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(safeName) Then
+                Dim resolvedCount As Integer = 0
+                If fileIssueCounts.TryGetValue(safeName, resolvedCount) Then
+                    Return Math.Max(0, resolvedCount)
+                End If
+            End If
+
+            Return Math.Max(0, fallbackCount)
+        End Function
+
+        Private Shared Function BuildSplitExportFilePath(outputFolder As String,
+                                                         fileName As String,
+                                                         featureKey As String,
+                                                         exportLocale As String,
+                                                         issueCount As Integer,
+                                                         Optional fallbackLabel As String = Nothing,
+                                                         Optional featureMode As String = Nothing) As String
+            Dim safeFolder As String = SafeStr(outputFolder).Trim()
+            If String.IsNullOrWhiteSpace(safeFolder) Then Throw New InvalidOperationException("저장 폴더가 선택되지 않았습니다.")
+
+            Dim baseName As String = GetSafeMultiFileName(fileName)
+            If String.IsNullOrWhiteSpace(baseName) Then baseName = "Export"
+
+            Dim featureLabel As String = ResolveSplitExportFeatureFileLabel(featureKey, exportLocale, fallbackLabel, featureMode)
+            Dim safeSuffix As String = SanitizeFileName(SafeStr(featureLabel).Trim())
+            If String.IsNullOrWhiteSpace(safeSuffix) Then safeSuffix = "검토결과"
+
+            Dim issueSuffix As String = FormatSplitExportIssueCount(issueCount)
+            Dim fileNameOnly As String = SanitizeFileName(baseName & "_" & safeSuffix & "_" & issueSuffix)
+            If String.IsNullOrWhiteSpace(fileNameOnly) Then fileNameOnly = "Export"
+
+            Dim fullPath As String = Path.Combine(safeFolder, fileNameOnly & ".xlsx")
+            Return EnsureUniqueExportFilePath(fullPath)
+        End Function
+
+        Private Shared Function EnsureUniqueExportFilePath(filePath As String) As String
+            Dim candidate As String = filePath
+            If String.IsNullOrWhiteSpace(candidate) Then Return String.Empty
+            If Not File.Exists(candidate) Then Return candidate
+
+            Dim directoryPath As String = Path.GetDirectoryName(candidate)
+            Dim baseName As String = Path.GetFileNameWithoutExtension(candidate)
+            Dim extensionName As String = Path.GetExtension(candidate)
+            Dim index As Integer = 2
+
+            Do
+                candidate = Path.Combine(directoryPath, $"{baseName} ({index}){extensionName}")
+                index += 1
+            Loop While File.Exists(candidate)
+
+            Return candidate
+        End Function
+
+        Private Function SaveSplitSingleSheetTables(outputFolder As String,
+                                                    featureKey As String,
+                                                    featureSuffix As String,
+                                                    sheetName As String,
+                                                    fileTables As IList(Of KeyValuePair(Of String, DataTable)),
+                                                    doAutoFit As Boolean,
+                                                    excelMode As String,
+                                                    exportLocale As String,
+                                                    Optional progressKey As String = "hub:multi-progress",
+                                                    Optional fileIssueCounts As IDictionary(Of String, Integer) = Nothing,
+                                                    Optional featureMode As String = Nothing) As Integer
+            If fileTables Is Nothing OrElse fileTables.Count = 0 Then Return 0
+
+            Dim savedCount As Integer = 0
+            Dim total As Integer = Math.Max(1, fileTables.Count)
+            ExcelProgressReporter.Reset(progressKey)
+
+            For i As Integer = 0 To fileTables.Count - 1
+                Dim fileTable = fileTables(i)
+                If fileTable.Value Is Nothing Then Continue For
+
+                ExcelProgressReporter.Report(progressKey,
+                                             "EXCEL_INIT",
+                                             $"파일별 엑셀 저장 중... ({i + 1}/{total})",
+                                             i,
+                                             total,
+                                             percentOverride:=CDbl(i) / total,
+                                             force:=True,
+                                             batchStartPercent:=CDbl(i) / total,
+                                             batchEndPercent:=CDbl(i + 1) / total)
+
+                Dim issueCount As Integer = ResolveSplitExportIssueCount(fileTable.Key, fileIssueCounts, InferSplitExportIssueCount(fileTable.Value))
+                Dim savedPath As String = BuildSplitExportFilePath(outputFolder, fileTable.Key, featureKey, exportLocale, issueCount, featureSuffix, featureMode)
+                ExcelCore.SaveXlsx(savedPath, sheetName, fileTable.Value, doAutoFit, sheetKey:=featureKey, progressKey:=progressKey, exportKind:=featureKey, exportLocale:=exportLocale)
+                savedCount += 1
+            Next
+
+            ExcelProgressReporter.Report(progressKey, "DONE", "파일별 엑셀 저장 완료", savedCount, total, 1.0R, True)
+            Return savedCount
+        End Function
+
+        Private Function SaveSplitMultiSheetTables(outputFolder As String,
+                                                   featureKey As String,
+                                                   featureSuffix As String,
+                                                   fileWorkbooks As IList(Of KeyValuePair(Of String, List(Of KeyValuePair(Of String, DataTable)))),
+                                                   doAutoFit As Boolean,
+                                                   excelMode As String,
+                                                   exportLocale As String,
+                                                   Optional progressKey As String = "hub:multi-progress",
+                                                   Optional sheetKeyOverride As String = Nothing,
+                                                   Optional fileIssueCounts As IDictionary(Of String, Integer) = Nothing,
+                                                   Optional featureMode As String = Nothing) As Integer
+            If fileWorkbooks Is Nothing OrElse fileWorkbooks.Count = 0 Then Return 0
+
+            Dim savedCount As Integer = 0
+            Dim total As Integer = Math.Max(1, fileWorkbooks.Count)
+            ExcelProgressReporter.Reset(progressKey)
+
+            For i As Integer = 0 To fileWorkbooks.Count - 1
+                Dim workbookItem = fileWorkbooks(i)
+                Dim sheets = workbookItem.Value
+                If sheets Is Nothing OrElse sheets.Count = 0 Then Continue For
+
+                ExcelProgressReporter.Report(progressKey,
+                                             "EXCEL_INIT",
+                                             $"파일별 엑셀 저장 중... ({i + 1}/{total})",
+                                             i,
+                                             total,
+                                             percentOverride:=CDbl(i) / total,
+                                             force:=True,
+                                             batchStartPercent:=CDbl(i) / total,
+                                             batchEndPercent:=CDbl(i + 1) / total)
+
+                Dim issueCount As Integer = ResolveSplitExportIssueCount(workbookItem.Key, fileIssueCounts, InferSplitExportIssueCount(sheets))
+                Dim savedPath As String = BuildSplitExportFilePath(outputFolder, workbookItem.Key, featureKey, exportLocale, issueCount, featureSuffix, featureMode)
+                ExcelCore.SaveXlsxMulti(savedPath, sheets, doAutoFit, progressKey, sheetKeyOverride:=sheetKeyOverride, exportKind:=featureKey, exportLocale:=exportLocale)
+                savedCount += 1
+            Next
+
+            ExcelProgressReporter.Report(progressKey, "DONE", "파일별 엑셀 저장 완료", savedCount, total, 1.0R, True)
+            Return savedCount
+        End Function
+
+        Private Sub SendSplitExportCompleted(outputFolder As String, savedCount As Integer)
+            SendToWeb("hub:multi-exported", New With {
+                .ok = True,
+                .path = outputFolder,
+                .kind = "folder",
+                .message = $"{savedCount}개 엑셀 파일을 저장했습니다."
+            })
+        End Sub
+
+        Private Sub ExportConnector(doAutoFit As Boolean, excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
             Dim allRows = If(_multiConnectorRows, New List(Of Dictionary(Of String, Object))())
 
             ' 파일 목록(선택 순서 유지)
@@ -1528,11 +2392,6 @@ NextItem:
             If String.IsNullOrWhiteSpace(rawUnit) Then rawUnit = _lastConnectorUnit
             Dim uiUnit As String = NormalizeUiUnit(rawUnit)
 
-            Dim excludeEndDummy As Boolean = _lastConnectorExcludeEndDummy
-            If _multiRequest IsNot Nothing AndAlso _multiRequest.Common IsNot Nothing Then
-                excludeEndDummy = _multiRequest.Common.ExcludeEndDummy
-            End If
-
             ' ✅ 멀티 파라미터 목록 파싱(검토했으나 이슈 0건인 파라미터 안내행 출력용)
             Dim reviewParams As List(Of String) = Nothing
             Try
@@ -1549,9 +2408,6 @@ NextItem:
 
             ' ✅ 커넥터는 "이슈 항목만" 내보내는 정책 유지
             Dim issueRows As List(Of Dictionary(Of String, Object)) = allRows.Where(Function(r) ShouldExportIssueRow(r)).ToList()
-            If excludeEndDummy Then
-                issueRows = issueRows.Where(Function(r) Not ShouldExcludeEndDummyRow(r)).ToList()
-            End If
 
             Dim headers As List(Of String) = BuildConnectorHeaders(extras, uiUnit)
             HostLog("debug", "[multi][connector] export headers => " & String.Join(" | ", headers))
@@ -1597,10 +2453,11 @@ NextItem:
             End If
 
             Dim saved As String = ""
+            Dim splitByFile As Boolean = Not String.IsNullOrWhiteSpace(outputFolder)
 
-            If fileList IsNot Nothing AndAlso fileList.Count >= 2 Then
-                ' ✅ 파일별 시트 분리 저장
+            If splitByFile OrElse (fileList IsNot Nothing AndAlso fileList.Count >= 2) Then
                 Dim sheetList As New List(Of KeyValuePair(Of String, DataTable))()
+                Dim fileIssueCounts As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
 
                 For Each fileName In fileList
                     Dim baseName As String = ""
@@ -1633,6 +2490,7 @@ NextItem:
                                                 OrElse String.Equals(rf, baseName, StringComparison.OrdinalIgnoreCase) _
                                                 OrElse String.Equals(rfBase, baseName, StringComparison.OrdinalIgnoreCase)
                                         End Function).ToList()
+                    Dim issueCount As Integer = rowsForFile.Count
 
                     ' ✅ 선택한 파라미터 중 이슈 0건인 항목도 검토 여부를 알 수 있도록 안내행 추가
                     If reviewParams IsNot Nothing AndAlso reviewParams.Count > 0 Then
@@ -1649,9 +2507,20 @@ NextItem:
                     ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
                     If table.Rows.Count > 0 AndAlso Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: 커넥터")
                     sheetList.Add(New KeyValuePair(Of String, DataTable)(baseName, table))
+                    SetSplitExportIssueCount(fileIssueCounts, baseName, issueCount)
                 Next
 
-                saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, defaultFileName, doAutoFit, "hub:multi-progress", sheetKeyOverride:="connector", exportKind:="connector")
+                If splitByFile Then
+                    Dim savedCount = SaveSplitSingleSheetTables(outputFolder, "connector", "파라미터연속성검토", "Connector Diagnostics", sheetList, doAutoFit, excelMode, exportLocale, fileIssueCounts:=fileIssueCounts)
+                    If savedCount <= 0 Then
+                        SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+                    Else
+                        SendSplitExportCompleted(outputFolder, savedCount)
+                    End If
+                    Return
+                End If
+
+                saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, defaultFileName, doAutoFit, "hub:multi-progress", sheetKeyOverride:="connector", exportKind:="connector", exportLocale:=exportLocale)
             Else
                 ' 단일 파일
                 Dim rowsForSingle As List(Of Dictionary(Of String, Object)) = issueRows
@@ -1682,19 +2551,272 @@ NextItem:
                 Dim table = BuildConnectorTableFromRows(headers, rowsForSingle)
                 ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
                 If Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: 커넥터")
-                saved = ExcelCore.PickAndSaveXlsx("Connector Diagnostics", table, defaultFileName, doAutoFit, "hub:multi-progress", "connector")
+                saved = ExcelCore.PickAndSaveXlsx("Connector Diagnostics", table, defaultFileName, doAutoFit, "hub:multi-progress", "connector", exportLocale:=exportLocale)
             End If
 
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
             Else
-                TryApplyExportStyles("connector", saved, doAutoFit, If(excelMode, "normal"))
                 SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
             End If
         End Sub
 
+        Private Sub ExportTapAlign(doAutoFit As Boolean, excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
+            Dim rows = If(_multiTapAlignRows, New List(Of Dictionary(Of String, Object))())
+            If rows.Count = 0 Then
+                SendToWeb("hub:multi-exported", New With {.ok = False, .message = "탭/분기 축 결과가 없습니다."})
+                Return
+            End If
 
-        Private Sub ExportSegmentPms(doAutoFit As Boolean, excelMode As String)
+            Dim fileList As New List(Of String)()
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing Then
+                For Each p In _multiRequest.RvtPaths
+                    Dim path As String = TryCast(p, String)
+                    Dim name As String = ""
+                    Try
+                        name = System.IO.Path.GetFileName(path)
+                    Catch
+                        name = ""
+                    End Try
+                    If String.IsNullOrWhiteSpace(name) Then Continue For
+                    If seen.Add(name) Then fileList.Add(name)
+                Next
+            End If
+
+            If fileList.Count = 0 Then
+                For Each r In rows
+                    Dim fileName As String = ""
+                    Try
+                        If r IsNot Nothing AndAlso r.ContainsKey("File") AndAlso r("File") IsNot Nothing Then
+                            fileName = r("File").ToString()
+                        End If
+                    Catch
+                        fileName = ""
+                    End Try
+                    If String.IsNullOrWhiteSpace(fileName) Then Continue For
+                    If seen.Add(fileName) Then fileList.Add(fileName)
+                Next
+            End If
+
+            Dim extras = If(_multiTapAlignExtras, New List(Of String)())
+            Dim unit = NormalizeTapAlignUnit(If(_multiTapAlignUnit, "mm"))
+            Dim locale = NormalizeTapAlignExportLocale(exportLocale)
+
+            Dim requestedCount As Integer = GetRequestedMultiFileCount()
+            Dim defaultFileName As String
+            If requestedCount >= 2 Then
+                defaultFileName = $"TapAlign_Selected {requestedCount} Files.xlsx"
+            Else
+                defaultFileName = $"TapAlign_{Date.Now:yyyyMMdd_HHmm}.xlsx"
+            End If
+
+            Dim saved As String = ""
+            Dim splitByFile As Boolean = Not String.IsNullOrWhiteSpace(outputFolder)
+            If splitByFile OrElse fileList.Count >= 2 Then
+                Dim sheetList As New List(Of KeyValuePair(Of String, DataTable))()
+                Dim fileIssueCounts As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+
+                For Each fileName In fileList
+                    Dim baseName As String = ""
+                    Try
+                        baseName = System.IO.Path.GetFileNameWithoutExtension(fileName)
+                    Catch
+                        baseName = fileName
+                    End Try
+                    If String.IsNullOrWhiteSpace(baseName) Then baseName = fileName
+
+                    Dim rowsForFile As List(Of Dictionary(Of String, Object)) =
+                        rows.Where(Function(r)
+                                       If r Is Nothing Then Return False
+
+                                       Dim rowFile As String = ""
+                                       Try
+                                           If r.ContainsKey("File") AndAlso r("File") IsNot Nothing Then rowFile = r("File").ToString()
+                                       Catch
+                                           rowFile = ""
+                                       End Try
+
+                                       If String.IsNullOrWhiteSpace(rowFile) Then Return False
+
+                                       Dim rowBase As String = rowFile
+                                       Try
+                                           rowBase = System.IO.Path.GetFileNameWithoutExtension(rowFile)
+                                       Catch
+                                           rowBase = rowFile
+                                       End Try
+
+                                        Return String.Equals(rowFile, fileName, StringComparison.OrdinalIgnoreCase) _
+                                            OrElse String.Equals(rowFile, baseName, StringComparison.OrdinalIgnoreCase) _
+                                            OrElse String.Equals(rowBase, baseName, StringComparison.OrdinalIgnoreCase)
+                                    End Function).ToList()
+                    Dim issueCount As Integer = rowsForFile.Where(Function(item) IsTapAlignIssueRow(item)).Count()
+
+                    Dim table = BuildTapAlignDataTable(rowsForFile, unit, extras, locale)
+                    Dim headers = table.Columns.Cast(Of DataColumn)().Select(Function(col) col.ColumnName).ToList()
+                    If table.Rows.Count > 0 AndAlso Not ValidateSchema(table, headers) Then
+                        Throw New InvalidOperationException("스키마 검증 실패: TapAlign")
+                    End If
+
+                    sheetList.Add(New KeyValuePair(Of String, DataTable)(baseName, table))
+                    SetSplitExportIssueCount(fileIssueCounts, baseName, issueCount)
+                Next
+
+                If splitByFile Then
+                    Dim savedCount = SaveSplitSingleSheetTables(outputFolder, "tapalign", "탭분기축틀어짐검토", "Tap Alignment", sheetList, doAutoFit, excelMode, locale, fileIssueCounts:=fileIssueCounts)
+                    If savedCount <= 0 Then
+                        SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+                    Else
+                        SendSplitExportCompleted(outputFolder, savedCount)
+                    End If
+                    Return
+                End If
+
+                saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, defaultFileName, doAutoFit, "hub:multi-progress", sheetKeyOverride:="tapalign", exportKind:="tapalign", exportLocale:=locale)
+            Else
+                Dim table = BuildTapAlignDataTable(rows, unit, extras, locale)
+                Dim headers = table.Columns.Cast(Of DataColumn)().Select(Function(col) col.ColumnName).ToList()
+                If table.Rows.Count > 0 AndAlso Not ValidateSchema(table, headers) Then
+                    Throw New InvalidOperationException("스키마 검증 실패: TapAlign")
+                End If
+
+                saved = ExcelCore.PickAndSaveXlsx("Tap Alignment", table, defaultFileName, doAutoFit, "hub:multi-progress", "tapalign", exportLocale:=locale)
+            End If
+
+            If String.IsNullOrWhiteSpace(saved) Then
+                SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+            Else
+                SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
+            End If
+        End Sub
+
+        Private Sub ExportDupClash(doAutoFit As Boolean, excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
+            Dim dupRows = If(_multiDupRows, New List(Of Exports.DupRowDto)())
+            Dim clashRows = If(_multiClashRows, New List(Of Exports.DupRowDto)())
+            Dim clashPairs = If(_multiClashPairs, New List(Of Exports.PairRowDto)())
+            Dim mode As String = GetCurrentMultiDupClashMode()
+            Dim isClashMode As Boolean = String.Equals(mode, "clash", StringComparison.OrdinalIgnoreCase)
+
+            Dim requestedCount As Integer = GetRequestedMultiFileCount()
+            Dim defaultFileName As String
+            If requestedCount >= 2 Then
+                defaultFileName = $"{If(isClashMode, "SelfClash", "Duplicate")}_Selected {requestedCount} Files.xlsx"
+            Else
+                defaultFileName = $"{If(isClashMode, "SelfClash", "Duplicate")}_{Date.Now:yyyyMMdd_HHmm}.xlsx"
+            End If
+
+            Dim extraParamNames As List(Of String) = New List(Of String)()
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.Common IsNot Nothing Then
+                extraParamNames = ParseExtraParams(_multiRequest.Common.ExtraParams)
+            End If
+
+            Dim splitByFile As Boolean = Not String.IsNullOrWhiteSpace(outputFolder)
+            If splitByFile Then
+                Dim orderedNames = BuildOrderedMultiFileNames(
+                    dupRows.Select(Function(item) If(item Is Nothing, "", item.FileName)),
+                    clashRows.Select(Function(item) If(item Is Nothing, "", item.FileName)),
+                    clashPairs.Select(Function(item) If(item Is Nothing, "", item.FileName)))
+                Dim savedCount As Integer = 0
+
+                ExcelProgressReporter.Reset("hub:multi-progress")
+                For i As Integer = 0 To orderedNames.Count - 1
+                    Dim fileName = orderedNames(i)
+                    If String.IsNullOrWhiteSpace(fileName) Then Continue For
+
+                    ExcelProgressReporter.Report("hub:multi-progress",
+                                                 "EXCEL_INIT",
+                                                 $"파일별 엑셀 저장 중... ({i + 1}/{Math.Max(1, orderedNames.Count)})",
+                                                 i,
+                                                 Math.Max(1, orderedNames.Count),
+                                                 percentOverride:=CDbl(i) / Math.Max(1, orderedNames.Count),
+                                                 force:=True,
+                                                 batchStartPercent:=CDbl(i) / Math.Max(1, orderedNames.Count),
+                                                 batchEndPercent:=CDbl(i + 1) / Math.Max(1, orderedNames.Count))
+                    Dim savedPath As String = ""
+                    Dim issueCount As Integer = 0
+
+                    If isClashMode Then
+                        Dim perFilePairs = clashPairs.
+                            Where(Function(item) item IsNot Nothing AndAlso String.Equals(ResolveRequestedMultiFileName(item.FileName), fileName, StringComparison.OrdinalIgnoreCase)).
+                            ToList()
+                        Dim perFileClashRows = clashRows.
+                            Where(Function(item) item IsNot Nothing AndAlso String.Equals(ResolveRequestedMultiFileName(item.FileName), fileName, StringComparison.OrdinalIgnoreCase)).
+                            ToList()
+                        issueCount = If(perFilePairs.Count > 0,
+                                        perFilePairs.Count,
+                                        perFileClashRows.Count)
+                        savedPath = BuildSplitExportFilePath(outputFolder, fileName, "dupclash", exportLocale, issueCount, "자체간섭검토", "clash")
+                        If perFilePairs.Count > 0 OrElse perFileClashRows.Count = 0 Then
+                            Global.KKY_Tool_Revit.Exports.DuplicateExport.ExportPairs(savedPath, perFilePairs, doAutoFit, "hub:multi-progress", "Self Clash (Batch)", extraParamNames, exportLocale)
+                        Else
+                            Global.KKY_Tool_Revit.Exports.DuplicateExport.Export(savedPath, perFileClashRows, doAutoFit, "hub:multi-progress", "Self Clash (Batch)", extraParamNames, exportLocale)
+                        End If
+                    Else
+                        Dim perFileDupRows = dupRows.
+                            Where(Function(item) item IsNot Nothing AndAlso String.Equals(ResolveRequestedMultiFileName(item.FileName), fileName, StringComparison.OrdinalIgnoreCase)).
+                            ToList()
+                        Dim exportDupRows As List(Of Exports.DupRowDto) =
+                            If(perFileDupRows.Count > 0,
+                               perFileDupRows,
+                               BuildMultiDuplicatePlaceholderRowsForFile(fileName, exportLocale))
+                        issueCount = perFileDupRows.Count
+                        savedPath = BuildSplitExportFilePath(outputFolder, fileName, "dupclash", exportLocale, issueCount, "중복검토", "duplicate")
+                        Global.KKY_Tool_Revit.Exports.DuplicateExport.Export(savedPath, exportDupRows, doAutoFit, "hub:multi-progress", "Duplicates (Batch)", extraParamNames, exportLocale)
+                    End If
+
+                    savedCount += 1
+                Next
+
+                If savedCount <= 0 Then
+                    SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+                Else
+                    SendSplitExportCompleted(outputFolder, savedCount)
+                End If
+                Return
+            End If
+
+            ExcelProgressReporter.Reset("hub:multi-progress")
+            Dim saved As String = ""
+            If isClashMode Then
+                If clashPairs.Count > 0 OrElse clashRows.Count = 0 Then
+                    saved = Global.KKY_Tool_Revit.Exports.DuplicateExport.SavePairsWithDefaultName(clashPairs,
+                                                                                                  defaultFileName,
+                                                                                                  doAutoFit,
+                                                                                                  "hub:multi-progress",
+                                                                                                  "Self Clash (Batch)",
+                                                                                                  extraParamNames,
+                                                                                                  exportLocale)
+                Else
+                    saved = Global.KKY_Tool_Revit.Exports.DuplicateExport.SaveWithDefaultName(clashRows,
+                                                                                              defaultFileName,
+                                                                                              doAutoFit,
+                                                                                              "hub:multi-progress",
+                                                                                              "Self Clash (Batch)",
+                                                                                              extraParamNames,
+                                                                                              exportLocale)
+                End If
+            Else
+                Dim exportDupRows = BuildMultiDuplicateExportRowsWithPlaceholders(dupRows, exportLocale)
+                saved = Global.KKY_Tool_Revit.Exports.DuplicateExport.SaveWithDefaultName(exportDupRows,
+                                                                                          defaultFileName,
+                                                                                          doAutoFit,
+                                                                                          "hub:multi-progress",
+                                                                                          "Duplicates (Batch)",
+                                                                                          extraParamNames,
+                                                                                          exportLocale)
+            End If
+
+            If String.IsNullOrWhiteSpace(saved) Then
+                SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+                Return
+            End If
+
+            SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
+        End Sub
+
+
+        Private Sub ExportSegmentPms(doAutoFit As Boolean, excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
             Dim classRows = If(_multiPmsClassRows, New List(Of Dictionary(Of String, Object))())
             Dim sizeRows = If(_multiPmsSizeRows, New List(Of Dictionary(Of String, Object))())
             Dim routingRows = If(_multiPmsRoutingRows, New List(Of Dictionary(Of String, Object))())
@@ -1721,6 +2843,49 @@ NextItem:
             If sizeTable.Rows.Count > 0 AndAlso Not ValidateSchema(sizeTable, sizeHeaders) Then Throw New InvalidOperationException("스키마 검증 실패: PMS Size")
             If routingTable.Rows.Count > 0 AndAlso Not ValidateSchema(routingTable, routingHeaders) Then Throw New InvalidOperationException("스키마 검증 실패: PMS Routing")
 
+            If Not String.IsNullOrWhiteSpace(outputFolder) Then
+                Dim orderedNames = BuildOrderedMultiFileNames(
+                    classRows.Select(Function(row) ReadField(row, "File")),
+                    sizeRows.Select(Function(row) ReadField(row, "FileName")),
+                    routingRows.Select(Function(row) ReadField(row, "File")))
+                Dim workbooks As New List(Of KeyValuePair(Of String, List(Of KeyValuePair(Of String, DataTable))))()
+                Dim fileIssueCounts As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+
+                For Each fileName In orderedNames
+                    Dim perFileClassRows = classRows.
+                        Where(Function(row) String.Equals(GetSafeMultiFileName(ReadField(row, "File")), fileName, StringComparison.OrdinalIgnoreCase)).
+                        ToList()
+                    Dim perFileSizeRows = sizeRows.
+                        Where(Function(row) String.Equals(GetSafeMultiFileName(ReadField(row, "FileName")), fileName, StringComparison.OrdinalIgnoreCase)).
+                        ToList()
+                    Dim perFileRoutingRows = routingRows.
+                        Where(Function(row) String.Equals(GetSafeMultiFileName(ReadField(row, "File")), fileName, StringComparison.OrdinalIgnoreCase)).
+                        ToList()
+
+                    Dim perFileClassTable = BuildTableFromRows(classHeaders, perFileClassRows)
+                    Dim perFileSizeTable = BuildTableFromRows(sizeHeaders, perFileSizeRows)
+                    Dim perFileRoutingTable = BuildTableFromRows(routingHeaders, perFileRoutingRows)
+                    ExcelCore.EnsureNoDataRow(perFileClassTable, "오류가 없습니다.")
+                    ExcelCore.EnsureNoDataRow(perFileSizeTable, "오류가 없습니다.")
+                    ExcelCore.EnsureNoDataRow(perFileRoutingTable, "오류가 없습니다.")
+
+                    Dim perFileSheets As New List(Of KeyValuePair(Of String, DataTable))()
+                    perFileSheets.Add(New KeyValuePair(Of String, DataTable)("Pipe Segment Class검토", perFileClassTable))
+                    perFileSheets.Add(New KeyValuePair(Of String, DataTable)("PMS vs Segment Size검토", perFileSizeTable))
+                    perFileSheets.Add(New KeyValuePair(Of String, DataTable)("Routing Class검토", perFileRoutingTable))
+                    workbooks.Add(New KeyValuePair(Of String, List(Of KeyValuePair(Of String, DataTable)))(fileName, perFileSheets))
+                    SetSplitExportIssueCount(fileIssueCounts, fileName, perFileClassRows.Count + perFileSizeRows.Count + perFileRoutingRows.Count)
+                Next
+
+                Dim savedCount = SaveSplitMultiSheetTables(outputFolder, "pms", "SegmentPms검토", workbooks, doAutoFit, excelMode, exportLocale, fileIssueCounts:=fileIssueCounts)
+                If savedCount <= 0 Then
+                    SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+                Else
+                    SendSplitExportCompleted(outputFolder, savedCount)
+                End If
+                Return
+            End If
+
             If totalRowsCount = 0 Then
                 sheetList.Add(New KeyValuePair(Of String, DataTable)("Pipe Segment Class검토", classTable))
                 sheetList.Add(New KeyValuePair(Of String, DataTable)("PMS vs Segment Size검토", sizeTable))
@@ -1731,52 +2896,126 @@ NextItem:
                 If routingTable.Rows.Count > 0 Then sheetList.Add(New KeyValuePair(Of String, DataTable)("Routing Class검토", routingTable))
             End If
 
-            Dim saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, $"SegmentPms_{Date.Now:yyyyMMdd_HHmm}.xlsx", doAutoFit, "hub:multi-progress")
+            Dim saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, $"SegmentPms_{Date.Now:yyyyMMdd_HHmm}.xlsx", doAutoFit, "hub:multi-progress", exportKind:="pms", exportLocale:=exportLocale)
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
             Else
-                ' 등록된 스타일 키가 있으면 적용(현재는 보통 no-op)
-                TryApplyExportStyles("pms", saved, doAutoFit, If(excelMode, "normal"))
                 SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
             End If
         End Sub
 
-        Private Sub ExportGuid(excelMode As String)
+        Private Sub ExportGuid(excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
             Dim doAutoFit As Boolean = String.Equals(excelMode, "normal", StringComparison.OrdinalIgnoreCase)
             If _multiGuidProject Is Nothing Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "GUID 결과가 없습니다."})
                 Return
             End If
+
+            If Not String.IsNullOrWhiteSpace(outputFolder) Then
+                Dim projectSource = _multiGuidProject
+                Dim familySource = _multiGuidFamilyDetail
+                Dim orderedNames = BuildOrderedMultiFileNames(
+                    projectSource.Rows.Cast(Of DataRow)().Select(Function(row) ReadDataRowField(row, "RvtName")),
+                    If(familySource Is Nothing,
+                       Enumerable.Empty(Of String)(),
+                       familySource.Rows.Cast(Of DataRow)().Select(Function(row) ReadDataRowField(row, "RvtName"))))
+                Dim workbooks As New List(Of KeyValuePair(Of String, List(Of KeyValuePair(Of String, DataTable))))()
+                Dim fileIssueCounts As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+
+                For Each fileName In orderedNames
+                    Dim projectTable = projectSource.Clone()
+                    Dim projectRowsForFile = projectSource.Rows.Cast(Of DataRow)().
+                        Where(Function(item) String.Equals(GetSafeMultiFileName(ReadDataRowField(item, "RvtName")), fileName, StringComparison.OrdinalIgnoreCase))
+                    For Each row In projectRowsForFile
+                        projectTable.ImportRow(row)
+                    Next
+
+                    Dim perFileSheets As New List(Of KeyValuePair(Of String, DataTable))()
+                    perFileSheets.Add(New KeyValuePair(Of String, DataTable)("RVT 검토결과", GuidAuditService.PrepareExportTable(projectTable, 1)))
+
+                    If familySource IsNot Nothing Then
+                        Dim familyTable = familySource.Clone()
+                        Dim familyRowsForFile = familySource.Rows.Cast(Of DataRow)().
+                            Where(Function(item) String.Equals(GetSafeMultiFileName(ReadDataRowField(item, "RvtName")), fileName, StringComparison.OrdinalIgnoreCase))
+                        For Each row In familyRowsForFile
+                            familyTable.ImportRow(row)
+                        Next
+
+                        If familyTable.Rows.Count > 0 Then
+                            perFileSheets.Add(New KeyValuePair(Of String, DataTable)("Family 검토결과", GuidAuditService.PrepareExportTable(familyTable, 2)))
+                        End If
+                        SetSplitExportIssueCount(fileIssueCounts, fileName, projectRowsForFile.Count() + familyRowsForFile.Count())
+                    Else
+                        SetSplitExportIssueCount(fileIssueCounts, fileName, projectRowsForFile.Count())
+                    End If
+
+                    workbooks.Add(New KeyValuePair(Of String, List(Of KeyValuePair(Of String, DataTable)))(fileName, perFileSheets))
+                Next
+
+                Dim savedCount = SaveSplitMultiSheetTables(outputFolder, "guid", "파라미터GUID검토", workbooks, doAutoFit, excelMode, exportLocale, fileIssueCounts:=fileIssueCounts)
+                If savedCount <= 0 Then
+                    SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+                Else
+                    SendSplitExportCompleted(outputFolder, savedCount)
+                End If
+                Return
+            End If
+
             Dim sheets As New List(Of KeyValuePair(Of String, DataTable))()
             sheets.Add(New KeyValuePair(Of String, DataTable)("RVT 검토결과", GuidAuditService.PrepareExportTable(_multiGuidProject, 1)))
             If _multiGuidFamilyDetail IsNot Nothing Then
                 sheets.Add(New KeyValuePair(Of String, DataTable)("Family 검토결과", GuidAuditService.PrepareExportTable(_multiGuidFamilyDetail, 2)))
             End If
-            Dim saved = GuidAuditService.ExportMulti(sheets, excelMode, "hub:multi-progress")
+            Dim saved = GuidAuditService.ExportMulti(sheets, excelMode, "hub:multi-progress", exportLocale)
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
             Else
-                TryApplyExportStyles("guid", saved, doAutoFit, If(excelMode, "normal"))
                 SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
             End If
         End Sub
 
-        Private Sub ExportFamilyLink(doAutoFit As Boolean, excelMode As String)
+        Private Sub ExportFamilyLink(doAutoFit As Boolean, excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
             Dim rows = If(_multiFamilyLinkRows, New List(Of FamilyLinkAuditRow)())
+            If Not String.IsNullOrWhiteSpace(outputFolder) Then
+                Dim orderedNames = BuildOrderedMultiFileNames(rows.Select(Function(item) If(item Is Nothing, "", item.FileName)))
+                Dim fileTables As New List(Of KeyValuePair(Of String, DataTable))()
+                Dim fileIssueCounts As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+
+                For Each fileName In orderedNames
+                    Dim perFileRows = rows.
+                        Where(Function(item) item IsNot Nothing AndAlso String.Equals(GetSafeMultiFileName(item.FileName), fileName, StringComparison.OrdinalIgnoreCase)).
+                        ToList()
+                    If perFileRows.Count = 0 Then Continue For
+
+                    Dim table = FamilyLinkAuditExport.ToDataTable(perFileRows)
+                    ExcelCore.EnsureMessageRow(table, "오류가 없습니다.")
+                    fileTables.Add(New KeyValuePair(Of String, DataTable)(fileName, table))
+                    SetSplitExportIssueCount(fileIssueCounts, fileName, perFileRows.Where(Function(item) item IsNot Nothing AndAlso Not String.Equals(If(item.Issue, ""), FamilyLinkAuditIssue.OK.ToString(), StringComparison.OrdinalIgnoreCase)).Count())
+                Next
+
+                Dim savedCount = SaveSplitSingleSheetTables(outputFolder, "familylink", "패밀리공유파라미터연동검토", "FamilyLinkAudit", fileTables, doAutoFit, excelMode, exportLocale, fileIssueCounts:=fileIssueCounts)
+                If savedCount <= 0 Then
+                    SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+                Else
+                    SendSplitExportCompleted(outputFolder, savedCount)
+                End If
+                Return
+            End If
+
             ExcelProgressReporter.Reset("hub:multi-progress")
             Dim saved = FamilyLinkAuditExport.Export(rows,
                                                      fastExport:=String.Equals(excelMode, "fast", StringComparison.OrdinalIgnoreCase),
                                                      autoFit:=doAutoFit,
-                                                     progressChannel:="hub:multi-progress")
+                                                     progressChannel:="hub:multi-progress",
+                                                     exportLocale:=exportLocale)
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
             Else
-                TryApplyExportStyles("familylink", saved, doAutoFit, If(excelMode, "normal"))
                 SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
             End If
         End Sub
 
-        Private Sub ExportPoints(doAutoFit As Boolean, excelMode As String)
+        Private Sub ExportPoints(doAutoFit As Boolean, excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
             Dim pointRows = If(_multiPointRows, New List(Of ExportPointsService.Row)())
             Dim unit As String = "ft"
             If _multiRequest IsNot Nothing AndAlso _multiRequest.Points IsNot Nothing Then
@@ -1796,18 +3035,42 @@ NextItem:
                     {"TrueNorthAngle", Math.Round(r.TrueNorth, 3)}
                 })
             Next
+
+            If Not String.IsNullOrWhiteSpace(outputFolder) Then
+                Dim orderedNames = BuildOrderedMultiFileNames(pointRows.Select(Function(item) If(item Is Nothing, "", item.File)))
+                Dim fileTables As New List(Of KeyValuePair(Of String, DataTable))()
+                Dim fileIssueCounts As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+
+                For Each fileName In orderedNames
+                    Dim perFileRows = rows.
+                        Where(Function(item) String.Equals(GetSafeMultiFileName(ReadField(item, "File")), fileName, StringComparison.OrdinalIgnoreCase)).
+                        ToList()
+                    Dim tablePerFile = BuildPointTable(headers, perFileRows)
+                    If Not ValidateSchema(tablePerFile, headers) Then Throw New InvalidOperationException("스키마 검증 실패: Points")
+                    fileTables.Add(New KeyValuePair(Of String, DataTable)(fileName, tablePerFile))
+                    SetSplitExportIssueCount(fileIssueCounts, fileName, 0)
+                Next
+
+                Dim savedCount = SaveSplitSingleSheetTables(outputFolder, "points", "Point좌표추출", "Points", fileTables, doAutoFit, excelMode, exportLocale, fileIssueCounts:=fileIssueCounts)
+                If savedCount <= 0 Then
+                    SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+                Else
+                    SendSplitExportCompleted(outputFolder, savedCount)
+                End If
+                Return
+            End If
+
             Dim table = BuildPointTable(headers, rows)
             If Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: Points")
-            Dim saved = ExcelCore.PickAndSaveXlsx("Points", table, $"Points_{Date.Now:yyyyMMdd_HHmm}.xlsx", doAutoFit, "hub:multi-progress", "points")
+            Dim saved = ExcelCore.PickAndSaveXlsx("Points", table, $"Points_{Date.Now:yyyyMMdd_HHmm}.xlsx", doAutoFit, "hub:multi-progress", "points", exportLocale:=exportLocale)
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
             Else
-                TryApplyExportStyles("points", saved, doAutoFit, If(excelMode, "normal"))
                 SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
             End If
         End Sub
 
-        Private Sub ExportLinkWorkset(doAutoFit As Boolean, excelMode As String)
+        Private Sub ExportLinkWorkset(doAutoFit As Boolean, excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
             Dim rows = If(_multiLinkWorksetRows, New List(Of LinkWorksetAuditRow)())
             If rows.Count = 0 Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "링크 기본 웍셋 결과가 없습니다."})
@@ -1833,13 +3096,38 @@ NextItem:
                 "Message"
             }
 
+            If Not String.IsNullOrWhiteSpace(outputFolder) Then
+                Dim orderedNames = BuildOrderedMultiFileNames(rows.Select(Function(item) If(item Is Nothing, "", item.HostFileName)))
+                Dim fileTables As New List(Of KeyValuePair(Of String, DataTable))()
+                Dim fileIssueCounts As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+
+                For Each fileName In orderedNames
+                    Dim perFileRows = rows.
+                    Where(Function(item) item IsNot Nothing AndAlso String.Equals(GetSafeMultiFileName(item.HostFileName), fileName, StringComparison.OrdinalIgnoreCase)).
+                        ToList()
+                    If perFileRows.Count = 0 Then Continue For
+
+                    Dim tablePerFile = BuildLinkWorksetTable(headers, perFileRows)
+                    If Not ValidateSchema(tablePerFile, headers) Then Throw New InvalidOperationException("스키마 검증 실패: LinkWorkset")
+                    fileTables.Add(New KeyValuePair(Of String, DataTable)(fileName, tablePerFile))
+                    SetSplitExportIssueCount(fileIssueCounts, fileName, perFileRows.Where(Function(item) IsLinkWorksetIssue(item)).Count())
+                Next
+
+                Dim savedCount = SaveSplitSingleSheetTables(outputFolder, "linkworkset", "링크기본웍셋점검적용", "LinkWorkset", fileTables, doAutoFit, excelMode, exportLocale, fileIssueCounts:=fileIssueCounts)
+                If savedCount <= 0 Then
+                    SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+                Else
+                    SendSplitExportCompleted(outputFolder, savedCount)
+                End If
+                Return
+            End If
+
             Dim table = BuildLinkWorksetTable(headers, rows)
             If Not ValidateSchema(table, headers) Then Throw New InvalidOperationException("스키마 검증 실패: LinkWorkset")
-            Dim saved = ExcelCore.PickAndSaveXlsx("LinkWorkset", table, $"LinkWorkset_{Date.Now:yyyyMMdd_HHmm}.xlsx", doAutoFit, "hub:multi-progress", "linkworkset")
+            Dim saved = ExcelCore.PickAndSaveXlsx("LinkWorkset", table, $"LinkWorkset_{Date.Now:yyyyMMdd_HHmm}.xlsx", doAutoFit, "hub:multi-progress", "linkworkset", exportLocale:=exportLocale)
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
             Else
-                TryApplyExportStyles("linkworkset", saved, doAutoFit, If(excelMode, "normal"))
                 SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
             End If
         End Sub
@@ -1847,9 +3135,26 @@ NextItem:
         Private Shared Sub ResetMultiCaches()
             _multiConnectorRows = Nothing
             _multiConnectorExtras = Nothing
+            _multiTapAlignRows = Nothing
+            _multiTapAlignExtras = Nothing
+            _multiTapAlignUnit = "mm"
+            _multiTapAlignLocale = "ko"
+            _multiDupRows = Nothing
+            _multiDupTargetCounts = Nothing
+            _multiClashRows = Nothing
+            _multiClashPairs = Nothing
             _multiFloorInfoRows = Nothing
             _multiFloorInfoFileSummaries = Nothing
             _multiFloorInfoWarnings = Nothing
+            _multiFamilySuitabilityRows = Nothing
+            _multiFamilySuitabilityFileSummaries = Nothing
+            _multiFamilySuitabilityWarnings = Nothing
+            _multiWorksetAssignmentRows = Nothing
+            _multiWorksetAssignmentFileSummaries = Nothing
+            _multiParameterDuplicationRows = Nothing
+            _multiParameterDuplicationFileSummaries = Nothing
+            _multiParameterMissingRows = Nothing
+            _multiParameterMissingFileSummaries = Nothing
             _multiPmsClassRows = Nothing
             _multiPmsSizeRows = Nothing
             _multiPmsRoutingRows = Nothing
@@ -1874,8 +3179,20 @@ NextItem:
             If pd.TryGetValue("commonOptions", commonObj) Then
                 Dim commonDict = ToDict(commonObj)
                 req.Common.ExtraParams = SafeStr(GetDictValue(commonDict, "extraParams"))
+                If String.IsNullOrWhiteSpace(req.Common.ExtraParams) Then
+                    req.Common.ExtraParams = SafeStr(GetDictValue(commonDict, "extraParamsText"))
+                End If
                 req.Common.TargetFilter = SafeStr(GetDictValue(commonDict, "targetFilter"))
-                req.Common.ExcludeEndDummy = ToBool(GetDictValue(commonDict, "excludeEndDummy"))
+                If String.IsNullOrWhiteSpace(req.Common.TargetFilter) Then
+                    req.Common.TargetFilter = SafeStr(GetDictValue(commonDict, "targetFilterText"))
+                End If
+                req.Common.ExcludeTargetFilter = SafeStr(GetDictValue(commonDict, "excludeTargetFilter"))
+                If String.IsNullOrWhiteSpace(req.Common.ExcludeTargetFilter) Then
+                    req.Common.ExcludeTargetFilter = SafeStr(GetDictValue(commonDict, "excludeTargetFilterText"))
+                End If
+                req.Common.ExcludeEndDummy = False
+                req.Common.IncludePointXY = ToBool(GetDictValue(commonDict, "includePointXY"))
+                req.Common.IncludeLinearMetrics = ToBool(GetDictValue(commonDict, "includeLinearMetrics"))
             End If
 
             Dim featuresObj As Object = Nothing
@@ -1883,6 +3200,12 @@ NextItem:
                 Dim fd = ToDict(featuresObj)
                 req.Connector = ParseConnector(fd)
                 req.FloorInfo = ParseFloorInfo(fd)
+                req.FamilySuitability = ParseFamilySuitability(fd)
+                req.TapAlign = ParseTapAlign(fd)
+                req.DupClash = ParseDupClash(fd)
+                req.WorksetAssignment = ParseWorksetAssignment(fd)
+                req.ProjectParameterDuplication = ParseProjectParameterDuplication(fd)
+                req.ParameterMissing = ParseParameterMissing(fd)
                 req.Pms = ParsePms(fd)
                 req.Guid = ParseGuid(fd)
                 req.FamilyLink = ParseFamilyLink(fd)
@@ -1900,10 +3223,39 @@ NextItem:
             opt.Tol = ToDouble(GetDictValue(d, "tol"), 1.0R)
             opt.Unit = SafeStr(GetDictValue(d, "unit"))
             opt.Param = SafeStr(GetDictValue(d, "param"))
+            opt.ExcludeEndDummy = ToBool(GetDictValue(d, "excludeEndDummy"))
             opt.IncludePointXY = ToBool(GetDictValue(d, "includePointXY"))
             opt.IncludeLinearMetrics = ToBool(GetDictValue(d, "includeLinearMetrics"))
             If String.IsNullOrWhiteSpace(opt.Unit) Then opt.Unit = "inch"
             If String.IsNullOrWhiteSpace(opt.Param) Then opt.Param = "Comments"
+            Return opt
+        End Function
+
+        Private Function ParseTapAlign(fd As Dictionary(Of String, Object)) As MultiTapAlignOptions
+            Dim opt As New MultiTapAlignOptions()
+            Dim obj = GetDictValue(fd, "tapalign")
+            Dim d = ToDict(obj)
+            opt.Enabled = ToBool(GetDictValue(d, "enabled"))
+            opt.Tol = ToDouble(GetDictValue(d, "tol"), 0.5R)
+            opt.Unit = NormalizeTapAlignUnit(SafeStr(GetDictValue(d, "unit")))
+            opt.Domain = NormalizeTapAlignDomain(SafeStr(GetDictValue(d, "domain")))
+            opt.FeatureTargetFilter = SafeStr(GetDictValue(d, "featureTargetFilter"))
+            opt.ExportLocale = NormalizeTapAlignExportLocale(SafeStr(GetDictValue(d, "exportLocale")))
+            If String.IsNullOrWhiteSpace(opt.Unit) Then opt.Unit = "mm"
+            If String.IsNullOrWhiteSpace(opt.Domain) Then opt.Domain = "all"
+            If opt.FeatureTargetFilter Is Nothing Then opt.FeatureTargetFilter = String.Empty
+            If String.IsNullOrWhiteSpace(opt.ExportLocale) Then opt.ExportLocale = "ko"
+            Return opt
+        End Function
+
+        Private Function ParseDupClash(fd As Dictionary(Of String, Object)) As MultiDupClashOptions
+            Dim opt As New MultiDupClashOptions()
+            Dim obj = GetDictValue(fd, "dupclash")
+            Dim d = ToDict(obj)
+            opt.Enabled = ToBool(GetDictValue(d, "enabled"))
+            opt.Mode = NormalizeMultiDupClashMode(SafeStr(GetDictValue(d, "mode")))
+            opt.TolFeet = ToDouble(GetDictValue(d, "tolFeet"), 1.0R / 64.0R)
+            If opt.TolFeet <= 0 Then opt.TolFeet = 1.0R / 64.0R
             Return opt
         End Function
 
@@ -1935,18 +3287,15 @@ NextItem:
             opt.Enabled = ToBool(GetDictValue(d, "enabled"))
             Dim rawTargets = GetDictValue(d, "targets")
             Dim targets As New List(Of FamilyLinkTargetParam)()
-            Dim arr = TryCast(rawTargets, System.Collections.IEnumerable)
-            If arr IsNot Nothing AndAlso Not TypeOf rawTargets Is String Then
-                For Each o In arr
-                    Dim td = ToDict(o)
-                    Dim name = SafeStr(GetDictValue(td, "name"))
-                    Dim guidStr = SafeStr(GetDictValue(td, "guid"))
-                    Dim g As Guid
-                    If Guid.TryParse(guidStr, g) Then
-                        targets.Add(New FamilyLinkTargetParam With {.Name = name, .Guid = g})
-                    End If
-                Next
-            End If
+            For Each o In EnumeratePayloadItems(rawTargets)
+                Dim td = ToDict(o)
+                Dim name = NormalizeWrappedQuotesText(SafeStr(GetDictValue(td, "name"))).Trim()
+                Dim guidStr = NormalizeWrappedQuotesText(SafeStr(GetDictValue(td, "guid"))).Trim()
+                Dim g As Guid
+                If Not String.IsNullOrWhiteSpace(name) AndAlso Guid.TryParse(guidStr, g) Then
+                    targets.Add(New FamilyLinkTargetParam With {.Name = name, .Guid = g})
+                End If
+            Next
             opt.Targets = targets
             Return opt
         End Function
@@ -1974,7 +3323,7 @@ NextItem:
 
         Private Shared Function AnyFeatureEnabled(req As MultiRunRequest) As Boolean
             If req Is Nothing Then Return False
-            Return req.Connector.Enabled OrElse req.FloorInfo.Enabled OrElse req.Pms.Enabled OrElse req.Guid.Enabled OrElse req.FamilyLink.Enabled OrElse req.Points.Enabled OrElse req.LinkWorkset.Enabled
+            Return req.Connector.Enabled OrElse req.FloorInfo.Enabled OrElse req.FamilySuitability.Enabled OrElse req.TapAlign.Enabled OrElse req.DupClash.Enabled OrElse req.WorksetAssignment.Enabled OrElse req.ProjectParameterDuplication.Enabled OrElse req.ParameterMissing.Enabled OrElse req.Pms.Enabled OrElse req.Guid.Enabled OrElse req.FamilyLink.Enabled OrElse req.Points.Enabled OrElse req.LinkWorkset.Enabled
         End Function
 
         Private Shared Function CountEnabledFeatures(req As MultiRunRequest) As Integer
@@ -1982,6 +3331,12 @@ NextItem:
             Dim count As Integer = 0
             If req.Connector.Enabled Then count += 1
             If req.FloorInfo.Enabled Then count += 1
+            If req.FamilySuitability.Enabled Then count += 1
+            If req.TapAlign.Enabled Then count += 1
+            If req.DupClash.Enabled Then count += 1
+            If req.WorksetAssignment.Enabled Then count += 1
+            If req.ProjectParameterDuplication.Enabled Then count += 1
+            If req.ParameterMissing.Enabled Then count += 1
             If req.Pms.Enabled Then count += 1
             If req.Guid.Enabled Then count += 1
             If req.FamilyLink.Enabled Then count += 1
@@ -2052,6 +3407,30 @@ NextItem:
                 summaries("floorinfo") = BuildFloorInfoMultiSummary()
             End If
 
+            If _multiRequest.FamilySuitability IsNot Nothing AndAlso _multiRequest.FamilySuitability.Enabled Then
+                summaries("familysuitability") = BuildFamilySuitabilityMultiSummary()
+            End If
+
+            If _multiRequest.TapAlign IsNot Nothing AndAlso _multiRequest.TapAlign.Enabled Then
+                summaries("tapalign") = BuildTapAlignMultiSummary()
+            End If
+
+            If _multiRequest.DupClash IsNot Nothing AndAlso _multiRequest.DupClash.Enabled Then
+                summaries("dupclash") = BuildDupClashMultiSummary()
+            End If
+
+            If _multiRequest.WorksetAssignment IsNot Nothing AndAlso _multiRequest.WorksetAssignment.Enabled Then
+                summaries("worksetassignment") = BuildWorksetAssignmentMultiSummary()
+            End If
+
+            If _multiRequest.ProjectParameterDuplication IsNot Nothing AndAlso _multiRequest.ProjectParameterDuplication.Enabled Then
+                summaries("parameterduplication") = BuildProjectParameterDuplicationMultiSummary()
+            End If
+
+            If _multiRequest.ParameterMissing IsNot Nothing AndAlso _multiRequest.ParameterMissing.Enabled Then
+                summaries("parametermissing") = BuildParameterMissingMultiSummary()
+            End If
+
             If _multiRequest.Guid IsNot Nothing AndAlso _multiRequest.Guid.Enabled Then
                 summaries("guid") = BuildGuidMultiSummary()
             End If
@@ -2069,6 +3448,67 @@ NextItem:
             End If
 
             Return summaries
+        End Function
+
+        Private Function BuildDupClashMultiSummary() As Object
+            Dim mode As String = GetCurrentMultiDupClashMode()
+            Dim modeLabel As String = ResolveMultiDupClashModeLabel(mode)
+            Dim dupRows = If(_multiDupRows, New List(Of Exports.DupRowDto)())
+            Dim clashRows = If(_multiClashRows, New List(Of Exports.DupRowDto)())
+            Dim clashPairs = If(_multiClashPairs, New List(Of Exports.PairRowDto)())
+            Dim isClashMode As Boolean = String.Equals(mode, "clash", StringComparison.OrdinalIgnoreCase)
+            Dim clashCount As Integer = If(clashPairs.Count > 0, clashPairs.Count, clashRows.Count)
+            Dim dupGroups As Integer = dupRows.
+                Select(Function(r) SafeStr(If(r Is Nothing, "", r.GroupKey))).
+                Where(Function(g) Not String.IsNullOrWhiteSpace(g)).
+                Distinct(StringComparer.OrdinalIgnoreCase).
+                Count()
+            Dim clashFiles As Integer = clashPairs.
+                Select(Function(r) SafeStr(If(r Is Nothing, "", r.FileName))).
+                Where(Function(name) Not String.IsNullOrWhiteSpace(name)).
+                Distinct(StringComparer.OrdinalIgnoreCase).
+                Count()
+            If clashFiles = 0 Then
+                clashFiles = clashRows.
+                    Select(Function(r) SafeStr(If(r Is Nothing, "", r.FileName))).
+                    Where(Function(name) Not String.IsNullOrWhiteSpace(name)).
+                    Distinct(StringComparer.OrdinalIgnoreCase).
+                    Count()
+            End If
+
+            Dim extraParamCount As Integer = 0
+            Dim filterLabel As String = "포함 필터 없음"
+            Dim excludeFilterLabel As String = "제외 필터 없음"
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.Common IsNot Nothing Then
+                extraParamCount = ParseExtraParams(_multiRequest.Common.ExtraParams).Count
+                If Not String.IsNullOrWhiteSpace(_multiRequest.Common.TargetFilter) Then
+                    filterLabel = _multiRequest.Common.TargetFilter.Trim()
+                End If
+                If Not String.IsNullOrWhiteSpace(_multiRequest.Common.ExcludeTargetFilter) Then
+                    excludeFilterLabel = _multiRequest.Common.ExcludeTargetFilter.Trim()
+                End If
+            End If
+
+            Dim lines As New List(Of String) From {
+                $"선택 파일 수: {GetRequestedMultiFileCount()}개",
+                $"검토 모드: {modeLabel}"
+            }
+            If isClashMode Then
+                lines.Add($"자체간섭 결과 건수: {clashCount}건")
+                lines.Add($"자체간섭 검출 파일 수: {clashFiles}개")
+            Else
+                lines.Add($"중복 결과 행 수: {dupRows.Count}행")
+                lines.Add($"중복 그룹 수: {dupGroups}개")
+            End If
+            lines.Add($"공통 포함 필터: {filterLabel}")
+            lines.Add($"공통 제외 필터: {excludeFilterLabel} / 추가 파라미터 {extraParamCount}개")
+
+            Return New With {
+                .key = "dupclash",
+                .label = modeLabel,
+                .lines = lines.ToArray(),
+                .fileSummaries = BuildDupClashFileSummaries()
+            }
         End Function
 
         Private Function BuildConnectorMultiSummary() As Object
@@ -2093,6 +3533,40 @@ NextItem:
                     $"엑셀 내보내기 대상: {issueCount}건"
                 },
                 .fileSummaries = fileSummaries
+            }
+        End Function
+
+        Private Function BuildTapAlignMultiSummary() As Object
+            Dim rows = If(_multiTapAlignRows, New List(Of Dictionary(Of String, Object))())
+            Dim issueCount As Integer = rows.Where(Function(r) IsTapAlignIssueRow(r)).Count()
+            Dim issueFiles As Integer = rows.
+                Where(Function(r) IsTapAlignIssueRow(r)).
+                Select(Function(r) GetSafeMultiFileName(ReadField(r, "File"))).
+                Where(Function(name) Not String.IsNullOrWhiteSpace(name)).
+                Distinct(StringComparer.OrdinalIgnoreCase).
+                Count()
+            Dim extraCount As Integer = If(_multiTapAlignExtras, New List(Of String)()).Count
+            Dim tolText As String = "0.5"
+            Dim unitText As String = NormalizeTapAlignUnit(_multiTapAlignUnit)
+            Dim scopeText As String = "배관 + 덕트"
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.TapAlign IsNot Nothing Then
+                tolText = _multiRequest.TapAlign.Tol.ToString()
+                unitText = NormalizeTapAlignUnit(_multiRequest.TapAlign.Unit)
+                scopeText = ResolveTapAlignDomainLabel(_multiRequest.TapAlign.Domain)
+            End If
+
+            Return New With {
+                .key = "tapalign",
+                .label = "탭/분기 축 틀어짐 검토",
+                .lines = New String() {
+                    $"선택 파일 수: {GetRequestedMultiFileCount()}개",
+                    $"오류 행 수: {issueCount}행",
+                    $"오류 파일 수: {issueFiles}개",
+                    $"허용범위: {tolText} {unitText}",
+                    $"검토 범위: {scopeText}",
+                    $"추가 추출 컬럼 수: {extraCount}개"
+                },
+                .fileSummaries = BuildTapAlignFileSummaries(rows)
             }
         End Function
 
@@ -2156,6 +3630,101 @@ NextItem:
                     .issues = issueCount,
                     .near = nearCount,
                     .status = statusText
+                })
+            Next
+
+            Return result
+        End Function
+
+        Private Function BuildTapAlignFileSummaries(rows As IList(Of Dictionary(Of String, Object))) As List(Of Object)
+            Dim sourceRows = If(rows, New List(Of Dictionary(Of String, Object))())
+            Dim orderedNames = BuildOrderedMultiFileNames(sourceRows.Select(Function(r) ReadField(r, "File")))
+            Dim result As New List(Of Object)()
+
+            For Each fileName In orderedNames
+                Dim perFileRows = sourceRows.
+                    Where(Function(r) String.Equals(GetSafeMultiFileName(ReadField(r, "File")), fileName, StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+                Dim issueRows = perFileRows.Where(Function(r) IsTapAlignIssueRow(r)).ToList()
+                Dim runReason As String = ""
+                Dim statusText As String = GetMultiRunItemStatus(fileName, runReason)
+                Dim maxDistance As Double = 0.0R
+                If issueRows.Count > 0 Then
+                    maxDistance = issueRows.
+                        Select(Function(r) ToDouble(ReadField(r, "DistanceFromCenter"), 0.0R)).
+                        DefaultIfEmpty(0.0R).
+                        Max()
+                End If
+                Dim reason As String = runReason
+                If String.IsNullOrWhiteSpace(reason) Then
+                    reason = If(issueRows.Count > 0,
+                                $"최대 이탈거리 {Math.Round(maxDistance, 3)} {_multiTapAlignUnit}",
+                                "오류 없음")
+                End If
+
+                result.Add(New With {
+                    .file = fileName,
+                    .total = perFileRows.Count,
+                    .issues = issueRows.Count,
+                    .near = 0,
+                    .status = statusText,
+                    .reason = reason
+                })
+            Next
+
+            Return result
+        End Function
+
+        Private Function BuildDupClashFileSummaries() As List(Of Object)
+            Dim mode As String = GetCurrentMultiDupClashMode()
+            Dim isClashMode As Boolean = String.Equals(mode, "clash", StringComparison.OrdinalIgnoreCase)
+            Dim dupRows = If(_multiDupRows, New List(Of Exports.DupRowDto)())
+            Dim clashRows = If(_multiClashRows, New List(Of Exports.DupRowDto)())
+            Dim clashPairs = If(_multiClashPairs, New List(Of Exports.PairRowDto)())
+            Dim orderedNames As List(Of String)
+            If isClashMode Then
+                orderedNames = BuildOrderedMultiFileNames(
+                    clashRows.Select(Function(r) If(r Is Nothing, "", r.FileName)),
+                    clashPairs.Select(Function(r) If(r Is Nothing, "", r.FileName)))
+            Else
+                orderedNames = BuildOrderedMultiFileNames(
+                    dupRows.Select(Function(r) If(r Is Nothing, "", r.FileName)))
+            End If
+            Dim result As New List(Of Object)()
+
+            For Each fileName In orderedNames
+                Dim perFileDupRows = dupRows.
+                    Where(Function(r) r IsNot Nothing AndAlso String.Equals(ResolveRequestedMultiFileName(r.FileName), fileName, StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+                Dim perFileClashRows = clashRows.
+                    Where(Function(r) r IsNot Nothing AndAlso String.Equals(ResolveRequestedMultiFileName(r.FileName), fileName, StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+                Dim perFileClashPairs = clashPairs.
+                    Where(Function(r) r IsNot Nothing AndAlso String.Equals(ResolveRequestedMultiFileName(r.FileName), fileName, StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+
+                Dim runReason As String = ""
+                Dim statusText As String = GetMultiRunItemStatus(fileName, runReason)
+                Dim clashCount As Integer = If(perFileClashPairs.Count > 0, perFileClashPairs.Count, perFileClashRows.Count)
+                Dim issueCount As Integer = If(isClashMode, clashCount, perFileDupRows.Count)
+                Dim reason As String = runReason
+                If String.IsNullOrWhiteSpace(reason) Then
+                    If issueCount > 0 Then
+                        reason = If(isClashMode,
+                                    $"간섭 {clashCount}건",
+                                    $"중복 {perFileDupRows.Count}건")
+                    Else
+                        reason = "오류 없음"
+                    End If
+                End If
+
+                result.Add(New With {
+                    .file = fileName,
+                    .total = issueCount,
+                    .issues = issueCount,
+                    .near = 0,
+                    .status = statusText,
+                    .reason = reason
                 })
             Next
 
@@ -2419,13 +3988,20 @@ NextItem:
             Return result
         End Function
 
+        Private Shared Function IsTapAlignIssueRow(row As Dictionary(Of String, Object)) As Boolean
+            If row Is Nothing Then Return False
+            If Not String.IsNullOrWhiteSpace(ReadField(row, "ElementId")) Then Return True
+            Dim message = ReadField(row, "Message")
+            Return Not String.IsNullOrWhiteSpace(message)
+        End Function
+
         Private Function BuildOrderedMultiFileNames(ParamArray nameGroups() As IEnumerable(Of String)) As List(Of String)
             Dim orderedNames As New List(Of String)()
             Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
 
             If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing Then
                 For Each path In _multiRequest.RvtPaths
-                    Dim safeName As String = GetSafeMultiFileName(path)
+                    Dim safeName As String = ResolveRequestedMultiFileName(path)
                     If String.IsNullOrWhiteSpace(safeName) Then Continue For
                     If seen.Add(safeName) Then orderedNames.Add(safeName)
                 Next
@@ -2434,7 +4010,7 @@ NextItem:
             If _multiRunItems IsNot Nothing Then
                 For Each item In _multiRunItems
                     If item Is Nothing Then Continue For
-                    Dim safeName As String = GetSafeMultiFileName(item.File)
+                    Dim safeName As String = ResolveRequestedMultiFileName(item.File)
                     If String.IsNullOrWhiteSpace(safeName) Then Continue For
                     If seen.Add(safeName) Then orderedNames.Add(safeName)
                 Next
@@ -2443,7 +4019,7 @@ NextItem:
             For Each group In nameGroups
                 If group Is Nothing Then Continue For
                 For Each rawName In group
-                    Dim safeName As String = GetSafeMultiFileName(rawName)
+                    Dim safeName As String = ResolveRequestedMultiFileName(rawName)
                     If String.IsNullOrWhiteSpace(safeName) Then Continue For
                     If seen.Add(safeName) Then orderedNames.Add(safeName)
                 Next
@@ -2454,10 +4030,12 @@ NextItem:
 
         Private Function GetMultiRunItemStatus(fileName As String, ByRef reason As String) As String
             reason = ""
+            Dim safeFileName As String = ResolveRequestedMultiFileName(fileName)
+            If String.IsNullOrWhiteSpace(safeFileName) Then safeFileName = SafeStr(fileName)
             If _multiRunItems IsNot Nothing Then
                 For Each item In _multiRunItems
                     If item Is Nothing Then Continue For
-                    If String.Equals(GetSafeMultiFileName(item.File), fileName, StringComparison.OrdinalIgnoreCase) Then
+                    If String.Equals(ResolveRequestedMultiFileName(item.File), safeFileName, StringComparison.OrdinalIgnoreCase) Then
                         reason = If(item.Reason, "")
                         Return If(String.IsNullOrWhiteSpace(item.Status), "pending", item.Status)
                     End If
@@ -2511,9 +4089,37 @@ NextItem:
             Dim fileSet As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
             For Each path In _multiRequest.RvtPaths
                 If String.IsNullOrWhiteSpace(path) Then Continue For
-                fileSet.Add(GetSafeMultiFileName(path))
+                fileSet.Add(ResolveRequestedMultiFileName(path))
             Next
             Return fileSet.Count
+        End Function
+
+        Private Function ResolveRequestedMultiFileName(pathOrName As String) As String
+            Dim safeName As String = GetSafeMultiFileName(pathOrName)
+            If String.IsNullOrWhiteSpace(safeName) Then Return SafeStr(pathOrName)
+
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing Then
+                For Each requestedPath In _multiRequest.RvtPaths
+                    Dim requestedName As String = GetSafeMultiFileName(requestedPath)
+                    If String.Equals(requestedName, safeName, StringComparison.OrdinalIgnoreCase) Then
+                        Return requestedName
+                    End If
+                Next
+            End If
+
+            Dim normalizedName As String = NormalizeGeneratedMultiLocalSafeName(safeName)
+            If String.IsNullOrWhiteSpace(normalizedName) Then Return safeName
+
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing Then
+                For Each requestedPath In _multiRequest.RvtPaths
+                    Dim requestedName As String = GetSafeMultiFileName(requestedPath)
+                    If String.Equals(requestedName, normalizedName, StringComparison.OrdinalIgnoreCase) Then
+                        Return requestedName
+                    End If
+                Next
+            End If
+
+            Return normalizedName
         End Function
 
         Private Shared Function GetSafeMultiFileName(path As String) As String
@@ -2536,19 +4142,34 @@ NextItem:
             Return path
         End Function
 
+        Private Shared Function NormalizeGeneratedMultiLocalSafeName(pathOrName As String) As String
+            Dim safeName As String = GetSafeMultiFileName(pathOrName)
+            If String.IsNullOrWhiteSpace(safeName) Then Return String.Empty
+
+            Dim userName As String = SafeStr(Environment.UserName).Trim()
+            If String.IsNullOrWhiteSpace(userName) Then Return safeName
+
+            Dim token As String = "_" & userName & "_"
+            Dim markerIndex As Integer = safeName.LastIndexOf(token, StringComparison.OrdinalIgnoreCase)
+            If markerIndex <= 0 Then Return safeName
+
+            Dim suffix As String = safeName.Substring(markerIndex + token.Length)
+            If String.IsNullOrWhiteSpace(suffix) OrElse suffix.Length < 6 Then Return safeName
+
+            For Each ch As Char In suffix
+                If Not Char.IsDigit(ch) Then Return safeName
+            Next
+
+            Return safeName.Substring(0, markerIndex)
+        End Function
+
         Private Shared Function NormalizeMultiPath(path As String) As String
             Dim value As String = SafeStr(path).Trim()
             If String.IsNullOrWhiteSpace(value) Then Return String.Empty
 
             value = New String(value.Where(Function(ch) Not Char.IsControl(ch)).ToArray())
             value = value.Trim(""""c)
-
-            Try
-                If value.IndexOf("\u", StringComparison.OrdinalIgnoreCase) >= 0 OrElse value.Contains("\\") Then
-                    value = System.Text.RegularExpressions.Regex.Unescape(value)
-                End If
-            Catch
-            End Try
+            value = MaybeUnescapeSerializedText(value)
 
             Do While value.EndsWith("""", StringComparison.Ordinal)
                 value = value.Substring(0, value.Length - 1).TrimEnd()
@@ -2571,10 +4192,46 @@ NextItem:
         End Sub
 
         Private Function CalcStepPercent(basePct As Double, stepIndex As Integer, totalSteps As Integer) As Double
+            Return CalcStepProgressPercent(basePct, stepIndex, totalSteps, 1.0R)
+        End Function
+
+        Private Function CalcStepProgressPercent(basePct As Double, stepIndex As Integer, totalSteps As Integer, stepProgress As Double) As Double
             Dim perFile As Double = If(_multiTotal > 0, 1.0R / CDbl(_multiTotal), 1.0R)
             Dim stepShare As Double = perFile / CDbl(Math.Max(totalSteps, 1))
-            Dim stepPct As Double = (basePct + (stepShare * CDbl(stepIndex))) * 100.0R
+            Dim clampedStep As Double = Math.Max(0.0R, Math.Min(1.0R, stepProgress))
+            Dim completedSteps As Double = Math.Max(0, stepIndex - 1)
+            Dim stepPct As Double = (basePct + (stepShare * (completedSteps + clampedStep))) * 100.0R
             Return Math.Min(stepPct, 99.9R)
+        End Function
+
+        Private Function BuildMultiFamilyLinkProgressDetail(safeName As String, progressMessage As String) As String
+            Dim baseName As String = If(safeName, "").Trim()
+            Dim raw As String = If(progressMessage, "").Trim()
+            If String.IsNullOrWhiteSpace(raw) Then Return baseName
+
+            Dim prefix As String = baseName & " - "
+            Dim messageBody As String = raw
+            If Not String.IsNullOrWhiteSpace(baseName) AndAlso raw.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) Then
+                messageBody = raw.Substring(prefix.Length).Trim()
+            End If
+
+            Dim marker As String = " ("
+            Dim markerIndex As Integer = messageBody.LastIndexOf(marker, StringComparison.Ordinal)
+            If markerIndex > 0 AndAlso messageBody.EndsWith("패밀리 검사 중", StringComparison.Ordinal) Then
+                Dim familyName As String = messageBody.Substring(0, markerIndex).Trim()
+                Dim countStart As Integer = markerIndex + marker.Length
+                Dim countEnd As Integer = messageBody.IndexOf(")", countStart, StringComparison.Ordinal)
+                If countEnd > countStart Then
+                    Dim countText As String = messageBody.Substring(countStart, countEnd - countStart).Trim()
+                    If Not String.IsNullOrWhiteSpace(familyName) AndAlso Not String.IsNullOrWhiteSpace(countText) Then
+                        Return baseName & " - " & familyName & vbLf & countText & " 패밀리 검사 중"
+                    End If
+                End If
+            End If
+
+            If String.IsNullOrWhiteSpace(baseName) Then Return raw
+            If raw.StartsWith(baseName, StringComparison.OrdinalIgnoreCase) Then Return raw
+            Return baseName & vbLf & raw
         End Function
 
         Private Shared Function BuildOpenOptions(projectPath As ModelPath, preferConnectorWorksets As Boolean) As OpenOptions
@@ -2794,7 +4451,7 @@ NextItem:
                         ElseIf String.Equals(key, "ParamCompare", StringComparison.Ordinal) Then
                             dr(i) = NormalizeConnectorParamCompareForExport(r)
                         ElseIf String.Equals(key, "비고(답변)", StringComparison.Ordinal) Then
-                            dr(i) = ""
+                            dr(i) = BuildConnectorCommentTextForExport(r)
                         Else
                             dr(i) = If(r IsNot Nothing AndAlso r.ContainsKey(key) AndAlso r(key) IsNot Nothing, r(key).ToString(), String.Empty)
                         End If
@@ -3006,10 +4663,11 @@ NextItem:
             If dict IsNot Nothing Then Return dict
             Dim res As New Dictionary(Of String, Object)(StringComparer.OrdinalIgnoreCase)
             If obj Is Nothing Then Return res
+            If TryPopulateFromJsonObject(obj, res) Then Return res
             Dim t = obj.GetType()
             For Each p In t.GetProperties()
                 Try
-                    res(p.Name) = p.GetValue(obj, Nothing)
+                    res(p.Name) = ConvertPayloadValue(p.GetValue(obj, Nothing))
                 Catch
                 End Try
             Next
@@ -3019,19 +4677,115 @@ NextItem:
         Private Shared Function ExtractStringList(dict As Dictionary(Of String, Object), key As String) As List(Of String)
             Dim list As New List(Of String)()
             Dim raw = GetDictValue(dict, key)
-            Dim arr = TryCast(raw, System.Collections.IEnumerable)
-            If arr IsNot Nothing AndAlso Not TypeOf raw Is String Then
-                For Each o In arr
-                    Dim s = NormalizeMultiPath(SafeStr(o))
+            Dim items = EnumeratePayloadItems(raw)
+            If items.Count > 0 Then
+                For Each o In items
+                    Dim s = NormalizeMultiPath(SafeStr(ConvertPayloadValue(o)))
                     If Not String.IsNullOrWhiteSpace(s) AndAlso Not list.Contains(s) Then
                         list.Add(s)
                     End If
                 Next
-            Else
-                Dim s = NormalizeMultiPath(SafeStr(raw))
+            ElseIf Not IsJsonArrayValue(raw) Then
+                Dim s = NormalizeMultiPath(SafeStr(ConvertPayloadValue(raw)))
                 If Not String.IsNullOrWhiteSpace(s) Then list.Add(s)
             End If
             Return list
+        End Function
+
+        Private Shared Function EnumeratePayloadItems(raw As Object) As List(Of Object)
+            Dim items As New List(Of Object)()
+            If raw Is Nothing Then Return items
+
+            If IsJsonArrayValue(raw) Then
+                Dim arr = TryCast(InvokeRuntimeMethod(raw, "EnumerateArray"), System.Collections.IEnumerable)
+                If arr Is Nothing Then Return items
+                For Each item In arr
+                    items.Add(ConvertPayloadValue(item))
+                Next
+                Return items
+            End If
+
+            Dim enumerable = TryCast(raw, System.Collections.IEnumerable)
+            If enumerable Is Nothing OrElse TypeOf raw Is String Then Return items
+
+            For Each item In enumerable
+                items.Add(ConvertPayloadValue(item))
+            Next
+            Return items
+        End Function
+
+        Private Shared Function ConvertPayloadValue(raw As Object) As Object
+            If raw Is Nothing Then Return Nothing
+
+            If IsJsonElementValue(raw) Then
+                Dim kind = GetJsonValueKindName(raw)
+                Select Case kind
+                    Case "Object"
+                        Return ToDict(raw)
+                    Case "Array"
+                        Return EnumeratePayloadItems(raw)
+                    Case "String"
+                        Return SafeStr(InvokeRuntimeMethod(raw, "GetString"))
+                    Case "Null", "Undefined"
+                        Return Nothing
+                    Case Else
+                        Return SafeStr(raw)
+                End Select
+            End If
+
+            Return raw
+        End Function
+
+        Private Shared Function TryPopulateFromJsonObject(obj As Object, target As Dictionary(Of String, Object)) As Boolean
+            If target Is Nothing OrElse Not IsJsonElementValue(obj) Then Return False
+            If Not String.Equals(GetJsonValueKindName(obj), "Object", StringComparison.OrdinalIgnoreCase) Then Return False
+
+            Dim props = TryCast(InvokeRuntimeMethod(obj, "EnumerateObject"), System.Collections.IEnumerable)
+            If props Is Nothing Then Return False
+
+            For Each item In props
+                Dim name = SafeStr(GetRuntimePropertyValue(item, "Name"))
+                If String.IsNullOrWhiteSpace(name) Then Continue For
+                Dim value = GetRuntimePropertyValue(item, "Value")
+                target(name) = ConvertPayloadValue(value)
+            Next
+            Return True
+        End Function
+
+        Private Shared Function IsJsonArrayValue(obj As Object) As Boolean
+            Return IsJsonElementValue(obj) AndAlso String.Equals(GetJsonValueKindName(obj), "Array", StringComparison.OrdinalIgnoreCase)
+        End Function
+
+        Private Shared Function IsJsonElementValue(obj As Object) As Boolean
+            If obj Is Nothing Then Return False
+            Dim t = obj.GetType()
+            Return t IsNot Nothing AndAlso String.Equals(t.FullName, "System.Text.Json.JsonElement", StringComparison.Ordinal)
+        End Function
+
+        Private Shared Function GetJsonValueKindName(obj As Object) As String
+            Return SafeStr(GetRuntimePropertyValue(obj, "ValueKind"))
+        End Function
+
+        Private Shared Function GetRuntimePropertyValue(obj As Object, propertyName As String) As Object
+            If obj Is Nothing OrElse String.IsNullOrWhiteSpace(propertyName) Then Return Nothing
+            Try
+                Dim prop = obj.GetType().GetProperty(propertyName)
+                If prop Is Nothing Then Return Nothing
+                Return prop.GetValue(obj, Nothing)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function InvokeRuntimeMethod(obj As Object, methodName As String) As Object
+            If obj Is Nothing OrElse String.IsNullOrWhiteSpace(methodName) Then Return Nothing
+            Try
+                Dim methodInfo = obj.GetType().GetMethod(methodName, Type.EmptyTypes)
+                If methodInfo Is Nothing Then Return Nothing
+                Return methodInfo.Invoke(obj, Nothing)
+            Catch
+                Return Nothing
+            End Try
         End Function
 
         Private Shared Function ToBool(obj As Object, Optional defaultValue As Boolean = False) As Boolean

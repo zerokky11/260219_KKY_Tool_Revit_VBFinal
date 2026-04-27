@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net48;net8.0-windows</TargetFrameworks>
+    <TargetFrameworks>net48;net8.0-windows;net10.0-windows</TargetFrameworks>
     <UseWindowsForms>true</UseWindowsForms>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <RootNamespace>KKY_Tool_Revit</RootNamespace>
@@ -29,6 +29,13 @@
     <RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiDirCandidate1)\RevitAPI.dll')">$(RevitApiDirCandidate1)</RevitApiDir>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
+    <RevitApiDirCandidate0>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..\..\Compile\2027addin'))</RevitApiDirCandidate0>
+    <RevitApiDirCandidate1>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..\..\Compile\2027addin'))</RevitApiDirCandidate1>
+    <RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiDirCandidate0)\RevitAPI.dll')">$(RevitApiDirCandidate0)</RevitApiDir>
+    <RevitApiDir Condition="'$(RevitApiDir)' == '' and Exists('$(RevitApiDirCandidate1)\RevitAPI.dll')">$(RevitApiDirCandidate1)</RevitApiDir>
+  </PropertyGroup>
+
   <Target Name="CheckRevitApiDir" BeforeTargets="ResolveReferences">
     <Error Condition="'$(RevitApiDir)' == ''" Text="Local Revit API folder not found for KKY_RvtBatchCleaner_Core." />
   </Target>
@@ -51,20 +58,25 @@
     <Compile Include="..\Models\ElementParameterUpdateSettings.cs" Link="Models\ElementParameterUpdateSettings.cs" />
     <Compile Include="..\Models\PreparedDocumentEntry.cs" Link="Models\PreparedDocumentEntry.cs" />
     <Compile Include="..\Models\PurgeBatchProgressSnapshot.cs" Link="Models\PurgeBatchProgressSnapshot.cs" />
+    <Compile Include="..\Models\VisibilityCategoryOverride.cs" Link="Models\VisibilityCategoryOverride.cs" />
     <Compile Include="..\Models\VisibilitySubCategoryRule.cs" Link="Models\VisibilitySubCategoryRule.cs" />
     <Compile Include="..\Models\ViewFilterProfile.cs" Link="Models\ViewFilterProfile.cs" />
     <Compile Include="..\Models\ViewParameterAssignment.cs" Link="Models\ViewParameterAssignment.cs" />
 
     <Compile Include="..\BatchCleanService.cs" Link="Services\BatchCleanService.cs" />
+    <Compile Include="..\FamilySuitabilityReviewService.cs" Link="Services\FamilySuitabilityReviewService.cs" />
     <Compile Include="..\FloorInfoReviewService.cs" Link="Services\FloorInfoReviewService.cs" />
     <Compile Include="..\LegacyPurgeService.cs" Link="Services\LegacyPurgeService.cs" />
     <Compile Include="..\LinkWorksetUiPrimeService.cs" Link="Services\LinkWorksetUiPrimeService.cs" />
     <Compile Include="..\ModelParameterExtractionService.cs" Link="Services\ModelParameterExtractionService.cs" />
+    <Compile Include="..\ParameterMissingReviewService.cs" Link="Services\ParameterMissingReviewService.cs" />
     <Compile Include="..\PurgeUiBatchService.cs" Link="Services\PurgeUiBatchService.cs" />
+    <Compile Include="..\ProjectParameterDuplicationReviewService.cs" Link="Services\ProjectParameterDuplicationReviewService.cs" />
     <Compile Include="..\RevitViewFilterProfileService.cs" Link="Services\RevitViewFilterProfileService.cs" />
     <Compile Include="..\VisibilitySubCategoryRuleProfileService.cs" Link="Services\VisibilitySubCategoryRuleProfileService.cs" />
     <Compile Include="..\TransactionFailureSwallower.cs" Link="Services\TransactionFailureSwallower.cs" />
     <Compile Include="..\VerificationService.cs" Link="Services\VerificationService.cs" />
+    <Compile Include="..\WorksetAssignmentReviewService.cs" Link="Services\WorksetAssignmentReviewService.cs" />
   </ItemGroup>
 
 </Project>

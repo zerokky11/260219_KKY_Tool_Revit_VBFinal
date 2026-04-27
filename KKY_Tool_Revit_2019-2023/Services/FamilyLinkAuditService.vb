@@ -66,6 +66,13 @@ Namespace Services
         Public Property NestedFamilyCount As Integer
     End Class
 
+    Friend Class NestedFamilyOpenContext
+        Public Property FamilyDoc As Document
+        Public Property StructureInfo As NestedFamilyStructureInfo
+        Public Property SharedFlag As Boolean?
+        Public Property FamilyKey As String = ""
+    End Class
+
     Public NotInheritable Class FamilyLinkAuditService
 
         Private Sub New()
@@ -100,14 +107,9 @@ Namespace Services
                     doc = OpenProjectDocument(app.Application, rvtPath)
                     If doc Is Nothing Then Throw New InvalidOperationException("프로젝트 문서를 열 수 없습니다.")
 
-                    Dim hostFamilies As List(Of Family) =
-                        New FilteredElementCollector(doc).
-                            OfClass(GetType(Family)).
-                            Cast(Of Family)().
-                            Where(Function(f) f IsNot Nothing AndAlso f.IsEditable AndAlso Not f.IsInPlace).
-                            ToList()
+                    Dim hostFamilyIds As List(Of ElementId) = CollectEditableHostFamilyIds(doc)
 
-                    Dim famTotal As Integer = hostFamilies.Count
+                    Dim famTotal As Integer = hostFamilyIds.Count
                     Dim rvtName As String = fileName
 
                     If famTotal = 0 Then
@@ -116,10 +118,10 @@ Namespace Services
                     End If
 
                     For fi As Integer = 0 To famTotal - 1
-                        Dim fam As Family = hostFamilies(fi)
+                        Dim hostFamilyName As String = GetHostFamilyProgressName(doc, hostFamilyIds(fi))
                         Dim frac As Double = 0.05R + 0.9R * SafeRatio(fi + 1, famTotal)
-                        ReportProgress(progress, total, i + 1, frac, $"[{rvtName}] 패밀리 검사 중({fi + 1}/{famTotal})")
-                        AuditFamilyAsHost(doc, fam, fileName, targetMap, rows)
+                        ReportProgress(progress, total, i + 1, frac, BuildFamilyProgressMessage(rvtName, hostFamilyName, fi + 1, famTotal))
+                        AuditSingleHostFamily(doc, hostFamilyIds(fi), fileName, targetMap, rows)
                     Next
 
                     ReportProgress(progress, total, i + 1, 1.0R, $"완료: {rvtName}")
@@ -155,24 +157,19 @@ Namespace Services
 
             Dim fileName As String = SafeFileName(rvtPath)
             Try
-                Dim hostFamilies As List(Of Family) =
-                    New FilteredElementCollector(doc).
-                        OfClass(GetType(Family)).
-                        Cast(Of Family)().
-                        Where(Function(f) f IsNot Nothing AndAlso f.IsEditable AndAlso Not f.IsInPlace).
-                        ToList()
+                Dim hostFamilyIds As List(Of ElementId) = CollectEditableHostFamilyIds(doc)
 
-                Dim famTotal As Integer = hostFamilies.Count
+                Dim famTotal As Integer = hostFamilyIds.Count
                 If famTotal = 0 Then
                     ReportProgress(progress, 1, 1, 1.0R, $"{fileName}: 편집 가능한 패밀리가 없습니다.")
                     Return rows
                 End If
 
                 For fi As Integer = 0 To famTotal - 1
-                    Dim fam As Family = hostFamilies(fi)
+                    Dim hostFamilyName As String = GetHostFamilyProgressName(doc, hostFamilyIds(fi))
                     Dim frac As Double = 0.05R + 0.9R * SafeRatio(fi + 1, famTotal)
-                    ReportProgress(progress, 1, 1, frac, $"[{fileName}] 패밀리 검사 중({fi + 1}/{famTotal})")
-                    AuditFamilyAsHost(doc, fam, fileName, targetMap, rows)
+                    ReportProgress(progress, 1, 1, frac, BuildFamilyProgressMessage(fileName, hostFamilyName, fi + 1, famTotal))
+                    AuditSingleHostFamily(doc, hostFamilyIds(fi), fileName, targetMap, rows)
                 Next
 
                 ReportProgress(progress, 1, 1, 1.0R, $"완료: {fileName}")
@@ -187,6 +184,83 @@ Namespace Services
             Return rows
         End Function
 
+        Private Shared Function BuildFamilyProgressMessage(fileName As String,
+                                                           hostFamilyName As String,
+                                                           current As Integer,
+                                                           total As Integer) As String
+            Dim safeFileName As String = If(fileName, "").Trim()
+            Dim safeFamilyName As String = If(hostFamilyName, "").Trim()
+            If String.IsNullOrWhiteSpace(safeFamilyName) Then safeFamilyName = "(이름 없음)"
+            Return $"{safeFileName} - {safeFamilyName} ({current}/{total}) 패밀리 검사 중"
+        End Function
+
+        Private Shared Function GetHostFamilyProgressName(doc As Document, familyId As ElementId) As String
+            If doc Is Nothing OrElse familyId Is Nothing Then Return ""
+            Try
+                Dim family As Family = TryCast(doc.GetElement(familyId), Family)
+                If family IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(family.Name) Then
+                    Return family.Name
+                End If
+            Catch
+            End Try
+            Return ""
+        End Function
+
+        Private Shared Sub AuditSingleHostFamily(doc As Document,
+                                                 familyId As ElementId,
+                                                 fileName As String,
+                                                 expectedByName As Dictionary(Of String, List(Of FamilyLinkTargetParam)),
+                                                 rows As List(Of FamilyLinkAuditRow))
+            If doc Is Nothing OrElse familyId Is Nothing Then Return
+
+            Dim hostFamilyName As String = ""
+
+            Try
+                Dim fam As Family = TryCast(doc.GetElement(familyId), Family)
+                If fam Is Nothing OrElse Not fam.IsValidObject Then Return
+
+                hostFamilyName = SafeStr(fam.Name)
+                If Not fam.IsEditable OrElse fam.IsInPlace Then Return
+
+                AuditFamilyAsHost(doc, fam, fileName, expectedByName, rows)
+            Catch ex As Exception
+                rows.Add(New FamilyLinkAuditRow With {
+                    .FileName = fileName,
+                    .HostFamilyName = hostFamilyName,
+                    .Issue = FamilyLinkAuditIssue.[Error].ToString(),
+                    .Notes = $"Host family scan error: {ex.Message}"
+                })
+            End Try
+        End Sub
+
+        Private Shared Function CollectEditableHostFamilyIds(doc As Document) As List(Of ElementId)
+            If doc Is Nothing Then Return New List(Of ElementId)()
+
+            Return New FilteredElementCollector(doc).
+                OfClass(GetType(Family)).
+                Cast(Of Family)().
+                Where(Function(f) f IsNot Nothing AndAlso
+                                   f.IsValidObject AndAlso
+                                   f.IsEditable AndAlso
+                                   Not f.IsInPlace AndAlso
+                                   IsModelFamily(f)).
+                Select(Function(f) f.Id).
+                Where(Function(id) id IsNot Nothing AndAlso id.IntegerValue > 0).
+                ToList()
+        End Function
+
+        Private Shared Function IsModelFamily(family As Family) As Boolean
+            If family Is Nothing OrElse Not family.IsValidObject Then Return False
+
+            Try
+                Dim category As Category = family.FamilyCategory
+                If category Is Nothing Then Return False
+                Return category.CategoryType = CategoryType.Model
+            Catch
+                Return False
+            End Try
+        End Function
+
         Private Shared Sub AuditFamilyAsHost(hostDoc As Document,
                                              hostFamily As Family,
                                              fileName As String,
@@ -198,13 +272,7 @@ Namespace Services
                 famDoc = hostDoc.EditFamily(hostFamily)
                 If famDoc Is Nothing OrElse Not famDoc.IsFamilyDocument Then Return
 
-                Dim nestedInstances As List(Of FamilyInstance) =
-                    New FilteredElementCollector(famDoc).
-                        OfClass(GetType(FamilyInstance)).
-                        WhereElementIsNotElementType().
-                        Cast(Of FamilyInstance)().
-                        Where(Function(x) x IsNot Nothing AndAlso x.Symbol IsNot Nothing AndAlso x.Symbol.Family IsNot Nothing).
-                        ToList()
+                Dim nestedInstances As List(Of FamilyInstance) = CollectDirectNestedInstances(famDoc)
 
                 If nestedInstances.Count = 0 Then Return
 
@@ -214,7 +282,9 @@ Namespace Services
                 Catch
                 End Try
 
-                AuditNestedInstancesRecursive(famDoc, hostFamily, hostCat, fileName, expectedByName, rows, "", 1)
+                Dim ancestry As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+                ancestry.Add(GetFamilyKey(hostFamily))
+                AuditNestedInstancesRecursive(famDoc, hostFamily, hostCat, fileName, expectedByName, rows, "", 1, ancestry)
 
             Finally
                 If famDoc IsNot Nothing Then
@@ -233,71 +303,142 @@ Namespace Services
                                                          expectedByName As Dictionary(Of String, List(Of FamilyLinkTargetParam)),
                                                          rows As List(Of FamilyLinkAuditRow),
                                                          pathPrefix As String,
-                                                         nestingLevel As Integer)
+                                                         nestingLevel As Integer,
+                                                         ancestry As HashSet(Of String))
 
             If parentFamilyDoc Is Nothing Then Return
 
-            Dim nestedInstances As List(Of FamilyInstance) =
-                New FilteredElementCollector(parentFamilyDoc).
-                    OfClass(GetType(FamilyInstance)).
-                    WhereElementIsNotElementType().
-                    Cast(Of FamilyInstance)().
-                    Where(Function(x) x IsNot Nothing AndAlso x.Symbol IsNot Nothing AndAlso x.Symbol.Family IsNot Nothing).
-                    ToList()
+            Dim nestedInstances As List(Of FamilyInstance) = CollectDirectNestedInstances(parentFamilyDoc)
 
             If nestedInstances.Count = 0 Then Return
 
-            For Each fi As FamilyInstance In nestedInstances
-                Dim nestedFam As Family = fi.Symbol.Family
-                Dim nestedCat As String = ""
-                Try
-                    If fi.Category IsNot Nothing Then nestedCat = fi.Category.Name
-                Catch
-                End Try
+            Dim groups As Dictionary(Of String, List(Of FamilyInstance)) = GroupNestedInstancesByFamily(nestedInstances)
 
-                Dim nestedPath As String = BuildNestedPath(pathPrefix, nestedFam, fi)
-                Dim nestedStructure As NestedFamilyStructureInfo = Nothing
-                Dim childDoc As Document = Nothing
+            For Each kv As KeyValuePair(Of String, List(Of FamilyInstance)) In groups
+                Dim groupItems As List(Of FamilyInstance) = kv.Value
+                If groupItems Is Nothing OrElse groupItems.Count = 0 Then Continue For
+
+                Dim sample As FamilyInstance = groupItems(0)
+                If sample Is Nothing OrElse sample.Symbol Is Nothing Then Continue For
+
+                Dim nestedFam As Family = sample.Symbol.Family
+                If nestedFam Is Nothing Then Continue For
+
+                Dim ctx As NestedFamilyOpenContext = OpenNestedFamilyContext(parentFamilyDoc, nestedFam)
+                Dim nestedStructure As NestedFamilyStructureInfo = If(ctx IsNot Nothing AndAlso ctx.StructureInfo IsNot Nothing, ctx.StructureInfo, New NestedFamilyStructureInfo())
+                Dim childDoc As Document = If(ctx IsNot Nothing, ctx.FamilyDoc, Nothing)
+                Dim nestedSharedFlag As Boolean? = If(ctx IsNot Nothing, ctx.SharedFlag, Nothing)
+                Dim familyKey As String = If(ctx IsNot Nothing AndAlso ctx.FamilyKey <> "", ctx.FamilyKey, GetFamilyKey(nestedFam))
 
                 Try
-                    If nestedFam IsNot Nothing AndAlso nestedFam.IsEditable AndAlso Not nestedFam.IsInPlace Then
-                        childDoc = parentFamilyDoc.EditFamily(nestedFam)
-                        If childDoc IsNot Nothing AndAlso childDoc.IsFamilyDocument Then
-                            nestedStructure = New NestedFamilyStructureInfo()
-                            nestedStructure.NestedFamilyCount =
-                                New FilteredElementCollector(childDoc).
-                                    OfClass(GetType(FamilyInstance)).
-                                    WhereElementIsNotElementType().
-                                    GetElementCount()
-                            nestedStructure.HasNestedFamilies = (nestedStructure.NestedFamilyCount > 0)
-                        End If
+                    ' Shared=True로 확인된 하위 패밀리만 검토한다.
+                    If Not nestedSharedFlag.HasValue OrElse Not nestedSharedFlag.Value Then
+                        Continue For
                     End If
-                Catch
-                    childDoc = Nothing
+
+                    For Each fi As FamilyInstance In groupItems
+                        If fi Is Nothing OrElse fi.Symbol Is Nothing OrElse fi.Symbol.Family Is Nothing Then Continue For
+
+                        Dim nestedCat As String = ""
+                        Try
+                            If fi.Category IsNot Nothing Then nestedCat = fi.Category.Name
+                        Catch
+                        End Try
+
+                        Dim nestedPath As String = BuildNestedPath(pathPrefix, nestedFam, fi)
+
+                        If nestingLevel <= 1 Then
+                            AuditDirectNestedInstance(parentFamilyDoc, fileName, hostFamily, hostCat, nestedFam, fi, nestedCat, nestedStructure, expectedByName, rows, nestedPath, nestingLevel)
+                        Else
+                            AuditDescendantNestedInstance(fileName, hostFamily, hostCat, nestedFam, fi, nestedCat, nestedStructure, expectedByName, rows, nestedPath, nestingLevel)
+                        End If
+
+                        If childDoc IsNot Nothing AndAlso nestedStructure.HasNestedFamilies AndAlso Not ancestry.Contains(familyKey) Then
+                            Dim nextAncestry As New HashSet(Of String)(ancestry, StringComparer.OrdinalIgnoreCase)
+                            nextAncestry.Add(familyKey)
+                            AuditNestedInstancesRecursive(childDoc, hostFamily, hostCat, fileName, expectedByName, rows, nestedPath, nestingLevel + 1, nextAncestry)
+                        End If
+                    Next
+                Finally
+                    If childDoc IsNot Nothing Then
+                        Try
+                            childDoc.Close(False)
+                        Catch
+                        End Try
+                    End If
                 End Try
-
-                If nestedStructure Is Nothing Then
-                    nestedStructure = New NestedFamilyStructureInfo()
-                End If
-
-                If nestingLevel <= 1 Then
-                    AuditDirectNestedInstance(parentFamilyDoc, fileName, hostFamily, hostCat, nestedFam, fi, nestedCat, nestedStructure, expectedByName, rows, nestedPath, nestingLevel)
-                Else
-                    AuditDescendantNestedInstance(fileName, hostFamily, hostCat, nestedFam, fi, nestedCat, nestedStructure, expectedByName, rows, nestedPath, nestingLevel)
-                End If
-
-                If childDoc IsNot Nothing AndAlso nestedStructure.HasNestedFamilies Then
-                    AuditNestedInstancesRecursive(childDoc, hostFamily, hostCat, fileName, expectedByName, rows, nestedPath, nestingLevel + 1)
-                End If
-
-                If childDoc IsNot Nothing Then
-                    Try
-                        childDoc.Close(False)
-                    Catch
-                    End Try
-                End If
             Next
         End Sub
+
+        Private Shared Function CollectDirectNestedInstances(familyDoc As Document) As List(Of FamilyInstance)
+            If familyDoc Is Nothing Then Return New List(Of FamilyInstance)()
+
+            Return New FilteredElementCollector(familyDoc).
+                OfClass(GetType(FamilyInstance)).
+                WhereElementIsNotElementType().
+                Cast(Of FamilyInstance)().
+                Where(Function(x) IsDirectNestedInstance(x)).
+                ToList()
+        End Function
+
+        Private Shared Function IsDirectNestedInstance(fi As FamilyInstance) As Boolean
+            If fi Is Nothing OrElse fi.Symbol Is Nothing OrElse fi.Symbol.Family Is Nothing Then Return False
+
+            Try
+                Return fi.SuperComponent Is Nothing
+            Catch
+                Return True
+            End Try
+        End Function
+
+        Private Shared Function GroupNestedInstancesByFamily(items As IEnumerable(Of FamilyInstance)) As Dictionary(Of String, List(Of FamilyInstance))
+            Dim result As New Dictionary(Of String, List(Of FamilyInstance))(StringComparer.OrdinalIgnoreCase)
+            If items Is Nothing Then Return result
+
+            For Each fi As FamilyInstance In items
+                If fi Is Nothing OrElse fi.Symbol Is Nothing OrElse fi.Symbol.Family Is Nothing Then Continue For
+
+                Dim key As String = GetFamilyKey(fi.Symbol.Family)
+                Dim bucket As List(Of FamilyInstance) = Nothing
+                If Not result.TryGetValue(key, bucket) Then
+                    bucket = New List(Of FamilyInstance)()
+                    result(key) = bucket
+                End If
+
+                bucket.Add(fi)
+            Next
+
+            Return result
+        End Function
+
+        Private Shared Function OpenNestedFamilyContext(parentFamilyDoc As Document,
+                                                        nestedFam As Family) As NestedFamilyOpenContext
+            Dim ctx As New NestedFamilyOpenContext With {
+                .StructureInfo = New NestedFamilyStructureInfo(),
+                .FamilyKey = GetFamilyKey(nestedFam)
+            }
+
+            If parentFamilyDoc Is Nothing OrElse nestedFam Is Nothing Then Return ctx
+            If Not nestedFam.IsEditable OrElse nestedFam.IsInPlace Then Return ctx
+
+            Try
+                Dim childDoc As Document = parentFamilyDoc.EditFamily(nestedFam)
+                If childDoc Is Nothing OrElse Not childDoc.IsFamilyDocument Then Return ctx
+
+                ctx.FamilyDoc = childDoc
+                ctx.StructureInfo.NestedFamilyCount =
+                    New FilteredElementCollector(childDoc).
+                        OfClass(GetType(FamilyInstance)).
+                        WhereElementIsNotElementType().
+                        GetElementCount()
+                ctx.StructureInfo.HasNestedFamilies = (ctx.StructureInfo.NestedFamilyCount > 0)
+                ctx.SharedFlag = GetNestedFamilySharedFlag(childDoc)
+            Catch
+                ctx.FamilyDoc = Nothing
+            End Try
+
+            Return ctx
+        End Function
 
         Private Shared Sub AuditDirectNestedInstance(parentFamilyDoc As Document,
                                                      fileName As String,
@@ -604,6 +745,19 @@ Namespace Services
             Return "직접 중첩 패밀리가 또 다른 하위 패밀리를 포함하는 복합 패밀리입니다. 하위 패밀리의 하위 패밀리 파라미터는 현재 단계에서 직접 연결 검토할 수 없습니다"
         End Function
 
+        Private Shared Function GetNestedFamilySharedFlag(familyDoc As Document) As Boolean?
+            If familyDoc Is Nothing OrElse Not familyDoc.IsFamilyDocument Then Return Nothing
+
+            Try
+                If familyDoc.OwnerFamily Is Nothing Then Return Nothing
+                Dim p As Parameter = familyDoc.OwnerFamily.Parameter(BuiltInParameter.FAMILY_SHARED)
+                If p Is Nothing Then Return Nothing
+                Return (p.AsInteger() = 1)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
         Private Shared Function BuildNestedPath(pathPrefix As String,
                                                 nestedFam As Family,
                                                 fi As FamilyInstance) As String
@@ -616,6 +770,32 @@ Namespace Services
             If String.IsNullOrWhiteSpace(pathPrefix) Then Return segment
             If String.IsNullOrWhiteSpace(segment) Then Return pathPrefix
             Return pathPrefix & " > " & segment
+        End Function
+
+        Private Shared Function GetFamilyKey(fam As Family) As String
+            If fam Is Nothing Then Return ""
+
+            Dim uniqueId As String = ""
+            Try
+                uniqueId = SafeStr(fam.UniqueId)
+            Catch
+            End Try
+
+            If Not String.IsNullOrWhiteSpace(uniqueId) Then Return uniqueId
+
+            Dim elementId As String = ""
+            Try
+                If fam.Id IsNot Nothing AndAlso fam.Id.IntegerValue <> Integer.MinValue Then
+                    elementId = fam.Id.IntegerValue.ToString()
+                End If
+            Catch
+            End Try
+
+            If elementId <> "" Then
+                Return elementId & "|" & SafeStr(fam.Name)
+            End If
+
+            Return SafeStr(fam.Name)
         End Function
 
         Private Shared Function IsOkIssue(row As FamilyLinkAuditRow) As Boolean

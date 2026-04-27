@@ -941,7 +941,8 @@ namespace KKY_Tool_Revit.Services
                 if (category == null) continue;
                 if (!ShouldTreatAsModelVisibilityCategory(category)) continue;
 
-                bool categoryVisible = !ShouldHideTopLevelCategory(category);
+                bool? categoryOverride = GetCategoryVisibilityOverride(settings, category);
+                bool categoryVisible = categoryOverride ?? !ShouldHideTopLevelCategory(category);
                 if (TrySetCategoryVisibility(view, category, categoryVisible))
                 {
                     if (categoryVisible) shownCount++;
@@ -992,6 +993,21 @@ namespace KKY_Tool_Revit.Services
                    || EqualsNormalizedCategoryName(category, "파트")
                    || EqualsNormalizedCategoryName(category, "대지")
                    || EqualsNormalizedCategoryName(category, "선");
+        }
+
+        private static bool? GetCategoryVisibilityOverride(BatchCleanSettings settings, Category category)
+        {
+            if (settings?.VisibilityCategoryOverrides == null || category == null)
+            {
+                return null;
+            }
+
+            string normalizedName = NormalizeCategoryName(category.Name);
+            VisibilityCategoryOverride matched = settings.VisibilityCategoryOverrides
+                .Where(x => x != null && x.IsConfigured())
+                .LastOrDefault(x => string.Equals(NormalizeCategoryName(x.CategoryName), normalizedName, StringComparison.OrdinalIgnoreCase));
+
+            return matched?.Visible;
         }
 
         private static bool IsLineCategory(Category category)

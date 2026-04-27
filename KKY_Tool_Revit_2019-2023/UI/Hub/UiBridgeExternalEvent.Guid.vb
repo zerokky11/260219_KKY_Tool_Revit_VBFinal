@@ -163,6 +163,7 @@ Namespace UI.Hub
                 Dim projectTable As DataTable = EnsureNoRvtPath(GuidAuditService.PrepareExportTable(_guidProject, 1))
                 Dim familyTable As DataTable = EnsureNoRvtPath(GuidAuditService.PrepareExportTable(_guidFamilyDetail, 2))
                 Dim sheetList As New List(Of KeyValuePair(Of String, DataTable))()
+                Dim exportLocale As String = ParseExcelLocale(payload)
 
                 If which = "family" Then
                     sheetList.Add(New KeyValuePair(Of String, DataTable)("Family 검토결과", familyTable))
@@ -177,7 +178,7 @@ Namespace UI.Hub
                 Dim isFastMode As Boolean = String.Equals(excelMode, "fast", StringComparison.OrdinalIgnoreCase)
                 Dim exportMode As String = If(isFastMode, "fast", If(doAutoFit, "normal", "fast"))
                 LogAutoFitDecision(doAutoFit, "GuidAuditExport")
-                Dim saved = GuidAuditService.ExportMulti(sheetList, exportMode, "guid:progress")
+                Dim saved = GuidAuditService.ExportMulti(sheetList, exportMode, "guid:progress", exportLocale)
                 If String.IsNullOrWhiteSpace(saved) Then
                     SendToWeb("guid:error", New With {.message = "엑셀 내보내기가 취소되었습니다."})
                     Return
@@ -186,6 +187,83 @@ Namespace UI.Hub
                 SendToWeb("guid:exported", New With {.path = saved, .which = which})
             Catch ex As Exception
                 SendToWeb("guid:error", New With {.message = "엑셀 내보내기 실패: " & ex.Message})
+            End Try
+        End Sub
+
+        Private Sub HandleGuidPickCleanupExcel(app As UIApplication, payload As Object)
+            Using dlg As New OpenFileDialog()
+                dlg.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
+                dlg.Multiselect = False
+                dlg.Title = "삭제용 엑셀 불러오기"
+                dlg.RestoreDirectory = True
+                If dlg.ShowDialog() <> DialogResult.OK Then
+                    SendToWebAfterDialog("guid:cleanup-cancelled", New With {.ok = False})
+                    Return
+                End If
+
+                SendToWebAfterDialog("guid:cleanup-excel-picked", New With {.path = dlg.FileName})
+            End Using
+        End Sub
+
+        Private Sub HandleGuidCleanup(app As UIApplication, payload As Object)
+            Dim pd = ParsePayloadDict(payload)
+            Dim excelPath As String = Convert.ToString(GetProp(pd, "excelPath"))
+
+            If String.IsNullOrWhiteSpace(excelPath) Then
+                Using dlg As New OpenFileDialog()
+                    dlg.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
+                    dlg.Multiselect = False
+                    dlg.Title = "삭제용 엑셀 불러오기"
+                    dlg.RestoreDirectory = True
+                    If dlg.ShowDialog() <> DialogResult.OK Then
+                        SendToWebAfterDialog("guid:cleanup-cancelled", New With {.ok = False})
+                        Return
+                    End If
+
+                    excelPath = dlg.FileName
+                End Using
+            End If
+
+            Dim settings As New GuidAuditService.CleanupSettings() With {
+                .CloseAllWorksetsOnOpen = SafeBoolObj(GetProp(pd, "closeAllWorksetsOnOpen"), True),
+                .UseSyncComment = SafeBoolObj(GetProp(pd, "useSyncComment"), False),
+                .SyncComment = Convert.ToString(GetProp(pd, "syncComment"))
+            }
+
+            Try
+                _guidLastPct = -1.0R
+                _guidLastText = String.Empty
+
+                Dim result = GuidAuditService.CleanupFromExcel(app,
+                                                               excelPath,
+                                                               settings,
+                                                               AddressOf ReportGuidCleanupProgress,
+                                                               Sub(msg As String)
+                                                                   If Not String.IsNullOrWhiteSpace(msg) Then
+                                                                       SendToWeb("guid:warn", New With {.message = msg})
+                                                                   End If
+                                                               End Sub)
+
+                SendToWeb("guid:cleanup-done", New With {
+                    .ok = result.Ok,
+                    .message = result.Message,
+                    .sourceExcelPath = result.SourceExcelPath,
+                    .instructionCount = result.InstructionCount,
+                    .deletedCount = result.DeletedCount,
+                    .successCount = result.SuccessCount,
+                    .failCount = result.FailCount,
+                    .noChangeCount = result.NoChangeCount,
+                    .files = result.Files,
+                    .settings = New With {
+                        .closeAllWorksetsOnOpen = settings.CloseAllWorksetsOnOpen,
+                        .useSyncComment = settings.UseSyncComment,
+                        .syncComment = settings.SyncComment
+                    }
+                })
+            Catch ex As Exception
+                SendToWeb("guid:error", New With {.message = ex.Message})
+            Finally
+                ReportGuidCleanupProgress(0, String.Empty)
             End Try
         End Sub
 
@@ -231,10 +309,72 @@ Namespace UI.Hub
         Private Sub ReportGuidProgress(pct As Double, text As String)
             Dim changed As Boolean = (pct <> _guidLastPct) OrElse (Not String.Equals(text, _guidLastText, StringComparison.Ordinal))
             If Not changed Then Return
-            SendToWeb("guid:progress", New With {.pct = pct, .text = text})
+            Dim detail As String = If(text, String.Empty)
+            SendToWeb("guid:progress", New With {
+                .pct = pct,
+                .text = text,
+                .detail = detail,
+                .stage = ResolveGuidProgressStage(pct, detail)
+            })
             _guidLastPct = pct
             _guidLastText = text
         End Sub
+
+        Private Sub ReportGuidCleanupProgress(pct As Double, text As String)
+            Dim changed As Boolean = (pct <> _guidLastPct) OrElse (Not String.Equals(text, _guidLastText, StringComparison.Ordinal))
+            If Not changed Then Return
+            Dim detail As String = If(text, String.Empty)
+            SendToWeb("guid:cleanup-progress", New With {
+                .pct = pct,
+                .text = text,
+                .detail = detail,
+                .stage = ResolveGuidCleanupStage(pct, detail)
+            })
+            _guidLastPct = pct
+            _guidLastText = text
+        End Sub
+
+        Private Function ResolveGuidProgressStage(pct As Double, detail As String) As String
+            Dim message As String = If(detail, String.Empty).Trim()
+            If message.IndexOf("문서 여는 중", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return "문서를 여는 중..."
+            End If
+            If message.IndexOf("프로젝트 파라미터", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return "프로젝트 파라미터 검토 중 (" & FormatGuidProgressPercent(pct) & ")"
+            End If
+            If message.IndexOf("패밀리 처리 중", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return "패밀리 검토 중 (" & FormatGuidProgressPercent(pct) & ")"
+            End If
+            If message.IndexOf("실패", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return "문서 처리 실패"
+            End If
+            If message.IndexOf("완료", StringComparison.OrdinalIgnoreCase) >= 0 OrElse pct >= 100.0R Then
+                Return "GUID 검토 완료"
+            End If
+            Return "GUID 검토 진행 중 (" & FormatGuidProgressPercent(pct) & ")"
+        End Function
+
+        Private Function ResolveGuidCleanupStage(pct As Double, detail As String) As String
+            Dim message As String = If(detail, String.Empty).Trim()
+            If message.IndexOf("문서 여는 중", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return "삭제 대상 문서를 여는 중..."
+            End If
+            If message.IndexOf("프로젝트 파라미터 정리 중", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return "프로젝트 파라미터 정리 중 (" & FormatGuidProgressPercent(pct) & ")"
+            End If
+            If message.IndexOf("로드 패밀리 파라미터 정리 중", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return "로드 패밀리 정리 중 (" & FormatGuidProgressPercent(pct) & ")"
+            End If
+            If message.IndexOf("완료", StringComparison.OrdinalIgnoreCase) >= 0 OrElse pct >= 100.0R Then
+                Return "파라미터 GUID 정리 완료"
+            End If
+            Return "파라미터 GUID 정리 진행 중 (" & FormatGuidProgressPercent(pct) & ")"
+        End Function
+
+        Private Function FormatGuidProgressPercent(pct As Double) As String
+            Dim safePct As Double = Math.Max(0.0R, Math.Min(100.0R, Math.Round(pct, 1)))
+            Return safePct.ToString("0.0") & "%"
+        End Function
 
         Private Function ShapeTable(dt As DataTable, skipCols As HashSet(Of String)) As TablePayload
             If dt Is Nothing Then Return New TablePayload With {.columns = New List(Of String)(), .rows = New List(Of Object())()}

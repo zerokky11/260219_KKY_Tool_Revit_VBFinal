@@ -78,7 +78,7 @@ Namespace Services
 
             Dim doc = uidoc.Document
             Dim fileLabel = BuildFileLabel(doc)
-            Return RunCore(doc, tolFt, param, extraParams, targetFilter, excludeEndDummy, includeOkRows, progress, fileLabel)
+            Return RunCore(doc, tolFt, param, extraParams, targetFilter, String.Empty, excludeEndDummy, includeOkRows, progress, fileLabel)
         End Function
 
         Private Shared Function RunOnDocument(doc As Document,
@@ -106,7 +106,37 @@ Namespace Services
             End If
 
             Dim fileLabel = BuildFileLabel(doc)
-            Return RunCore(doc, tolFt, param, extraParams, targetFilter, excludeEndDummy, includeOkRows, progress, fileLabel)
+            Return RunCore(doc, tolFt, param, extraParams, targetFilter, String.Empty, excludeEndDummy, includeOkRows, progress, fileLabel)
+        End Function
+
+        Private Shared Function RunOnDocument(doc As Document,
+                                             tolFt As Double,
+                                             param As String,
+                                             extraParams As IEnumerable(Of String),
+                                             targetFilter As String,
+                                             excludeTargetFilter As String,
+                                             excludeEndDummy As Boolean,
+                                             includeOkRows As Boolean,
+                                             Optional progress As Action(Of Double, String) = Nothing) As List(Of Dictionary(Of String, Object))
+            LastDebug = New List(Of String)()
+            If doc Is Nothing Then
+                Log("Document 없음")
+                Return New List(Of Dictionary(Of String, Object))()
+            End If
+
+            Dim fileLabel = BuildFileLabel(doc)
+            Return RunCore(doc, tolFt, param, extraParams, targetFilter, excludeTargetFilter, excludeEndDummy, includeOkRows, progress, fileLabel)
+        End Function
+
+        Private Shared Function RunOnDocument(doc As Document,
+                                             tolFt As Double,
+                                             param As String,
+                                             extraParams As IEnumerable(Of String),
+                                             targetFilter As String,
+                                             excludeTargetFilter As String,
+                                             includeOkRows As Boolean,
+                                             Optional progress As Action(Of Double, String) = Nothing) As List(Of Dictionary(Of String, Object))
+            Return RunOnDocument(doc, tolFt, param, extraParams, targetFilter, excludeTargetFilter, False, includeOkRows, progress)
         End Function
 
         Public Shared Function RunOnDocument(doc As Document,
@@ -120,6 +150,33 @@ Namespace Services
             Dim tolFt As Double = ToTolFt(tol, unit)
             Debug.WriteLine($"[Connector] tol={tol}, unit={unit}, tolFt={tolFt}")
             Return RunOnDocument(doc, tolFt, paramName, extraParams, targetFilter, excludeEndDummy, False, progress)
+        End Function
+
+        Public Shared Function RunOnDocument(doc As Document,
+                                             tol As Double,
+                                             unit As String,
+                                             paramName As String,
+                                             extraParams As IEnumerable(Of String),
+                                             targetFilter As String,
+                                             excludeTargetFilter As String,
+                                             excludeEndDummy As Boolean,
+                                             Optional progress As Action(Of Double, String) = Nothing) As List(Of Dictionary(Of String, Object))
+            Dim tolFt As Double = ToTolFt(tol, unit)
+            Debug.WriteLine($"[Connector] tol={tol}, unit={unit}, tolFt={tolFt}")
+            Return RunOnDocument(doc, tolFt, paramName, extraParams, targetFilter, excludeTargetFilter, excludeEndDummy, False, progress)
+        End Function
+
+        Public Shared Function RunOnDocument(doc As Document,
+                                             tol As Double,
+                                             unit As String,
+                                             paramName As String,
+                                             extraParams As IEnumerable(Of String),
+                                             targetFilter As String,
+                                             excludeTargetFilter As String,
+                                             Optional progress As Action(Of Double, String) = Nothing) As List(Of Dictionary(Of String, Object))
+            Dim tolFt As Double = ToTolFt(tol, unit)
+            Debug.WriteLine($"[Connector] tol={tol}, unit={unit}, tolFt={tolFt}")
+            Return RunOnDocument(doc, tolFt, paramName, extraParams, targetFilter, excludeTargetFilter, False, progress)
         End Function
 
         ' 4-인자: tol 은 unit 기준(mm/inch/ft) → 내부에서 ft 로 환산 후 3-인자 호출
@@ -154,6 +211,7 @@ Namespace Services
                                         param As String,
                                         extraParams As IEnumerable(Of String),
                                         targetFilter As String,
+                                        excludeTargetFilter As String,
                                         excludeEndDummy As Boolean,
                                         includeOkRows As Boolean,
                                         progress As Action(Of Double, String),
@@ -173,11 +231,12 @@ Namespace Services
                 Dim reviewParams = ParseReviewParams(param)
                 Dim extraCache As New Dictionary(Of Integer, Dictionary(Of String, String))()
                 Dim paramInfoCache As New Dictionary(Of Integer, Dictionary(Of String, ParamInfo))()
-                Dim filter = ParseTargetFilter(targetFilter)
+                Dim includeFilter = ParseTargetFilter(targetFilter)
+                Dim excludeFilter = ParseTargetFilter(excludeTargetFilter)
 
-                Log($"DOC={fileLabel}, tolFt={tolFt:0.###}, param='{param}', reviewParams={String.Join(",", reviewParams)}, extra={String.Join(",", normalizedExtras)}, targetFilter='{targetFilter}', excludeEndDummy={excludeEndDummy}, includeOkRows={includeOkRows}")
+                Log($"DOC={fileLabel}, tolFt={tolFt:0.###}, param='{param}', reviewParams={String.Join(",", reviewParams)}, extra={String.Join(",", normalizedExtras)}, targetFilter='{targetFilter}', excludeTargetFilter='{excludeTargetFilter}', excludeEndDummy={excludeEndDummy}, includeOkRows={includeOkRows}")
 
-                Dim allElems = CollectElementsWithConnectors(doc, Nothing, excludeEndDummy)
+                Dim allElems = CollectElementsWithConnectors(doc, Nothing, excludeFilter, excludeEndDummy)
                 Log($"수집 요소(전체): {allElems.Count}")
 
                 If allElems.Count = 0 Then
@@ -188,8 +247,8 @@ Namespace Services
                 ' targetFilter가 있으면: 필터에 해당하는 요소만 "기준 요소"로 처리하되,
                 ' 상대 요소는 필터에 해당하지 않아도 결과에 포함되도록 전체 요소의 커넥터로 버킷을 구성한다.
                 Dim seedElems As List(Of Element) = allElems
-                If filter IsNot Nothing AndAlso filter.Evaluator IsNot Nothing Then
-                    seedElems = allElems.Where(Function(e) IsElementAllowed(e, filter, excludeEndDummy)).ToList()
+                If includeFilter IsNot Nothing AndAlso includeFilter.Evaluator IsNot Nothing Then
+                    seedElems = allElems.Where(Function(e) IsElementAllowed(e, includeFilter, excludeFilter, excludeEndDummy)).ToList()
                 End If
                 Log($"필터 대상 요소: {seedElems.Count}")
 
@@ -284,7 +343,7 @@ Namespace Services
                                 If bestOwner IsNot Nothing Then
                                     found = bestOwner
                                     distFt = 0.0
-                                    connType = "Physical(커넥터 연결 됨)"
+                                    connType = "Physical(Connected)"
                                     otherOriginForKey = bestRefOrigin
                                 End If
                             End If
@@ -298,7 +357,7 @@ Namespace Services
                                 If best.Item1 <> 0 Then
                                     found = doc.GetElement(New ElementId(best.Item1))
                                     distFt = best.Item2
-                                    connType = "Proximity(커넥터 연결 필요)"
+                                    connType = "Proximity(Disconnected)"
                                     otherOriginForKey = best.Item3
                                 End If
                             End If
@@ -348,7 +407,7 @@ Namespace Services
 
                                     If issueStatus Is Nothing Then
                                         If connType.IndexOf("Proximity", StringComparison.OrdinalIgnoreCase) >= 0 Then
-                                            issueStatus = "연결 필요(Proximity)"
+                                            issueStatus = "Disconnected(Proximity)"
                                         ElseIf String.Equals(paramCompare, "Mismatch", StringComparison.OrdinalIgnoreCase) Then
                                             issueStatus = "Mismatch"
                                         Else
@@ -580,7 +639,10 @@ Namespace Services
         ' Collect / Connector Utilities
         ' ============================
 
-        Private Shared Function CollectElementsWithConnectors(doc As Document, filter As TargetFilter, excludeEndDummy As Boolean) As List(Of Element)
+        Private Shared Function CollectElementsWithConnectors(doc As Document,
+                                                              includeFilter As TargetFilter,
+                                                              excludeFilter As TargetFilter,
+                                                              excludeEndDummy As Boolean) As List(Of Element)
             Dim elems As New List(Of Element)()
 
             ' FamilyInstance (MEPModel)
@@ -591,7 +653,7 @@ Namespace Services
                        fi.MEPModel.ConnectorManager.Connectors IsNot Nothing AndAlso
                        fi.MEPModel.ConnectorManager.Connectors.Cast(Of Connector)().Any() Then
 
-                        If IsElementAllowed(fi, filter, excludeEndDummy) Then elems.Add(fi)
+                        If IsElementAllowed(fi, includeFilter, excludeFilter, excludeEndDummy) Then elems.Add(fi)
                     End If
                 Catch
                 End Try
@@ -606,7 +668,7 @@ Namespace Services
 
             For Each cat In cats
                 For Each el As Element In New FilteredElementCollector(doc).OfCategory(cat).WhereElementIsNotElementType()
-                    If HasConnectors(el) AndAlso IsElementAllowed(el, filter, excludeEndDummy) Then elems.Add(el)
+                    If HasConnectors(el) AndAlso IsElementAllowed(el, includeFilter, excludeFilter, excludeEndDummy) Then elems.Add(el)
                 Next
             Next
 
@@ -1524,33 +1586,49 @@ Namespace Services
             Return result
         End Function
 
-        Private Shared Function IsElementAllowed(el As Element, filter As TargetFilter, excludeEndDummy As Boolean) As Boolean
+        Private Shared Function IsElementAllowed(el As Element,
+                                                 includeFilter As TargetFilter,
+                                                 excludeFilter As TargetFilter,
+                                                 excludeEndDummy As Boolean) As Boolean
             If el Is Nothing Then Return False
 
-            If excludeEndDummy Then
-                Dim fam As String = GetFamilyName(el)
+            If excludeEndDummy AndAlso ShouldExcludeEndDummy(el) Then Return False
+            If excludeFilter IsNot Nothing AndAlso excludeFilter.Evaluator IsNot Nothing AndAlso excludeFilter.Evaluator(el) Then Return False
+            If includeFilter Is Nothing OrElse includeFilter.Evaluator Is Nothing Then Return True
+            Return includeFilter.Evaluator(el)
+        End Function
 
-                ' End_ Dummy 옵션:
-                ' - "End" 토큰이 포함된 객체 중에서 "Dummy"도 같이 포함된 경우에만 제외
-                ' - Dummy만 포함된 객체(Cuy_ Dummy 등)는 제외하지 않음
-                Dim hasDummy As Boolean = (fam.IndexOf("Dummy", StringComparison.OrdinalIgnoreCase) >= 0)
+        Private Shared Function ShouldExcludeEndDummy(el As Element) As Boolean
+            Dim fam As String = GetFamilyName(el)
 
-                ' "Bend" 같은 단어에 걸리지 않도록, End 토큰 패턴만 체크
-                Dim hasEndToken As Boolean =
-                    fam.IndexOf("End_", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
-                    fam.IndexOf("_End", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
-                    fam.IndexOf("End-", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
-                    fam.IndexOf("-End", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
-                    fam.IndexOf("End ", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
-                    fam.IndexOf(" End", StringComparison.OrdinalIgnoreCase) >= 0
+            ' End_ Dummy 옵션:
+            ' - "End" 토큰이 포함된 객체 중에서 "Dummy"도 같이 포함된 경우에만 제외
+            ' - Dummy만 포함된 객체(Cuy_ Dummy 등)는 제외하지 않음
+            Dim hasDummy As Boolean = (fam.IndexOf("Dummy", StringComparison.OrdinalIgnoreCase) >= 0)
 
-                If hasEndToken AndAlso hasDummy Then
-                    Return False
-                End If
-            End If
+            ' "Bend" 같은 단어에 걸리지 않도록, End 토큰 패턴만 체크
+            Dim hasEndToken As Boolean =
+                fam.IndexOf("End_", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
+                fam.IndexOf("_End", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
+                fam.IndexOf("End-", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
+                fam.IndexOf("-End", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
+                fam.IndexOf("End ", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
+                fam.IndexOf(" End", StringComparison.OrdinalIgnoreCase) >= 0
 
-            If filter Is Nothing OrElse filter.Evaluator Is Nothing Then Return True
-            Return filter.Evaluator(el)
+            Return hasEndToken AndAlso hasDummy
+        End Function
+
+        Public Shared Function CreateCommonOptionsElementEvaluator(targetFilter As String,
+                                                                   excludeEndDummy As Boolean) As Func(Of Element, Boolean)
+            Dim includeFilter = ParseTargetFilter(targetFilter)
+            Return Function(el) IsElementAllowed(el, includeFilter, Nothing, excludeEndDummy)
+        End Function
+
+        Public Shared Function CreateCommonOptionsElementEvaluator(targetFilter As String,
+                                                                   excludeTargetFilter As String) As Func(Of Element, Boolean)
+            Dim includeFilter = ParseTargetFilter(targetFilter)
+            Dim excludeFilter = ParseTargetFilter(excludeTargetFilter)
+            Return Function(el) IsElementAllowed(el, includeFilter, excludeFilter, False)
         End Function
 
     End Class

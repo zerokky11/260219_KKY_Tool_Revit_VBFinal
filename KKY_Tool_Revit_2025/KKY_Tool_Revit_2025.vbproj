@@ -82,7 +82,6 @@
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2592.51" />
 		<PackageReference Include="NPOI" Version="2.6.1" />
-		<PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -155,6 +154,13 @@
 			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 			<TargetPath>Resources\update-config.json</TargetPath>
 		</Content>
+
+		<Content Include="..\docs\review_export_feature_sheet_matrix.xlsx"
+				 Condition="Exists('..\docs\review_export_feature_sheet_matrix.xlsx')"
+				 Link="docs\review_export_feature_sheet_matrix.xlsx">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<TargetPath>docs\review_export_feature_sheet_matrix.xlsx</TargetPath>
+		</Content>
 	</ItemGroup>
 
 	<ItemGroup>
@@ -205,6 +211,21 @@
 
 		<WriteLinesToFile File="$(AddinFile)" Lines="@(AddinXml)" Overwrite="true" Encoding="UTF-8" />
 		<Message Text="Created: $(AddinFile) -> $(BuiltDll)" Importance="high" />
+	</Target>
+
+	<Target Name="DisableLegacyProgramDataAddin" AfterTargets="CreateAddin" Condition="'$(SkipCreateAddin)'!='true'">
+		<PropertyGroup>
+			<LegacyProgramDataAddinRoot>$([System.Environment]::GetFolderPath(SpecialFolder.CommonApplicationData))\Autodesk\Revit\Addins\2025\</LegacyProgramDataAddinRoot>
+			<LegacyProgramDataAddinFile>$(LegacyProgramDataAddinRoot)KKY_Tool_Revit.addin</LegacyProgramDataAddinFile>
+			<LegacyProgramDataDisabledAddinFile>$(LegacyProgramDataAddinRoot)KKY_Tool_Revit.addin.disabled</LegacyProgramDataDisabledAddinFile>
+		</PropertyGroup>
+
+		<Delete Files="$(LegacyProgramDataDisabledAddinFile)" Condition="Exists('$(LegacyProgramDataDisabledAddinFile)')" ContinueOnError="WarnAndContinue" />
+		<Move SourceFiles="$(LegacyProgramDataAddinFile)"
+			  DestinationFiles="$(LegacyProgramDataDisabledAddinFile)"
+			  Condition="Exists('$(LegacyProgramDataAddinFile)')"
+			  ContinueOnError="WarnAndContinue" />
+		<Message Text="Disabled legacy ProgramData addin: $(LegacyProgramDataAddinFile)" Importance="high" Condition="Exists('$(LegacyProgramDataDisabledAddinFile)')" />
 	</Target>
 
 	<Target Name="BuildAndCopyUpdater" AfterTargets="Build" Condition="'$(SkipUpdaterBuild)'!='true'">

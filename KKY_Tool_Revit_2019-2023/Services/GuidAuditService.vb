@@ -12,6 +12,9 @@ Imports System.Windows.Forms
 Imports Autodesk.Revit.DB
 Imports Autodesk.Revit.UI
 Imports KKY_Tool_Revit.Infrastructure
+Imports NPOI.SS.UserModel
+Imports NPOI.XSSF.UserModel
+Imports RevitApp = Autodesk.Revit.ApplicationServices.Application
 Imports RvtDB = Autodesk.Revit.DB
 
 Namespace Services
@@ -35,9 +38,64 @@ Namespace Services
             Public Property IncludeFamily As Boolean
         End Class
 
+        Public Class CleanupSettings
+            Public Property CloseAllWorksetsOnOpen As Boolean = True
+            Public Property UseSyncComment As Boolean = False
+            Public Property SyncComment As String = String.Empty
+        End Class
+
+        Public Class CleanupFileResult
+            Public Property FilePath As String = String.Empty
+            Public Property FileName As String = String.Empty
+            Public Property Status As String = String.Empty
+            Public Property RequestedDeleteCount As Integer
+            Public Property DeletedCount As Integer
+            Public Property ProjectDeletedCount As Integer
+            Public Property FamilyDeletedCount As Integer
+            Public Property WasCentralFile As Boolean
+            Public Property UsedLocalFile As Boolean
+            Public Property SynchronizePerformed As Boolean
+            Public Property Message As String = String.Empty
+        End Class
+
+        Public Class CleanupResult
+            Public Property Ok As Boolean
+            Public Property Message As String = String.Empty
+            Public Property SourceExcelPath As String = String.Empty
+            Public Property InstructionCount As Integer
+            Public Property DeletedCount As Integer
+            Public Property SuccessCount As Integer
+            Public Property FailCount As Integer
+            Public Property NoChangeCount As Integer
+            Public Property Files As List(Of CleanupFileResult) = New List(Of CleanupFileResult)()
+        End Class
+
         Private Class TargetFile
             Public Property Path As String = String.Empty
             Public Property Name As String = String.Empty
+        End Class
+
+        Private Class CleanupInstruction
+            Public Property DeleteScope As String = String.Empty
+            Public Property DeleteKey As String = String.Empty
+            Public Property RvtPath As String = String.Empty
+            Public Property ParamName As String = String.Empty
+            Public Property ParamKind As String = String.Empty
+            Public Property RvtGuid As String = String.Empty
+            Public Property FileGuid As String = String.Empty
+            Public Property BoundCategories As String = String.Empty
+            Public Property FamilyName As String = String.Empty
+            Public Property FamilyCategory As String = String.Empty
+            Public Property FamilyGuid As String = String.Empty
+            Public Property SheetName As String = String.Empty
+            Public Property RowNumber As Integer
+        End Class
+
+        Private Class ProjectBindingCandidate
+            Public Property Definition As Definition
+            Public Property ParamName As String = String.Empty
+            Public Property ParamKind As String = String.Empty
+            Public Property ParamGuid As String = String.Empty
         End Class
 
         ''' <summary>
@@ -170,11 +228,169 @@ Namespace Services
             Return res
         End Function
 
+        Public Shared Function CleanupFromExcel(app As UIApplication,
+                                                excelPath As String,
+                                                settings As CleanupSettings,
+                                                progress As Action(Of Double, String),
+                                                Optional warn As Action(Of String) = Nothing) As CleanupResult
+
+            If app Is Nothing Then Throw New ArgumentNullException(NameOf(app))
+            If String.IsNullOrWhiteSpace(excelPath) OrElse Not File.Exists(excelPath) Then
+                Throw New FileNotFoundException("삭제용 엑셀 파일을 찾을 수 없습니다.", excelPath)
+            End If
+
+            Dim effectiveSettings As CleanupSettings = If(settings, New CleanupSettings())
+            Dim instructions = ReadCleanupInstructions(excelPath)
+            If instructions.Count = 0 Then
+                Throw New InvalidOperationException("삭제용 엑셀에서 '삭제여부'가 입력된 항목을 찾지 못했습니다.")
+            End If
+
+            Dim groupedByFile = instructions.
+                GroupBy(Function(x) x.RvtPath, StringComparer.OrdinalIgnoreCase).
+                OrderBy(Function(g) Path.GetFileName(g.Key), StringComparer.OrdinalIgnoreCase).
+                ToList()
+
+            Dim result As New CleanupResult() With {
+                .SourceExcelPath = excelPath,
+                .InstructionCount = instructions.Count
+            }
+
+            Dim total As Integer = Math.Max(1, groupedByFile.Count)
+            For i As Integer = 0 To groupedByFile.Count - 1
+                Dim group = groupedByFile(i)
+                Dim requestedPath As String = If(group.Key, "").Trim()
+                Dim fileName As String = SafeFileName(requestedPath)
+                Dim fileResult As New CleanupFileResult() With {
+                    .FilePath = requestedPath,
+                    .FileName = fileName,
+                    .RequestedDeleteCount = group.Count()
+                }
+
+                Dim openPath As String = requestedPath
+                Dim createdLocal As Boolean = False
+                Dim doc As Document = Nothing
+
+                Try
+                    If String.IsNullOrWhiteSpace(requestedPath) OrElse Not File.Exists(requestedPath) Then
+                        fileResult.Status = "Fail"
+                        fileResult.Message = "RVT 파일을 찾을 수 없습니다."
+                        result.Files.Add(fileResult)
+                        Continue For
+                    End If
+
+                    If IsAlreadyOpen(app.Application, requestedPath) Then
+                        fileResult.Status = "Fail"
+                        fileResult.Message = "이미 열려 있는 문서라 정리를 진행할 수 없습니다."
+                        result.Files.Add(fileResult)
+                        Continue For
+                    End If
+
+                    Dim fileInfo = TryExtractBasicFileInfo(requestedPath)
+                    If fileInfo IsNot Nothing AndAlso fileInfo.IsCentral Then
+                        openPath = CreateNewLocalPath(requestedPath)
+                        createdLocal = True
+                        fileResult.WasCentralFile = True
+                        fileResult.UsedLocalFile = True
+                    End If
+
+                    ReportProgress(progress, groupedByFile.Count, i + 1, 0.05R, $"정리 대상 문서 여는 중... {i + 1}/{groupedByFile.Count} {fileName}")
+                    doc = OpenProjectDocument(app.Application, openPath, effectiveSettings.CloseAllWorksetsOnOpen)
+                    If doc Is Nothing Then
+                        fileResult.Status = "Fail"
+                        fileResult.Message = "문서를 열지 못했습니다."
+                        result.Files.Add(fileResult)
+                        Continue For
+                    End If
+
+                    Dim notes As New List(Of String)()
+                    Dim projectInstructions = group.
+                        Where(Function(x) String.Equals(x.DeleteScope, "Project", StringComparison.OrdinalIgnoreCase)).
+                        ToList()
+                    Dim familyInstructions = group.
+                        Where(Function(x) String.Equals(x.DeleteScope, "Family", StringComparison.OrdinalIgnoreCase)).
+                        ToList()
+
+                    If projectInstructions.Count > 0 Then
+                        ReportProgress(progress, groupedByFile.Count, i + 1, 0.35R, $"[{fileName}] 프로젝트 파라미터 정리 중")
+                        fileResult.ProjectDeletedCount = DeleteProjectParameters(doc, requestedPath, projectInstructions, notes)
+                    End If
+
+                    If familyInstructions.Count > 0 Then
+                        ReportProgress(progress, groupedByFile.Count, i + 1, 0.75R, $"[{fileName}] 로드 패밀리 파라미터 정리 중")
+                        fileResult.FamilyDeletedCount = DeleteFamilyParameters(doc, requestedPath, familyInstructions, notes, warn)
+                    End If
+
+                    fileResult.DeletedCount = fileResult.ProjectDeletedCount + fileResult.FamilyDeletedCount
+
+                    If fileResult.DeletedCount > 0 Then
+                        If doc.IsWorkshared Then
+                            Dim syncError As String = String.Empty
+                            Dim syncComment As String = If(effectiveSettings.UseSyncComment, If(effectiveSettings.SyncComment, String.Empty), String.Empty)
+                            If SyncWithCentral(doc, syncComment, syncError) Then
+                                fileResult.SynchronizePerformed = True
+                                fileResult.Status = "Success"
+                                notes.Add("동기화 완료")
+                            Else
+                                fileResult.Status = "Fail"
+                                notes.Add("동기화 실패: " & syncError)
+                            End If
+                        Else
+                            doc.Save()
+                            fileResult.SynchronizePerformed = True
+                            fileResult.Status = "Success"
+                            notes.Add("저장 완료")
+                        End If
+                    Else
+                        fileResult.Status = "NoChange"
+                        If notes.Count = 0 Then
+                            notes.Add("삭제된 파라미터가 없습니다.")
+                        End If
+                    End If
+
+                    fileResult.Message = String.Join(" / ", notes.Where(Function(x) Not String.IsNullOrWhiteSpace(x)))
+
+                Catch ex As Exception
+                    fileResult.Status = "Fail"
+                    fileResult.Message = ex.Message
+                Finally
+                    If doc IsNot Nothing Then
+                        Try
+                            doc.Close(False)
+                        Catch
+                        End Try
+                    End If
+                    If createdLocal Then
+                        TryDeleteFile(openPath)
+                    End If
+                End Try
+
+                result.Files.Add(fileResult)
+                ReportProgress(progress, groupedByFile.Count, i + 1, 1.0R, $"정리 완료: {i + 1}/{groupedByFile.Count} {fileName}")
+            Next
+
+            result.DeletedCount = result.Files.Sum(Function(x) x.DeletedCount)
+            result.SuccessCount = result.Files.Where(Function(x) String.Equals(x.Status, "Success", StringComparison.OrdinalIgnoreCase)).Count()
+            result.FailCount = result.Files.Where(Function(x) String.Equals(x.Status, "Fail", StringComparison.OrdinalIgnoreCase)).Count()
+            result.NoChangeCount = result.Files.Where(Function(x) String.Equals(x.Status, "NoChange", StringComparison.OrdinalIgnoreCase)).Count()
+            result.Ok = result.SuccessCount > 0 OrElse result.NoChangeCount > 0
+
+            If result.FailCount > 0 AndAlso result.SuccessCount = 0 AndAlso result.NoChangeCount = 0 Then
+                result.Message = "삭제 정리에 실패했습니다."
+            ElseIf result.DeletedCount > 0 Then
+                result.Message = $"파라미터 GUID 정리가 완료되었습니다. 삭제 {result.DeletedCount}건"
+            Else
+                result.Message = "정리할 삭제 대상은 있었지만 실제 삭제된 파라미터는 없습니다."
+            End If
+
+            Return result
+        End Function
+
         ''' <summary>엑셀 내보내기 (AutoFit 사용 안 함)</summary>
         Public Shared Function Export(table As DataTable,
                                       sheetName As String,
                                       Optional excelMode As String = "fast",
-                                      Optional progressChannel As String = Nothing) As String
+                                      Optional progressChannel As String = Nothing,
+                                      Optional exportLocale As String = "ko") As String
             If table Is Nothing Then Return String.Empty
             Dim doAutoFit As Boolean = False
             Try
@@ -191,7 +407,7 @@ Namespace Services
                 sfd.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
                 sfd.FileName = $"{sheetName}_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
                 If sfd.ShowDialog() <> DialogResult.OK Then Return String.Empty
-                ExcelCore.SaveXlsx(sfd.FileName, sheetName, table, doAutoFit, sheetKey:=sheetName, progressKey:=progressChannel)
+                ExcelCore.SaveXlsx(sfd.FileName, sheetName, table, doAutoFit, sheetKey:=sheetName, progressKey:=progressChannel, exportKind:="guid", exportLocale:=exportLocale)
                 Return sfd.FileName
             End Using
         End Function
@@ -199,7 +415,8 @@ Namespace Services
         ''' <summary>엑셀 내보내기 (다중 시트)</summary>
         Public Shared Function ExportMulti(sheets As IList(Of KeyValuePair(Of String, DataTable)),
                                            Optional excelMode As String = "fast",
-                                           Optional progressChannel As String = Nothing) As String
+                                           Optional progressChannel As String = Nothing,
+                                           Optional exportLocale As String = "ko") As String
             If sheets Is Nothing OrElse sheets.Count = 0 Then Return String.Empty
             Dim doAutoFit As Boolean = False
             Try
@@ -218,7 +435,7 @@ Namespace Services
                 sfd.Filter = "Excel Workbook (*.xlsx)|*.xlsx"
                 sfd.FileName = $"GuidAudit_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
                 If sfd.ShowDialog() <> DialogResult.OK Then Return String.Empty
-                ExcelCore.SaveXlsxMulti(sfd.FileName, sheets, doAutoFit, progressChannel)
+                ExcelCore.SaveXlsxMulti(sfd.FileName, sheets, doAutoFit, progressChannel, exportKind:="guid", exportLocale:=exportLocale)
                 Return sfd.FileName
             End Using
         End Function
@@ -235,18 +452,789 @@ Namespace Services
 
             ' ResultTableFilter.KeepOnlyIssues("guid", exportTable)
 
+            If exportTable.Columns.Contains("BoundCategories") Then
+                exportTable.Columns("BoundCategories").SetOrdinal(exportTable.Columns.Count - 1)
+            End If
+
+            EnsureDeleteActionColumn(exportTable)
+            AppendHiddenDeleteKeyColumns(exportTable, mode)
+
             If exportTable.Columns.Contains("RvtPath") Then
                 exportTable.Columns.Remove("RvtPath")
             End If
 
-            If exportTable.Columns.Contains("BoundCategories") Then
-                exportTable.Columns("BoundCategories").SetOrdinal(exportTable.Columns.Count - 1)
-            End If
+            TrimAndRenameGuidExportColumns(exportTable, mode)
 
             ExcelCore.EnsureMessageRow(exportTable, "오류가 없습니다.")
 
             Return exportTable
         End Function
+
+        Private Shared Sub AppendHiddenDeleteKeyColumns(table As DataTable, mode As Integer)
+            If table Is Nothing Then Return
+
+            Dim hiddenSpecs As List(Of KeyValuePair(Of String, Func(Of DataRow, Object))) =
+                BuildHiddenGuidExportColumns(mode)
+
+            If hiddenSpecs Is Nothing OrElse hiddenSpecs.Count = 0 Then Return
+
+            For Each spec In hiddenSpecs
+                If table.Columns.Contains(spec.Key) Then
+                    table.Columns.Remove(spec.Key)
+                End If
+
+                Dim added As DataColumn = table.Columns.Add(spec.Key, GetType(String))
+                ExcelCore.MarkColumnHidden(added)
+                added.SetOrdinal(table.Columns.Count - 1)
+            Next
+
+            For Each row As DataRow In table.Rows
+                For Each spec In hiddenSpecs
+                    Dim value As Object = Nothing
+                    Try
+                        value = spec.Value(row)
+                    Catch
+                        value = String.Empty
+                    End Try
+                    row(spec.Key) = If(value, String.Empty)
+                Next
+            Next
+        End Sub
+
+        Private Shared Function BuildHiddenGuidExportColumns(mode As Integer) As List(Of KeyValuePair(Of String, Func(Of DataRow, Object)))
+            Dim items As New List(Of KeyValuePair(Of String, Func(Of DataRow, Object)))()
+
+            If mode = 1 Then
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__DeleteScope", Function(r) "Project"))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__RvtPath", Function(r) GetRowString(r, "RvtPath")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__ParamName", Function(r) GetRowString(r, "ParamName")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__ParamKind", Function(r) GetRowString(r, "ParamKind")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__RvtGuid", Function(r) GetRowString(r, "RvtGuid")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__FileGuid", Function(r) GetRowString(r, "FileGuid")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__BoundCategories", Function(r) GetRowString(r, "BoundCategories")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__DeleteKey",
+                    Function(r) BuildProjectDeleteKey(r)))
+            Else
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__DeleteScope", Function(r) "Family"))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__RvtPath", Function(r) GetRowString(r, "RvtPath")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__FamilyName", Function(r) GetRowString(r, "FamilyName")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__FamilyCategory", Function(r) GetRowString(r, "FamilyCategory")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__ParamName", Function(r) GetRowString(r, "ParamName")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__ParamKind", Function(r) GetRowString(r, "ParamKind")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__FamilyGuid", Function(r) GetRowString(r, "FamilyGuid")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__FileGuid", Function(r) GetRowString(r, "FileGuid")))
+                items.Add(New KeyValuePair(Of String, Func(Of DataRow, Object))("__DeleteKey",
+                    Function(r) BuildFamilyDeleteKey(r)))
+            End If
+
+            Return items
+        End Function
+
+        Private Shared Function BuildProjectDeleteKey(row As DataRow) As String
+            Return String.Join("|", New String() {
+                "Project",
+                GetRowString(row, "RvtPath"),
+                GetRowString(row, "ParamName"),
+                GetRowString(row, "ParamKind"),
+                GetRowString(row, "RvtGuid"),
+                GetRowString(row, "FileGuid"),
+                GetRowString(row, "BoundCategories")
+            })
+        End Function
+
+        Private Shared Function BuildFamilyDeleteKey(row As DataRow) As String
+            Return String.Join("|", New String() {
+                "Family",
+                GetRowString(row, "RvtPath"),
+                GetRowString(row, "FamilyName"),
+                GetRowString(row, "ParamName"),
+                GetRowString(row, "ParamKind"),
+                GetRowString(row, "FamilyGuid"),
+                GetRowString(row, "FileGuid")
+            })
+        End Function
+
+        Private Shared Function GetRowString(row As DataRow, columnName As String) As String
+            If row Is Nothing OrElse String.IsNullOrWhiteSpace(columnName) Then Return String.Empty
+            If row.Table Is Nothing OrElse Not row.Table.Columns.Contains(columnName) Then Return String.Empty
+
+            Dim value As Object = Nothing
+            Try
+                value = row(columnName)
+            Catch
+                value = Nothing
+            End Try
+
+            If value Is Nothing OrElse value Is DBNull.Value Then Return String.Empty
+            Return Convert.ToString(value).Trim()
+        End Function
+
+        Private Shared Sub TrimAndRenameGuidExportColumns(table As DataTable, mode As Integer)
+            If table Is Nothing Then Return
+
+            If mode = 1 Then
+                RemoveColumnIfExists(table, "ParamGroup")
+                RenameColumnIfExists(table, "RvtName", "파일명")
+                RenameColumnIfExists(table, "ParamName", "파라미터명")
+                RenameColumnIfExists(table, "ParamKind", "구분")
+                RenameColumnIfExists(table, "BoundCategories", "적용카테고리")
+                RenameColumnIfExists(table, "RvtGuid", "현재 GUID")
+                RenameColumnIfExists(table, "FileGuid", "기준 GUID")
+                RenameColumnIfExists(table, "Result", "검토결과")
+                RenameColumnIfExists(table, "Notes", "비고")
+
+                SetColumnOrder(table, New String() {
+                    "삭제여부",
+                    "파일명",
+                    "파라미터명",
+                    "구분",
+                    "적용카테고리",
+                    "현재 GUID",
+                    "기준 GUID",
+                    "검토결과",
+                    "비고"
+                })
+            Else
+                RemoveColumnIfExists(table, "IsShared")
+                RenameColumnIfExists(table, "RvtName", "파일명")
+                RenameColumnIfExists(table, "FamilyName", "패밀리명")
+                RenameColumnIfExists(table, "FamilyCategory", "패밀리카테고리")
+                RenameColumnIfExists(table, "ParamName", "파라미터명")
+                RenameColumnIfExists(table, "ParamKind", "구분")
+                RenameColumnIfExists(table, "FamilyGuid", "현재 GUID")
+                RenameColumnIfExists(table, "FileGuid", "기준 GUID")
+                RenameColumnIfExists(table, "Result", "검토결과")
+                RenameColumnIfExists(table, "Notes", "비고")
+
+                SetColumnOrder(table, New String() {
+                    "삭제여부",
+                    "파일명",
+                    "패밀리명",
+                    "패밀리카테고리",
+                    "파라미터명",
+                    "구분",
+                    "현재 GUID",
+                    "기준 GUID",
+                    "검토결과",
+                    "비고"
+                })
+            End If
+
+            TranslateGuidExportValues(table)
+        End Sub
+
+        Private Shared Sub TranslateGuidExportValues(table As DataTable)
+            If table Is Nothing OrElse table.Rows.Count = 0 Then Return
+
+            For Each row As DataRow In table.Rows
+                If table.Columns.Contains("구분") Then
+                    row("구분") = TranslateParamKind(GetRowString(row, "구분"))
+                End If
+
+                If table.Columns.Contains("검토결과") Then
+                    row("검토결과") = TranslateGuidResult(GetRowString(row, "검토결과"))
+                End If
+            Next
+        End Sub
+
+        Private Shared Function TranslateParamKind(value As String) As String
+            Select Case If(value, "").Trim().ToUpperInvariant()
+                Case "SHARED"
+                    Return "공유"
+                Case "PROJECT"
+                    Return "프로젝트"
+                Case "BUILTIN"
+                    Return "내장"
+                Case "FAMILY", "FAMILY_PARAM"
+                    Return "패밀리"
+                Case Else
+                    Return value
+            End Select
+        End Function
+
+        Private Shared Function TranslateGuidResult(value As String) As String
+            Select Case If(value, "").Trim().ToUpperInvariant()
+                Case "OK"
+                    Return "일치"
+                Case "OK(MULTI_IN_FILE)"
+                    Return "일치(기준파일 중복)"
+                Case "MISMATCH"
+                    Return "불일치"
+                Case "NOT_FOUND_IN_FILE"
+                    Return "기준파일 없음"
+                Case "PROJECT_PARAM"
+                    Return "프로젝트 파라미터"
+                Case "FAMILY_PARAM"
+                    Return "패밀리 파라미터"
+                Case "BUILTIN"
+                    Return "내장 파라미터"
+                Case "GUID_FAIL"
+                    Return "GUID 추출 실패"
+                Case "OPEN_FAIL"
+                    Return "열기 실패"
+                Case "ERROR"
+                    Return "오류"
+                Case Else
+                    Return value
+            End Select
+        End Function
+
+        Private Shared Sub RenameColumnIfExists(table As DataTable, sourceName As String, targetName As String)
+            If table Is Nothing OrElse String.IsNullOrWhiteSpace(sourceName) OrElse String.IsNullOrWhiteSpace(targetName) Then Return
+            If Not table.Columns.Contains(sourceName) Then Return
+            If table.Columns.Contains(targetName) Then Return
+            table.Columns(sourceName).ColumnName = targetName
+        End Sub
+
+        Private Shared Sub RemoveColumnIfExists(table As DataTable, columnName As String)
+            If table Is Nothing OrElse String.IsNullOrWhiteSpace(columnName) Then Return
+            If table.Columns.Contains(columnName) Then
+                table.Columns.Remove(columnName)
+            End If
+        End Sub
+
+        Private Shared Sub SetColumnOrder(table As DataTable, orderedColumns As IEnumerable(Of String))
+            If table Is Nothing OrElse orderedColumns Is Nothing Then Return
+
+            Dim ordinal As Integer = 0
+            For Each columnName As String In orderedColumns
+                If String.IsNullOrWhiteSpace(columnName) Then Continue For
+                If Not table.Columns.Contains(columnName) Then Continue For
+                table.Columns(columnName).SetOrdinal(ordinal)
+                ordinal += 1
+            Next
+        End Sub
+
+        Private Shared Sub EnsureDeleteActionColumn(table As DataTable)
+            If table Is Nothing Then Return
+
+            Dim columnName As String = "삭제여부"
+            If Not table.Columns.Contains(columnName) Then
+                table.Columns.Add(columnName, GetType(String))
+            End If
+
+            For Each row As DataRow In table.Rows
+                row(columnName) = String.Empty
+            Next
+
+            table.Columns(columnName).SetOrdinal(0)
+        End Sub
+
+        Private Shared Function ReadCleanupInstructions(excelPath As String) As List(Of CleanupInstruction)
+            Dim results As New List(Of CleanupInstruction)()
+            Dim formatter As New DataFormatter()
+
+            Using stream As New FileStream(excelPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
+                Using workbook As IWorkbook = New XSSFWorkbook(stream)
+                    For sheetIndex As Integer = 0 To workbook.NumberOfSheets - 1
+                        Dim sheet = workbook.GetSheetAt(sheetIndex)
+                        If sheet Is Nothing Then Continue For
+
+                        Dim headerRow = sheet.GetRow(sheet.FirstRowNum)
+                        If headerRow Is Nothing OrElse headerRow.LastCellNum <= 0 Then Continue For
+
+                        Dim headers As New Dictionary(Of Integer, String)()
+                        For col As Integer = 0 To CInt(headerRow.LastCellNum) - 1
+                            headers(col) = formatter.FormatCellValue(headerRow.GetCell(col)).Trim()
+                        Next
+
+                        Dim deleteCol = FindHeaderIndex(headers, "삭제여부")
+                        If deleteCol < 0 Then deleteCol = FindHeaderIndex(headers, "Delete")
+                        Dim scopeCol = FindHeaderIndex(headers, "__DeleteScope")
+                        Dim keyCol = FindHeaderIndex(headers, "__DeleteKey")
+                        Dim pathCol = FindHeaderIndex(headers, "__RvtPath")
+
+                        If deleteCol < 0 OrElse scopeCol < 0 OrElse keyCol < 0 OrElse pathCol < 0 Then Continue For
+
+                        For rowIndex As Integer = sheet.FirstRowNum + 1 To sheet.LastRowNum
+                            Dim row = sheet.GetRow(rowIndex)
+                            If row Is Nothing Then Continue For
+
+                            Dim deleteValue As String = GetCellText(row.GetCell(deleteCol), formatter)
+                            If Not IsDeleteAction(deleteValue) Then Continue For
+
+                            Dim instruction As New CleanupInstruction() With {
+                                .DeleteScope = GetCellText(row.GetCell(scopeCol), formatter),
+                                .DeleteKey = GetCellText(row.GetCell(keyCol), formatter),
+                                .RvtPath = GetCellText(row.GetCell(pathCol), formatter),
+                                .ParamName = GetCellTextByHeader(headers, row, formatter, "__ParamName"),
+                                .ParamKind = GetCellTextByHeader(headers, row, formatter, "__ParamKind"),
+                                .RvtGuid = GetCellTextByHeader(headers, row, formatter, "__RvtGuid"),
+                                .FileGuid = GetCellTextByHeader(headers, row, formatter, "__FileGuid"),
+                                .BoundCategories = GetCellTextByHeader(headers, row, formatter, "__BoundCategories"),
+                                .FamilyName = GetCellTextByHeader(headers, row, formatter, "__FamilyName"),
+                                .FamilyCategory = GetCellTextByHeader(headers, row, formatter, "__FamilyCategory"),
+                                .FamilyGuid = GetCellTextByHeader(headers, row, formatter, "__FamilyGuid"),
+                                .SheetName = sheet.SheetName,
+                                .RowNumber = rowIndex + 1
+                            }
+
+                            If String.IsNullOrWhiteSpace(instruction.DeleteScope) OrElse
+                               String.IsNullOrWhiteSpace(instruction.DeleteKey) OrElse
+                               String.IsNullOrWhiteSpace(instruction.RvtPath) Then
+                                Continue For
+                            End If
+
+                            results.Add(instruction)
+                        Next
+                    Next
+                End Using
+            End Using
+
+            Return results.
+                GroupBy(Function(x) x.DeleteKey, StringComparer.OrdinalIgnoreCase).
+                Select(Function(g) g.First()).
+                ToList()
+        End Function
+
+        Private Shared Function FindHeaderIndex(headers As IDictionary(Of Integer, String), headerName As String) As Integer
+            If headers Is Nothing OrElse String.IsNullOrWhiteSpace(headerName) Then Return -1
+            For Each kv In headers
+                If String.Equals(If(kv.Value, "").Trim(), headerName, StringComparison.OrdinalIgnoreCase) Then
+                    Return kv.Key
+                End If
+            Next
+            Return -1
+        End Function
+
+        Private Shared Function GetCellText(cell As ICell, formatter As DataFormatter) As String
+            If cell Is Nothing Then Return String.Empty
+            If formatter Is Nothing Then
+                Try
+                    Return If(cell.ToString(), String.Empty).Trim()
+                Catch
+                    Return String.Empty
+                End Try
+            End If
+
+            Try
+                Return formatter.FormatCellValue(cell).Trim()
+            Catch
+                Try
+                    Return If(cell.ToString(), String.Empty).Trim()
+                Catch
+                    Return String.Empty
+                End Try
+            End Try
+        End Function
+
+        Private Shared Function GetCellTextByHeader(headers As IDictionary(Of Integer, String),
+                                                    row As IRow,
+                                                    formatter As DataFormatter,
+                                                    headerName As String) As String
+            If row Is Nothing Then Return String.Empty
+            Dim colIndex As Integer = FindHeaderIndex(headers, headerName)
+            If colIndex < 0 Then Return String.Empty
+            Return GetCellText(row.GetCell(colIndex), formatter)
+        End Function
+
+        Private Shared Function IsDeleteAction(value As String) As Boolean
+            Select Case If(value, "").Trim().ToUpperInvariant()
+                Case "DELETE", "삭제", "Y", "YES", "1", "TRUE"
+                    Return True
+                Case Else
+                    Return False
+            End Select
+        End Function
+
+        Private Shared Function DeleteProjectParameters(doc As Document,
+                                                        requestedPath As String,
+                                                        instructions As IList(Of CleanupInstruction),
+                                                        notes As IList(Of String)) As Integer
+            If doc Is Nothing OrElse instructions Is Nothing OrElse instructions.Count = 0 Then Return 0
+
+            Dim candidates = CollectProjectBindingCandidates(doc)
+            If candidates.Count = 0 Then
+                If notes IsNot Nothing Then notes.Add("삭제 가능한 프로젝트 파라미터를 찾지 못했습니다.")
+                Return 0
+            End If
+
+            Dim deleted As Integer = 0
+            Using tx As New Transaction(doc, "KKY GUID Cleanup - Project Parameters")
+                tx.Start()
+
+                For Each instruction In instructions
+                    Dim candidate = candidates.FirstOrDefault(Function(x) ProjectCandidateMatches(x, instruction))
+                    If candidate Is Nothing Then
+                        If notes IsNot Nothing Then notes.Add($"프로젝트 파라미터 없음: {instruction.ParamName}")
+                        Continue For
+                    End If
+
+                    Try
+                        If doc.ParameterBindings.Remove(candidate.Definition) Then
+                            deleted += 1
+                        ElseIf notes IsNot Nothing Then
+                            notes.Add($"프로젝트 파라미터 삭제 실패: {instruction.ParamName}")
+                        End If
+                    Catch ex As Exception
+                        If notes IsNot Nothing Then notes.Add($"프로젝트 파라미터 삭제 실패: {instruction.ParamName} - {ex.Message}")
+                    End Try
+                Next
+
+                If deleted > 0 Then
+                    tx.Commit()
+                Else
+                    tx.RollBack()
+                End If
+            End Using
+
+            Return deleted
+        End Function
+
+        Private Shared Function CollectProjectBindingCandidates(doc As Document) As List(Of ProjectBindingCandidate)
+            Dim list As New List(Of ProjectBindingCandidate)()
+            If doc Is Nothing Then Return list
+
+            Dim sharedByName As New Dictionary(Of String, Guid)(StringComparer.OrdinalIgnoreCase)
+            Try
+                For Each spe As SharedParameterElement In New FilteredElementCollector(doc).OfClass(GetType(SharedParameterElement)).Cast(Of SharedParameterElement)()
+                    Dim key As String = NormalizeName(SafeParamElementName(spe))
+                    If String.IsNullOrWhiteSpace(key) OrElse sharedByName.ContainsKey(key) Then Continue For
+                    sharedByName(key) = spe.GuidValue
+                Next
+            Catch
+            End Try
+
+            Dim iter As DefinitionBindingMapIterator = doc.ParameterBindings.ForwardIterator()
+            iter.Reset()
+            While iter.MoveNext()
+                Dim def As Definition = Nothing
+                Try
+                    def = iter.Key
+                Catch
+                    def = Nothing
+                End Try
+                If def Is Nothing Then Continue While
+
+                Dim candidate As New ProjectBindingCandidate() With {
+                    .Definition = def,
+                    .ParamName = If(def.Name, String.Empty),
+                    .ParamKind = "Project",
+                    .ParamGuid = String.Empty
+                }
+
+                If TypeOf def Is ExternalDefinition Then
+                    candidate.ParamKind = "Shared"
+                    Try
+                        candidate.ParamGuid = DirectCast(def, ExternalDefinition).GUID.ToString()
+                    Catch
+                        candidate.ParamGuid = String.Empty
+                    End Try
+                Else
+                    Dim sharedGuid As Guid = Guid.Empty
+                    If sharedByName.TryGetValue(NormalizeName(candidate.ParamName), sharedGuid) Then
+                        candidate.ParamKind = "Shared"
+                        If sharedGuid <> Guid.Empty Then candidate.ParamGuid = sharedGuid.ToString()
+                    End If
+                End If
+
+                list.Add(candidate)
+            End While
+
+            Return list
+        End Function
+
+        Private Shared Function ProjectCandidateMatches(candidate As ProjectBindingCandidate, instruction As CleanupInstruction) As Boolean
+            If candidate Is Nothing OrElse instruction Is Nothing Then Return False
+            If Not String.Equals(NormalizeName(candidate.ParamName), NormalizeName(instruction.ParamName), StringComparison.OrdinalIgnoreCase) Then Return False
+            If Not String.Equals(If(candidate.ParamKind, ""), If(instruction.ParamKind, ""), StringComparison.OrdinalIgnoreCase) Then Return False
+
+            If String.Equals(candidate.ParamKind, "Shared", StringComparison.OrdinalIgnoreCase) Then
+                Return String.Equals(If(candidate.ParamGuid, ""), If(instruction.RvtGuid, ""), StringComparison.OrdinalIgnoreCase)
+            End If
+
+            Return True
+        End Function
+
+        Private Shared Function DeleteFamilyParameters(doc As Document,
+                                                       requestedPath As String,
+                                                       instructions As IList(Of CleanupInstruction),
+                                                       notes As IList(Of String),
+                                                       warn As Action(Of String)) As Integer
+            If doc Is Nothing OrElse instructions Is Nothing OrElse instructions.Count = 0 Then Return 0
+
+            Dim deleted As Integer = 0
+            Dim familyGroups = instructions.
+                GroupBy(Function(x) x.FamilyName, StringComparer.OrdinalIgnoreCase).
+                ToList()
+
+            For Each familyGroup In familyGroups
+                Dim familyName As String = If(familyGroup.Key, "").Trim()
+                If String.IsNullOrWhiteSpace(familyName) Then Continue For
+
+                Dim family As Family = FindEditableFamily(doc, familyName)
+                If family Is Nothing Then
+                    If notes IsNot Nothing Then notes.Add($"로드된 패밀리를 찾지 못했습니다: {familyName}")
+                    Continue For
+                End If
+
+                Dim blockedInstructions = familyGroup.
+                    Where(Function(x) String.Equals(x.ParamKind, "BuiltIn", StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+                For Each blocked In blockedInstructions
+                    If notes IsNot Nothing Then notes.Add($"내장 파라미터는 삭제할 수 없습니다: {familyName} / {blocked.ParamName}")
+                Next
+
+                Dim editableInstructions = familyGroup.
+                    Where(Function(x) Not String.Equals(x.ParamKind, "BuiltIn", StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+                If editableInstructions.Count = 0 Then Continue For
+
+                Dim famDoc As Document = Nothing
+                Try
+                    famDoc = doc.EditFamily(family)
+                    If famDoc Is Nothing OrElse Not famDoc.IsFamilyDocument Then
+                        If notes IsNot Nothing Then notes.Add($"패밀리 편집 문서를 열지 못했습니다: {familyName}")
+                        Continue For
+                    End If
+
+                    Dim fm As FamilyManager = famDoc.FamilyManager
+                    If fm Is Nothing Then
+                        If notes IsNot Nothing Then notes.Add($"FamilyManager 없음: {familyName}")
+                        Continue For
+                    End If
+
+                    Dim deletedInFamily As Integer = 0
+                    Using tx As New Transaction(famDoc, "KKY GUID Cleanup - Family Parameters")
+                        tx.Start()
+
+                        For Each instruction In editableInstructions
+                            Dim matchedParameter As FamilyParameter = Nothing
+                            For Each fp As FamilyParameter In fm.Parameters
+                                If FamilyParameterMatches(fp, instruction) Then
+                                    matchedParameter = fp
+                                    Exit For
+                                End If
+                            Next
+
+                            If matchedParameter Is Nothing Then
+                                If notes IsNot Nothing Then notes.Add($"패밀리 파라미터 없음: {familyName} / {instruction.ParamName}")
+                                Continue For
+                            End If
+
+                            Try
+                                fm.RemoveParameter(matchedParameter)
+                                deletedInFamily += 1
+                            Catch ex As Exception
+                                If notes IsNot Nothing Then notes.Add($"패밀리 파라미터 삭제 실패: {familyName} / {instruction.ParamName} - {ex.Message}")
+                            End Try
+                        Next
+
+                        If deletedInFamily > 0 Then
+                            tx.Commit()
+                        Else
+                            tx.RollBack()
+                        End If
+                    End Using
+
+                    If deletedInFamily > 0 Then
+                        famDoc.LoadFamily(doc, New CleanupFamilyLoadOptions())
+                        deleted += deletedInFamily
+                    End If
+                Catch ex As Exception
+                    If notes IsNot Nothing Then notes.Add($"패밀리 정리 실패: {familyName} - {ex.Message}")
+                    If warn IsNot Nothing Then warn($"패밀리 정리 실패: {familyName} - {ex.Message}")
+                Finally
+                    If famDoc IsNot Nothing Then
+                        Try
+                            famDoc.Close(False)
+                        Catch
+                        End Try
+                    End If
+                End Try
+            Next
+
+            Return deleted
+        End Function
+
+        Private Shared Function FindEditableFamily(doc As Document, familyName As String) As Family
+            If doc Is Nothing OrElse String.IsNullOrWhiteSpace(familyName) Then Return Nothing
+
+            Return New FilteredElementCollector(doc).
+                OfClass(GetType(Family)).
+                Cast(Of Family)().
+                FirstOrDefault(Function(f)
+                                   If f Is Nothing Then Return False
+                                   If Not String.Equals(If(f.Name, ""), familyName, StringComparison.OrdinalIgnoreCase) Then Return False
+                                   Try
+                                       If f.IsInPlace Then Return False
+                                   Catch
+                                   End Try
+                                   Try
+                                       Return f.IsEditable
+                                   Catch
+                                       Return True
+                                   End Try
+                               End Function)
+        End Function
+
+        Private Shared Function FamilyParameterMatches(fp As FamilyParameter, instruction As CleanupInstruction) As Boolean
+            If fp Is Nothing OrElse instruction Is Nothing Then Return False
+
+            Dim name As String = String.Empty
+            Try
+                name = fp.Definition.Name
+            Catch
+                name = String.Empty
+            End Try
+            If Not String.Equals(NormalizeName(name), NormalizeName(instruction.ParamName), StringComparison.OrdinalIgnoreCase) Then Return False
+
+            Dim kind As String = GetFamilyParamKind(fp)
+            If Not String.Equals(kind, instruction.ParamKind, StringComparison.OrdinalIgnoreCase) Then Return False
+
+            If String.Equals(kind, "Shared", StringComparison.OrdinalIgnoreCase) Then
+                Dim guidValue As Guid = Guid.Empty
+                If Not TryGetFamilyParameterGuid(fp, guidValue) Then Return False
+                Return String.Equals(guidValue.ToString(), If(instruction.FamilyGuid, ""), StringComparison.OrdinalIgnoreCase)
+            End If
+
+            Return True
+        End Function
+
+        Private Shared Function SafeParamElementName(pe As Element) As String
+            Try
+                Return pe.Name
+            Catch
+                Return String.Empty
+            End Try
+        End Function
+
+        Private Shared Function GetFamilyParamKind(fp As FamilyParameter) As String
+            If fp Is Nothing Then Return "None"
+            Dim isSharedFlag As Boolean = False
+            Try : isSharedFlag = fp.IsShared : Catch : isSharedFlag = False : End Try
+            If isSharedFlag Then Return "Shared"
+            Dim idVal As Integer = 0
+            Try : idVal = fp.Id.IntegerValue : Catch : idVal = 0 : End Try
+            If idVal < 0 Then Return "BuiltIn"
+            Return "Family"
+        End Function
+
+        Private Shared Function TryGetFamilyParameterGuid(fp As FamilyParameter, ByRef g As Guid) As Boolean
+            g = Guid.Empty
+            If fp Is Nothing Then Return False
+
+            Dim t = fp.GetType()
+            Dim p = t.GetProperty("GUID", BindingFlags.Public Or BindingFlags.Instance)
+            If p Is Nothing Then Return False
+
+            Dim v = p.GetValue(fp, Nothing)
+            If v Is Nothing Then Return False
+
+            If TypeOf v Is Guid Then
+                g = DirectCast(v, Guid)
+                Return g <> Guid.Empty
+            End If
+
+            Return False
+        End Function
+
+        Private Shared Function OpenProjectDocument(app As RevitApp,
+                                                    userVisiblePath As String,
+                                                    closeAllWorksets As Boolean) As Document
+            Dim modelPath = ModelPathUtils.ConvertUserVisiblePathToModelPath(userVisiblePath)
+            Dim openOpts As New OpenOptions()
+            openOpts.DetachFromCentralOption = DetachFromCentralOption.DoNotDetach
+
+            If closeAllWorksets Then
+                Dim worksetConfig As New WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets)
+                openOpts.SetOpenWorksetsConfiguration(worksetConfig)
+            End If
+
+            Return app.OpenDocumentFile(modelPath, openOpts)
+        End Function
+
+        Private Shared Function SyncWithCentral(doc As Document,
+                                                comment As String,
+                                                ByRef err As String) As Boolean
+            err = String.Empty
+            If doc Is Nothing OrElse Not doc.IsWorkshared Then
+                err = "Workshared 문서가 아닙니다."
+                Return False
+            End If
+
+            Try
+                Dim twc As New TransactWithCentralOptions()
+                Dim swc As New SynchronizeWithCentralOptions()
+                swc.Comment = If(comment, String.Empty)
+                Try
+                    Dim relinquish As New RelinquishOptions(True)
+                    swc.SetRelinquishOptions(relinquish)
+                Catch
+                End Try
+
+                doc.SynchronizeWithCentral(twc, swc)
+                Return True
+            Catch ex As Exception
+                err = ex.Message
+                Return False
+            End Try
+        End Function
+
+        Private Shared Function CreateNewLocalPath(centralPath As String) As String
+            Dim localRoot = Path.Combine(Path.GetTempPath(), "KKY_Tool_Revit", "GuidCleanup", DateTime.Now.ToString("yyyyMMdd"))
+            Directory.CreateDirectory(localRoot)
+
+            Dim fileName = Path.GetFileNameWithoutExtension(centralPath) & "_" & Environment.UserName & "_" & DateTime.Now.ToString("HHmmssfff") & ".rvt"
+            Dim localPath = Path.Combine(localRoot, fileName)
+
+            Dim sourcePath = ModelPathUtils.ConvertUserVisiblePathToModelPath(centralPath)
+            Dim targetPath = ModelPathUtils.ConvertUserVisiblePathToModelPath(localPath)
+            WorksharingUtils.CreateNewLocal(sourcePath, targetPath)
+            Return localPath
+        End Function
+
+        Private Shared Function TryExtractBasicFileInfo(pathText As String) As BasicFileInfo
+            Try
+                Return BasicFileInfo.Extract(pathText)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function IsAlreadyOpen(app As RevitApp, userVisiblePath As String) As Boolean
+            Try
+                For Each doc As Document In app.Documents
+                    If doc Is Nothing Then Continue For
+                    If String.Equals(doc.PathName, userVisiblePath, StringComparison.OrdinalIgnoreCase) Then
+                        Return True
+                    End If
+                Next
+            Catch
+            End Try
+            Return False
+        End Function
+
+        Private Shared Sub TryDeleteFile(pathText As String)
+            If String.IsNullOrWhiteSpace(pathText) Then Return
+            Try
+                If File.Exists(pathText) Then
+                    File.Delete(pathText)
+                End If
+            Catch
+            End Try
+        End Sub
+
+        Private NotInheritable Class CleanupFamilyLoadOptions
+            Implements IFamilyLoadOptions
+
+            Public Function OnFamilyFound(familyInUse As Boolean,
+                                          ByRef overwriteParameterValues As Boolean) As Boolean _
+                Implements IFamilyLoadOptions.OnFamilyFound
+                overwriteParameterValues = True
+                Return True
+            End Function
+
+            Public Function OnSharedFamilyFound(sharedFamily As Family,
+                                                familyInUse As Boolean,
+                                                ByRef source As FamilySource,
+                                                ByRef overwriteParameterValues As Boolean) As Boolean _
+                Implements IFamilyLoadOptions.OnSharedFamilyFound
+                source = FamilySource.Family
+                overwriteParameterValues = True
+                Return True
+            End Function
+        End Class
 
         Private Shared Function BuildTargets(app As UIApplication, rvtPaths As IEnumerable(Of String)) As List(Of TargetFile)
             Dim list As New List(Of TargetFile)()

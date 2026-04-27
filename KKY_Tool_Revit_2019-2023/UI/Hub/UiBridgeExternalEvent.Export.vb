@@ -126,7 +126,8 @@ Namespace UI.Hub
                 Dim dt = BuildExportDataTableFromRows(rows, unit, True)
                 Dim todayToken As String = Date.Now.ToString("yyMMdd")
                 Dim defaultName As String = $"{todayToken}_좌표 추출 결과.xlsx"
-                Dim savePath As String = SaveExcelWithDialog(dt, defaultName, doAutoFit, excelMode)
+                Dim exportLocale As String = ParseExcelLocale(payload)
+                Dim savePath As String = SaveExcelWithDialog(dt, defaultName, doAutoFit, excelMode, exportLocale)
 
                 If Not String.IsNullOrEmpty(savePath) Then
                     ReportExportProgress("DONE", "엑셀 내보내기 완료", total, total, 1.0, True)
@@ -456,7 +457,7 @@ Namespace UI.Hub
         End Function
 
         ' DataTable을 공통 파이프라인으로 저장하고 경로 반환(취소 시 "")
-        Private Shared Function SaveExcelWithDialog(dt As DataTable, Optional defaultName As String = "export.xlsx", Optional doAutoFit As Boolean = False, Optional excelMode As String = "fast") As String
+        Private Shared Function SaveExcelWithDialog(dt As DataTable, Optional defaultName As String = "export.xlsx", Optional doAutoFit As Boolean = False, Optional excelMode As String = "fast", Optional exportLocale As String = "ko") As String
             If dt Is Nothing OrElse dt.Columns.Count = 0 Then Return String.Empty
 
             Dim dlg As New Microsoft.Win32.SaveFileDialog() With {
@@ -480,7 +481,7 @@ Namespace UI.Hub
                 ReportExportProgress("EXCEL_WRITE", "엑셀 데이터 작성", totalRows, totalRows, 1.0, True)
                 ReportExportProgress("EXCEL_SAVE", "엑셀 파일 내보내기", totalRows, totalRows, 1.0, True)
 
-                Global.KKY_Tool_Revit.Infrastructure.ExcelCore.SaveXlsx(path, "Export", dt, doAutoFit, sheetKey:="Export", progressKey:="export:progress", exportKind:="points")
+                Global.KKY_Tool_Revit.Infrastructure.ExcelCore.SaveXlsx(path, "Export", dt, doAutoFit, sheetKey:="Export", progressKey:="export:progress", exportKind:="points", exportLocale:=exportLocale)
                 Global.KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey("points", path, autoFit:=doAutoFit, excelMode:=excelMode)
 
                 Dim autoFitMessage As String = If(doAutoFit, "AutoFit 적용", "빠른 모드: AutoFit 생략")
@@ -493,6 +494,24 @@ Namespace UI.Hub
                 Return String.Empty
             End Try
         End Function
+
+        Private Shared Sub TryApplyExportStyles(styleKey As String,
+                                                xlsxPath As String,
+                                                doAutoFit As Boolean,
+                                                Optional excelMode As String = "normal",
+                                                Optional sheetName As String = Nothing)
+            If String.IsNullOrWhiteSpace(xlsxPath) OrElse Not File.Exists(xlsxPath) Then Return
+
+            Try
+                Global.KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey(
+                    styleKey,
+                    xlsxPath,
+                    sheetName:=sheetName,
+                    autoFit:=doAutoFit,
+                    excelMode:=If(String.IsNullOrWhiteSpace(excelMode), "normal", excelMode))
+            Catch
+            End Try
+        End Sub
 
         ' 진행률 헬퍼
         Private Shared Function ToIntSafe(obj As Object) As Integer

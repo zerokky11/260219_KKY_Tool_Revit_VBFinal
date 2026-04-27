@@ -128,7 +128,6 @@ Namespace Services
             Dim dt As DataTable = BuildTable(headers, data)
             ExcelCore.EnsureNoDataRow(dt, "추출 결과가 없습니다.")
             ExcelCore.SaveXlsx(outPath, "Points", dt, doAutoFit, sheetKey:="Points", exportKind:="points")
-            ExcelExportStyleRegistry.ApplyStylesForKey("points", outPath, autoFit:=doAutoFit, excelMode:=If(doAutoFit, "normal", "fast"))
 
             Return outPath
         End Function

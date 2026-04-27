@@ -28,7 +28,9 @@ Namespace UI.Hub
                           current As Integer,
                           total As Integer,
                           Optional percentOverride As Double? = Nothing,
-                          Optional force As Boolean = False)
+                          Optional force As Boolean = False,
+                          Optional batchStartPercent As Double? = Nothing,
+                          Optional batchEndPercent As Double? = Nothing)
             If String.IsNullOrWhiteSpace(channel) Then
                 Return
             End If
@@ -59,12 +61,15 @@ Namespace UI.Hub
 
             Dim phaseProgress As Double = ComputePhaseProgress(phase, current, total)
             UiBridgeExternalEvent.SendToWeb(channel, New With {
+                .isExcel = True,
                 .phase = phase,
                 .message = message,
                 .current = current,
                 .total = total,
                 .phaseProgress = phaseProgress,
-                .percent = If(percentOverride.HasValue, percentOverride.Value, CType(Nothing, Double?))
+                .percent = If(percentOverride.HasValue, percentOverride.Value, CType(Nothing, Double?)),
+                .batchStartPercent = If(batchStartPercent.HasValue, batchStartPercent.Value, CType(Nothing, Double?)),
+                .batchEndPercent = If(batchEndPercent.HasValue, batchEndPercent.Value, CType(Nothing, Double?))
             })
         End Sub
 

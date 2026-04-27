@@ -97,9 +97,24 @@ Namespace UI.Hub
         Private Sub RunFloorInfoMultiForDocument(doc As Document, safeName As String, basePct As Double)
             If _multiRequest Is Nothing OrElse _multiRequest.FloorInfo Is Nothing OrElse Not _multiRequest.FloorInfo.Enabled Then Return
 
+            Dim commonTargetFilter As String = String.Empty
+            Dim commonExcludeTargetFilter As String = String.Empty
+            Dim commonExtraParamNames As New List(Of String)()
+            Dim allowedElementIds As New List(Of Integer)()
+            Dim hasAllowedElementScope As Boolean = False
+            If _multiRequest.Common IsNot Nothing Then
+                commonTargetFilter = SafeStr(_multiRequest.Common.TargetFilter)
+                commonExcludeTargetFilter = SafeStr(_multiRequest.Common.ExcludeTargetFilter)
+                commonExtraParamNames = ParseExtraParams(SafeStr(_multiRequest.Common.ExtraParams))
+                hasAllowedElementScope = TryBuildCommonScopeIds(doc, commonTargetFilter, commonExcludeTargetFilter, allowedElementIds)
+            End If
+
             Dim settings As New FloorInfoReviewService.Settings With {
                 .ParameterName = If(_multiRequest.FloorInfo.ParameterName, String.Empty),
-                .LevelRules = If(_multiRequest.FloorInfo.LevelRules, New List(Of FloorInfoReviewService.LevelRule)())
+                .LevelRules = If(_multiRequest.FloorInfo.LevelRules, New List(Of FloorInfoReviewService.LevelRule)()),
+                .HasAllowedElementScope = hasAllowedElementScope,
+                .AllowedElementIds = allowedElementIds,
+                .ExtraParameterNames = commonExtraParamNames
             }
 
             Dim result = FloorInfoReviewService.RunOnDocument(
@@ -251,7 +266,7 @@ Namespace UI.Hub
             Return result
         End Function
 
-        Private Sub ExportFloorInfo(doAutoFit As Boolean, excelMode As String)
+        Private Sub ExportFloorInfo(doAutoFit As Boolean, excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
             Dim rows = If(_multiFloorInfoRows, New List(Of FloorInfoReviewService.ReviewRow)())
             Dim summaries = If(_multiFloorInfoFileSummaries, New List(Of FloorInfoReviewService.FileSummary)())
             If rows.Count = 0 AndAlso summaries.Count = 0 Then
@@ -259,9 +274,35 @@ Namespace UI.Hub
                 Return
             End If
 
+            If Not String.IsNullOrWhiteSpace(outputFolder) Then
+                Dim orderedNames = BuildOrderedMultiFileNames(
+                    rows.Select(Function(row) If(row Is Nothing, "", row.File)),
+                    summaries.Select(Function(summary) If(summary Is Nothing, "", summary.File)))
+                Dim fileTables As New List(Of KeyValuePair(Of String, DataTable))()
+                Dim fileIssueCounts As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+
+                For Each fileName In orderedNames
+                    Dim perFileRows = rows.
+                        Where(Function(row) row IsNot Nothing AndAlso String.Equals(GetSafeMultiFileName(row.File), fileName, StringComparison.OrdinalIgnoreCase)).
+                        ToList()
+                    Dim tablePerFile As DataTable = FloorInfoReviewService.BuildExportTable(perFileRows)
+                    ExcelCore.EnsureNoDataRow(tablePerFile, "오류가 없습니다.")
+                    fileTables.Add(New KeyValuePair(Of String, DataTable)(fileName, tablePerFile))
+                    SetSplitExportIssueCount(fileIssueCounts, fileName, perFileRows.Count)
+                Next
+
+                Dim savedCount = SaveSplitSingleSheetTables(outputFolder, "floorinfo", "레벨영역별파라미터검토", "FloorInfo Review", fileTables, doAutoFit, excelMode, exportLocale, fileIssueCounts:=fileIssueCounts)
+                If savedCount <= 0 Then
+                    SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+                Else
+                    SendSplitExportCompleted(outputFolder, savedCount)
+                End If
+                Return
+            End If
+
             Dim table As DataTable = FloorInfoReviewService.BuildExportTable(rows)
             ExcelCore.EnsureNoDataRow(table, "오류가 없습니다.")
-            Dim saved = ExcelCore.PickAndSaveXlsx("FloorInfo Review", table, $"FloorInfoReview_{Date.Now:yyyyMMdd_HHmm}.xlsx", doAutoFit, "hub:multi-progress", "floorinfo")
+            Dim saved = ExcelCore.PickAndSaveXlsx("FloorInfo Review", table, $"FloorInfoReview_{Date.Now:yyyyMMdd_HHmm}.xlsx", doAutoFit, "hub:multi-progress", "floorinfo", exportLocale:=exportLocale)
 
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})

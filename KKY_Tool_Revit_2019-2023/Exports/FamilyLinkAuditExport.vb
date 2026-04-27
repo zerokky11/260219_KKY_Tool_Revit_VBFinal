@@ -26,11 +26,7 @@ Namespace Exports
             "NestedParamName",
             "TargetParamName",
             "ExpectedGuid",
-            "FoundScope",
             "NestedParamGuid",
-            "NestedParamDataType",
-            "AssocHostParamName",
-            "HostParamIsShared",
             "Issue",
             "Notes"
         }
@@ -38,7 +34,8 @@ Namespace Exports
         Public Function Export(rows As IEnumerable(Of FamilyLinkAuditRow),
                                Optional fastExport As Boolean = True,
                                Optional autoFit As Boolean = False,
-                               Optional progressChannel As String = Nothing) As String
+                               Optional progressChannel As String = Nothing,
+                               Optional exportLocale As String = "ko") As String
             If rows Is Nothing Then Return String.Empty
             Dim table As DataTable = ToDataTable(rows)
             ' Global.KKY_Tool_Revit.Infrastructure.ResultTableFilter.KeepOnlyIssues("familylink", table)
@@ -65,15 +62,8 @@ Namespace Exports
                 End If
 
                 Dim doAutoFit As Boolean = (Not fastExport) AndAlso autoFit
-                Dim excelMode As String = If(fastExport, "fast", "normal")
                 ReportProgress(progressChannel, "EXCEL_INIT", "엑셀 저장 준비 중...", 0, Math.Max(1, table.Rows.Count), 0.0R, True)
-                ExcelCore.SaveXlsx(filePath, "FamilyLinkAudit", table, doAutoFit, progressKey:=progressChannel, exportKind:="familylink")
-                ReportProgress(progressChannel, "EXCEL_SAVE", "엑셀 파일 저장 중...", Math.Max(1, table.Rows.Count), Math.Max(1, table.Rows.Count), 0.95R, True)
-                ExcelExportStyleRegistry.ApplyStylesForKey("familylink", filePath, autoFit:=doAutoFit, excelMode:=excelMode)
-                If doAutoFit Then
-                    ReportProgress(progressChannel, "AUTOFIT", "열 너비 자동 조정 중...", 1, 1, 1.0R, True)
-                End If
-                ReportProgress(progressChannel, "DONE", "내보내기 완료", 1, 1, 1.0R, True)
+                ExcelCore.SaveXlsx(filePath, "FamilyLinkAudit", table, doAutoFit, progressKey:=progressChannel, exportKind:="familylink", exportLocale:=exportLocale)
                 Return filePath
             End Using
         End Function
@@ -113,11 +103,7 @@ Namespace Exports
                 dr("NestedParamName") = SafeStr(r.NestedParamName)
                 dr("TargetParamName") = SafeStr(r.TargetParamName)
                 dr("ExpectedGuid") = SafeStr(r.ExpectedGuid)
-                dr("FoundScope") = SafeStr(r.FoundScope)
                 dr("NestedParamGuid") = SafeStr(r.NestedParamGuid)
-                dr("NestedParamDataType") = SafeStr(r.NestedParamDataType)
-                dr("AssocHostParamName") = SafeStr(r.AssocHostParamName)
-                dr("HostParamIsShared") = SafeStr(r.HostParamIsShared)
                 dr("Issue") = SafeStr(r.Issue)
                 dr("Notes") = SafeStr(r.Notes)
                 dt.Rows.Add(dr)

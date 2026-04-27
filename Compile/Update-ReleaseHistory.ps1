@@ -19,33 +19,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-function Convert-TextToJsonSafeAscii {
-    param([string]$Text)
-
-    if ($null -eq $Text) {
-        return ''
-    }
-
-    $builder = New-Object System.Text.StringBuilder
-    foreach ($ch in $Text.ToCharArray()) {
-        $code = [int][char]$ch
-        if ($code -gt 127) {
-            [void]$builder.AppendFormat('\u{0:x4}', $code)
-        } else {
-            [void]$builder.Append($ch)
-        }
-    }
-
-    return $builder.ToString()
-}
-
 function Split-ReleaseNotes {
     param([string]$Text)
 
     $normalized = [string]$Text
     $normalized = $normalized.Trim()
     if ([string]::IsNullOrWhiteSpace($normalized)) {
-        return @('세부 변경 사항은 내부 기록을 확인해 주세요.')
+        return @('세부 변경 사항은 업데이트 내역 페이지에서 확인해 주세요.')
     }
 
     $result = New-Object System.Collections.Generic.List[string]
@@ -59,7 +39,7 @@ function Split-ReleaseNotes {
     }
 
     if ($result.Count -eq 0) {
-        $null = $result.Add('세부 변경 사항은 내부 기록을 확인해 주세요.')
+        $null = $result.Add('세부 변경 사항은 업데이트 내역 페이지에서 확인해 주세요.')
     }
 
     return @($result.ToArray())
@@ -101,5 +81,5 @@ if ($history.Count -gt $MaxEntries) {
 }
 
 $json = $history | ConvertTo-Json -Depth 6
-$json = Convert-TextToJsonSafeAscii -Text $json
-[System.IO.File]::WriteAllText($OutputPath, $json, [System.Text.Encoding]::UTF8)
+$utf8WithBom = New-Object System.Text.UTF8Encoding($true)
+[System.IO.File]::WriteAllText($OutputPath, $json, $utf8WithBom)

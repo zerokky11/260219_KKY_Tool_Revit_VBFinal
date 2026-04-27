@@ -35,6 +35,7 @@ Partial Public Class UiBridgeExternalEvent
 
     ' 마지막 실행 모드 ("duplicate" | "clash")
     Private _lastMode As String = "duplicate"
+    Private _lastDupClashTargetCount As Integer = 0
 
     ' 중첩(shared) 패밀리 인스턴스(서브컴포넌트) ID 집합
     Private Shared _nestedSharedIds As HashSet(Of Integer) = Nothing
@@ -94,6 +95,38 @@ Private Shared Function TryGetCollectorCount(col As FilteredElementCollector) As
     End Try
     Return 0
 End Function
+
+Private Shared Sub PrepareNestedSharedIds(doc As Document)
+    _nestedSharedIds = New HashSet(Of Integer)()
+    If doc Is Nothing Then Return
+
+    Try
+        Dim famCol As New FilteredElementCollector(doc)
+        famCol.OfClass(GetType(FamilyInstance)).WhereElementIsNotElementType()
+        For Each o As Element In famCol
+            Dim fi As FamilyInstance = TryCast(o, FamilyInstance)
+            If fi Is Nothing Then Continue For
+
+            Try
+                Dim subs = fi.GetSubComponentIds()
+                If subs IsNot Nothing Then
+                    For Each sid As ElementId In subs
+                        _nestedSharedIds.Add(sid.IntegerValue)
+                    Next
+                End If
+            Catch
+            End Try
+
+            Try
+                If fi.SuperComponent IsNot Nothing Then
+                    _nestedSharedIds.Add(fi.Id.IntegerValue)
+                End If
+            Catch
+            End Try
+        Next
+    Catch
+    End Try
+End Sub
 
 Private Shared Function ShouldIgnoreMetaCategoryName(name As String) As Boolean
     Dim s As String = If(name, "").Trim().ToLowerInvariant()
@@ -288,36 +321,7 @@ SendToWeb("dup:meta", New With {.modelFamilies = famList, .systemCategories = ca
 Catch
 End Try
         SendRunProgress("INIT", 0, "검토 준비 중…", 0, 0, True)
-' 중첩 Shared 컴포넌트 목록 캐시
-        _nestedSharedIds = New HashSet(Of Integer)()
-        Try
-            Dim famCol As New FilteredElementCollector(doc)
-            famCol.OfClass(GetType(FamilyInstance)).WhereElementIsNotElementType()
-            For Each o As Element In famCol
-                Dim fi As FamilyInstance = TryCast(o, FamilyInstance)
-                If fi Is Nothing Then Continue For
-                Try
-                    Dim subs = fi.GetSubComponentIds()
-
-' ✅ subcomponent 목록(있으면) 추가
-If subs IsNot Nothing Then
-    For Each sid As ElementId In subs
-        _nestedSharedIds.Add(sid.IntegerValue)
-    Next
-End If
-
-' ✅ 최상위 패밀리만 표시: nested(하위) 패밀리 인스턴스는 제외용 집합에 추가
-Try
-    If fi.SuperComponent IsNot Nothing Then
-        _nestedSharedIds.Add(fi.Id.IntegerValue)
-    End If
-Catch
-End Try
-                Catch
-                End Try
-            Next
-        Catch
-        End Try
+        PrepareNestedSharedIds(doc)
 
         Dim mode As String = "duplicate"
         Try
@@ -526,6 +530,8 @@ End Try
 
             infos(id) = ci
         Next
+
+        _lastDupClashTargetCount = infos.Count
 
         Dim adjacency As New Dictionary(Of Integer, HashSet(Of Integer))()
         Dim pairSeen As New HashSet(Of Long)()
@@ -955,6 +961,8 @@ End Try
                 Next
             Next
         End If
+
+        _lastDupClashTargetCount = infos.Count
 ' 3) Connected Components → 그룹
         Dim groups As New List(Of List(Of Integer))()
         Dim visited As New HashSet(Of Integer)()
@@ -1543,26 +1551,13 @@ End Try
         Try
             Dim groupsCount As Integer = CountGroups(_lastRows)
 
-            Dim desktop As String = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)
             Dim todayToken As String = Date.Now.ToString("yyMMdd")
 
             Dim titleKor As String = If(String.Equals(_lastMode, "clash", StringComparison.OrdinalIgnoreCase), "자체간섭", "중복객체")
             Dim defaultFileName As String = $"{todayToken}_{titleKor} 검토결과_{groupsCount}개.xlsx"
-            Dim defaultPath As String = Path.Combine(desktop, defaultFileName)
-
-            Dim sfd As New Microsoft.Win32.SaveFileDialog() With {
-                .Filter = "Excel Workbook (*.xlsx)|*.xlsx",
-                .FileName = Path.GetFileName(defaultPath),
-                .AddExtension = True,
-                .DefaultExt = "xlsx",
-                .OverwritePrompt = True
-            }
-
-            If sfd.ShowDialog() <> True Then Exit Sub
-
-            Dim outPath As String = sfd.FileName
 
             Dim doAutoFit As Boolean = ParseExcelMode(payload)
+            Dim exportLocale As String = ParseExcelLocale(payload)
             Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Reset("dup:progress")
 
             Dim sheetTitle As String = If(String.Equals(_lastMode, "clash", StringComparison.OrdinalIgnoreCase),
@@ -1580,9 +1575,11 @@ End Try
             Catch
             End Try
 
-            If String.Equals(_lastMode, "clash", StringComparison.OrdinalIgnoreCase) AndAlso _lastPairs IsNot Nothing AndAlso _lastPairs.Count > 0 Then
-                Dim exportPairs = _lastPairs.Select(Function(p) New With {
-                    .FileName = p.FileName,
+            Dim outPath As String = ""
+            If String.Equals(_lastMode, "clash", StringComparison.OrdinalIgnoreCase) Then
+                Dim sourcePairs = If(_lastPairs, New List(Of PairRowDto)())
+                Dim exportPairs = sourcePairs.Select(Function(p) New With {
+                    .FileName = If(String.IsNullOrWhiteSpace(p.FileName), rvtFile, p.FileName),
                     .GroupKey = p.GroupKey,
                     .AId = p.AId,
                     .ACategory = p.ACategory,
@@ -1596,9 +1593,9 @@ End Try
                     .BExtraParams = ReadElementParameterMap(activeDoc, SafeToInt(p.BId), exportParamNames),
                     .Comment = p.Comment
                 }).Cast(Of Object)().ToList()
-                Exports.DuplicateExport.ExportPairs(outPath, exportPairs, doAutoFit, "dup:progress", sheetTitle, exportParamNames)
+                outPath = Exports.DuplicateExport.SavePairsWithDefaultName(exportPairs, defaultFileName, doAutoFit, "dup:progress", sheetTitle, exportParamNames, exportLocale)
             Else
-                Dim exportRows = _lastRows.Select(Function(r) New With {
+                Dim exportRows = _lastRows.Select(Function(r) CType(New With {
                     .FileName = If(String.IsNullOrWhiteSpace(r.FileName), rvtFile, r.FileName),
                     .Id = r.ElementId.ToString(),
                     .Category = r.Category,
@@ -1608,8 +1605,30 @@ End Try
                     .ConnectedIds = r.ConnectedIds,
                     .GroupKey = r.GroupKey,
                     .ExtraParams = ReadElementParameterMap(activeDoc, r.ElementId, exportParamNames)
-                }).Cast(Of Object)().ToList()
-                Exports.DuplicateExport.Save(outPath, exportRows, doAutoFit, "dup:progress", sheetTitle, exportParamNames)
+                }, Object)).ToList()
+                If exportRows.Count = 0 Then
+                    Dim emptyComment As String =
+                        If(_lastDupClashTargetCount <= 0,
+                           Exports.DuplicateExport.GetDuplicateNoTargetComment(exportLocale),
+                           Exports.DuplicateExport.GetDuplicateNoIssueComment(exportLocale))
+                    exportRows.Add(New With {
+                        .FileName = rvtFile,
+                        .Id = "",
+                        .Category = "",
+                        .Family = "",
+                        .Type = "",
+                        .Comment = emptyComment,
+                        .ConnectedIds = CType(Nothing, String),
+                        .GroupKey = "",
+                        .ExtraParams = CType(Nothing, Dictionary(Of String, String))
+                    })
+                End If
+                outPath = Exports.DuplicateExport.SaveWithDefaultName(exportRows, defaultFileName, doAutoFit, "dup:progress", sheetTitle, exportParamNames, exportLocale)
+            End If
+
+            If String.IsNullOrWhiteSpace(outPath) Then
+                SendToWeb("dup:exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다.", .token = token})
+                Return
             End If
 
             SendToWeb("dup:exported", New With {.path = outPath, .ok = True, .token = token})
@@ -3020,14 +3039,107 @@ Private Shared Function SafeCategoryName(e As Element, cache As Dictionary(Of In
     End Function
 
     Private Shared Function SafeFamilyName(e As Element, cache As Dictionary(Of Integer, String)) As String
+        If e Is Nothing Then Return ""
+
         Dim fi = TryCast(e, FamilyInstance)
-        If fi Is Nothing OrElse fi.Symbol Is Nothing OrElse fi.Symbol.Family Is Nothing Then Return ""
-        Dim id As Integer = fi.Symbol.Family.Id.IntegerValue
+        If fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing AndAlso fi.Symbol.Family IsNot Nothing Then
+            Dim familyId As Integer = fi.Symbol.Family.Id.IntegerValue
+            Dim familyName As String = Nothing
+            If cache.TryGetValue(familyId, familyName) Then Return familyName
+            familyName = fi.Symbol.Family.Name
+            cache(familyId) = familyName
+            Return familyName
+        End If
+
+        Dim id As Integer = -1
+        Try
+            Dim typeId As ElementId = e.GetTypeId()
+            If typeId IsNot Nothing AndAlso typeId <> ElementId.InvalidElementId Then
+                id = typeId.IntegerValue
+            End If
+        Catch
+        End Try
+        If id < 0 Then id = e.Id.IntegerValue
+
         Dim s As String = Nothing
         If cache.TryGetValue(id, s) Then Return s
-        s = fi.Symbol.Family.Name
+        s = ReadFamilyDisplayName(e)
         cache(id) = s
         Return s
+    End Function
+
+    Private Shared Function ReadFamilyDisplayName(e As Element) As String
+        If e Is Nothing Then Return ""
+
+        Dim value As String = ReadParameterDisplayText(TryLookupParameter(e, "Family"))
+        If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+        value = ReadParameterDisplayText(TryGetParameter(e, BuiltInParameter.ALL_MODEL_FAMILY_NAME))
+        If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+        value = ReadParameterDisplayText(TryGetParameter(e, BuiltInParameter.ELEM_FAMILY_PARAM))
+        If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+        Dim elementType As ElementType = Nothing
+        Try
+            Dim typeId As ElementId = e.GetTypeId()
+            If typeId IsNot Nothing AndAlso typeId <> ElementId.InvalidElementId Then
+                elementType = TryCast(e.Document.GetElement(typeId), ElementType)
+            End If
+        Catch
+        End Try
+
+        If elementType IsNot Nothing Then
+            value = ReadParameterDisplayText(TryLookupParameter(elementType, "Family"))
+            If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+            value = ReadParameterDisplayText(TryGetParameter(elementType, BuiltInParameter.ALL_MODEL_FAMILY_NAME))
+            If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+            value = ReadParameterDisplayText(TryGetParameter(elementType, BuiltInParameter.ELEM_FAMILY_PARAM))
+            If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+            Try
+                value = elementType.FamilyName
+                If Not String.IsNullOrWhiteSpace(value) Then Return value
+            Catch
+            End Try
+        End If
+
+        Return ""
+    End Function
+
+    Private Shared Function TryLookupParameter(e As Element, parameterName As String) As Parameter
+        If e Is Nothing OrElse String.IsNullOrWhiteSpace(parameterName) Then Return Nothing
+        Try
+            Return e.LookupParameter(parameterName)
+        Catch
+            Return Nothing
+        End Try
+    End Function
+
+    Private Shared Function TryGetParameter(e As Element, builtInParameter As BuiltInParameter) As Parameter
+        If e Is Nothing Then Return Nothing
+        Try
+            Return e.Parameter(builtInParameter)
+        Catch
+            Return Nothing
+        End Try
+    End Function
+
+    Private Shared Function ReadParameterDisplayText(param As Parameter) As String
+        If param Is Nothing Then Return ""
+        Try
+            Dim value As String = param.AsValueString()
+            If Not String.IsNullOrWhiteSpace(value) Then Return value.Trim()
+        Catch
+        End Try
+        Try
+            Dim value As String = param.AsString()
+            If Not String.IsNullOrWhiteSpace(value) Then Return value.Trim()
+        Catch
+        End Try
+        Return ""
     End Function
 
     Private Shared Function SafeTypeName(e As Element, cache As Dictionary(Of Integer, String)) As String

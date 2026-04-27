@@ -1,6 +1,53 @@
 import { post, onHost } from './bridge.js';
 import { log } from './dom.js';
 
+function safeDecodeUriPart(value) {
+  try {
+    return decodeURIComponent(value || '');
+  } catch {
+    return String(value || '');
+  }
+}
+
+function normalizeFileUriPath(value) {
+  try {
+    const url = new URL(value);
+    if (!/^file:$/i.test(url.protocol)) return String(value || '');
+
+    const pathPart = safeDecodeUriPart(url.pathname || '');
+    if (url.hostname) {
+      const host = safeDecodeUriPart(url.hostname);
+      const uncPath = pathPart.replace(/^\/+/, '').replace(/\//g, '\\');
+      return `\\\\${host}\\${uncPath}`;
+    }
+
+    let localPath = pathPart;
+    if (/^\/[A-Za-z]:/.test(localPath)) localPath = localPath.slice(1);
+    return localPath.replace(/\//g, '\\');
+  } catch {
+    return String(value || '')
+      .replace(/^file:\/*/i, '')
+      .replace(/\//g, '\\');
+  }
+}
+
+function stripExtendedPathPrefix(path) {
+  const text = String(path || '');
+  if (/^\\\\\?\\UNC\\/i.test(text)) return `\\\\${text.slice(8)}`;
+  if (/^\\\\[.?]\\/.test(text)) return text.slice(4);
+  return text;
+}
+
+function hasCorruptOrInvalidPathChars(path) {
+  const text = stripExtendedPathPrefix(path);
+  return /[\u0000-\u001f\uFFFD*?<>|"]/.test(text);
+}
+
+function isAbsoluteWindowsPath(path) {
+  const text = String(path || '');
+  return /^[A-Za-z]:\\/.test(text) || /^\\\\[^\\]+\\[^\\]+/.test(text) || /^\\\\[.?]\\/.test(text);
+}
+
 export function normalizeDroppedRvtPath(value) {
   let path = String(value || '').trim();
   if (!path) return '';
@@ -9,18 +56,13 @@ export function normalizeDroppedRvtPath(value) {
   if (!path) return '';
 
   if (/^file:/i.test(path)) {
-    try {
-      const url = new URL(path);
-      path = decodeURIComponent(url.pathname || '');
-    } catch {
-      path = path.replace(/^file:\/*/i, '');
-    }
-    if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1);
-    path = path.replace(/\//g, '\\');
+    path = normalizeFileUriPath(path);
   } else if (/^[A-Za-z]:\//.test(path)) {
     path = path.replace(/\//g, '\\');
   }
 
+  if (!isAbsoluteWindowsPath(path)) return '';
+  if (hasCorruptOrInvalidPathChars(path)) return '';
   if (!/\.rvt$/i.test(path)) return '';
   return path;
 }
@@ -40,18 +82,24 @@ export function collectDroppedRvtPaths(dataTransfer) {
     picked.push(path);
   };
 
+  const primaryValues = [];
+  const fallbackValues = [];
+
   const files = Array.from(dataTransfer.files || []);
   files.forEach((file) => {
-    pushPath(file?.path);
+    primaryValues.push(file?.path);
   });
 
   const items = Array.from(dataTransfer.items || []);
   items.forEach((item) => {
     try {
       const file = item?.getAsFile?.();
-      pushPath(file?.path);
+      primaryValues.push(file?.path);
     } catch { }
   });
+
+  primaryValues.forEach(pushPath);
+  if (picked.length) return picked;
 
   const uriList = String(dataTransfer.getData?.('text/uri-list') || '').trim();
   if (uriList) {
@@ -59,7 +107,7 @@ export function collectDroppedRvtPaths(dataTransfer) {
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith('#'))
-      .forEach(pushPath);
+      .forEach((line) => fallbackValues.push(line));
   }
 
   const text = String(dataTransfer.getData?.('text/plain') || '').trim();
@@ -68,9 +116,10 @@ export function collectDroppedRvtPaths(dataTransfer) {
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
-      .forEach(pushPath);
+      .forEach((line) => fallbackValues.push(line));
   }
 
+  fallbackValues.forEach(pushPath);
   return picked;
 }
 

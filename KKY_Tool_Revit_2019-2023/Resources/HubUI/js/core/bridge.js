@@ -26,6 +26,8 @@ DEV = !hasWebView;
 // -----------------------------
 const _byName = new Map();   // ev -> Set<fn(payload)>
 const _generic = new Set();  // Set<fn({ ev, payload })>
+const _scopedUnsubscribers = new Map(); // scope -> Set<unsubscribe>
+let _activeListenerScope = null;
 
 // -----------------------------
 // 상세 로깅 / 측정
@@ -96,11 +98,62 @@ function _emitHost(ev, payload, meta) {
 // -----------------------------
 // 공개: onHost(handler) | onHost('ev', handler)
 // -----------------------------
+function _trackScopedUnsubscribe(unsubscribe) {
+    if (!_activeListenerScope || typeof unsubscribe !== "function") return unsubscribe;
+
+    const scope = _activeListenerScope;
+    if (!_scopedUnsubscribers.has(scope)) _scopedUnsubscribers.set(scope, new Set());
+
+    let done = false;
+    const scopedUnsubscribe = () => {
+        if (done) return;
+        done = true;
+        try { unsubscribe(); }
+        finally { _scopedUnsubscribers.get(scope)?.delete(scopedUnsubscribe); }
+    };
+
+    _scopedUnsubscribers.get(scope).add(scopedUnsubscribe);
+    return scopedUnsubscribe;
+}
+
+export function beginHostListenerScope(scope) {
+    const key = String(scope || "").trim();
+    if (!key) {
+        _activeListenerScope = null;
+        return;
+    }
+
+    clearHostListenerScope(key);
+    _activeListenerScope = key;
+}
+
+export function endHostListenerScope(scope) {
+    const key = String(scope || "").trim();
+    if (!key || _activeListenerScope === key) _activeListenerScope = null;
+}
+
+export function clearHostListenerScope(scope) {
+    const key = String(scope || "").trim();
+    if (!key) return;
+
+    const unsubscribers = _scopedUnsubscribers.get(key);
+    if (!unsubscribers || !unsubscribers.size) {
+        _scopedUnsubscribers.delete(key);
+        return;
+    }
+
+    for (const unsubscribe of Array.from(unsubscribers)) {
+        try { unsubscribe(); }
+        catch (e) { _logErr(`clearHostListenerScope("${key}")`, e); }
+    }
+    _scopedUnsubscribers.delete(key);
+}
+
 export function onHost(arg1, arg2) {
     // onHost((msg)=>{})
     if (typeof arg1 === "function" && !arg2) {
         _generic.add(arg1);
-        return () => _generic.delete(arg1);
+        return _trackScopedUnsubscribe(() => _generic.delete(arg1));
     }
     // onHost('ev', handler)
     const ev = String(arg1 || "");
@@ -108,7 +161,7 @@ export function onHost(arg1, arg2) {
     if (!ev || typeof handler !== "function") return () => { };
     if (!_byName.has(ev)) _byName.set(ev, new Set());
     _byName.get(ev).add(handler);
-    return () => _byName.get(ev)?.delete(handler);
+    return _trackScopedUnsubscribe(() => _byName.get(ev)?.delete(handler));
 }
 
 // -----------------------------
@@ -188,6 +241,28 @@ export function post(ev, payload = {}) {
             _emitHost("paramprop:report", { report: "(DEV) 완료" }, { __seq: seq });
             break;
         }
+        case "sharedparam:status": {
+            _emitHost("sharedparam:status", {
+                status: "ok",
+                statusLabel: "연결됨",
+                path: "C:\\Sample\\SharedParameters.txt",
+                warning: ""
+            }, { __seq: seq });
+            break;
+        }
+        case "sharedparam:list": {
+            _emitHost("sharedparam:list", {
+                ok: true,
+                message: "",
+                items: [
+                    { name: "Comments", guid: "11111111-1111-1111-1111-111111111111", groupName: "Text", dataTypeToken: "Text" },
+                    { name: "Mark", guid: "22222222-2222-2222-2222-222222222222", groupName: "Identity", dataTypeToken: "Text" },
+                    { name: "Type Comments", guid: "33333333-3333-3333-3333-333333333333", groupName: "Text", dataTypeToken: "Text" },
+                    { name: "System Abbreviation", guid: "44444444-4444-4444-4444-444444444444", groupName: "MEP", dataTypeToken: "Text" }
+                ]
+            }, { __seq: seq });
+            break;
+        }
         case "familylink:init": {
             _emitHost("familylink:sharedparams", {
                 sourcePath: "C:\\Sample\\SharedParameters.txt",
@@ -253,8 +328,9 @@ export function post(ev, payload = {}) {
                 ok: true,
                 message: "(DEV) 추출 완료: 12건",
                 outputFolder: "C:\\Temp",
-                resultWorkbookPath: "C:\\Temp\\노즐코드_KTA_단일화.xlsx",
+                resultWorkbookPath: "",
                 fileCount: 2,
+                canExport: true,
                 summary: {
                     totalFileCount: 2,
                     successCount: 2,
@@ -263,6 +339,14 @@ export function post(ev, payload = {}) {
                     extractedRowCount: 12,
                     remarkRowCount: 3
                 }
+            }, { __seq: seq });
+            break;
+        }
+        case "lateralnozzle:export": {
+            _emitHost("lateralnozzle:exported", {
+                ok: true,
+                path: "C:\\Temp\\노즐코드_KTA_단일화.xlsx",
+                excelMode: "normal"
             }, { __seq: seq });
             break;
         }

@@ -71,8 +71,30 @@ Namespace UI.Hub
         End Sub
 
         Private Sub ReportConnectorProgress(pct As Double, text As String)
-            SendToWeb("connector:progress", New With {.pct = pct, .text = text})
+            Dim detail As String = If(text, String.Empty)
+            SendToWeb("connector:progress", New With {
+                .pct = pct,
+                .text = text,
+                .detail = detail,
+                .stage = ResolveConnectorProgressStage(pct, detail)
+            })
         End Sub
+
+        Private Function ResolveConnectorProgressStage(pct As Double, detail As String) As String
+            Dim message As String = If(detail, String.Empty).Trim()
+            If message.IndexOf("시작", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return "초기 설정을 확인하는 중..."
+            End If
+            If message.IndexOf("완료", StringComparison.OrdinalIgnoreCase) >= 0 OrElse pct >= 100.0R Then
+                Return "커넥터 진단 완료"
+            End If
+            Return "커넥터 비교 진행 중 (" & FormatConnectorProgressPercent(pct) & ")"
+        End Function
+
+        Private Function FormatConnectorProgressPercent(pct As Double) As String
+            Dim safePct As Double = Math.Max(0.0R, Math.Min(100.0R, Math.Round(pct, 1)))
+            Return safePct.ToString("0.0") & "%"
+        End Function
 
         Private Function SafePayloadSnapshot(payload As Object) As String
             If payload Is Nothing Then Return "(null)"
@@ -537,8 +559,7 @@ Namespace UI.Hub
                 If msgRows IsNot Nothing AndAlso msgRows.Count > 0 Then
                     ' placeholder(오류가 없습니다.)만 있을 경우 메시지 행으로 대체
                     If exportRows IsNot Nothing AndAlso exportRows.Count = 1 Then
-                        Dim id1Text As String = ReadFieldInsensitive(exportRows(0), "Id1")
-                        If Not String.IsNullOrWhiteSpace(id1Text) AndAlso id1Text.Contains("오류가 없습니다") Then
+                        If IsConnectorNoTargetPlaceholder(exportRows(0)) Then
                             exportRows = msgRows
                         Else
                             exportRows = msgRows.Concat(exportRows).ToList()
@@ -549,6 +570,7 @@ Namespace UI.Hub
                 End If
 
                 Dim doAutoFit As Boolean = ParseExcelMode(payload)
+                Dim exportLocale As String = ParseExcelLocale(payload)
                 Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Reset("connector:progress")
                 Dim rvtBaseName As String = ""
                 Try
@@ -565,7 +587,7 @@ Namespace UI.Hub
                     rvtBaseName = ""
                 End Try
 
-                Dim saved As String = SaveRowsToExcel(exportRows, mismatchCount, _connectorExtraParams, doAutoFit, "connector:progress", uiUnit, rvtBaseName, _lastConnectorReviewParams)
+                Dim saved As String = SaveRowsToExcel(exportRows, mismatchCount, _connectorExtraParams, doAutoFit, "connector:progress", uiUnit, rvtBaseName, _lastConnectorReviewParams, exportLocale)
 
                 SendToWeb("connector:saved", New With {.path = saved})
 
@@ -678,8 +700,7 @@ Namespace UI.Hub
             If existingRows IsNot Nothing AndAlso existingRows.Count > 0 Then
                 ' "오류가 없습니다." placeholder 1행만 있는 경우는 존재 파라미터 없음으로 처리
                 If existingRows.Count = 1 Then
-                    Dim id1Text As String = ReadFieldInsensitive(existingRows(0), "Id1")
-                    If Not String.IsNullOrWhiteSpace(id1Text) AndAlso id1Text.Contains("오류가 없습니다") Then
+                    If IsConnectorNoTargetPlaceholder(existingRows(0)) Then
                         ' ignore
                     Else
                         For Each r In existingRows
@@ -793,22 +814,22 @@ Namespace UI.Hub
                     Return "파라미터 속성이 모두 누락되어있습니다."
                 End If
 
-                ' Match / 기타는 OK로 취급
-                If pc.IndexOf("연속성 오류가 없습니다", StringComparison.OrdinalIgnoreCase) >= 0 Then Return pc
-                If param <> "" Then Return $"[{param}] 파라미터에 대한 연속성 오류가 없습니다."
-                Return "연속성 오류가 없습니다."
+                Return String.Empty
             End If
 
             If String.Equals(status, "OK", StringComparison.OrdinalIgnoreCase) Then
+                If pc.IndexOf("연속성 오류가 없습니다", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                    If param <> "" Then Return $"[{param}] 파라미터 연속성 오류가 없습니다."
+                    Return "파라미터 연속성 오류가 없습니다."
+                End If
+
                 Dim pcNormOk As String = NormalizeConnectorParamCompareForExport(row)
                 If String.Equals(pcNormOk, "BothEmpty", StringComparison.OrdinalIgnoreCase) Then
                     If param <> "" Then Return $"[{param}] 파라미터 속성이 모두 누락되어있습니다."
                     Return "파라미터 속성이 모두 누락되어있습니다."
                 End If
 
-                If pc.IndexOf("연속성 오류가 없습니다", StringComparison.OrdinalIgnoreCase) >= 0 Then Return pc
-                If param <> "" Then Return $"[{param}] 파라미터에 대한 연속성 오류가 없습니다."
-                Return "연속성 오류가 없습니다."
+                Return String.Empty
             End If
 
             If String.Equals(status, "Mismatch", StringComparison.OrdinalIgnoreCase) Then
@@ -825,6 +846,10 @@ Namespace UI.Hub
                 Return "연결 대상 객체 없음"
             End If
 
+            If String.Equals(status, "NO_TARGET", StringComparison.OrdinalIgnoreCase) Then
+                Return "검토 대상 객체가 없습니다."
+            End If
+
             If String.Equals(status, "ERROR", StringComparison.OrdinalIgnoreCase) Then
                 If err <> "" Then Return err
                 If pc <> "" Then Return pc
@@ -838,6 +863,35 @@ Namespace UI.Hub
             End If
 
             Return status
+        End Function
+
+        Private Shared Function BuildConnectorCommentTextForExport(row As Dictionary(Of String, Object)) As String
+            If row Is Nothing Then Return String.Empty
+
+            Dim status As String = ReadFieldInsensitive(row, "Status").Trim()
+            Dim pcRaw As String = ReadFieldInsensitive(row, "ParamCompare").Trim()
+            Dim pcNorm As String = NormalizeConnectorParamCompareForExport(row)
+
+            If pcRaw.IndexOf("연속성 오류가 없습니다", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                Return String.Empty
+            End If
+
+            If String.Equals(status, "OK", StringComparison.OrdinalIgnoreCase) AndAlso
+               String.Equals(pcNorm, "Match", StringComparison.OrdinalIgnoreCase) Then
+                Return "Value1과 Value2가 일치합니다."
+            End If
+
+            If String.Equals(status, "연결 필요(Proximity)", StringComparison.OrdinalIgnoreCase) AndAlso
+               String.Equals(pcNorm, "Match", StringComparison.OrdinalIgnoreCase) Then
+                Return "Value1과 Value2가 일치합니다."
+            End If
+
+            If String.Equals(status, "Mismatch", StringComparison.OrdinalIgnoreCase) OrElse
+               String.Equals(pcNorm, "Mismatch", StringComparison.OrdinalIgnoreCase) Then
+                Return "Value1과 Value2를 일치시켜 주세요."
+            End If
+
+            Return String.Empty
         End Function
 
 
@@ -1071,8 +1125,18 @@ Namespace UI.Hub
 
         Private Shared Function BuildEmptyConnectorRows() As List(Of Dictionary(Of String, Object))
             Dim row As New Dictionary(Of String, Object)(StringComparer.Ordinal)
-            row("Id1") = "오류가 없습니다."
+            row("Status") = "NO_TARGET"
             Return New List(Of Dictionary(Of String, Object)) From {row}
+        End Function
+
+        Private Shared Function IsConnectorNoTargetPlaceholder(row As Dictionary(Of String, Object)) As Boolean
+            If row Is Nothing Then Return False
+
+            Dim status As String = ReadFieldInsensitive(row, "Status").Trim()
+            If String.Equals(status, "NO_TARGET", StringComparison.OrdinalIgnoreCase) Then Return True
+
+            Dim id1Text As String = ReadFieldInsensitive(row, "Id1")
+            Return Not String.IsNullOrWhiteSpace(id1Text) AndAlso id1Text.Contains("오류가 없습니다")
         End Function
 
         Private Shared Function ShouldIncludeRow(r As Dictionary(Of String, Object)) As Boolean
@@ -1106,7 +1170,8 @@ Namespace UI.Hub
                                          Optional progressChannel As String = Nothing,
                                          Optional uiUnit As String = "inch",
                                          Optional rvtBaseName As String = "",
-                                         Optional reviewParams As List(Of String) = Nothing) As String
+                                         Optional reviewParams As List(Of String) = Nothing,
+                                         Optional exportLocale As String = "ko") As String
             Dim todayToken As String = Date.Now.ToString("yyMMdd")
 
             ' ✅ 파일명 건수는 "최종 엑셀에 실제로 저장되는 오류 행 수" 기준으로 계산
@@ -1115,8 +1180,7 @@ Namespace UI.Hub
                 count = totalRows.Count
                 ' "오류가 없습니다." 안내 1행만 있는 경우는 0건 처리
                 If count = 1 Then
-                    Dim id1Text As String = SafeCellString(totalRows(0), "Id1")
-                    If Not String.IsNullOrWhiteSpace(id1Text) AndAlso id1Text.Contains("오류가 없습니다") Then
+                    If IsConnectorNoTargetPlaceholder(totalRows(0)) Then
                         count = 0
                     End If
                 End If
@@ -1174,7 +1238,7 @@ Namespace UI.Hub
 
                     Dim savePath = sfd.FileName
                     Global.KKY_Tool_Revit.UI.Hub.ExcelProgressReporter.Report(progressChannel, "EXCEL_WRITE", "엑셀 데이터 작성", totalCount, totalCount, Nothing, True)
-                    SaveConnectorRowsMultiSheet(savePath, sheetTables, doAutoFit, progressChannel)
+                    SaveConnectorRowsMultiSheet(savePath, sheetTables, doAutoFit, progressChannel, exportLocale)
                     Global.KKY_Tool_Revit.Infrastructure.ExcelExportStyleRegistry.ApplyStylesForKey("connector", savePath, autoFit:=doAutoFit, excelMode:=If(doAutoFit, "normal", "fast"))
 
                     Try
@@ -1261,7 +1325,7 @@ Namespace UI.Hub
                     NormalizeConnectorExportDataTableSchema(dt, extrasHeaders)
                     LogConnectorExportHeaders(dt)
                     If dt.Rows.Count = 0 Then
-                        Global.KKY_Tool_Revit.Infrastructure.ExcelCore.EnsureNoDataRow(dt, "검토 결과가 없습니다.")
+                        EnsureConnectorNoTargetRow(dt)
                     End If
                     sheets.Add(New KeyValuePair(Of String, DataTable)(sheetName, dt))
                 Next
@@ -1291,7 +1355,7 @@ Namespace UI.Hub
                 NormalizeConnectorExportDataTableSchema(dt, extrasHeaders)
                 LogConnectorExportHeaders(dt)
                 If dt.Rows.Count = 0 Then
-                    Global.KKY_Tool_Revit.Infrastructure.ExcelCore.EnsureNoDataRow(dt, "검토 결과가 없습니다.")
+                    EnsureConnectorNoTargetRow(dt)
                 End If
                 sheets.Add(New KeyValuePair(Of String, DataTable)(SafeExcelSheetName(kv.Key), dt))
             Next
@@ -1314,16 +1378,19 @@ Namespace UI.Hub
         Private Shared Sub SaveConnectorRowsMultiSheet(savePath As String,
                                                        sheetTables As List(Of KeyValuePair(Of String, DataTable)),
                                                        doAutoFit As Boolean,
-                                                       progressChannel As String)
+                                                       progressChannel As String,
+                                                       Optional exportLocale As String = "ko")
             Dim tables = If(sheetTables, New List(Of KeyValuePair(Of String, DataTable))())
             If tables.Count = 0 Then
                 Dim dt As New DataTable("Connector Diagnostics")
-                dt.Columns.Add("Id1", GetType(String))
-                Global.KKY_Tool_Revit.Infrastructure.ExcelCore.EnsureNoDataRow(dt, "검토 결과가 없습니다.")
+                For Each header In BuildHeaders(Nothing)
+                    dt.Columns.Add(header, GetType(String))
+                Next
+                EnsureConnectorNoTargetRow(dt)
                 tables.Add(New KeyValuePair(Of String, DataTable)("Connector Diagnostics", dt))
             End If
 
-            Global.KKY_Tool_Revit.Infrastructure.ExcelCore.SaveXlsxMulti(savePath, tables, doAutoFit, progressChannel, sheetKeyOverride:="connector", exportKind:="connector")
+            Global.KKY_Tool_Revit.Infrastructure.ExcelCore.SaveXlsxMulti(savePath, tables, doAutoFit, progressChannel, sheetKeyOverride:="connector", exportKind:="connector", exportLocale:=exportLocale)
         End Sub
 
         Private Shared Function BuildConnectorExportDataTable(headers As List(Of String),
@@ -1355,6 +1422,18 @@ Namespace UI.Hub
             Return dt
         End Function
 
+        Private Shared Sub EnsureConnectorNoTargetRow(dt As DataTable)
+            If dt Is Nothing OrElse dt.Rows.Count > 0 Then Return
+
+            Dim dr = dt.NewRow()
+            If dt.Columns.Contains("검토내용") Then
+                dr("검토내용") = "검토 대상 객체가 없습니다."
+            ElseIf dt.Columns.Count > 0 Then
+                dr(0) = "검토 대상 객체가 없습니다."
+            End If
+            dt.Rows.Add(dr)
+        End Sub
+
         Private Shared Function ReadConnectorExportCell(row As Dictionary(Of String, Object),
                                                         header As String,
                                                         uiUnit As String) As String
@@ -1368,7 +1447,7 @@ Namespace UI.Hub
                 Return NormalizeConnectorParamCompareForExport(row)
             End If
             If String.Equals(header, "비고(답변)", StringComparison.Ordinal) Then
-                Return ""
+                Return BuildConnectorCommentTextForExport(row)
             End If
 
             If String.Equals(header, "Distance", StringComparison.OrdinalIgnoreCase) Then
@@ -2080,7 +2159,7 @@ Namespace UI.Hub
                         Dim hc As ICell = header.GetCell(c)
                         Dim t As String = If(hc Is Nothing, "", hc.ToString()).Trim()
 
-                        If colReview < 0 AndAlso String.Equals(t, "검토내용", StringComparison.OrdinalIgnoreCase) Then colReview = c
+                        If colReview < 0 AndAlso (String.Equals(t, "검토내용", StringComparison.OrdinalIgnoreCase) OrElse String.Equals(t, "Review", StringComparison.OrdinalIgnoreCase)) Then colReview = c
                         If colPc < 0 AndAlso String.Equals(t, "ParamCompare", StringComparison.OrdinalIgnoreCase) Then colPc = c
                     Next
 

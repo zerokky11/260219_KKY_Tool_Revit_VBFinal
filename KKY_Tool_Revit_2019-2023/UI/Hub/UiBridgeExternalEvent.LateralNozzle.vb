@@ -57,7 +57,8 @@ Namespace UI.Hub
                     .outputFolder = result.OutputFolder,
                     .resultWorkbookPath = result.ResultWorkbookPath,
                     .summary = result.Summary,
-                    .fileCount = result.Files.Count
+                    .fileCount = result.Files.Count,
+                    .canExport = result.Files IsNot Nothing AndAlso result.Files.Count > 0
                 })
             Catch ex As Exception
                 SyncLock _lateralNozzleLock
@@ -65,6 +66,50 @@ Namespace UI.Hub
                 End SyncLock
                 SendToWeb("lateralnozzle:error", New With {.message = ex.Message})
             End Try
+        End Sub
+
+        Private Sub HandleLateralNozzleExport(app As UIApplication, payload As Object)
+            Dim result As UtilityLateralNozzleExtractService.RunResult = Nothing
+            Dim doAutoFit As Boolean = ParseExcelMode(payload)
+            Dim excelMode As String = If(doAutoFit, "normal", "fast")
+            Dim exportLocale As String = ParseExcelLocale(payload)
+
+            SyncLock _lateralNozzleLock
+                result = _lateralNozzleLastResult
+            End SyncLock
+
+            If result Is Nothing OrElse result.Files Is Nothing OrElse result.Files.Count = 0 Then
+                SendToWeb("lateralnozzle:error", New With {.message = "내보낼 결과가 없습니다. 먼저 추출을 실행해주세요."})
+                Return
+            End If
+
+            Using dlg As New WinForms.SaveFileDialog()
+                dlg.Filter = "Excel (*.xlsx)|*.xlsx"
+                dlg.FileName = If(String.IsNullOrWhiteSpace(result.ResultWorkbookPath),
+                                  UtilityLateralNozzleExtractService.GetDefaultExportFileName(),
+                                  Path.GetFileName(result.ResultWorkbookPath))
+                dlg.AddExtension = True
+                dlg.RestoreDirectory = True
+                If dlg.ShowDialog() <> WinForms.DialogResult.OK Then
+                    SendToWeb("lateralnozzle:exported", New With {.ok = False, .cancelled = True})
+                    Return
+                End If
+
+                Try
+                    Dim exportPath = UtilityLateralNozzleExtractService.ExportWorkbook(result, dlg.FileName, doAutoFit, exportLocale)
+                    SyncLock _lateralNozzleLock
+                        _lateralNozzleLastResult = result
+                    End SyncLock
+
+                    SendToWeb("lateralnozzle:exported", New With {
+                        .ok = True,
+                        .path = exportPath,
+                        .excelMode = excelMode
+                    })
+                Catch ex As Exception
+                    SendToWeb("lateralnozzle:error", New With {.message = "엑셀 저장 중 오류가 발생했습니다: " & ex.Message})
+                End Try
+            End Using
         End Sub
 
         Private Sub HandleLateralNozzleOpenFolder(app As UIApplication, payload As Object)
@@ -130,7 +175,8 @@ Namespace UI.Hub
                     .outputFolder = result.OutputFolder,
                     .resultWorkbookPath = result.ResultWorkbookPath,
                     .summary = result.Summary,
-                    .fileCount = result.Files.Count
+                    .fileCount = result.Files.Count,
+                    .canExport = result.Files IsNot Nothing AndAlso result.Files.Count > 0
                 })
             }
         End Function

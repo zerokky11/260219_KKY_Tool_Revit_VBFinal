@@ -1,9 +1,9 @@
 import { initTheme } from './core/theme.js';
-import { onHost, post } from './core/bridge.js';
-import { updateTopMost, setActiveDocument, setDocList, setUpdateInfo, setUpdateState, renderTopbar } from './core/topbar.js';
+import { beginHostListenerScope, clearHostListenerScope, endHostListenerScope, onHost, post } from './core/bridge.js';
+import { updateTopMost, setActiveDocument, setDocList, setDocumentVisualAidSettings, setUpdateInfo, setUpdateState, renderTopbar } from './core/topbar.js?v=20260417b';
 import { initLogConsole, toggleLogConsole, log } from './core/dom.js';
-import { renderHome } from './views/home.js';
-import { renderActiveMenu } from './views/activeMenu.js';
+import { renderHome } from './views/home.js?v=20260416f';
+import { renderActiveMenu } from './views/activeMenu.js?v=20260416b';
 import { renderDup } from './views/dup.js';
 import { renderConn } from './views/conn.js';
 import { renderExport } from './views/export.js';
@@ -12,11 +12,13 @@ import { renderSharedParamBatch } from './views/sharedparambatch.js';
 import { renderSegmentPms } from './views/segmentpms.js';
 import { renderGuid } from './views/guid.js';
 import { renderFamilyLink } from './views/familylink.js';
-import { renderMulti } from './views/multi.js?v=20260323j';
+import { renderLinkPath } from './views/linkpath.js';
+import { renderMulti } from './views/multi.js?v=20260417c';
 import { renderDeliveryCleaner } from './views/deliverycleaner.js';
 import { renderParamModifier } from './views/parammodifier.js';
 import { renderConditionExtract } from './views/conditionextract.js';
 import { renderLateralNozzle } from './views/lateralnozzle.js';
+import { renderTapAlign } from './views/tapalign.js';
 
 initTheme();
 
@@ -26,6 +28,7 @@ let _topbarRoot = null;
 let _lastHash = null;
 let _historyStack = [];
 let _suppressHistory = false;
+let _activeViewScope = null;
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
 else boot();
@@ -55,6 +58,7 @@ function boot() {
   });
 
   try { post('ui:query-topmost'); } catch { }
+  try { post('documentvisualaid:query-settings'); } catch { }
   try { post('update:query'); } catch { }
   window.setTimeout(() => {
     try { post('update:check', { silent: true, startup: true }); } catch { }
@@ -88,6 +92,9 @@ function boot() {
           break;
         case 'host:update-state':
           setUpdateState(msg.payload || {});
+          break;
+        case 'host:document-visual-aid-settings':
+          setDocumentVisualAidSettings(msg.payload || {});
           break;
         default:
           break;
@@ -133,24 +140,44 @@ function route() {
   const withBack = hash !== '';
   renderTopbar(_topbarRoot, withBack, hash === '' ? null : onBack, _historyStack.length > 0, onNavBack);
 
+  if (_activeViewScope) clearHostListenerScope(_activeViewScope);
+  const nextScope = `route:${hash || 'home'}`;
+  _activeViewScope = nextScope;
+
   if (_viewRoot) _viewRoot.innerHTML = '';
   const targetRoot = _viewRoot || document.getElementById('app');
 
+  let renderView = renderHome;
+  let renderOptions = null;
   switch (hash) {
-    case 'dup': return renderDup(targetRoot);
-    case 'conn': return renderConn(targetRoot);
-    case 'export': return renderExport(targetRoot);
-    case 'paramprop': return renderParamProp(targetRoot);
-    case 'sharedparambatch': return renderSharedParamBatch(targetRoot);
-    case 'segmentpms': return renderSegmentPms(targetRoot);
-    case 'guid': return renderGuid(targetRoot);
-    case 'familylink': return renderFamilyLink(targetRoot);
-    case 'multi': return renderMulti(targetRoot);
-    case 'deliverycleaner': return renderDeliveryCleaner(targetRoot);
-    case 'parammodifier': return renderParamModifier(targetRoot);
-    case 'conditionextract': return renderConditionExtract(targetRoot);
-    case 'lateralnozzle': return renderLateralNozzle(targetRoot);
-    case 'active-menu': return renderActiveMenu(targetRoot);
-    default: return renderHome(targetRoot);
+    case 'dup': renderView = renderDup; break;
+    case 'conn': renderView = renderConn; break;
+    case 'export': renderView = renderExport; break;
+    case 'paramprop': renderView = renderParamProp; break;
+    case 'sharedparambatch': renderView = renderSharedParamBatch; break;
+    case 'segmentpms': renderView = renderSegmentPms; break;
+    case 'guid': renderView = renderGuid; break;
+    case 'familylink': renderView = renderFamilyLink; break;
+    case 'linkpath': renderView = renderLinkPath; break;
+    case 'multi': renderView = renderMulti; break;
+    case 'favorites':
+      renderView = renderMulti;
+      renderOptions = { viewMode: 'favorites' };
+      break;
+    case 'deliverycleaner': renderView = renderDeliveryCleaner; break;
+    case 'parammodifier': renderView = renderParamModifier; break;
+    case 'conditionextract': renderView = renderConditionExtract; break;
+    case 'lateralnozzle': renderView = renderLateralNozzle; break;
+    case 'tapalign': renderView = renderTapAlign; break;
+    case 'active-menu': renderView = renderActiveMenu; break;
+    default: renderView = renderHome; break;
+  }
+
+  beginHostListenerScope(nextScope);
+  try {
+    if (renderOptions) return renderView(targetRoot, renderOptions);
+    return renderView(targetRoot);
+  } finally {
+    endHostListenerScope(nextScope);
   }
 }

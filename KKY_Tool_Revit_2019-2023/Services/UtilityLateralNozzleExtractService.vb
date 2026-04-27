@@ -19,6 +19,7 @@ Namespace Services
     Public NotInheritable Class UtilityLateralNozzleExtractService
 
         Private Const MaxHeaderColumnDistance As Integer = 20
+        Private Const MaxNozzleNumberColumnDistance As Integer = 6
         Private Shared ReadOnly _nozzleCodePattern As New Regex("_\d{3}$", RegexOptions.Compiled Or RegexOptions.CultureInvariant)
 
         Private Sub New()
@@ -76,17 +77,19 @@ Namespace Services
         End Class
 
         Private Structure HeaderBlock
-            Public Sub New(headerRow As Integer, utilityCol As Integer, lateralCol As Integer, nozzleCol As Integer)
+            Public Sub New(headerRow As Integer, utilityCol As Integer, lateralCol As Integer, nozzleCodeCol As Integer, nozzleNoCol As Integer)
                 Me.HeaderRow = headerRow
                 Me.UtilityCol = utilityCol
                 Me.LateralCol = lateralCol
-                Me.NozzleCol = nozzleCol
+                Me.NozzleCodeCol = nozzleCodeCol
+                Me.NozzleNoCol = nozzleNoCol
             End Sub
 
             Public Property HeaderRow As Integer
             Public Property UtilityCol As Integer
             Public Property LateralCol As Integer
-            Public Property NozzleCol As Integer
+            Public Property NozzleCodeCol As Integer
+            Public Property NozzleNoCol As Integer
         End Structure
 
         Public Shared Function Run(settings As Settings,
@@ -128,9 +131,31 @@ Namespace Services
                 result.Message = $"추출 완료: {result.Summary.ExtractedRowCount}건"
             End If
 
-            SaveArtifacts(result)
             ReportProgress(progress, excelPaths.Count, excelPaths.Count, "완료", result.Message)
             Return result
+        End Function
+
+        Public Shared Function ExportWorkbook(result As RunResult,
+                                              targetPath As String,
+                                              Optional autoFit As Boolean = False,
+                                              Optional exportLocale As String = "ko") As String
+            If result Is Nothing Then Throw New ArgumentNullException(NameOf(result))
+            If String.IsNullOrWhiteSpace(targetPath) Then Throw New ArgumentNullException(NameOf(targetPath))
+
+            Dim normalizedPath = targetPath.Trim()
+            Dim outputFolder = IO.Path.GetDirectoryName(normalizedPath)
+            If Not String.IsNullOrWhiteSpace(outputFolder) Then
+                Directory.CreateDirectory(outputFolder)
+                result.OutputFolder = outputFolder
+            End If
+
+            ExcelCore.SaveXlsxMulti(normalizedPath, BuildWorkbookSheets(result), autoFit:=autoFit, exportKind:="lateralnozzle", exportLocale:=exportLocale)
+            result.ResultWorkbookPath = normalizedPath
+            Return normalizedPath
+        End Function
+
+        Public Shared Function GetDefaultExportFileName() As String
+            Return "노즐코드_KTA_단일화.xlsx"
         End Function
 
         Private Shared Function ProcessWorkbook(path As String,
@@ -216,11 +241,13 @@ Namespace Services
 
                     Dim utilityValue = GetDataCellValue(sheet, rowIndex, block.UtilityCol, mergedChildren)
                     Dim lateralValue = GetDataCellValue(sheet, rowIndex, block.LateralCol, mergedChildren)
-                    Dim nozzleValue = GetDataCellValue(sheet, rowIndex, block.NozzleCol, mergedChildren)
+                    Dim nozzleCodeValue = GetDataCellValue(sheet, rowIndex, block.NozzleCodeCol, mergedChildren)
+                    Dim nozzleNoValue = GetDataCellValue(sheet, rowIndex, block.NozzleNoCol, mergedChildren)
+                    Dim nozzleValue = BuildCombinedNozzleCode(nozzleCodeValue, nozzleNoValue)
 
                     If Not IsRealData(utilityValue, lateralValue, nozzleValue) Then Continue For
 
-                    Dim remark = BuildRemark(utilityValue, lateralValue, nozzleValue)
+                    Dim remark = BuildRemark(utilityValue, lateralValue, nozzleValue, nozzleCodeValue, nozzleNoValue)
                     rows.Add(New ResultRow() With {
                         .Utility = utilityValue,
                         .LateralNo = lateralValue,
@@ -287,30 +314,44 @@ Namespace Services
             For rowIndex As Integer = firstRow To lastRow
                 Dim utilityCols As New List(Of Integer)()
                 Dim lateralCols As New List(Of Integer)()
-                Dim nozzleCols As New List(Of Integer)()
+                Dim nozzleCodeCols As New List(Of Integer)()
+                Dim nozzleNoCols As New List(Of Integer)()
 
                 For colIndex As Integer = firstCol To lastCol
-                    Dim normalized = NormalizeText(GetCellDisplayText(sheet, rowIndex, colIndex, mergedChildren))
+                    Dim displayText = GetCellDisplayText(sheet, rowIndex, colIndex, mergedChildren)
+                    Dim normalized = NormalizeText(displayText)
                     Select Case normalized
                         Case NormalizeText("UT명")
                             utilityCols.Add(colIndex)
                         Case NormalizeText("배관No")
                             lateralCols.Add(colIndex)
-                        Case NormalizeText("연결호기")
-                            nozzleCols.Add(colIndex)
+                        Case NormalizeText("Nozzle Code")
+                            nozzleCodeCols.Add(colIndex)
                     End Select
+
+                    If IsNozzleNoHeader(displayText) Then nozzleNoCols.Add(colIndex)
                 Next
 
-                If utilityCols.Count = 0 OrElse lateralCols.Count = 0 OrElse nozzleCols.Count = 0 Then Continue For
+                If utilityCols.Count = 0 OrElse lateralCols.Count = 0 OrElse nozzleCodeCols.Count = 0 OrElse nozzleNoCols.Count = 0 Then Continue For
 
                 Dim usedLateral As New HashSet(Of Integer)()
-                Dim usedNozzle As New HashSet(Of Integer)()
+                Dim usedNozzleCode As New HashSet(Of Integer)()
+                Dim usedNozzleNo As New HashSet(Of Integer)()
                 For Each utilityCol In utilityCols
                     Dim lateralCol = FindNearestUnusedColumn(lateralCols, usedLateral, utilityCol, MaxHeaderColumnDistance)
-                    Dim nozzleCol = FindNearestUnusedColumn(nozzleCols, usedNozzle, utilityCol, MaxHeaderColumnDistance)
-                    If lateralCol < 0 OrElse nozzleCol < 0 Then Continue For
+                    Dim nozzleCodeCol = FindNearestUnusedColumn(nozzleCodeCols, usedNozzleCode, utilityCol, MaxHeaderColumnDistance)
+                    Dim nozzleNoCol = -1
+                    If nozzleCodeCol >= 0 Then
+                        nozzleNoCol = FindNearestUnusedColumn(nozzleNoCols, usedNozzleNo, nozzleCodeCol, MaxNozzleNumberColumnDistance)
+                    End If
 
-                    blocks.Add(New HeaderBlock(rowIndex, utilityCol, lateralCol, nozzleCol))
+                    If nozzleNoCol < 0 Then
+                        nozzleNoCol = FindNearestUnusedColumn(nozzleNoCols, usedNozzleNo, utilityCol, MaxHeaderColumnDistance)
+                    End If
+
+                    If lateralCol < 0 OrElse nozzleCodeCol < 0 OrElse nozzleNoCol < 0 Then Continue For
+
+                    blocks.Add(New HeaderBlock(rowIndex, utilityCol, lateralCol, nozzleCodeCol, nozzleNoCol))
                     headerRows.Add(rowIndex)
                 Next
             Next
@@ -415,14 +456,30 @@ Namespace Services
             Return result
         End Function
 
+        Private Shared Function BuildCombinedNozzleCode(nozzleCodeValue As String,
+                                                        nozzleNoValue As String) As String
+            Dim leftValue = CleanOutputText(If(nozzleCodeValue, String.Empty))
+            Dim rightValue = CleanOutputText(If(nozzleNoValue, String.Empty))
+
+            If leftValue.Length > 0 AndAlso rightValue.Length > 0 Then
+                Return $"{leftValue}_{rightValue}"
+            End If
+
+            If leftValue.Length > 0 Then Return leftValue
+            If rightValue.Length > 0 Then Return rightValue
+            Return String.Empty
+        End Function
+
         Private Shared Function BuildRemark(utilityValue As String,
                                             lateralValue As String,
-                                            nozzleValue As String) As String
+                                            nozzleValue As String,
+                                            nozzleCodeValue As String,
+                                            nozzleNoValue As String) As String
             Dim remarks As New List(Of String)()
 
             If String.IsNullOrWhiteSpace(utilityValue) Then remarks.Add("UTILITY 누락")
             If String.IsNullOrWhiteSpace(lateralValue) Then remarks.Add("LATERAL NO 누락")
-            If String.IsNullOrWhiteSpace(nozzleValue) Then remarks.Add("Nozzle Code 누락")
+            If String.IsNullOrWhiteSpace(nozzleCodeValue) OrElse String.IsNullOrWhiteSpace(nozzleNoValue) Then remarks.Add("Nozzle Code 누락")
 
             Dim trimmedNozzle = If(nozzleValue, String.Empty).Trim()
             If trimmedNozzle.Length > 0 AndAlso Not _nozzleCodePattern.IsMatch(trimmedNozzle) Then
@@ -445,9 +502,21 @@ Namespace Services
             If normalized = String.Empty Then Return True
             If normalized = NormalizeText("UT명") Then Return True
             If normalized = NormalizeText("배관No") Then Return True
-            If normalized = NormalizeText("연결호기") Then Return True
+            If normalized = NormalizeText("Nozzle Code") Then Return True
+            If IsNozzleNoHeader(value) Then Return True
             If normalized.Contains("MAINSIZE") Then Return True
             Return False
+        End Function
+
+        Private Shared Function IsNozzleNoHeader(value As String) As Boolean
+            Dim raw = If(value, String.Empty)
+            raw = raw.Replace(vbCr, String.Empty)
+            raw = raw.Replace(vbLf, String.Empty)
+            raw = raw.Replace(vbTab, String.Empty)
+            raw = raw.Replace(ChrW(160), " ")
+            raw = raw.Replace("　", " ")
+            Return String.Equals(raw, " No", StringComparison.OrdinalIgnoreCase) OrElse
+                   String.Equals(raw.Trim(), "No", StringComparison.OrdinalIgnoreCase)
         End Function
 
         Private Shared Function NormalizeText(value As String) As String
@@ -483,25 +552,14 @@ Namespace Services
             Return Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)
         End Function
 
-        Private Shared Sub SaveArtifacts(result As RunResult)
-            If result Is Nothing Then Return
-            If String.IsNullOrWhiteSpace(result.OutputFolder) Then
-                result.OutputFolder = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)
-            End If
-
-            Directory.CreateDirectory(result.OutputFolder)
-            Dim timeStamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture)
-            Dim workbookPath = IO.Path.Combine(result.OutputFolder, $"노즐코드_KTA_단일화_{timeStamp}.xlsx")
-
-            Dim sheets As New List(Of KeyValuePair(Of String, DataTable)) From {
-                New KeyValuePair(Of String, DataTable)("추출결과", BuildResultTable(result.Rows)),
-                New KeyValuePair(Of String, DataTable)("요약", BuildSummaryTable(result.Files, result.Summary)),
-                New KeyValuePair(Of String, DataTable)("Logs", BuildLogTable(result.Logs))
+        Private Shared Function BuildWorkbookSheets(result As RunResult) As List(Of KeyValuePair(Of String, DataTable))
+            Dim safeResult = If(result, New RunResult())
+            Return New List(Of KeyValuePair(Of String, DataTable)) From {
+                New KeyValuePair(Of String, DataTable)("추출결과", BuildResultTable(safeResult.Rows)),
+                New KeyValuePair(Of String, DataTable)("요약", BuildSummaryTable(safeResult.Files, safeResult.Summary)),
+                New KeyValuePair(Of String, DataTable)("Logs", BuildLogTable(safeResult.Logs))
             }
-
-            ExcelCore.SaveXlsxMulti(workbookPath, sheets, autoFit:=True)
-            result.ResultWorkbookPath = workbookPath
-        End Sub
+        End Function
 
         Private Shared Function BuildResultTable(rows As IEnumerable(Of ResultRow)) As DataTable
             Dim table As New DataTable("추출결과")

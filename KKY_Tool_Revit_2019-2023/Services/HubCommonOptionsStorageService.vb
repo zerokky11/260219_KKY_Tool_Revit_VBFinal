@@ -13,6 +13,7 @@ Namespace Services
         Public Class HubCommonOptions
             Public Property ExtraParamsText As String = String.Empty
             Public Property TargetFilterText As String = String.Empty
+            Public Property ExcludeTargetFilterText As String = String.Empty
             Public Property ExcludeEndDummy As Boolean
             Public Property IncludePointXY As Boolean
             Public Property IncludeLinearMetrics As Boolean

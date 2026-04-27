@@ -1,4 +1,5 @@
-﻿import { clear, div } from '../core/dom.js';
+import { clear, div } from '../core/dom.js';
+import { bindHubEntryContextMenu, openHubEntry } from '../core/hubFavorites.js?v=20260416b';
 
 export function renderActiveMenu(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');
@@ -31,7 +32,7 @@ export function renderActiveMenu(root) {
   page.append(grid);
   target.append(page);
 
-  function buildCard(title, desc, hash) {
+  function buildCard(title, desc, entryId) {
     const card = document.createElement('button');
     card.type = 'button';
     card.className = 'active-menu-card';
@@ -45,8 +46,9 @@ export function renderActiveMenu(root) {
       </div>
       <span class="active-menu-cta btn btn--primary">열기</span>`;
     card.addEventListener('click', () => {
-      location.hash = `#${hash}`;
+      openHubEntry(entryId);
     });
+    bindHubEntryContextMenu(card, entryId);
     return card;
   }
 }

@@ -78,10 +78,7 @@ Namespace Services
                     Else
                         ' MEPCurve
                         typ = e.Name
-                        Dim es = TryCast(doc.GetElement(e.GetTypeId()), ElementType)
-                        If es IsNot Nothing Then
-                            fam = es.FamilyName
-                        End If
+                        fam = GetElementFamilyName(e)
                     End If
 
                     Dim connected As HashSet(Of Integer) = GetConnectedOwnerIds(e)
@@ -166,8 +163,7 @@ Namespace Services
             Else
                 ' MEPCurve
                 typ = e.Name
-                Dim es = TryCast(doc.GetElement(e.GetTypeId()), ElementType)
-                If es IsNot Nothing Then fam = es.FamilyName
+                fam = GetElementFamilyName(e)
 
                 Dim lc = TryCast(e.Location, LocationCurve)
                 If lc Is Nothing OrElse lc.Curve Is Nothing Then
@@ -227,6 +223,85 @@ Namespace Services
             End Try
 
             Return setIds
+        End Function
+
+        Private Shared Function GetElementFamilyName(e As Element) As String
+            If e Is Nothing Then Return ""
+
+            Dim fi = TryCast(e, FamilyInstance)
+            If fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing AndAlso fi.Symbol.Family IsNot Nothing Then
+                Return If(fi.Symbol.Family.Name, "")
+            End If
+
+            Dim value As String = ReadParameterDisplayText(TryLookupParameter(e, "Family"))
+            If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+            value = ReadParameterDisplayText(TryGetParameter(e, BuiltInParameter.ALL_MODEL_FAMILY_NAME))
+            If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+            value = ReadParameterDisplayText(TryGetParameter(e, BuiltInParameter.ELEM_FAMILY_PARAM))
+            If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+            Dim elementType As ElementType = Nothing
+            Try
+                Dim typeId As ElementId = e.GetTypeId()
+                If typeId IsNot Nothing AndAlso typeId <> ElementId.InvalidElementId Then
+                    elementType = TryCast(e.Document.GetElement(typeId), ElementType)
+                End If
+            Catch
+            End Try
+
+            If elementType IsNot Nothing Then
+                value = ReadParameterDisplayText(TryLookupParameter(elementType, "Family"))
+                If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+                value = ReadParameterDisplayText(TryGetParameter(elementType, BuiltInParameter.ALL_MODEL_FAMILY_NAME))
+                If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+                value = ReadParameterDisplayText(TryGetParameter(elementType, BuiltInParameter.ELEM_FAMILY_PARAM))
+                If Not String.IsNullOrWhiteSpace(value) Then Return value
+
+                Try
+                    value = elementType.FamilyName
+                    If Not String.IsNullOrWhiteSpace(value) Then Return value
+                Catch
+                End Try
+            End If
+
+            Return ""
+        End Function
+
+        Private Shared Function TryLookupParameter(e As Element, parameterName As String) As Parameter
+            If e Is Nothing OrElse String.IsNullOrWhiteSpace(parameterName) Then Return Nothing
+            Try
+                Return e.LookupParameter(parameterName)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function TryGetParameter(e As Element, builtInParameter As BuiltInParameter) As Parameter
+            If e Is Nothing Then Return Nothing
+            Try
+                Return e.Parameter(builtInParameter)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function ReadParameterDisplayText(param As Parameter) As String
+            If param Is Nothing Then Return ""
+            Try
+                Dim value As String = param.AsValueString()
+                If Not String.IsNullOrWhiteSpace(value) Then Return value.Trim()
+            Catch
+            End Try
+            Try
+                Dim value As String = param.AsString()
+                If Not String.IsNullOrWhiteSpace(value) Then Return value.Trim()
+            Catch
+            End Try
+            Return ""
         End Function
 
     End Class

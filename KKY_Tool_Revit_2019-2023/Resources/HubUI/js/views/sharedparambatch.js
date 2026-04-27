@@ -1,5 +1,6 @@
 ﻿import { clear, div, toast, showExcelSavedDialog, chooseExcelMode } from '../core/dom.js';
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
+import { getLastExcelExportLocale } from '../core/dom.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
@@ -7,6 +8,7 @@ import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
 
 const DEFAULT_SUMMARY = { okCount: 0, failCount: 0, skipCount: 0 };
 const CATEGORY_PRESET_KEY = "kky_spb_cat_presets";
+const EXCEL_PHASE_WEIGHT = { EXCEL_INIT: 0.05, EXCEL_WRITE: 0.85, EXCEL_SAVE: 0.08, AUTOFIT: 0.02, DONE: 1, ERROR: 1 };
 
 function formatRevitParamGroupLabel(value) {
   const raw = String(value || '').trim();
@@ -445,7 +447,7 @@ export function renderSharedParamBatch(root) {
     if (state.running) return;
     state.pendingFolderBrowse = true;
     ProgressDialog.show('RVT 폴더 선택', '폴더 내 RVT 파일을 찾는 중...');
-    ProgressDialog.update(20, '폴더 내 RVT 파일을 찾는 중...', '');
+    ProgressDialog.update(20, '폴더 내 RVT 파일을 찾는 중...', '하위 폴더를 포함해 RVT 파일을 검색하는 중...');
     post('sharedparambatch:browse-folder', {});
   }
 
@@ -484,24 +486,49 @@ export function renderSharedParamBatch(root) {
     state.running = true;
     updateButtons();
     ProgressDialog.show('Project Parameter 추가', '작업 준비 중...');
-    ProgressDialog.update(0, '작업 준비 중...', '');
+    ProgressDialog.update(0, '작업 준비 중...', '선택한 파라미터와 RVT 목록을 정리하는 중...');
     post('sharedparambatch:run', payload);
   }
 
   function handleProgress(payload) {
     if (!payload) return;
+    if (payload.phase || payload.current != null || payload.phaseProgress != null) {
+      handleExcelProgress(payload);
+      return;
+    }
+    handleRunProgress(payload);
+  }
+
+  function handleRunProgress(payload) {
     clearProgressHideTimer();
     const total = Number(payload.total || payload.Total || 0);
     const step = Number(payload.step || payload.Step || 0);
     const text = payload.text || payload.message || '';
-    const percentFromStep = total > 0 ? (step / total) * 100 : 0;
-    const percentFromPhase = Number(payload.phaseProgress) * 100;
-    const percentRaw = Number.isFinite(payload.percent) ? Number(payload.percent) : (Number.isFinite(percentFromPhase) && percentFromPhase > 0 ? percentFromPhase : percentFromStep);
-    const pct = Math.max(0, Math.min(100, percentRaw || 0));
+    const pct = Math.max(0, Math.min(100, total > 0 ? (step / total) * 100 : (Number(payload.percent) || 0)));
     state.lastProgressPct = pct;
-    ProgressDialog.show('Project Parameter 추가', text || '진행 중');
-    ProgressDialog.update(pct, text || '진행 중', total ? `${step} / ${total}` : '');
+    const subtitle = buildRunProgressSubtitle(pct, text, step, total);
+    const detail = buildRunProgressDetail(text, step, total);
+    ProgressDialog.show('Project Parameter 추가', subtitle);
+    ProgressDialog.update(pct, subtitle, detail);
     if (pct >= 100) scheduleProgressHide();
+  }
+
+  function handleExcelProgress(payload) {
+    clearProgressHideTimer();
+    const phase = normalizeExcelPhase(payload?.phase);
+    const total = Number(payload?.total) || 0;
+    const current = Number(payload?.current) || 0;
+    const percent = computeExcelPercent(phase, current, total, payload?.phaseProgress, payload?.percent);
+    const subtitle = buildExcelSubtitle(phase, current, total);
+    const detail = formatExcelDetail(phase, payload?.message, current, total);
+
+    state.lastProgressPct = percent;
+    ProgressDialog.show('Project Parameter 결과 내보내기', subtitle);
+    ProgressDialog.update(percent, subtitle, detail);
+
+    if (phase === 'DONE' || phase === 'ERROR') {
+      scheduleProgressHide(260);
+    }
   }
 
   function handleDone(payload) {
@@ -534,11 +561,12 @@ export function renderSharedParamBatch(root) {
     if (state.running) return;
     if (!state.logs.length) { toast('내보낼 로그가 없습니다.', 'err'); return; }
     const excelMode = await chooseExcelMode();
+    if (!excelMode) return;
     state.running = true;
     updateButtons();
     ProgressDialog.show('Project Parameter 결과 내보내기', '엑셀 파일을 준비하는 중...');
-    ProgressDialog.update(0, '엑셀 파일을 준비하는 중...', '');
-    post('sharedparambatch:export-excel', { excelMode: excelMode || 'fast' });
+    ProgressDialog.update(0, '엑셀 파일을 준비하는 중...', '로그 결과와 저장 옵션을 정리하는 중...');
+    post('sharedparambatch:export-excel', { excelMode, locale: getLastExcelExportLocale() });
   }
 
   function handleExported(payload) {
@@ -567,6 +595,83 @@ export function renderSharedParamBatch(root) {
       ProgressDialog.hide();
       if (typeof afterHide === 'function') afterHide();
     }, delay);
+  }
+
+  function buildRunProgressSubtitle(percent, message, step, total) {
+    const raw = String(message || '').trim();
+    if (raw.includes('정의 로드')) return 'Shared Parameter 정의를 읽는 중...';
+    if (raw.includes('완료')) return 'Project Parameter 추가 완료';
+    if (total > 0) return `RVT 처리 중 (${Math.max(step, 0)}/${total})`;
+    return `Project Parameter 추가 진행 중 (${formatProgressPercent(percent)})`;
+  }
+
+  function buildRunProgressDetail(message, step, total) {
+    const raw = String(message || '').trim();
+    if (raw) return raw;
+    if (total > 0) return `${Math.max(step, 0)} / ${total}`;
+    return '';
+  }
+
+  function normalizeExcelPhase(phase) {
+    return String(phase || '').trim().toUpperCase() || 'EXCEL_WRITE';
+  }
+
+  function computeExcelPercent(phase, current, total, phaseProgress, fallbackPercent) {
+    const norm = normalizeExcelPhase(phase);
+    if (norm === 'DONE') { state.lastProgressPct = 100; return 100; }
+    if (norm === 'ERROR') return state.lastProgressPct;
+
+    if (Number.isFinite(fallbackPercent)) {
+      const direct = Math.max(state.lastProgressPct, Math.min(100, Number(fallbackPercent)));
+      state.lastProgressPct = direct;
+      return direct;
+    }
+
+    const completed = ['EXCEL_INIT', 'EXCEL_WRITE', 'EXCEL_SAVE', 'AUTOFIT'].reduce((acc, key) => {
+      if (key === norm) return acc;
+      return acc + (EXCEL_PHASE_WEIGHT[key] || 0);
+    }, 0);
+    const weight = EXCEL_PHASE_WEIGHT[norm] || 0;
+    const ratio = total > 0 ? Math.max(0, Math.min(1, current / total)) : 0;
+    const staged = Math.max(ratio, clamp01(phaseProgress));
+    const pct = Math.min(100, Math.max(state.lastProgressPct, (completed + weight * staged) * 100));
+    state.lastProgressPct = pct;
+    return pct;
+  }
+
+  function buildExcelSubtitle(phase, current, total) {
+    const norm = normalizeExcelPhase(phase);
+    switch (norm) {
+      case 'EXCEL_INIT': return '엑셀 워크북 준비 중...';
+      case 'EXCEL_WRITE': return `엑셀 로그 작성 중 (${current}/${Math.max(total, current || 1)})`;
+      case 'EXCEL_SAVE': return '엑셀 파일 저장 중...';
+      case 'AUTOFIT': return '엑셀 스타일 적용 중...';
+      case 'DONE': return '엑셀 내보내기 완료';
+      case 'ERROR': return '엑셀 내보내기 오류';
+      default: return '엑셀 내보내기 진행 중...';
+    }
+  }
+
+  function formatExcelDetail(phase, message, current, total) {
+    const raw = String(message || '').trim();
+    if (raw) return raw;
+    const norm = normalizeExcelPhase(phase);
+    if (norm === 'EXCEL_WRITE' && total > 0) return `${current} / ${total} 로그를 기록하는 중...`;
+    if (norm === 'AUTOFIT') return '셀 스타일과 열 너비를 정리하는 중...';
+    if (norm === 'DONE') return '엑셀 파일이 저장되었습니다.';
+    return '';
+  }
+
+  function clamp01(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0;
+    return Math.max(0, Math.min(1, num));
+  }
+
+  function formatProgressPercent(percent) {
+    const safe = Number(percent);
+    if (!Number.isFinite(safe)) return '0%';
+    return `${Math.max(0, Math.min(100, Math.round(safe * 10) / 10))}%`;
   }
 
   function renderSummary() {

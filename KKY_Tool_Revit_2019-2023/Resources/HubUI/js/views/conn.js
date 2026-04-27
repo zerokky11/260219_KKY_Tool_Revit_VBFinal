@@ -6,7 +6,7 @@
 // - UX: 결과영역은 검토 시작 전 숨김 → [검토 시작] 후 안내문 노출 → 데이터 수신 시 필터+표 노출
 // - 강조: Status별 톤은 Value1/Value2/Status 셀만 '캡슐형 테두리'로 표시
 
-import { clear, div, tdText, toast, setBusy, showExcelSavedDialog, chooseExcelMode, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
+import { clear, div, tdText, toast, setBusy, showExcelSavedDialog, chooseExcelMode, getLastExcelExportLocale, showCompletionSummaryDialog, closeCompletionSummaryDialog } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 
@@ -206,7 +206,7 @@ export function renderConn(root) {
   const tabBar = div('conn-tabs');
   const tabs = [
     { key: 'mismatch', label: 'Mismatch' },
-    { key: 'not-connected', label: 'Not Connected' }
+    { key: 'not-connected', label: 'Disconnected' }
   ];
   const tabButtons = new Map();
 
@@ -581,8 +581,8 @@ export function renderConn(root) {
       if (sendUnit === 'mm') { if (!isFinite(sendTol)) sendTol = 1; sendTol = sendTol / INCH_TO_MM; sendUnit = 'inch'; }
       const finalParams = getFinalReviewParams();
       const paramsCsv = finalParams.join(',');
-      ProgressDialog.show('커넥터 진단', '준비 중...');
-      ProgressDialog.update(0, '준비 중...', '');
+      ProgressDialog.show('커넥터 진단', '검토 조건을 준비하는 중...');
+      ProgressDialog.update(0, '검토 조건을 준비하는 중...', '허용 오차와 비교 파라미터를 정리하는 중...');
       post('connector:run', {
         tol: sendTol,
         unit: sendUnit,
@@ -608,8 +608,8 @@ export function renderConn(root) {
       const finalParams = getFinalReviewParams();
       const paramsCsv = finalParams.join(',');
       lastExcelPct = 0;
-      ProgressDialog.show('커넥터 엑셀 내보내기', '준비 중...');
-      ProgressDialog.update(0, '준비 중...', '');
+      ProgressDialog.show('커넥터 엑셀 내보내기', '엑셀 내보내기를 준비하는 중...');
+      ProgressDialog.update(0, '엑셀 내보내기를 준비하는 중...', '결과 탭과 저장 옵션을 정리하는 중...');
       post('connector:save-excel', {
         excelMode: mode || 'fast',
         tab,
@@ -716,13 +716,34 @@ export function renderConn(root) {
   function handleRunProgress(payload) {
     if (!acceptRunProgress) return;
     const percent = typeof payload?.pct === 'number' ? payload.pct : 0;
-    const message = payload?.text || '';
+    const message = payload?.detail || payload?.text || '';
     if (percent <= 0 && !message) {
       ProgressDialog.hide();
       return;
     }
-    ProgressDialog.show('커넥터 진단', message || '진행 중…');
-    ProgressDialog.update(percent, message || '', '');
+    const subtitle = payload?.stage || buildRunProgressSubtitle(percent, message);
+    ProgressDialog.show('커넥터 진단', subtitle);
+    ProgressDialog.update(percent, subtitle, buildRunProgressDetail(percent, message));
+  }
+
+  function buildRunProgressSubtitle(percent, message) {
+    const raw = String(message || '').trim();
+    if (!raw) return '진행 중…';
+    if (raw.includes('시작')) return '초기 설정을 확인하는 중…';
+    if (raw.includes('완료')) return '커넥터 진단 완료';
+    return `커넥터 비교 진행 중 (${formatRunPercent(percent)})`;
+  }
+
+  function buildRunProgressDetail(percent, message) {
+    const raw = String(message || '').trim();
+    if (raw) return raw;
+    return `전체 진행률 ${formatRunPercent(percent)}`;
+  }
+
+  function formatRunPercent(percent) {
+    const safe = Number(percent);
+    if (!Number.isFinite(safe)) return '0%';
+    return `${Math.max(0, Math.min(100, Math.round(safe * 10) / 10))}%`;
   }
 
   function handleExcelProgress(payload) {

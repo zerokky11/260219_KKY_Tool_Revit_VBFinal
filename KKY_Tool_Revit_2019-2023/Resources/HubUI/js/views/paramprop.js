@@ -1,5 +1,5 @@
 ﻿// Resources/HubUI/js/views/paramprop.js
-import { clear, div, toast, setBusy, showExcelSavedDialog, showCompletionSummaryDialog, debounce, chooseExcelMode } from '../core/dom.js';
+import { clear, div, toast, setBusy, showExcelSavedDialog, showCompletionSummaryDialog, debounce, chooseExcelMode, getLastExcelExportLocale } from '../core/dom.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 
@@ -409,13 +409,14 @@ export function renderParamProp(root) {
         lastProgressPct = 0;
         state.acceptProgress = true;
         setBusy(true, '공유 파라미터 연동 중...');
-        ProgressDialog.show('공유 파라미터 추가 및 연동', '준비 중...');
-        ProgressDialog.update(0, '준비 중...', '');
+        ProgressDialog.show('공유 파라미터 추가 및 연동', '연동 구성을 확인하는 중...');
+        ProgressDialog.update(0, '연동 구성을 확인하는 중...', '선택한 파라미터와 저장 옵션을 정리하는 중...');
         exportBtn.disabled = true;
         const payload = {
             paramNames: selected,
             paramGuids: Array.from(new Set((state.defs || []).filter((d) => selected.includes(d.name) && d.guid).map((d) => d.guid))),
             group: state.targetGroupId,
+            groupKey: state.targetGroups.find((item) => item?.id === state.targetGroupId)?.key || '',
             isInstance: !!state.isInstance,
             excludeDummy: !!state.excludeDummy,
             saveModifiedFamilies: !!state.saveModifiedFamilies,
@@ -430,11 +431,12 @@ export function renderParamProp(root) {
             return;
         }
         const excelMode = await chooseExcelMode();
+        if (!excelMode) return;
         state.acceptProgress = true;
         setBusy(true, '엑셀 내보내기 중...');
         ProgressDialog.show('공유 파라미터 결과 내보내기', '엑셀 파일을 준비하는 중...');
-        ProgressDialog.update(0, '엑셀 파일을 준비하는 중...', '');
-        post('sharedparam:export-excel', { excelMode: excelMode || 'fast' });
+        ProgressDialog.update(0, '엑셀 파일을 준비하는 중...', '검토 결과와 저장 옵션을 정리하는 중...');
+        post('sharedparam:export-excel', { excelMode, locale: getLastExcelExportLocale() });
     }
 
     function renderGroups() {

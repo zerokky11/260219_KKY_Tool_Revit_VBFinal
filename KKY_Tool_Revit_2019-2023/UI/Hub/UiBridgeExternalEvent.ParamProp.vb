@@ -44,6 +44,7 @@ Namespace UI.Hub
                     }).ToList(),
                     .targetGroups = If(res?.TargetGroups, New List(Of ParamPropagateService.ParameterGroupOption)()).Select(Function(g) New With {
                         .id = g.Id,
+                        .key = g.Key,
                         .name = g.Name
                     }).ToList()
                 }
@@ -193,13 +194,14 @@ Namespace UI.Hub
                 End If
 
                 Dim doAutoFit As Boolean = ParseExcelMode(payload)
-                Dim saved As String = ParamPropagateService.ExportResultToExcel(_lastParamResult, doAutoFit)
+                Dim exportLocale As String = ParseExcelLocale(payload)
+                Dim saved As String = ParamPropagateService.ExportResultToExcel(_lastParamResult, doAutoFit, exportLocale)
                 If String.IsNullOrWhiteSpace(saved) Then
-                    SendToWeb("sharedparam:exported", New With {.ok = False, .message = "엑셀 내보내기가 취소되었습니다."})
+                    SendToWebAfterDialog("sharedparam:exported", New With {.ok = False, .message = "엑셀 내보내기가 취소되었습니다."})
                     Return
                 End If
 
-                SendToWeb("sharedparam:exported", New With {.ok = True, .path = saved})
+                SendToWebAfterDialog("sharedparam:exported", New With {.ok = True, .path = saved})
             Catch ex As Exception
                 SendToWeb("sharedparam:exported", New With {.ok = False, .message = ex.Message})
                 SendToWeb("revit:error", New With {.message = "엑셀 내보내기 실패: " & ex.Message})

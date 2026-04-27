@@ -43,6 +43,7 @@ Namespace UI.Hub
 
             ' 초기 상태 브로드캐스트(항상 위, 연결)
             BroadcastTopmost()
+            BroadcastDocumentVisualAidSettings()
             SendToWeb("host:connected", New With {.ok = True})
         End Sub
 
@@ -133,7 +134,12 @@ Namespace UI.Hub
             map.Add("connector:run", "HandleConnectorRun")
             map.Add("connector:param-list", "HandleConnectorParamList")
             map.Add("connector:save-excel", "HandleConnectorSaveExcel")
+            ' Tap / Branch Alignment Review
+            map.Add("tapalign:run", "HandleTapAlignRun")
+            map.Add("tapalign:save-excel", "HandleTapAlignSaveExcel")
             map.Add("floorinfo:config-load", "HandleFloorInfoConfigLoad")
+            map.Add("familysuitability:pick-criteria", "HandleFamilySuitabilityPickCriteria")
+            map.Add("parameterduplication:pick-sharedparams", "HandleProjectParameterDuplicationPickSharedParams")
             ' Export Points with Angle
             map.Add("export:browse-folder", "HandleExportBrowse")
             map.Add("export:add-rvt-files", "HandleExportAddRvtFiles")
@@ -179,6 +185,7 @@ Namespace UI.Hub
             map.Add("lateralnozzle:init", "HandleLateralNozzleInit")
             map.Add("lateralnozzle:pick-excels", "HandleLateralNozzlePickExcels")
             map.Add("lateralnozzle:run", "HandleLateralNozzleRun")
+            map.Add("lateralnozzle:export", "HandleLateralNozzleExport")
             map.Add("lateralnozzle:open-folder", "HandleLateralNozzleOpenFolder")
             ' 공통 Excel 동작
             map.Add("excel:open", "HandleExcelOpen")
@@ -197,17 +204,28 @@ Namespace UI.Hub
             map.Add("guid:add-files", "HandleGuidAddFiles")
             map.Add("guid:run", "HandleGuidRun")
             map.Add("guid:export", "HandleGuidExport")
+            map.Add("guid:pick-cleanup-excel", "HandleGuidPickCleanupExcel")
+            map.Add("guid:cleanup", "HandleGuidCleanup")
             map.Add("guid:request-family-detail", "HandleGuidRequestFamilyDetail")
             ' Family Link Audit
             map.Add("familylink:init", "HandleFamilyLinkInit")
             map.Add("familylink:pick-rvts", "HandleFamilyLinkPickRvts")
             map.Add("familylink:run", "HandleFamilyLinkRun")
             map.Add("familylink:export", "HandleFamilyLinkExport")
+            ' Revit Link Path Batch
+            map.Add("linkpath:pick-rvts", "HandleLinkPathPickRvts")
+            map.Add("linkpath:pick-excel", "HandleLinkPathPickExcel")
+            map.Add("linkpath:extract", "HandleLinkPathExtract")
+            map.Add("linkpath:export", "HandleLinkPathExport")
+            map.Add("linkpath:import", "HandleLinkPathImport")
+            map.Add("linkpath:apply", "HandleLinkPathApply")
             ' Multi RVT Hub
             map.Add("hub:pick-rvt", "HandleMultiPickRvt")
             map.Add("hub:multi-run", "HandleMultiRun")
             map.Add("hub:multi-export", "HandleMultiExport")
             map.Add("hub:multi-clear", "HandleMultiClear")
+            map.Add("favorites:preset-save", "HandleFavoritesPresetSave")
+            map.Add("favorites:preset-load", "HandleFavoritesPresetLoad")
             map.Add("commonoptions:get", "HandleCommonOptionsGet")
             map.Add("commonoptions:save", "HandleCommonOptionsSave")
             map.Add("deliverycleaner:init", "HandleDeliveryCleanerInit")
@@ -234,6 +252,9 @@ Namespace UI.Hub
             map.Add("update:query", "HandleUpdateQuery")
             map.Add("update:check", "HandleUpdateCheck")
             map.Add("update:install", "HandleUpdateInstall")
+            ' Document Visual Aid
+            map.Add("documentvisualaid:query-settings", "HandleDocumentVisualAidQuerySettings")
+            map.Add("documentvisualaid:set-enabled", "HandleDocumentVisualAidSetEnabled")
 
             Dim methodName As String = Nothing
             If Not map.TryGetValue(name, methodName) Then
@@ -373,6 +394,14 @@ Namespace UI.Hub
             End Try
         End Sub
 
+        Friend Shared Sub BroadcastDocumentVisualAidSettings()
+            Try
+                SendToWeb("host:document-visual-aid-settings",
+                          Global.KKY_Tool_Revit.UI.DocumentVisualAidService.CreateHostSettingsPayload())
+            Catch
+            End Try
+        End Sub
+
         Friend Shared Function ParseExcelMode(payload As Object) As Boolean
             Dim mode As String = "normal"
 
@@ -388,6 +417,26 @@ Namespace UI.Hub
             End Try
 
             Return Not String.Equals(mode, "fast", StringComparison.OrdinalIgnoreCase)
+        End Function
+
+        Friend Shared Function ParseExcelLocale(payload As Object,
+                                                Optional fallback As String = "ko") As String
+            Dim locale As String = fallback
+
+            Try
+                If payload IsNot Nothing Then
+                    Dim localeProp = GetProp(payload, "locale")
+                    If localeProp IsNot Nothing Then
+                        Dim raw = Convert.ToString(localeProp)
+                        If Not String.IsNullOrWhiteSpace(raw) Then locale = raw
+                    End If
+                End If
+            Catch
+            End Try
+
+            Dim normalized As String = If(locale, String.Empty).Trim().ToLowerInvariant()
+            If normalized = "en" OrElse normalized = "eng" OrElse normalized = "english" Then Return "en"
+            Return "ko"
         End Function
 
         Friend Shared Function FilterIssueRowsCopy(styleKey As String, table As DataTable) As DataTable
@@ -417,7 +466,25 @@ Namespace UI.Hub
                 Exit For
             Next
 
-            Return s
+            Return MaybeUnescapeSerializedText(s)
+        End Function
+
+        Friend Shared Function MaybeUnescapeSerializedText(value As String) As String
+            Dim s As String = If(value, String.Empty)
+            If String.IsNullOrEmpty(s) Then Return s
+
+            Dim looksEscaped As Boolean =
+                s.IndexOf("\u", StringComparison.OrdinalIgnoreCase) >= 0 OrElse
+                s.Contains("\\") OrElse
+                s.Contains("\/")
+
+            If Not looksEscaped Then Return s
+
+            Try
+                Return System.Text.RegularExpressions.Regex.Unescape(s)
+            Catch
+                Return s
+            End Try
         End Function
 
 Private Shared Function NormalizeEventName(name As String) As String
@@ -476,13 +543,6 @@ Private Shared Function NormalizeEventName(name As String) As String
 
             ' 일부 호출 경로에서 "C:\...ile.xlsx" 처럼 따옴표가 포함되어 전달되는 경우가 있어 정규화
             inputPath = NormalizeWrappedQuotesText(inputPath)
-            Try
-                If inputPath.IndexOf("\u", StringComparison.OrdinalIgnoreCase) >= 0 OrElse inputPath.Contains("\\") Then
-                    inputPath = System.Text.RegularExpressions.Regex.Unescape(inputPath)
-                End If
-            Catch
-                ' ignore
-            End Try
 
             ' file:///C:/... 형태 대응
             Try
@@ -508,34 +568,42 @@ Private Shared Function NormalizeEventName(name As String) As String
             End Try
 
             Dim fileExists As Boolean = False
+            Dim directoryExists As Boolean = False
             Try
                 fileExists = System.IO.File.Exists(fullPath)
             Catch
                 ' ignore
             End Try
+            Try
+                directoryExists = System.IO.Directory.Exists(fullPath)
+            Catch
+                ' ignore
+            End Try
 
-            If Not fileExists Then
-                SendToWeb("host:warn", New With {.message = "엑셀 파일을 찾을 수 없습니다: " & fullPath, .path = fullPath})
+            If Not fileExists AndAlso Not directoryExists Then
+                SendToWeb("host:warn", New With {.message = "엑셀 경로를 찾을 수 없습니다: " & fullPath, .path = fullPath})
                 Return
             End If
 
-            Try
-                Dim info As New System.IO.FileInfo(fullPath)
-                Dim lengthOk As Boolean = False
-                For i As Integer = 0 To 9
-                    info.Refresh()
-                    If info.Exists AndAlso info.Length > 0 Then
-                        lengthOk = True
-                        Exit For
+            If fileExists Then
+                Try
+                    Dim info As New System.IO.FileInfo(fullPath)
+                    Dim lengthOk As Boolean = False
+                    For i As Integer = 0 To 9
+                        info.Refresh()
+                        If info.Exists AndAlso info.Length > 0 Then
+                            lengthOk = True
+                            Exit For
+                        End If
+                        System.Threading.Thread.Sleep(200)
+                    Next
+                    If Not lengthOk Then
+                        SendToWeb("host:warn", New With {.message = "파일 크기가 0입니다. 열기를 시도합니다: " & fullPath, .path = fullPath})
                     End If
-                    System.Threading.Thread.Sleep(200)
-                Next
-                If Not lengthOk Then
-                    SendToWeb("host:warn", New With {.message = "파일 크기가 0입니다. 열기를 시도합니다: " & fullPath, .path = fullPath})
-                End If
-            Catch ex As Exception
-                SendToWeb("host:warn", New With {.message = "파일 상태 확인에 실패했습니다: " & ex.Message, .path = fullPath})
-            End Try
+                Catch ex As Exception
+                    SendToWeb("host:warn", New With {.message = "파일 상태 확인에 실패했습니다: " & ex.Message, .path = fullPath})
+                End Try
+            End If
 
             Dim opened As Boolean = False
             Dim firstError As Exception = Nothing
@@ -556,19 +624,20 @@ Private Shared Function NormalizeEventName(name As String) As String
 
                 System.Diagnostics.Process.Start(psi)
                 opened = True
-                SendToWeb("host:info", New With {.message = "엑셀 열기를 시도했습니다: " & fullPath, .path = fullPath})
+                SendToWeb("host:info", New With {.message = If(directoryExists, "폴더 열기를 시도했습니다: ", "엑셀 열기를 시도했습니다: ") & fullPath, .path = fullPath})
             Catch ex As Exception
                 firstError = ex
             End Try
 
             If Not opened Then
                 Try
-                    Dim psi As New System.Diagnostics.ProcessStartInfo("explorer.exe", "/select,""" & fullPath & """")
+                    Dim explorerArgs As String = If(directoryExists, """" & fullPath & """", "/select,""" & fullPath & """")
+                    Dim psi As New System.Diagnostics.ProcessStartInfo("explorer.exe", explorerArgs)
                     psi.UseShellExecute = True
                     System.Diagnostics.Process.Start(psi)
                     opened = True
 
-                    Dim warnMsg As String = "엑셀 열기에 실패하여 탐색기로 열었습니다: " & fullPath
+                    Dim warnMsg As String = If(directoryExists, "폴더 열기에 실패하여 탐색기로 열었습니다: ", "엑셀 열기에 실패하여 탐색기로 열었습니다: ") & fullPath
                     If firstError IsNot Nothing Then
                         warnMsg &= " (" & firstError.Message & ")"
                     End If
@@ -595,6 +664,25 @@ Private Shared Function NormalizeEventName(name As String) As String
                 .message = "문서 전환은 Revit 창에서 직접 선택해 주세요.",
                 .target = name
             })
+        End Sub
+
+        Private Sub HandleDocumentVisualAidQuerySettings()
+            BroadcastDocumentVisualAidSettings()
+        End Sub
+
+        Private Sub HandleDocumentVisualAidSetEnabled(payload As Object)
+            Dim enabled As Boolean = True
+
+            Try
+                Dim raw = GetProp(payload, "enabled")
+                If raw IsNot Nothing Then
+                    enabled = Convert.ToBoolean(raw)
+                End If
+            Catch
+            End Try
+
+            Global.KKY_Tool_Revit.UI.DocumentVisualAidService.SetEnabled(enabled)
+            BroadcastDocumentVisualAidSettings()
         End Sub
 
     End Class
