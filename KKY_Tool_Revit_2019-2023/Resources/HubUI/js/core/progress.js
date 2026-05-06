@@ -102,7 +102,7 @@ export const ProgressDialog = {
             isVisible = true;
             document.body.classList.add('is-busy');
         }
-        if (titleEl) titleEl.textContent = title || '작업 진행 중';
+        if (titleEl) titleEl.textContent = title || '작업을 진행하는 중입니다';
         if (detailEl) detailEl.textContent = subtitle || '';
         if (metaEl) metaEl.textContent = '';
         if (statusEl) statusEl.textContent = '';

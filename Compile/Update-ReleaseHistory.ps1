@@ -22,10 +22,17 @@ $ErrorActionPreference = 'Stop'
 function Split-ReleaseNotes {
     param([string]$Text)
 
+    $fallbackNote = -join ([char[]]@(
+        0xC138, 0xBD80, 0x20, 0xBCC0, 0xACBD, 0x20, 0xC0AC, 0xD56D, 0xC740, 0x20,
+        0xC5C5, 0xB370, 0xC774, 0xD2B8, 0x20, 0xB0B4, 0xC5ED, 0x20,
+        0xD398, 0xC774, 0xC9C0, 0xC5D0, 0xC11C, 0x20, 0xD655, 0xC778, 0xD574, 0x20,
+        0xC8FC, 0xC138, 0xC694, 0x002E
+    ))
+
     $normalized = [string]$Text
     $normalized = $normalized.Trim()
     if ([string]::IsNullOrWhiteSpace($normalized)) {
-        return @('세부 변경 사항은 업데이트 내역 페이지에서 확인해 주세요.')
+        return @($fallbackNote)
     }
 
     $result = New-Object System.Collections.Generic.List[string]
@@ -39,18 +46,19 @@ function Split-ReleaseNotes {
     }
 
     if ($result.Count -eq 0) {
-        $null = $result.Add('세부 변경 사항은 업데이트 내역 페이지에서 확인해 주세요.')
+        $null = $result.Add($fallbackNote)
     }
 
     return @($result.ToArray())
 }
 
 $notesList = Split-ReleaseNotes -Text $Notes
+$titlePrefix = -join ([char[]]@(0xBC84, 0xC804, 0x20))
 
 $entry = [ordered]@{
     version      = $Version
     publishedAt  = $PublishedAt
-    title        = "Version $Version"
+    title        = "$titlePrefix$Version"
     notes        = $notesList
     packageUrl   = $PackageUrl
     installerUrl = $InstallerUrl

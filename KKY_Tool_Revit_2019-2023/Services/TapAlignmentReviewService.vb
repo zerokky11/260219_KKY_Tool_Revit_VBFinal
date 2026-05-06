@@ -465,11 +465,11 @@ Namespace Services
                 ToList()
 
             If progress IsNot Nothing Then
-                progress(0.05R, "??遺꾧린 ?쇳똿 ?꾨낫瑜??섏쭛?섎뒗 以?..")
+                progress(0.05R, "탭/분기 축 틀어짐 후보를 수집하는 중...")
             End If
 
             If candidates.Count = 0 Then
-                If progress IsNot Nothing Then progress(1.0R, "?꾨즺")
+                If progress IsNot Nothing Then progress(1.0R, "완료")
                 Return rows
             End If
 
@@ -483,7 +483,7 @@ Namespace Services
 
                 If progress IsNot Nothing Then
                     Dim pct = 0.05R + (0.95R * CDbl(index + 1) / CDbl(total))
-                    progress(pct, String.Format(CultureInfo.InvariantCulture, "??遺꾧린 ?쇳똿 寃??以?.. ({0}/{1})", index + 1, total))
+                    progress(pct, String.Format(CultureInfo.InvariantCulture, "탭/분기 축 틀어짐 검토 중... ({0}/{1})", index + 1, total))
                 End If
             Next
 

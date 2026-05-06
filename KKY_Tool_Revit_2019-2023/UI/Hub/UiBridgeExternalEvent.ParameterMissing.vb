@@ -93,7 +93,7 @@ Namespace UI.Hub
                 settings,
                 Sub(pct, msg)
                     Dim overallPct = ((basePct + (pct / 100.0R) / Math.Max(_multiTotal, 1)) * 100.0R)
-                    ReportMultiProgress(overallPct, "Parameter missing review running", $"{safeName} - {msg}")
+                    ReportMultiProgress(overallPct, "파라미터 누락 검토 실행 중", $"{safeName} - {msg}")
                 End Sub)
 
             If _multiParameterMissingRows Is Nothing Then _multiParameterMissingRows = New List(Of ParameterMissingReviewService.ReviewRow)()
@@ -116,7 +116,7 @@ Namespace UI.Hub
                     .OkCount = 0,
                     .TargetConditionCount = 0,
                     .ExceptionRuleCount = 0,
-                    .Reason = "No review result is available."
+                    .Reason = "검토 결과가 없습니다."
                 })
             End If
         End Sub
@@ -163,31 +163,31 @@ Namespace UI.Hub
 
             Dim parameterNames As List(Of String) = New List(Of String)()
             Dim exceptionRuleCount As Integer = 0
-            Dim commonFilterLabel As String = "None"
+            Dim commonFilterLabel As String = "없음"
             If _multiRequest IsNot Nothing AndAlso _multiRequest.ParameterMissing IsNot Nothing Then
                 parameterNames = If(_multiRequest.ParameterMissing.ParameterNames, New List(Of String)())
                 exceptionRuleCount = CountConfiguredMissingRules(_multiRequest.ParameterMissing.ExceptionRules)
             End If
             If _multiRequest IsNot Nothing AndAlso _multiRequest.Common IsNot Nothing Then
                 If Not String.IsNullOrWhiteSpace(_multiRequest.Common.TargetFilter) OrElse Not String.IsNullOrWhiteSpace(_multiRequest.Common.ExcludeTargetFilter) Then
-                    commonFilterLabel = "Applied"
+                    commonFilterLabel = "적용"
                 End If
             End If
 
             Return New With {
                 .key = "parametermissing",
-                .label = "Parameter Missing Review",
+                .label = "파라미터 누락 검토",
                 .lines = New String() {
-                    $"Selected files: {GetRequestedMultiFileCount()}",
-                    $"Parameters: {parameterNames.Count}",
-                    $"Target elements: {totalTargets}",
-                    $"Reviewed cells: {totalReviewed}",
-                    $"Common scope filter: {commonFilterLabel}",
-                    $"Exception rules: {exceptionRuleCount}",
-                    $"Missing errors: {totalErrors}",
-                    $"Ignored by rules: {totalIgnored}",
-                    $"OK values: {totalOk}",
-                    $"Export rows: {If(_multiParameterMissingRows, New List(Of ParameterMissingReviewService.ReviewRow)()).Count}"
+                    $"선택 파일 수: {GetRequestedMultiFileCount()}개",
+                    $"검토 파라미터 수: {parameterNames.Count}개",
+                    $"검토 대상 객체 수: {totalTargets}개",
+                    $"검토 셀 수: {totalReviewed}개",
+                    $"공통 검토대상 필터: {commonFilterLabel}",
+                    $"누락 예외 규칙 수: {exceptionRuleCount}개",
+                    $"누락 오류 수: {totalErrors}건",
+                    $"예외 제외 수: {totalIgnored}건",
+                    $"정상 값 수: {totalOk}개",
+                    $"엑셀 결과 행 수: {If(_multiParameterMissingRows, New List(Of ParameterMissingReviewService.ReviewRow)()).Count}행"
                 },
                 .fileSummaries = BuildParameterMissingFileSummaries()
             }
@@ -241,7 +241,7 @@ Namespace UI.Hub
             Dim rows = If(_multiParameterMissingRows, New List(Of ParameterMissingReviewService.ReviewRow)())
             Dim summaries = If(_multiParameterMissingFileSummaries, New List(Of ParameterMissingReviewService.FileSummary)())
             If rows.Count = 0 AndAlso summaries.Count = 0 Then
-                SendToWeb("hub:multi-exported", New With {.ok = False, .message = "No parameter missing review result is available."})
+                SendToWeb("hub:multi-exported", New With {.ok = False, .message = "파라미터 누락 검토 결과가 없습니다."})
                 Return
             End If
 
@@ -276,7 +276,7 @@ Namespace UI.Hub
                     If String.IsNullOrWhiteSpace(baseName) Then baseName = fileName
 
                     Dim table = ParameterMissingReviewService.BuildExportTable(perFileRows)
-                    ExcelCore.EnsureNoDataRow(table, "No review result is available.")
+                    ExcelCore.EnsureNoDataRow(table, "검토 결과가 없습니다.")
                     sheetList.Add(New KeyValuePair(Of String, DataTable)(baseName, table))
 
                     Dim summary = summaries.FirstOrDefault(Function(item) item IsNot Nothing AndAlso String.Equals(GetSafeMultiFileName(item.File), fileName, StringComparison.OrdinalIgnoreCase))
@@ -284,14 +284,14 @@ Namespace UI.Hub
                 Next
 
                 If sheetList.Count = 0 Then
-                    SendToWeb("hub:multi-exported", New With {.ok = False, .message = "No parameter missing review result is available."})
+                    SendToWeb("hub:multi-exported", New With {.ok = False, .message = "파라미터 누락 검토 결과가 없습니다."})
                     Return
                 End If
 
                 If Not String.IsNullOrWhiteSpace(outputFolder) Then
-                    Dim savedCount = SaveSplitSingleSheetTables(outputFolder, "parametermissing", "ParameterMissingReview", "Parameter Missing Review", sheetList, doAutoFit, excelMode, exportLocale, fileIssueCounts:=fileIssueCounts)
+                    Dim savedCount = SaveSplitSingleSheetTables(outputFolder, "parametermissing", "ParameterMissingReview", "파라미터 누락 검토", sheetList, doAutoFit, excelMode, exportLocale, fileIssueCounts:=fileIssueCounts)
                     If savedCount <= 0 Then
-                        SendToWeb("hub:multi-exported", New With {.ok = False, .message = "Excel export was cancelled."})
+                        SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 내보내기가 취소되었습니다."})
                     Else
                         SendSplitExportCompleted(outputFolder, savedCount)
                     End If
@@ -301,12 +301,12 @@ Namespace UI.Hub
                 saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, defaultFileName, doAutoFit, "hub:multi-progress", sheetKeyOverride:="parametermissing", exportKind:="parametermissing", exportLocale:=exportLocale)
             Else
                 Dim table = ParameterMissingReviewService.BuildExportTable(rows)
-                ExcelCore.EnsureNoDataRow(table, "No review result is available.")
-                saved = ExcelCore.PickAndSaveXlsx("Parameter Missing Review", table, defaultFileName, doAutoFit, "hub:multi-progress", "parametermissing", exportLocale:=exportLocale)
+                ExcelCore.EnsureNoDataRow(table, "검토 결과가 없습니다.")
+                saved = ExcelCore.PickAndSaveXlsx("파라미터 누락 검토", table, defaultFileName, doAutoFit, "hub:multi-progress", "parametermissing", exportLocale:=exportLocale)
             End If
 
             If String.IsNullOrWhiteSpace(saved) Then
-                SendToWeb("hub:multi-exported", New With {.ok = False, .message = "Excel export was cancelled."})
+                SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 내보내기가 취소되었습니다."})
             Else
                 TryApplyExportStyles("parametermissing", saved, doAutoFit, If(excelMode, "normal"))
                 SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})

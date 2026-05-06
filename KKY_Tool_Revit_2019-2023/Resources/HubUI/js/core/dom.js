@@ -165,7 +165,7 @@ export function log(message, payload) {
 }
 
 let busyEl = null;
-export function setBusy(on, text = '작업 중...') {
+export function setBusy(on, text = '작업 중입니다.') {
   if (on) {
     if (busyEl) {
       const spinner = busyEl.querySelector('.spinner');
@@ -275,8 +275,13 @@ export function showExcelSavedDialog(message, filePath, onOpen, options = {}) {
   btnOpen.focus();
 }
 
-window.addEventListener('error', (e) => toast(`오류: ${e.message}`, 'err', 4200));
-window.addEventListener('unhandledrejection', (e) => toast(`오류: ${e.reason}`, 'err', 4200));
+function showGlobalRuntimeError(detail) {
+  try { console.error('[hub] runtime error', detail); } catch(e) {}
+  toast('화면 처리 중 오류가 발생했습니다. 화면을 새로 열어 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 4200);
+}
+
+window.addEventListener('error', (e) => showGlobalRuntimeError(e && (e.error || e.message || e)));
+window.addEventListener('unhandledrejection', (e) => showGlobalRuntimeError(e && (e.reason || e)));
 
 export function chooseExcelMode(onSelect, options = {}) {
   return new Promise((resolve) => {
@@ -296,7 +301,7 @@ export function chooseExcelMode(onSelect, options = {}) {
 
     const desc = document.createElement('div');
     desc.className = 'excelmode-desc';
-    desc.textContent = '빠른 추출은 열 너비 자동 맞춤을 건너뛰고, 일반 추출은 열 너비 AutoFit까지 수행합니다.';
+    desc.textContent = '빠른 추출은 열 너비 맞춤을 건너뛰고, 일반 추출은 열 너비 자동 맞춤까지 수행합니다.';
 
     const localeSection = document.createElement('div');
     localeSection.className = 'excelmode-locale';
@@ -426,7 +431,7 @@ export function chooseExcelMode(onSelect, options = {}) {
     const btnNormal = document.createElement('button');
     btnNormal.type = 'button';
     btnNormal.className = 'btn';
-    btnNormal.textContent = '일반 추출(열 너비 AutoFit)';
+    btnNormal.textContent = '일반 추출(열 너비 자동 맞춤)';
     btnNormal.addEventListener('click', () => close('normal'));
 
     const btnCancel = document.createElement('button');

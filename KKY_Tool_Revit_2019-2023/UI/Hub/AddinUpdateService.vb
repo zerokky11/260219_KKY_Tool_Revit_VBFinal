@@ -76,7 +76,7 @@ Namespace UI.Hub
 
             If feedUrls.Count = 0 Then
                 info.IsConfigured = False
-                info.Message = "업데이트 피드가 설정되지 않았습니다. Resources\update-config.json 파일에 feedUrl 또는 feedUrls를 입력해 주세요."
+                info.Message = "업데이트 서버 주소가 아직 설정되지 않았습니다. 관리자에게 Resources\update-config.json의 feedUrls 설정을 요청해 주세요."
                 Return info
             End If
 
@@ -96,11 +96,11 @@ Namespace UI.Hub
 
             If manifest Is Nothing Then
                 Dim reason = If(lastError Is Nothing, "알 수 없는 오류", lastError.Message)
-                Throw New InvalidOperationException("모든 업데이트 피드에 연결하지 못했습니다. " & reason)
+                Throw New InvalidOperationException("설정된 업데이트 서버에 연결하지 못했습니다. " & reason)
             End If
 
             If String.IsNullOrWhiteSpace(manifest.Version) Then
-                Throw New InvalidDataException("업데이트 피드에 version 값이 없습니다.")
+                Throw New InvalidDataException("업데이트 정보 파일에 version 값이 없습니다. latest.json 구성을 확인해 주세요.")
             End If
 
             info.IsConfigured = True

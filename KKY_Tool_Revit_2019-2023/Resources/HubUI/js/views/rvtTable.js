@@ -74,12 +74,12 @@ export function renderRvtRows(tbody, rows, emptyMessage = '등록된 RVT가 없�
     const nameCell = document.createElement('td');
     nameCell.className = 'segmentpms-path-cell';
     nameCell.textContent = row.name || '-';
-    nameCell.title = row.name || '';
+    nameCell.setAttribute('aria-label', row.name || '-');
 
     const pathCell = document.createElement('td');
     pathCell.className = 'segmentpms-path-cell';
     pathCell.textContent = row.path || '-';
-    pathCell.title = row.title || row.path || '';
+    pathCell.setAttribute('aria-label', row.title || row.path || '-');
 
     tr.append(ckCell, idxCell, nameCell, pathCell);
     tbody.append(tr);

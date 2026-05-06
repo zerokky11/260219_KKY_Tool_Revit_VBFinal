@@ -138,7 +138,7 @@ namespace KKY_Tool_Revit.Services
             List<string> parameterNames = NormalizeParameterNames(settings.ParameterNames);
             if (parameterNames.Count == 0)
             {
-                throw new InvalidOperationException("At least one parameter name is required.");
+                throw new InvalidOperationException("검토할 파라미터명을 1개 이상 선택하세요.");
             }
 
             ElementParameterUpdateSettings targetFilter = settings.TargetFilter?.Clone() ?? new ElementParameterUpdateSettings();
@@ -150,7 +150,7 @@ namespace KKY_Tool_Revit.Services
             List<MissingRule> exceptionRules = NormalizeExceptionRules(settings.ExceptionRules, parameterNames);
             List<string> extraParameterNames = NormalizeExtraParameterNames(settings.ExtraParameterNames);
 
-            progress?.Invoke(5d, "Collecting review targets");
+            progress?.Invoke(5d, "검토 대상 수집 중");
             List<Element> candidates = ModelParameterExtractionService.GetExtractableElements(doc)
                 .Where(element => element != null)
                 .ToList();
@@ -169,7 +169,7 @@ namespace KKY_Tool_Revit.Services
 
                 if (index == 0 || index == candidates.Count - 1 || index % 250 == 0)
                 {
-                    progress?.Invoke(5d + (((double)(index + 1) / candidateTotal) * 15d), $"Collecting review targets ({index + 1}/{candidates.Count})");
+                    progress?.Invoke(5d + (((double)(index + 1) / candidateTotal) * 15d), $"검토 대상 수집 중 ({index + 1}/{candidates.Count})");
                 }
             }
 
@@ -222,7 +222,7 @@ namespace KKY_Tool_Revit.Services
 
                 if (index == 0 || index == targetElements.Count - 1 || index % 120 == 0)
                 {
-                    progress?.Invoke(20d + (((double)(index + 1) / elementTotal) * 80d), $"Reviewing missing values ({index + 1}/{targetElements.Count})");
+                    progress?.Invoke(20d + (((double)(index + 1) / elementTotal) * 80d), $"누락 값 검토 중 ({index + 1}/{targetElements.Count})");
                 }
             }
 
@@ -252,7 +252,7 @@ namespace KKY_Tool_Revit.Services
                 }
             }
 
-            progress?.Invoke(100d, "Parameter missing value review complete");
+            progress?.Invoke(100d, "파라미터 누락 검토 완료");
 
             result.FileSummaries.Add(new FileSummary
             {
@@ -333,7 +333,7 @@ namespace KKY_Tool_Revit.Services
         {
             if (result == null)
             {
-                return "No review result is available.";
+                return "검토 결과가 없습니다.";
             }
 
             if (result.TargetElementCount <= 0)
@@ -347,9 +347,9 @@ namespace KKY_Tool_Revit.Services
             }
 
             string ruleText = configuredRuleCount > 0
-                ? $" ({configuredRuleCount.ToString(CultureInfo.InvariantCulture)} exception filters configured)"
+                ? $" (누락 예외 필터 {configuredRuleCount.ToString(CultureInfo.InvariantCulture)}개 적용)"
                 : string.Empty;
-            return $"{result.ErrorCount.ToString(CultureInfo.InvariantCulture)} missing parameter values were found{ruleText}.";
+            return $"파라미터 누락 오류가 {result.ErrorCount.ToString(CultureInfo.InvariantCulture)}건 발견되었습니다{ruleText}.";
         }
 
         private static string BuildScopeSummary(IEnumerable<ElementParameterCondition> targetConditions,
@@ -362,17 +362,17 @@ namespace KKY_Tool_Revit.Services
             string targetSummary = BuildConditionSummary(targetConditions, targetCombinationMode);
             if (!string.IsNullOrWhiteSpace(targetSummary))
             {
-                parts.Add($"Target filter: {targetSummary}");
+                parts.Add($"검토 대상 필터: {targetSummary}");
             }
 
             if (!string.IsNullOrWhiteSpace(commonTargetFilterText))
             {
-                parts.Add($"Common include filter: {commonTargetFilterText}");
+                parts.Add($"공통 포함 필터: {commonTargetFilterText}");
             }
 
             if (!string.IsNullOrWhiteSpace(commonExcludeTargetFilterText))
             {
-                parts.Add($"Common exclude filter: {commonExcludeTargetFilterText}");
+                parts.Add($"공통 제외 필터: {commonExcludeTargetFilterText}");
             }
 
             return parts.Count == 0 ? string.Empty : string.Join(" / ", parts);

@@ -4,7 +4,7 @@ import { chooseExcelMode, getLastExcelExportLocale, showExcelSavedDialog } from 
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { post, onHost } from '../core/bridge.js';
-import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
+import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js?v=20260504a';
 
 const FILTER_OPERATORS = [
   'Equals', 'NotEquals', 'Contains', 'NotContains', 'BeginsWith', 'NotBeginsWith',
@@ -33,7 +33,7 @@ export function renderParamModifier(root) {
   page.innerHTML = `
     <div class="feature-header deliverycleaner-header">
       <div class="feature-heading">
-        <span class="feature-kicker">UTILITIES · 별도 워크플로우</span>
+        <span class="feature-kicker">유틸리티 · 별도 워크플로</span>
         <h2 class="feature-title">파라미터 수정기</h2>
         <p class="feature-sub">입력 조건을 기준으로 활성 문서 또는 여러 RVT에 파라미터 값을 일괄 적용합니다.</p>
       </div>
@@ -103,21 +103,27 @@ export function renderParamModifier(root) {
     const savedPath = payload?.path || payload?.resultWorkbookPath || '';
     if (payload?.ok && savedPath) {
       requestAnimationFrame(() => {
-        showExcelSavedDialog(payload?.message || '결과 엑셀을 저장했습니다.', savedPath, (path) => post('excel:open', { path }));
+        showExcelSavedDialog(payload?.message || '파라미터 수정기 결과 엑셀을 저장했습니다.', savedPath, (path) => post('excel:open', { path }));
       });
     } else {
       requestAnimationFrame(() => {
         ProgressDialog.hide();
         openCompletionResultDialog(state, payload || {});
       });
-      toast(payload?.message || '결과 파일을 저장했습니다.', payload?.ok === false ? 'err' : 'ok', 3200);
+      toast(
+        payload?.message || (payload?.ok === false
+          ? '파라미터 수정기 결과 파일 저장에 실패했습니다.'
+          : '파라미터 수정기 결과 파일을 저장했습니다.'),
+        payload?.ok === false ? 'err' : 'ok',
+        3200
+      );
     }
   });
   onHost('parammodifier:error', (payload) => {
     state.acceptProgress = false;
     ProgressDialog.hide();
     setPageBusy(state, false);
-    toast(payload?.message || '오류가 발생했습니다.', 'err', 3600);
+    toast(payload?.message || '파라미터 수정기 작업 중 오류가 발생했습니다. 대상 RVT, 선택 조건, 입력 파라미터 값을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3600);
   });
 
   renderElementUpdateRows(state);
@@ -160,7 +166,7 @@ function openCompletionResultDialog(state, payload) {
         onClick: async () => {
           const excelMode = await chooseExcelMode();
           if (!excelMode) return;
-          beginParamModifierProgress('파라미터 수정기', '결과 엑셀 생성을 준비 중입니다.');
+          beginParamModifierProgress('파라미터 수정기', '결과 엑셀 생성을 준비하는 중입니다.');
           post('parammodifier:export-results', { excelMode: excelMode || 'fast', locale: getLastExcelExportLocale() });
         }
       });
@@ -180,12 +186,12 @@ function openCompletionResultDialog(state, payload) {
 
   showCompletionSummaryDialog({
     title: '파라미터 수정 완료',
-    message: '작업이 완료되었습니다. 결과를 확인하고 필요하면 엑셀을 추출하세요.',
+    message: '작업이 완료되었습니다. 결과를 확인하고 필요하면 엑셀을 추출해 주세요.',
     summaryItems: [
       { label: '대상 파일', value: `${targetCount}개` },
       { label: '성공', value: `${successCount}개` },
       { label: '실패', value: `${failCount}개` },
-      { label: '변경 없음', value: `${noChangeCount}개` },
+      { label: '변경 없는 파일', value: `${noChangeCount}개` },
       { label: '업데이트 요소', value: `${updatedElementCount}개` },
       { label: '업데이트 파라미터', value: `${updatedParameterCount}개` }
     ],
@@ -207,7 +213,7 @@ function buildRunCard(state) {
   `;
 
   const actionRow = div('deliverycleaner-inline-actions multi-action-card__actions');
-  const applyActiveBtn = actionButton('활성문서 적용', () => runActiveDocument(state), 'primary');
+  const applyActiveBtn = actionButton('활성 문서 적용', () => runActiveDocument(state), 'primary');
   const openBatchBtn = actionButton('여러 RVT 적용', () => openRvtModal(state), 'secondary');
   openBatchBtn.classList.add('btn--multi');
   actionRow.append(applyActiveBtn, openBatchBtn);
@@ -228,10 +234,10 @@ function buildRunCard(state) {
   syncCheckLine.append(syncCheck, syncText);
 
   const syncHint = div('deliverycleaner-note');
-  const activeSyncCommentField = fieldBlock('동기화 Comment');
+  const activeSyncCommentField = fieldBlock('동기화 코멘트');
   const activeSyncCommentInput = document.createElement('input');
   activeSyncCommentInput.type = 'text';
-  activeSyncCommentInput.placeholder = '활성 문서 동기화 Comment';
+  activeSyncCommentInput.placeholder = '활성 문서 동기화 코멘트';
   activeSyncCommentInput.addEventListener('input', () => {
     updateSyncComment(state, activeSyncCommentInput.value);
   });
@@ -284,8 +290,8 @@ function buildElementPanel(state) {
     <thead>
       <tr>
         <th>조건 파라미터</th>
-        <th>Operator</th>
-        <th>Value</th>
+        <th>연산자</th>
+        <th>값</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -301,7 +307,7 @@ function buildElementPanel(state) {
     <thead>
       <tr>
         <th>입력 파라미터</th>
-        <th>Value</th>
+        <th>값</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -363,7 +369,7 @@ function buildRvtModal(state) {
   const listTitle = document.createElement('h4');
   listTitle.textContent = '선택된 RVT 목록';
   const listSub = document.createElement('span');
-  listSub.textContent = 'Central File은 로컬로 열고, 워크셋은 모두 닫힌 상태로 처리합니다. 탐색기에서 .rvt 파일을 바로 끌어와 추가할 수도 있습니다.';
+  listSub.textContent = '센트럴 파일은 로컬로 열고, 웍셋은 모두 닫힌 상태로 처리합니다. 탐색기에서 .rvt 파일을 바로 끌어와 추가할 수도 있습니다.';
   listHead.append(listTitle, listSub);
 
   const tableWrap = div('rvt-expand-table rvt-drop-zone');
@@ -386,12 +392,12 @@ function buildRvtModal(state) {
   const syncTitle = document.createElement('h4');
   syncTitle.textContent = '동기화';
   const syncDescription = document.createElement('span');
-  syncDescription.textContent = '여러 RVT 작업 후 자동 동기화할 때 아래 Comment를 사용합니다.';
+  syncDescription.textContent = '여러 RVT 작업 후 자동 동기화할 때 아래 코멘트를 사용합니다.';
   syncHead.append(syncTitle, syncDescription);
-  const syncCommentField = fieldBlock('동기화 Comment');
+  const syncCommentField = fieldBlock('동기화 코멘트');
   const syncCommentInput = document.createElement('input');
   syncCommentInput.type = 'text';
-  syncCommentInput.placeholder = 'Parameter Modifier batch update';
+  syncCommentInput.placeholder = '파라미터 수정기 일괄 입력';
   syncCommentInput.addEventListener('input', () => {
     updateSyncComment(state, syncCommentInput.value);
   });
@@ -473,7 +479,7 @@ function runActiveDocument(state) {
 
   state.acceptProgress = true;
   setPageBusy(state, true);
-  beginParamModifierProgress('파라미터 수정기', '활성 문서 적용을 준비 중입니다.');
+  beginParamModifierProgress('파라미터 수정기', '활성 문서 적용을 준비하는 중입니다.');
   post('parammodifier:run', buildPayload(state, true));
 }
 
@@ -486,7 +492,7 @@ function runBatchDocuments(state) {
   state.acceptProgress = true;
   setPageBusy(state, true);
   closeRvtModal(state);
-  beginParamModifierProgress('파라미터 수정기', '여러 RVT 적용을 준비 중입니다.');
+  beginParamModifierProgress('파라미터 수정기', '여러 RVT 적용을 준비하는 중입니다.');
   post('parammodifier:run', buildPayload(state, false));
 }
 
@@ -506,8 +512,8 @@ function closeRvtModal(state) {
 
 function beginParamModifierProgress(title, message, detail = '', percent = 0) {
   ProgressDialog.setActions({});
-  ProgressDialog.show(title || '파라미터 수정기', message || '준비 중...');
-  ProgressDialog.update(percent, message || '준비 중...', detail || '');
+  ProgressDialog.show(title || '파라미터 수정기', message || '파라미터 수정 작업을 준비하는 중입니다.');
+  ProgressDialog.update(percent, message || '파라미터 수정 작업을 준비하는 중입니다.', detail || '');
 }
 
 function updateSyncComment(state, value) {
@@ -521,12 +527,12 @@ function renderRunSummary(state) {
   if (!state.ui.runSummary || !state.ui.syncHint) return;
 
   const title = state.activeDocument?.title || '활성 문서를 찾을 수 없습니다.';
-  const docType = state.activeDocument?.isWorkshared ? '워크셋 문서' : '일반 문서';
+  const docType = state.activeDocument?.isWorkshared ? '웍셋 문서' : '일반 문서';
   const rvtCount = state.rvtPaths.length;
-  const syncCommentState = state.syncComment ? `입력됨 (${state.syncComment})` : '미입력';
+  const syncCommentState = state.syncComment ? `입력됨 (${state.syncComment})` : '코멘트가 없습니다.';
   state.ui.runSummary.textContent = `현재 문서: ${title}\n문서 유형: ${docType}\n등록된 RVT: ${rvtCount}개`;
   state.ui.syncHint.textContent = state.synchronizeAfterProcessing
-    ? `활성 문서 적용 후 동기화를 수행합니다. 현재 Comment: ${syncCommentState}`
+    ? `활성 문서 적용 후 동기화를 수행합니다. 현재 코멘트: ${syncCommentState}`
     : '활성 문서는 동기화 없이 적용합니다. 여러 RVT는 작업 후 자동 동기화됩니다.';
 }
 
@@ -579,14 +585,14 @@ function renderBatchReadyCard(state) {
   state.ui.batchReadyHint.textContent = state.rvtPaths.length
     ? `${state.rvtPaths.length}개 RVT가 등록되어 있습니다.`
     : 'RVT를 추가하면 바로 배치 적용을 시작할 수 있습니다.';
-  state.ui.batchReadyBadge.textContent = ready ? '적용 준비됨' : '입력 설정 필요';
+  state.ui.batchReadyBadge.textContent = ready ? '적용 준비 완료' : '입력 설정 필요';
 
   state.ui.batchReadyList.innerHTML = '';
   [
     `조건 ${conditions.length}개`,
     `입력 파라미터 ${assignments.length}개`,
-    `동기화 Comment ${state.syncComment ? '입력됨' : '미입력'}`,
-    'Central File은 로컬로 열고 워크셋은 모두 닫은 채 처리'
+    state.syncComment ? `동기화 코멘트 입력됨 (${state.syncComment})` : '동기화 코멘트가 없습니다.',
+    '센트럴 파일은 로컬로 열고 웍셋은 모두 닫은 채 처리'
   ].forEach((line) => {
     const item = document.createElement('li');
     item.textContent = line;
@@ -649,11 +655,11 @@ function renderElementUpdateSummary(state) {
     ? conditions.map((row) => (row.operatorName === 'HasValue' || row.operatorName === 'HasNoValue')
       ? `${row.parameterName} ${row.operatorName}`
       : `${row.parameterName} ${row.operatorName} ${row.value || ''}`).join(joiner)
-    : '추가 조건 없음';
+    : '추가 조건이 없습니다.';
 
   const assignmentText = assignments.length
     ? assignments.map((row) => `${row.parameterName} = ${row.value || ''}`).join(' / ')
-    : '입력 파라미터 없음';
+    : '입력 파라미터가 없습니다.';
 
   state.ui.elementSummary.textContent = `조건: ${conditionText}\n입력: ${assignmentText}`;
   renderRvtModal(state);
@@ -701,13 +707,13 @@ function updateActionState(state) {
 
   if (state.ui.runGuide) {
     if (state.busy) {
-      state.ui.runGuide.textContent = '작업 진행 중입니다. 완료되면 결과 알림을 표시합니다.';
+      state.ui.runGuide.textContent = '파라미터 수정 작업을 진행하는 중입니다. 완료되면 결과 알림을 표시합니다.';
     } else if (batchOpenReason) {
-      state.ui.runGuide.textContent = '입력 파라미터를 1개 이상 설정하면 활성문서 적용과 여러 RVT 적용 버튼이 활성화됩니다.';
+      state.ui.runGuide.textContent = '입력 파라미터를 1개 이상 설정하면 활성 문서 적용과 여러 RVT 적용 버튼이 활성화됩니다.';
     } else if (!state.activeDocument) {
       state.ui.runGuide.textContent = '현재 활성 문서를 찾을 수 없습니다.';
     } else {
-      state.ui.runGuide.textContent = '입력 설정이 준비되었습니다. 활성문서 적용은 바로 실행하고, 여러 RVT 적용은 목록 창에서 시작합니다.';
+      state.ui.runGuide.textContent = '입력 설정이 준비되었습니다. 활성 문서 적용은 바로 실행하고, 여러 RVT 적용은 목록 창에서 시작합니다.';
     }
   }
 }

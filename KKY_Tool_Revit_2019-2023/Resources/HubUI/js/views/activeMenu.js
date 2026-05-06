@@ -1,5 +1,5 @@
 import { clear, div } from '../core/dom.js';
-import { bindHubEntryContextMenu, openHubEntry } from '../core/hubFavorites.js?v=20260416b';
+import { bindHubEntryContextMenu, openHubEntry } from '../core/hubFavorites.js?v=20260504e';
 
 export function renderActiveMenu(root) {
   const target = root || document.getElementById('view-root') || document.getElementById('app');
@@ -9,17 +9,17 @@ export function renderActiveMenu(root) {
   const header = div('feature-header');
   const heading = div('feature-heading');
   heading.innerHTML = `
-    <span class="feature-kicker">Active Document</span>
+    <span class="feature-kicker">활성 문서</span>
     <h2 class="feature-title">활성 문서 검토</h2>
-    <p class="feature-sub">현재 열려 있는 Revit 문서에서 사용할 기능을 선택하세요.</p>`;
+    <p class="feature-sub">현재 열려 있는 Revit 문서에서 사용할 기능을 선택해 주세요.</p>`;
   header.append(heading);
   page.append(header);
 
   const grid = div('active-menu-grid');
   grid.append(
     buildCard(
-      '중복 / 자체간섭 검토',
-      '중복 패밀리와 요소를 그룹별로 확인하고 삭제 또는 복원을 관리합니다.',
+      '중복 / 자체 간섭 검토',
+      '중복 객체와 자체 간섭 후보를 확인하고 삭제 또는 복원을 관리합니다.',
       'dup'
     ),
     buildCard(

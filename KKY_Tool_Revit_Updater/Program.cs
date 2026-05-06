@@ -5,9 +5,11 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Security.Principal;
 using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace KKY_Tool_Revit_Updater
 {
@@ -339,6 +341,7 @@ namespace KKY_Tool_Revit_Updater
             ZipFile.ExtractToDirectory(zipPath, extractRoot);
             logger.Log("ZIP extracted.");
             progressWindow?.UpdateProgress(34, "압축 해제 완료", "설치된 Revit 버전을 확인하는 중입니다.");
+            var packageVersion = ReadPackageVersion(extractRoot, logger);
 
             var installedYears = new[] { "2019", "2021", "2023", "2025", "2027" }
                 .Where(IsRevitInstalled)
@@ -389,7 +392,148 @@ namespace KKY_Tool_Revit_Updater
                 }
             }
 
+            if (appliedCount > 0)
+            {
+                SyncWindowsUninstallDisplayVersion(packageVersion, logger);
+            }
+
             progressWindow?.UpdateProgress(96, "업데이트 적용 확인 중", "모든 설치 경로 반영을 마무리하고 있습니다.");
+        }
+
+        private static string ReadPackageVersion(string extractRoot, UpdateLogger logger)
+        {
+            var manifestPath = Path.Combine(extractRoot, "package.json");
+            if (!File.Exists(manifestPath))
+            {
+                logger.Log("Package manifest not found. DisplayVersion sync will be skipped.");
+                return null;
+            }
+
+            var manifestText = File.ReadAllText(manifestPath);
+            var versionMatch = Regex.Match(
+                manifestText,
+                "\"version\"\\s*:\\s*\"(?<value>[^\"]+)\"",
+                RegexOptions.IgnoreCase);
+
+            if (!versionMatch.Success)
+            {
+                logger.Log("Package manifest version was not found. DisplayVersion sync will be skipped.");
+                return null;
+            }
+
+            var version = versionMatch.Groups["value"].Value.Trim();
+            logger.Log("Package version detected: " + version);
+            return version;
+        }
+
+        private static void SyncWindowsUninstallDisplayVersion(string packageVersion, UpdateLogger logger)
+        {
+            if (string.IsNullOrWhiteSpace(packageVersion))
+            {
+                return;
+            }
+
+            var updatedCount = 0;
+            updatedCount += SyncWindowsUninstallRoot(
+                Registry.LocalMachine,
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                packageVersion,
+                logger);
+            updatedCount += SyncWindowsUninstallRoot(
+                Registry.LocalMachine,
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+                packageVersion,
+                logger);
+            updatedCount += SyncWindowsUninstallRoot(
+                Registry.CurrentUser,
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                packageVersion,
+                logger);
+            updatedCount += SyncWindowsUninstallRoot(
+                Registry.CurrentUser,
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+                packageVersion,
+                logger);
+
+            logger.Log("Windows uninstall DisplayVersion sync updated entries: " + updatedCount);
+        }
+
+        private static int SyncWindowsUninstallRoot(
+            RegistryKey hive,
+            string subKeyPath,
+            string packageVersion,
+            UpdateLogger logger)
+        {
+            try
+            {
+                using (var uninstallRoot = hive.OpenSubKey(subKeyPath, true))
+                {
+                    if (uninstallRoot == null)
+                    {
+                        return 0;
+                    }
+
+                    var updatedCount = 0;
+                    foreach (var childName in uninstallRoot.GetSubKeyNames())
+                    {
+                        using (var appKey = uninstallRoot.OpenSubKey(childName, true))
+                        {
+                            if (appKey == null)
+                            {
+                                continue;
+                            }
+
+                            var displayName = Convert.ToString(appKey.GetValue("DisplayName"));
+                            var uninstallString = Convert.ToString(appKey.GetValue("UninstallString"));
+                            var installLocation = Convert.ToString(appKey.GetValue("InstallLocation"));
+
+                            if (!IsKkyToolUninstallEntry(childName, displayName, uninstallString, installLocation))
+                            {
+                                continue;
+                            }
+
+                            appKey.SetValue("DisplayVersion", packageVersion, RegistryValueKind.String);
+                            logger.Log("Updated uninstall DisplayVersion at " + hive.Name + "\\" + subKeyPath + "\\" + childName);
+                            updatedCount++;
+                        }
+                    }
+
+                    return updatedCount;
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Log("DisplayVersion sync skipped for " + hive.Name + "\\" + subKeyPath + ": " + ex.Message);
+                return 0;
+            }
+        }
+
+        private static bool IsKkyToolUninstallEntry(
+            string childName,
+            string displayName,
+            string uninstallString,
+            string installLocation)
+        {
+            if (string.Equals(displayName, "KKY_Tool_Revit", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(childName) &&
+                childName.IndexOf("DD10228E-A453-45EA-8DAF-45AF599FB9A8", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(uninstallString) &&
+                uninstallString.IndexOf("KKY_Tool_Revit", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+
+            return !string.IsNullOrWhiteSpace(installLocation) &&
+                installLocation.IndexOf(@"Autodesk\Revit\Addins", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                installLocation.IndexOf("KKY", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool IsRevitInstalled(string year)

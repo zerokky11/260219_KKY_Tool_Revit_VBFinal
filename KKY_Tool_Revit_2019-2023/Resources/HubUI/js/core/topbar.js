@@ -3,7 +3,7 @@ import { div, toast } from './dom.js';
 import { toggleTheme } from './theme.js';
 import { setConn, ping, post } from './bridge.js';
 
-const APP_VERSION_FALLBACK = 'v2.22';
+const APP_VERSION_FALLBACK = 'v2.23';
 const STARTUP_NOTICE_DURATION_MS = 4800;
 const REQUESTS_PAGE_URL = 'https://update.zerokky.com/requests.html';
 
@@ -12,23 +12,23 @@ const TEXT = {
     home: '\ud5c8\ube0c \ud648\uc73c\ub85c',
     back: '\ub4a4\ub85c\uac00\uae30',
     subtitle: '\u0052\u0065\u0076\u0069\u0074 \uc791\uc5c5 \ubcf4\uc870 \ud1b5\ud569 \ub3c4\uad6c',
-    connected: '\uc5f0\uacb0\ub428',
-    connectedNone: '\uc5f0\uacb0 \uc548\ub428',
+    connected: 'Revit \uc5f0\uacb0\ub428',
+    connectedNone: 'Revit \uc5f0\uacb0 \uc548 \ub428',
     pin: '\ud56d\uc0c1 \uc704',
     theme: '\ud14c\ub9c8',
     request: '\uc694\uccad\ud558\uae30',
-    updateCheck: '\u0054\u006f\u006f\u006c \ubc84\uc804 \uccb4\ud06c',
-    updateChecking: '\u0054\u006f\u006f\u006c \ubc84\uc804 \ud655\uc778 \uc911',
-    updateHint: '\u0054\u006f\u006f\u006c \ubc84\uc804 \uccb4\ud06c\ub97c \ub20c\ub7ec \ucd5c\uc2e0 \ubc84\uc804\uc744 \uc124\uce58\ud558\uc138\uc694.',
-    startupToast: '\uc0c8 \u0054\u006f\u006f\u006c \ubc84\uc804\uc774 \uc788\uc2b5\ub2c8\ub2e4. \u0054\u006f\u006f\u006c \ubc84\uc804 \uccb4\ud06c\ub97c \ub20c\ub7ec \ud655\uc778\ud574 \uc8fc\uc138\uc694.',
+    updateCheck: '버전 확인',
+    updateChecking: '버전 확인 중',
+    updateHint: '버전 확인을 눌러 최신 버전을 설치해 주세요.',
+    startupToast: '새 버전이 있습니다. 버전 확인을 눌러 확인해 주세요.',
     currentVersion: '\ud604\uc7ac \ubc84\uc804',
     latestVersion: '\ucd5c\uc2e0 \ubc84\uc804',
     feedUrl: '\uc5c5\ub370\uc774\ud2b8 \ud655\uc778 \uc8fc\uc18c',
     publishedAt: '\ubc30\ud3ec\uc77c',
     releaseNotes: '\ubcc0\uacbd \uc0ac\ud56d',
-    dialogTitle: '\u0054\u006f\u006f\u006c \ubc84\uc804 \ud655\uc778',
-    dialogErrorTitle: '\u0054\u006f\u006f\u006c \ubc84\uc804 \ud655\uc778 \uc2e4\ud328',
-    dialogUpdateTitle: '\uc0c8 \u0054\u006f\u006f\u006c \ubc84\uc804\uc774 \uc788\uc2b5\ub2c8\ub2e4',
+    dialogTitle: '버전 확인',
+    dialogErrorTitle: '버전 확인 실패',
+    dialogUpdateTitle: '새 버전이 있습니다',
     dialogLatestTitle: '\ud604\uc7ac \ucd5c\uc2e0 \ubc84\uc804\uc785\ub2c8\ub2e4',
     dialogDownloadTitle: '\ucd5c\uc2e0 \uc124\uce58 \ud30c\uc77c \ub2e4\uc6b4\ub85c\ub4dc \uc911',
     dialogReadyTitle: '\uc124\uce58 \uc900\ube44 \uc644\ub8cc',
@@ -37,29 +37,42 @@ const TEXT = {
     statusLatest: '\ucd5c\uc2e0 \uc0c1\ud0dc',
     statusUpdate: '\uc5c5\ub370\uc774\ud2b8 \ud544\uc694',
     statusDownloading: '\ub2e4\uc6b4\ub85c\ub4dc \uc9c4\ud589 \uc911',
-    statusReady: '\uc124\uce58 \uc900\ube44\ub428',
+    statusReady: '\uc124\uce58 \uc900\ube44 \uc644\ub8cc',
     currentLatestSummary: '\ud604\uc7ac \ubc84\uc804 {current}\uc774 \ucd5c\uc2e0 \ubc84\uc804\uc785\ub2c8\ub2e4.',
     updateSummary: '\ud604\uc7ac \ubc84\uc804 {current}\uc5d0\uc11c \ucd5c\uc2e0 \ubc84\uc804 {latest}\ub85c \uc5c5\ub370\uc774\ud2b8\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',
     downloadSummary: '\ucd5c\uc2e0 \uc5c5\ub370\uc774\ud2b8 \ud328\ud0a4\uc9c0\ub97c \uc784\uc2dc \ud3f4\ub354\ub85c \ub2e4\uc6b4\ub85c\ub4dc\ud558\uace0 \uc788\uc2b5\ub2c8\ub2e4.',
     readySummary: '\uc5c5\ub370\uc774\ud2b8 \ud328\ud0a4\uc9c0 \ub2e4\uc6b4\ub85c\ub4dc\uac00 \uc644\ub8cc\ub418\uc5c8\uc2b5\ub2c8\ub2e4. \ud604\uc7ac \uc2e4\ud589 \uc911\uc778 \u0052\u0065\u0076\u0069\u0074\uc744 \ubaa8\ub450 \uc885\ub8cc\ud558\uba74 \uc5c5\ub370\uc774\ud2b8\uac00 \uc801\uc6a9\ub429\ub2c8\ub2e4. \uc801\uc6a9 \ud6c4 \u0052\u0065\u0076\u0069\u0074\uc744 \ub2e4\uc2dc \uc2e4\ud589\ud574 \uc8fc\uc138\uc694.',
     preparingDownload: '\uc5c5\ub370\uc774\ud2b8 \ud328\ud0a4\uc9c0 \ub2e4\uc6b4\ub85c\ub4dc\ub97c \uc900\ube44\ud558\ub294 \uc911\uc785\ub2c8\ub2e4.',
-    installing: '\uc124\uce58\ud558\uae30',
+    installing: '다운로드 및 설치',
+    nextActionTitle: '다음 단계',
+    nextActionUpdateDownload: '다운로드 및 설치를 눌러 최신 설치 파일을 준비해 주세요.',
+    nextActionUpdateSaveWork: '설치 적용 전에는 진행 중인 Revit 작업을 저장해 주세요.',
+    nextActionUpdateNoInstaller: '최신 버전은 확인됐지만 자동 설치 파일이 연결되지 않았습니다.',
+    nextActionUpdateAskAdmin: '관리자에게 업데이트 패키지 배포 상태를 확인해 달라고 전달해 주세요.',
+    nextActionDownloadingWait: '다운로드가 끝날 때까지 Hub를 닫지 말고 기다려 주세요.',
+    nextActionDownloadingCloseRevit: '준비 완료 안내가 뜨면 실행 중인 Revit을 모두 종료해 주세요.',
+    nextActionReadyCloseRevit: '실행 중인 Revit을 모두 종료한 뒤 설치를 진행해 주세요.',
+    nextActionReadyRestart: '설치 후 Revit을 다시 열어 Hub의 현재 버전을 확인해 주세요.',
+    nextActionErrorRetry: '네트워크 또는 업데이트 페이지 연결 상태를 확인한 뒤 다시 시도해 주세요.',
+    nextActionErrorReport: '계속 실패하면 표시된 업데이트 확인 주소와 오류 메시지를 관리자에게 전달해 주세요.',
+    nextActionLatestReady: '추가 설치 없이 현재 버전을 사용할 수 있습니다.',
+    nextActionLatestMismatch: 'Windows 프로그램 추가/제거의 버전 표시가 다르면 설치 정보가 갱신된 뒤 다시 확인해 주세요.',
     settings: '\uc124\uc815',
-    documentNavigator: '\u0044\u006f\u0063\u0075\u006d\u0065\u006e\u0074 \u004e\u0061\u0076\u0069\u0067\u0061\u0074\u006f\u0072',
+    documentNavigator: '문서 색상 도우미',
     documentNavigatorPanelTitle: '\ud5c8\ube0c \uc124\uc815',
-    documentNavigatorIntro: '\ud5c8\ube0c\uc5d0\uc11c \ubb38\uc11c\ubcc4 \ud0ed \uc0c9\uacfc \u0044\u006f\u0063\u0075\u006d\u0065\u006e\u0074 \u0043\u006f\u006c\u006f\u0072\u0073 \ucc3d \uc801\uc6a9 \uc5ec\ubd80\ub97c \ubc14\ub85c \ubc14꿀 \uc218 \uc788\uc2b5\ub2c8\ub2e4.',
-    documentNavigatorSectionTitle: '\ud0ed \uc0c9 + \ubc94\ub840 \ucc3d',
-    documentNavigatorSectionHint: '\ubb38\uc11c\ubcc4 \ud0ed \uc0c9 \uad6c\ubd84\uacfc \u004b\u004b\u0059 \u0044\u006f\u0063\u0075\u006d\u0065\u006e\u0074 \u0043\u006f\u006c\u006f\u0072\u0073 \ucc3d\uc744 \ud568\uaed8 \ucf1c\uace0 \ub055\ub2c8\ub2e4.',
-    documentNavigatorToggleLabel: '\u0044\u006f\u0063\u0075\u006d\u0065\u006e\u0074 \u004e\u0061\u0076\u0069\u0067\u0061\u0074\u006f\u0072 \uc0ac\uc6a9',
+    documentNavigatorIntro: '허브에서 문서별 탭 색상과 문서 색상 창 적용 여부를 바로 바꿀 수 있습니다.',
+    documentNavigatorSectionTitle: '\ud0ed \uc0c9 + \ubb38\uc11c \uc0c9\uc0c1 \ucc3d',
+    documentNavigatorSectionHint: '문서별 탭 색상 구분과 문서 색상 창을 함께 켜고 끕니다.',
+    documentNavigatorToggleLabel: '문서 색상 도우미 사용',
     documentNavigatorToggleHint: '\uaebc\ub450\uba74 \ud0ed\uc740 \uae30\ubcf8 \uc0c1\ud0dc\ub85c \ub3cc\uc544\uac00\uace0, \ubc94\ub840/\ub0b4\ube44\uac8c\uc774\ud130 \ucc3d\uc740 \uc228\uae41\ub2c8\ub2e4.',
     documentNavigatorStatusLabel: '\ud604\uc7ac \uc0c1\ud0dc',
     documentNavigatorFeatureTabs: '\ud0ed \uc0c9 \uad6c\ubd84',
-    documentNavigatorFeatureLegend: '\ubc94\ub840 \ucc3d + \ubdf0 \uc774\ub3d9',
+    documentNavigatorFeatureLegend: '\ubb38\uc11c \uc0c9\uc0c1 \ucc3d + \ubdf0 \uc774\ub3d9',
     documentNavigatorFeatureSync: '\ud65c\uc131 \ucc3d \uc790\ub3d9 \ucd94\uc801',
-    documentNavigatorApplyInstant: '\uc989\uc2dc \uc801\uc6a9',
-    documentNavigatorSavedLocal: '\ub85c\uceec \uc800\uc7a5',
-    featureEnabled: '\ucf1c\uc9d0',
-    featureDisabled: '\uaebc\uc9d0',
+    documentNavigatorApplyInstant: '\ubcc0\uacbd \uc989\uc2dc \uc801\uc6a9',
+    documentNavigatorSavedLocal: '\ub85c\uceec\uc5d0 \uc800\uc7a5',
+    featureEnabled: '\uc0ac\uc6a9 \uc911',
+    featureDisabled: '\uc0ac\uc6a9 \uc548 \ud568',
     close: '\ub2eb\uae30',
     shortcutsTitle: '\ub3c4\uc6c0\ub9d0 - \u004b\u004b\u0059 \u0054\u006f\u006f\u006c \u0048\u0075\u0062',
     shortcutsHtml: `
@@ -447,7 +460,6 @@ function applyDocumentVisualAidState() {
         button.classList.toggle('is-active', enabled);
         button.classList.toggle('is-off', !enabled);
         const stateText = enabled ? TEXT.featureEnabled : TEXT.featureDisabled;
-        button.title = `${TEXT.documentNavigator} ${stateText}`;
         button.setAttribute('aria-label', `${TEXT.documentNavigator} ${stateText}`);
     }
 
@@ -806,7 +818,6 @@ function createIconButton({ id, label, icon, classes = '' }) {
     btn.type = 'button';
     btn.className = `icon-btn ${classes}`.trim();
     if (id) btn.id = id;
-    btn.title = label;
     btn.setAttribute('aria-label', label);
 
     const glyph = document.createElement('span');
@@ -875,6 +886,7 @@ function showUpdateResultDialog(payload = {}) {
     const current = formatVersionText(_updateState.currentVersionDisplay);
     const latest = _updateState.latestVersion ? formatVersionText(_updateState.latestVersion) : '-';
     const hasUpdate = !!_updateState.hasUpdate;
+    const canInstall = !!_updateState.canInstall;
     const installReady = !!payload?.installerPath || !!payload?.scriptPath;
     const isError = payload?.kind === 'err';
     const phase = payload?.phase || '';
@@ -948,6 +960,25 @@ function showUpdateResultDialog(payload = {}) {
     `;
     body.append(grid);
 
+    const actionItems = buildUpdateActionItems({ isError, isDownloading, installReady, hasUpdate, canInstall });
+    if (actionItems.length) {
+        const callout = document.createElement('div');
+        callout.className = `update-result-callout ${tone}`.trim();
+
+        const calloutTitle = document.createElement('strong');
+        calloutTitle.textContent = TEXT.nextActionTitle;
+
+        const list = document.createElement('ul');
+        actionItems.forEach((itemText) => {
+            const item = document.createElement('li');
+            item.textContent = itemText;
+            list.append(item);
+        });
+
+        callout.append(calloutTitle, list);
+        body.append(callout);
+    }
+
     if (isDownloading) {
         const progress = document.createElement('div');
         progress.className = 'update-result-progress';
@@ -990,7 +1021,7 @@ function showUpdateResultDialog(payload = {}) {
     closeBtn.addEventListener('click', closeUpdateResultDialog);
     footer.append(closeBtn);
 
-    if (!isError && hasUpdate && _updateState.canInstall && !installReady && !isDownloading) {
+    if (!isError && hasUpdate && canInstall && !installReady && !isDownloading) {
         const installBtn = document.createElement('button');
         installBtn.type = 'button';
         installBtn.className = 'btn';
@@ -1024,6 +1055,25 @@ function showUpdateResultDialog(payload = {}) {
     _updateDialogBackdrop = backdrop;
 }
 
+function buildUpdateActionItems({ isError, isDownloading, installReady, hasUpdate, canInstall } = {}) {
+    if (isError) {
+        return [TEXT.nextActionErrorRetry, TEXT.nextActionErrorReport];
+    }
+    if (isDownloading) {
+        return [TEXT.nextActionDownloadingWait, TEXT.nextActionDownloadingCloseRevit];
+    }
+    if (installReady) {
+        return [TEXT.nextActionReadyCloseRevit, TEXT.nextActionReadyRestart];
+    }
+    if (hasUpdate && canInstall) {
+        return [TEXT.nextActionUpdateDownload, TEXT.nextActionUpdateSaveWork];
+    }
+    if (hasUpdate) {
+        return [TEXT.nextActionUpdateNoInstaller, TEXT.nextActionUpdateAskAdmin];
+    }
+    return [TEXT.nextActionLatestReady, TEXT.nextActionLatestMismatch];
+}
+
 function closeUpdateResultDialog() {
     if (!_updateDialogBackdrop) return;
     if (_updateDialogBackdrop._escHandler) {
@@ -1051,7 +1101,7 @@ function applyUpdateVisualState() {
         if (hintVisible) {
             const latest = _updateState.latestVersion ? formatVersionText(_updateState.latestVersion) : '';
             _updateHintEl.textContent = latest
-                ? `${latest} 업데이트가 있습니다. Tool 버전 체크를 눌러 확인하세요.`
+                ? `${latest} 업데이트가 있습니다. 버전 확인을 눌러 확인해 주세요.`
                 : TEXT.updateHint;
         }
     }
@@ -1067,7 +1117,7 @@ function applyUpdateVisualState() {
     _updateBtn.classList.toggle('is-busy', !!_updateState.busy);
     _updateBtn.classList.toggle('has-update', !!_updateState.hasUpdate && !_updateState.busy);
     _updateBtn.classList.toggle('needs-attention', !!_updateNeedsAttention && !!_updateState.hasUpdate && !_updateState.busy);
-    _updateBtn.title = buildUpdateTooltip();
+    _updateBtn.setAttribute('aria-label', buildUpdateTooltip());
 }
 
 function showUpdateStartupNotice() {

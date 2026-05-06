@@ -35,19 +35,19 @@ const LS_RULELIB_SEL = 'kky_dup_rulelib_sel_v1';
 const DEFAULT_TOL_MM = 0.01; // 1/64 ft
 
 const FIELD_OPTS = [
-  { v:'category', t:'Category' },
-  { v:'family',   t:'Family' },
-  { v:'type',     t:'Type' },
-  { v:'name',     t:'Name' },
-  { v:'param',    t:'Parameter' }
+  { v:'category', t:'카테고리' },
+  { v:'family',   t:'패밀리' },
+  { v:'type',     t:'타입' },
+  { v:'name',     t:'이름' },
+  { v:'param',    t:'파라미터' }
 ];
 const OP_OPTS = [
-  { v:'contains',    t:'Contains' },
-  { v:'equals',      t:'Equal' },
-  { v:'startswith',  t:'StartsWith' },
-  { v:'endswith',    t:'EndsWith' },
-  { v:'notcontains', t:'NotContains' },
-  { v:'notequals',   t:'NotEqual' }
+  { v:'contains',    t:'포함' },
+  { v:'equals',      t:'일치' },
+  { v:'startswith',  t:'시작 문자 일치' },
+  { v:'endswith',    t:'끝 문자 일치' },
+  { v:'notcontains', t:'포함 안 함' },
+  { v:'notequals',   t:'불일치' }
 ];
 
 function isObj(x){ return x && typeof x === 'object'; }
@@ -263,7 +263,7 @@ async function exportRuleFileInteractive(){
       else if (typeof SerializeRuleFile === 'function') xml = SerializeRuleFile();
     }catch(e0){}
   }
-  if (!xml){ toast('설정 XML 직렬화 함수를 찾지 못했습니다.', 'err', 2200); return; }
+  if (!xml){ toast('중복 / 자체 간섭 검토 설정 XML을 만들지 못했습니다.', 'err', 2200); return; }
   var sel = getSelectedRuleLibraryItem();
   var suggested = sanitizeRuleFileName(sel && sel.name ? sel.name : 'DuplicateInspector_RuleSet.xml');
   if (window.showSaveFilePicker){
@@ -272,14 +272,14 @@ async function exportRuleFileInteractive(){
       var writable = await handle.createWritable();
       await writable.write(xml);
       await writable.close();
-      toast('설정 XML 파일을 저장했습니다.', 'ok', 1400);
+      toast('중복 / 자체 간섭 검토 설정 XML 파일을 저장했습니다.', 'ok', 1400);
       return;
     } catch(ex){
       if (ex && ex.name === 'AbortError') return;
     }
   }
   try{
-    var fileName = sanitizeRuleFileName(window.prompt('저장할 파일 이름을 입력하세요.', suggested) || suggested);
+    var fileName = sanitizeRuleFileName(window.prompt('저장할 파일 이름을 입력해 주세요.', suggested) || suggested);
     if (!fileName) return;
     var blob = new Blob([xml], { type: 'application/xml;charset=utf-8' });
     var a = document.createElement('a');
@@ -288,9 +288,9 @@ async function exportRuleFileInteractive(){
     document.body.appendChild(a);
     a.click();
     setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} try{ document.body.removeChild(a); }catch(e2){} }, 0);
-    toast('저장 위치 선택 API가 없어서 브라우저 다운로드로 저장했습니다.', 'warn', 2200);
+    toast('저장 위치 선택 기능을 사용할 수 없어 브라우저 다운로드로 저장했습니다.', 'warn', 2600);
   } catch(ex2){
-    toast('설정 XML 파일 저장에 실패했습니다.', 'err', 2400);
+    toast('중복 / 자체 간섭 검토 설정 XML 파일을 저장하지 못했습니다. 파일 이름과 브라우저 다운로드 권한을 확인해 주세요.', 'err', 3200);
   }
 }
 function loadMeta(){
@@ -466,7 +466,7 @@ function ensureExcludePicker(){
 
     var t = document.createElement('div');
     t.className = 'rm-title';
-    t.textContent = 'Exclude 목록 선택';
+    t.textContent = '제외 목록 선택';
 
     var sub = document.createElement('div');
     sub.className = 'rm-sub';
@@ -549,7 +549,7 @@ function ensureExcludePicker(){
 
     var btnAll = document.createElement('button');
     btnAll.className = 'rp-btn rp-btn--ghost';
-    btnAll.textContent = '전체 체크';
+    btnAll.textContent = '전체 선택';
     btnAll.dataset.act = 'all';
 
     var btnNone = document.createElement('button');
@@ -683,9 +683,9 @@ function renderExcludePicker(){
     for (var pf=0; pf<famPicked.length; pf++) chips.push('<span class="expicked-chip">패밀리 · ' + esc(famPicked[pf]) + '</span>');
     for (var pc=0; pc<catPicked.length; pc++) chips.push('<span class="expicked-chip">시스템 · ' + esc(catPicked[pc]) + '</span>');
     pickedBox.innerHTML = '<div class="rp-sec-title">선택된 제외 목록</div>' +
-      '<div class="rp-sec-sub">체크한 항목이 여기 누적됩니다. 적용을 누르면 현재 목록으로 저장됩니다.</div>' +
+      '<div class="rp-sec-sub">선택한 항목이 여기 누적됩니다. 적용을 누르면 현재 목록으로 저장됩니다.</div>' +
       '<div class="expicked-meta"><span class="expicked-count">패밀리 ' + famPicked.length + '개</span><span class="expicked-count">시스템 ' + catPicked.length + '개</span></div>' +
-      '<div class="expicked-list">' + (chips.length ? chips.join('') : '<span class="rp-emptyline">아직 체크한 제외 항목이 없습니다.</span>') + '</div>';
+      '<div class="expicked-list">' + (chips.length ? chips.join('') : '<span class="rp-emptyline">아직 선택한 제외 항목이 없습니다.</span>') + '</div>';
   }
 
   function mk(kind, val, checked){
@@ -764,7 +764,7 @@ function applyExcludePicker(){
   cfg.excludeFamilies = fam;
   cfg.excludeCategories = cat;
   saveRuleConfig(cfg);
-  toast('Exclude 목록이 적용되었습니다.', 'ok', 1200);
+  toast('제외 목록이 적용되었습니다.', 'ok', 1200);
   closeExcludePicker();
   callDupUiHook('renderRulePanel');
   callDupUiHook('renderAppliedBar');
@@ -833,8 +833,8 @@ export function renderDup(root){
   var exportBtn = makeBtn('엑셀 내보내기', 'card-action-btn');
   exportBtn.disabled = true;
 
-  var btnDup = makeBtn('중복검토', 'dup-mode-btn');
-  var btnClash = makeBtn('자체간섭', 'dup-mode-btn');
+  var btnDup = makeBtn('중복 검토', 'dup-mode-btn');
+  var btnClash = makeBtn('자체 간섭', 'dup-mode-btn');
  
 
   var modeShell = div('dup-mode-shell');
@@ -947,11 +947,11 @@ export function renderDup(root){
         ProgressDialog.hide();
         var path = asStr(payload && payload.path, '');
         if (path){
-          showExcelSavedDialog('엑셀로 내보냈습니다.', path, function(p){
+          showExcelSavedDialog('중복 / 자체 간섭 검토 결과 엑셀을 저장했습니다.', path, function(p){
             if (p) post('excel:open', { path: p });
           });
         } else {
-          toast(asStr(payload && payload.message, '엑셀 내보내기 실패'), 'err', 2800);
+          toast(asStr(payload && payload.message, '중복 / 자체 간섭 검토 결과 엑셀 내보내기에 실패했습니다. 저장 경로 권한과 파일이 열려 있는지 확인해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.'), 'err', 2800);
         }
         syncExportButton();
         return;
@@ -1000,13 +1000,13 @@ export function renderDup(root){
         setLoading(false);
         exporting = false;
         ProgressDialog.hide();
-        toast(asStr(payload && payload.message, '오류가 발생했습니다.'), 'err', 3400);
+        toast(asStr(payload && payload.message, '중복 / 자체 간섭 검토 중 오류가 발생했습니다. 현재 모델, 검토 설정, 제외 목록을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.'), 'err', 3400);
         syncExportButton();
         return;
       }
     } catch(ex){
       try{ console.error('[dup] route error', ev, ex); } catch(e){}
-      toast('dup.js 오류: ' + asStr(ex && ex.message, 'unknown'), 'err', 3200);
+      toast('중복 / 자체 간섭 검토 화면 처리 중 오류가 발생했습니다. 화면을 새로 열어 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3600);
     }
   }
 
@@ -1070,9 +1070,9 @@ export function renderDup(root){
       ruleConfig: cfg
     };
     renderAppliedBar();
-    const prepTitle = mode === 'clash' ? '자체간섭 검토' : '중복 검토';
-    ProgressDialog.show(prepTitle, '검토 대상을 준비하는 중...');
-    ProgressDialog.update(0, '검토 대상을 준비하는 중...', '허용 오차와 제외 규칙을 적용하는 중...');
+    const prepTitle = mode === 'clash' ? '자체 간섭 검토' : '중복 검토';
+    ProgressDialog.show(prepTitle, '검토 대상을 준비하는 중입니다.');
+    ProgressDialog.update(0, '검토 대상을 준비하는 중입니다.', '허용 오차와 제외 규칙을 적용하는 중입니다.');
     post(EV_RUN_REQ, {
       mode: mode,
       tolFeet: tolFeet,
@@ -1087,7 +1087,7 @@ export function renderDup(root){
       setLoading(false);
       body.innerHTML = '';
       renderIntro();
-      toast('응답이 없습니다. (Host→JS 이벤트 미수신)', 'err', 3400);
+      toast('Revit 응답을 받지 못했습니다. 작업이 계속 멈추면 Hub를 다시 열고 관리자에게 실행 시간을 전달해 주세요.', 'err', 4200);
     }, 12000);
 
     // 어떤 결과 이벤트든 오면 타임아웃 해제
@@ -1109,8 +1109,8 @@ export function renderDup(root){
     var exportParamNames = getExportParamNames();
 
     chooseExcelMode(function(excelMode){
-      ProgressDialog.show('엑셀 내보내기', '엑셀 내보내기를 준비하는 중...');
-      ProgressDialog.update(0, '엑셀 내보내기를 준비하는 중...', '결과 시트와 저장 옵션을 정리하는 중...');
+      ProgressDialog.show('엑셀 내보내기', '엑셀 내보내기를 준비하는 중입니다.');
+      ProgressDialog.update(0, '엑셀 내보내기를 준비하는 중입니다.', '결과 시트와 저장 옵션을 정리하는 중입니다.');
       post(EV_EXPORT_REQ, {
         excelMode: excelMode || 'fast',
         locale: getLastExcelExportLocale(),
@@ -1203,12 +1203,12 @@ export function renderDup(root){
   }
 
   function syncHeading(){
-    var title = (mode === 'clash') ? '자체간섭 검토' : '중복검토';
+    var title = (mode === 'clash') ? '자체 간섭 검토' : '중복 검토';
     var sub2 = (mode === 'clash')
-      ? '같은 파일 내 자체간섭 후보를 A↔B 쌍으로 표시합니다.'
+      ? '같은 파일 내 자체 간섭 후보를 A↔B 쌍으로 표시합니다.'
       : '중복 검토 후 삭제/되돌리기. 설정에서 입력한 파라미터값을 함께 추출할 수 있습니다.';
     heading.innerHTML =
-      '<span class="feature-kicker">Duplicate Inspector</span>' +
+      '<span class="feature-kicker">중복 / 자체 간섭 검토</span>' +
       '<h2 class="feature-title">' + esc(title) + '</h2>' +
       '<p class="feature-sub">' + esc(sub2) + '</p>';
   }
@@ -1264,7 +1264,7 @@ export function renderDup(root){
       var info = div('dup-info');
       var shown = asNum(lastResult.shown, 0);
       var total = asNum(lastResult.total, 0);
-      info.innerHTML = '<div class="t">표시 제한</div><div class="s">결과가 많아 상위 ' + shown + '건만 표시합니다. 전체(' + total + '건)는 엑셀 내보내기에서 확인하세요.</div>';
+      info.innerHTML = '<div class="t">표시 제한</div><div class="s">결과가 많아 상위 ' + shown + '건만 표시합니다. 전체(' + total + '건)는 엑셀 내보내기에서 확인해 주세요.</div>';
       body.appendChild(info);
     }
 
@@ -1418,10 +1418,10 @@ export function renderDup(root){
 
       var sh = div('dup-subhead');
       sh.appendChild(cell('', 'ck'));
-      sh.appendChild(cell('Element ID', 'th'));
-      sh.appendChild(cell('Category', 'th'));
-      sh.appendChild(cell('Family', 'th'));
-      sh.appendChild(cell('Type', 'th'));
+      sh.appendChild(cell('요소 ID', 'th'));
+      sh.appendChild(cell('카테고리', 'th'));
+      sh.appendChild(cell('패밀리', 'th'));
+      sh.appendChild(cell('타입', 'th'));
       sh.appendChild(cell('사유', 'th ell'));
       sh.appendChild(cell('연결', 'th conn'));
       sh.appendChild(cell('작업', 'th right'));
@@ -1452,7 +1452,7 @@ export function renderDup(root){
     row.appendChild(ckCell);
     row.appendChild(cell(co(r.id,'-'), 'td mono right'));
     row.appendChild(cell(co(r.category,'—'), 'td'));
-    row.appendChild(cell(co(r.family, (r.category ? (r.category + ' Type') : '—')), 'td ell'));
+    row.appendChild(cell(co(r.family, (r.category ? (r.category + ' 타입') : '—')), 'td ell'));
     row.appendChild(cell(co(r.type,'—'), 'td ell'));
     row.appendChild(cell(co(r.comment,'-'), 'td ell'));
 
@@ -1460,7 +1460,7 @@ export function renderDup(root){
     conn.className = 'conn-cell';
     var ids = Array.isArray(r.connectedIds) ? r.connectedIds : [];
     conn.textContent = ids.length ? String(ids.length) : '0';
-    if (ids.length) conn.title = ids.join(', ');
+    conn.setAttribute('aria-label', ids.length ? `연결된 요소 ID: ${ids.join(', ')}` : '연결된 요소가 없습니다.');
     row.appendChild(cell(conn, 'td mono right conn'));
 
     var act = div('row-actions');
@@ -1546,7 +1546,7 @@ export function renderDup(root){
     }
 
     showCompletionSummaryDialog({
-      title: isClashMode ? '자체간섭 검토 완료' : '중복 검토 완료',
+      title: isClashMode ? '자체 간섭 검토 완료' : '중복 검토 완료',
       message: '검토 결과를 요약했습니다. 필요하면 바로 엑셀로 내보내세요.',
       summaryItems: [
         { label: '검사 대상 수', value: String(scanCount) },
@@ -1565,7 +1565,7 @@ export function renderDup(root){
 
   function buildGroupMeta(g){
     var cats = uniq((g.rows||[]).map(function(r){ return r.category || '—'; }));
-    var fams = uniq((g.rows||[]).map(function(r){ return r.family || (r.category ? (r.category + ' Type') : '—'); }));
+    var fams = uniq((g.rows||[]).map(function(r){ return r.family || (r.category ? (r.category + ' 타입') : '—'); }));
     var types = uniq((g.rows||[]).map(function(r){ return r.type || '—'; }));
 
     var catOut = (cats.length === 1) ? cats[0] : ('혼합(' + cats.length + ')');
@@ -1638,8 +1638,8 @@ export function renderDup(root){
   function renderIntro(){
     body.innerHTML = '';
     var hero = div('dup-hero');
-    hero.innerHTML = '<h3 class="hero-title">' + (mode === 'clash' ? '자체간섭 검토를 시작해 보세요' : '중복검토를 시작해 보세요') + '</h3>' +
-                     '<p class="hero-sub">' + (mode === 'clash' ? '같은 파일 내 자체간섭 후보를 쌍(A↔B)으로 보여줍니다.' : '모델의 중복 요소를 그룹으로 묶어 보여줍니다.') + '</p>';
+    hero.innerHTML = '<h3 class="hero-title">' + (mode === 'clash' ? '자체 간섭 검토를 시작해 보세요' : '중복 검토를 시작해 보세요') + '</h3>' +
+                     '<p class="hero-sub">' + (mode === 'clash' ? '같은 파일 내 자체 간섭 후보를 쌍(A↔B)으로 보여줍니다.' : '모델의 중복 요소를 그룹으로 묶어 보여줍니다.') + '</p>';
     body.appendChild(hero);
   }
 
@@ -1724,8 +1724,8 @@ export function renderDup(root){
     var total = asNum(p.total, 0);
     var message = asStr(p.message, '');
     var detail = total > 0 ? (current + ' / ' + total) : '';
-    ProgressDialog.show(mode === 'clash' ? '자체간섭 검토' : '중복 검토', message || '진행 중...');
-    ProgressDialog.update(pct, message || '진행 중...', detail);
+    ProgressDialog.show(mode === 'clash' ? '자체 간섭 검토' : '중복 검토', message || '검토를 진행하는 중입니다.');
+    ProgressDialog.update(pct, message || '검토를 진행하는 중입니다.', detail);
   }
   function renderAppliedBar(){
     if (!appliedBar) return;
@@ -1742,7 +1742,7 @@ export function renderDup(root){
     var exCatCount = (cfg.excludeCategories && cfg.excludeCategories.length) ? cfg.excludeCategories.length : 0;
     var exportParams = getExportParamNames();
     var scopeTxt = (readScopeMode() === 'scope') ? '선택만' : (readScopeMode() === 'exclude') ? '선택 제외' : '전체';
-    var modeTxt = (mode === 'clash') ? '자체간섭' : '중복검토';
+    var modeTxt = (mode === 'clash') ? '자체 간섭' : '중복 검토';
     var selectedFile = getSelectedRuleLibraryItem();
 
     appliedBar.classList.remove('hidden');
@@ -1762,12 +1762,12 @@ export function renderDup(root){
       wrap.appendChild(c);
     }
     addChip('모드 ' + modeTxt);
-    addChip('허용오차 ' + formatTolDisplayText(readTolMm(), readTolUnit()));
+    addChip('허용 오차 ' + formatTolDisplayText(readTolMm(), readTolUnit()));
     addChip('범위 ' + scopeTxt);
-    addChip('Set ' + setCount);
-    addChip('Pair ' + pairEnabled + '/' + pairCount);
-    addChip('Exclude Set ' + exSetCount);
-    addChip('Exclude 목록 ' + (exFamCount + exCatCount));
+    addChip('세트 ' + setCount);
+    addChip('비교쌍 ' + pairEnabled + '/' + pairCount);
+    addChip('제외 세트 ' + exSetCount);
+    addChip('제외 목록 ' + (exFamCount + exCatCount));
     addChip('키워드 ' + merged.length);
     addChip('속성 추출 ' + exportParams.length);
     appliedBar.appendChild(wrap);
@@ -1782,7 +1782,7 @@ export function renderDup(root){
         names.push((p.a || '__') + ' vs ' + (p.b || '__'));
         if (names.length >= 2) break;
       }
-      if (names.length) lines.push('활성 Pair: ' + names.join(' · ') + (pairEnabled > 2 ? ' …' : ''));
+        if (names.length) lines.push('활성 비교쌍: ' + names.join(' · ') + (pairEnabled > 2 ? ' …' : ''));
     }
     if (exportParams.length){
       lines.push('추출 파라미터: ' + exportParams.slice(0, 3).join(', ') + (exportParams.length > 3 ? ' ...' : ''));
@@ -1802,8 +1802,8 @@ export function renderDup(root){
       '<div class="rm-window">' +
         '<div class="rm-head">' +
           '<div class="rm-head-left">' +
-            '<div class="rm-title">Rule/Set 설정</div>' +
-            '<div class="rm-sub">검토 규칙, Exclude Set, 제외 목록, 허용오차를 한곳에서 관리합니다.</div>' +
+            '<div class="rm-title">규칙/세트 설정</div>' +
+            '<div class="rm-sub">검토 규칙, 제외 세트, 제외 목록, 허용 오차를 한곳에서 관리합니다.</div>' +
           '</div>' +
           '<div class="rm-actions">' +
             '<button class="rp-btn rp-btn--ghost" data-act="export">XML 저장</button>' +
@@ -1815,15 +1815,15 @@ export function renderDup(root){
         '<div class="rm-body">' +
           '<section class="rp-overview">' +
             '<div class="rp-overview-title">설정 안내</div>' +
-            '<div class="rp-overview-copy">중복검토와 자체간섭 검토는 상단 모드 전환으로 바꾸고, 여기서는 검토 규칙과 제외 대상을 관리합니다.</div>' +
+            '<div class="rp-overview-copy">중복 검토와 자체 간섭 검토는 상단 모드 전환으로 바꾸고, 여기서는 검토 규칙과 제외 대상을 관리합니다.</div>' +
           '</section>' +
 
           '<section class="rp-sec rp-sec--compact">' +
             '<div class="rp-sec-head">' +
-              '<div><div class="rp-sec-title">공통 설정</div><div class="rp-sec-sub">허용오차, 선택 범위, 제외 키워드를 설정합니다. 목록은 창을 열 때마다 자동으로 최신 상태를 가져옵니다.</div></div>' +
+              '<div><div class="rp-sec-title">공통 설정</div><div class="rp-sec-sub">허용 오차, 선택 범위, 제외 키워드를 설정합니다. 목록은 창을 열 때마다 자동으로 최신 상태를 가져옵니다.</div></div>' +
             '</div>' +
             '<div class="rp-grid">' +
-              '<div class="rp-label">허용오차</div><div class="rp-inline-field"><input class="rp-input" type="number" step="0.1" min="0.01" data-bind="tolValue"/><select class="rp-select rp-select--unit" data-bind="tolUnit"><option value="mm">mm</option><option value="inch">inch</option></select></div>' +
+              '<div class="rp-label">허용 오차</div><div class="rp-inline-field"><input class="rp-input" type="number" step="0.1" min="0.01" data-bind="tolValue"/><select class="rp-select rp-select--unit" data-bind="tolUnit"><option value="mm">mm</option><option value="inch">inch</option></select></div>' +
               '<div class="rp-label">범위(Selection)</div>' +
               '<select class="rp-select" data-bind="scopeMode"><option value="all">전체</option><option value="scope">선택한 요소만 검사</option><option value="exclude">선택한 요소는 제외</option></select>' +
               '<div class="rp-label">제외 키워드</div><input class="rp-input" type="text" placeholder="예: Dummy, Temp (콤마 구분)" data-bind="excludeKeywords"/>' +
@@ -1842,24 +1842,24 @@ export function renderDup(root){
 
           '<section class="rp-sec">' +
             '<div class="rp-sec-head">' +
-              '<div><div class="rp-sec-title">Pair (Set vs Set)</div><div class="rp-sec-sub">A와 B에 속한 요소 사이의 자체간섭만 계산합니다.</div></div>' +
-              '<div class="rp-section-actions"><button class="rp-btn rp-btn--add" data-act="add-pair">+ Pair 추가</button></div>' +
+              '<div><div class="rp-sec-title">비교쌍 (세트 vs 세트)</div><div class="rp-sec-sub">A와 B에 속한 요소 사이의 자체 간섭만 계산합니다.</div></div>' +
+              '<div class="rp-section-actions"><button class="rp-btn rp-btn--add" data-act="add-pair">+ 비교쌍 추가</button></div>' +
             '</div>' +
             '<div data-slot="pairs"></div>' +
           '</section>' +
 
           '<section class="rp-sec">' +
             '<div class="rp-sec-head">' +
-              '<div><div class="rp-sec-title">Exclude Sets</div><div class="rp-sec-sub">여기에 등록한 Set은 모든 간섭 검토에서 제외됩니다.</div></div>' +
-              '<div class="rp-section-actions"><button class="rp-btn rp-btn--add" data-act="add-exset">+ Exclude Set 추가</button></div>' +
+              '<div><div class="rp-sec-title">제외 세트</div><div class="rp-sec-sub">여기에 등록한 세트는 모든 간섭 검토에서 제외됩니다.</div></div>' +
+              '<div class="rp-section-actions"><button class="rp-btn rp-btn--add" data-act="add-exset">+ 제외 세트 추가</button></div>' +
             '</div>' +
-            '<div class="rp-inline-note">Set을 먼저 만들어야 Exclude Set으로 등록할 수 있습니다.</div>' +
+            '<div class="rp-inline-note">세트를 먼저 만들어야 제외 세트로 등록할 수 있습니다.</div>' +
             '<div data-slot="exsets"></div>' +
           '</section>' +
 
           '<section class="rp-sec">' +
             '<div class="rp-sec-head">' +
-              '<div><div class="rp-sec-title">Exclude 목록</div><div class="rp-sec-sub">패밀리/시스템 목록에서 직접 제외 대상을 선택합니다.</div></div>' +
+              '<div><div class="rp-sec-title">제외 목록</div><div class="rp-sec-sub">패밀리/시스템 목록에서 직접 제외 대상을 선택합니다.</div></div>' +
               '<div class="rp-section-actions">' +
                 '<button class="rp-btn rp-btn--accent" data-act="open-expicker">패밀리/시스템 목록 열기</button>' +
               '</div>' +
@@ -1878,7 +1878,7 @@ export function renderDup(root){
             '</div>' +
             '<div class="rp-filebox">' +
               '<div class="rp-filecopy">XML 불러오기 후 파일 이름 기준으로 목록이 생성됩니다.</div>' +
-              '<div class="rp-filehint">목록에서 파일을 선택한 뒤 “선택 적용”으로 현재 설정에 반영하세요.</div>' +
+              '<div class="rp-filehint">목록에서 파일을 선택한 뒤 “선택 적용”으로 현재 설정에 반영해 주세요.</div>' +
               '<div data-slot="cfglist"></div>' +
             '</div>' +
             '<input type="file" data-bind="cfgfile" accept=".xml,.json,text/xml,application/xml,application/json" style="display:none" />' +
@@ -1944,7 +1944,7 @@ export function renderDup(root){
 
       if (act === 'add-exset'){
         var c0 = loadRuleConfig();
-        if (!c0.sets || !c0.sets.length){ toast('Exclude Sets를 추가하려면 먼저 Set을 만들어 주세요.', 'warn', 1800); return; }
+        if (!c0.sets || !c0.sets.length){ toast('제외 세트를 추가하려면 먼저 세트를 만들어 주세요.', 'warn', 1800); return; }
         addExcludeSet(); renderRulePanel(); return;
       }
       if (act === 'del-exset'){
@@ -2241,7 +2241,7 @@ export function renderDup(root){
 
     var root = xml.documentElement;
     if (!root || root.nodeName !== 'DuplicateInspectorRuleSet'){
-      throw new Error('지원하지 않는 설정 파일입니다.');
+      throw new Error('지원하지 않는 중복 / 자체 간섭 검토 설정 XML 파일입니다.');
     }
 
     var settings = root.getElementsByTagName('Settings')[0];
@@ -2326,14 +2326,14 @@ export function renderDup(root){
         var item = upsertRuleLibraryItem(asStr(file && file.name, 'DuplicateInspector_RuleSet.xml'), parsed);
         renderRulePanel();
         try{ renderAppliedBar(); }catch(e0){}
-        toast('XML을 목록에 불러왔습니다. 목록에서 선택 후 적용하세요.', 'ok', 1600);
+        toast('중복 / 자체 간섭 검토 설정 XML을 목록에 불러왔습니다. 목록에서 선택 후 적용해 주세요.', 'ok', 1600);
       } catch(ex){
-        toast(asStr(ex && ex.message, '설정 파일을 읽지 못했습니다.'), 'err', 2600);
+        toast(asStr(ex && ex.message, '중복 / 자체 간섭 검토 설정 XML 파일을 읽지 못했습니다.'), 'err', 2600);
       }
       try{ inputEl.value = ''; }catch(e4){}
     };
     reader.onerror = function(){
-      toast('설정 파일을 읽지 못했습니다.', 'err', 2400);
+      toast('중복 / 자체 간섭 검토 설정 XML 파일을 읽지 못했습니다.', 'err', 2400);
       try{ inputEl.value = ''; }catch(e5){}
     };
     reader.readAsText(file, 'utf-8');
@@ -2400,7 +2400,7 @@ export function renderDup(root){
           var row = document.createElement('label');
           row.className = 'rp-fileitem' + (String(item.id) === String(selId) ? ' is-selected' : '');
           row.innerHTML = '<input type="radio" name="dup-rulelib" data-lib-sel="1" value="' + esc(item.id) + '" ' + (String(item.id) === String(selId) ? 'checked' : '') + ' />' +
-                          '<div class="rp-fileitem-body"><div class="rp-fileitem-title">' + esc(item.name) + '</div><div class="rp-fileitem-sub">Set ' + (((item.parsed && item.parsed.ruleConfig && item.parsed.ruleConfig.sets) || []).length) + ' · Pair ' + (((item.parsed && item.parsed.ruleConfig && item.parsed.ruleConfig.pairs) || []).length) + '</div></div>';
+                          '<div class="rp-fileitem-body"><div class="rp-fileitem-title">' + esc(item.name) + '</div><div class="rp-fileitem-sub">세트 ' + (((item.parsed && item.parsed.ruleConfig && item.parsed.ruleConfig.sets) || []).length) + ' · 비교쌍 ' + (((item.parsed && item.parsed.ruleConfig && item.parsed.ruleConfig.pairs) || []).length) + '</div></div>';
           cfgList.appendChild(row);
         }
       }
@@ -2606,7 +2606,7 @@ export function renderDup(root){
       if (!cfg.sets.length){
         var h = document.createElement('div');
         h.className = 'rp-emptycard';
-        h.innerHTML = '<div class="rp-emptytitle">등록된 Set이 없습니다.</div><div class="rp-emptysub">+ Set 추가를 눌러 필터 기준을 먼저 만들어 주세요.</div>';
+        h.innerHTML = '<div class="rp-emptytitle">등록된 세트가 없습니다.</div><div class="rp-emptysub">+ 세트 추가를 눌러 필터 기준을 먼저 만들어 주세요.</div>';
         setsSlot.appendChild(h);
       }
     }
@@ -2679,7 +2679,7 @@ export function renderDup(root){
       if (!cfg.pairs.length){
         var h2 = document.createElement('div');
         h2.className = 'rp-emptycard';
-        h2.innerHTML = '<div class="rp-emptytitle">등록된 Pair가 없습니다.</div><div class="rp-emptysub">Set을 만든 뒤 + Pair 추가로 비교 대상을 지정하세요.</div>';
+        h2.innerHTML = '<div class="rp-emptytitle">등록된 비교쌍이 없습니다.</div><div class="rp-emptysub">세트를 만든 뒤 + 비교쌍 추가로 비교 대상을 지정해 주세요.</div>';
         pairsSlot.appendChild(h2);
       }
     }
@@ -2718,7 +2718,7 @@ export function renderDup(root){
       if (!cfg.excludeSetIds.length){
         var h3 = document.createElement('div');
         h3.className = 'rp-emptyline';
-        h3.textContent = cfg.sets.length ? '등록된 Exclude Set이 없습니다.' : 'Set을 먼저 만들어야 Exclude Set을 등록할 수 있습니다.';
+        h3.textContent = cfg.sets.length ? '등록된 제외 세트가 없습니다.' : '세트를 먼저 만들어야 제외 세트를 등록할 수 있습니다.';
         exSlot.appendChild(h3);
       }
     }
@@ -2743,7 +2743,7 @@ export function renderDup(root){
   }
   function deleteSelectedRuleLibrary(){
     var item = getSelectedRuleLibraryItem();
-    if (!item){ toast('삭제할 XML을 먼저 선택하세요.', 'warn', 1800); return; }
+    if (!item){ toast('삭제할 XML을 먼저 선택해 주세요.', 'warn', 1800); return; }
     removeRuleLibraryItem(item.id);
     renderRulePanel();
     renderAppliedBar();
@@ -2845,12 +2845,12 @@ export function renderDup(root){
   function addExcludeSet(){
     var cfg = loadRuleConfig();
     if (!cfg.sets.length){
-      toast('Set이 없습니다. 먼저 Set을 추가하세요.', 'warn', 1600);
+      toast('세트가 없습니다. 먼저 세트를 추가해 주세요.', 'warn', 1600);
       return;
     }
     cfg.excludeSetIds.push(String(cfg.sets[0].id));
     saveRuleConfig(cfg);
-    toast('Exclude Set이 추가되었습니다.', 'ok', 1200);
+    toast('제외 세트가 추가되었습니다.', 'ok', 1200);
   }
   function delExcludeSet(ei){
     var cfg = loadRuleConfig();

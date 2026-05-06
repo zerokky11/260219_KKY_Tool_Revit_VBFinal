@@ -2,7 +2,7 @@
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { getLastExcelExportLocale } from '../core/dom.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
-import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
+import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js?v=20260504a';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 
@@ -56,7 +56,7 @@ export function renderGuid(root) {
     const header = div('feature-header guid-header');
     const headerLeft = div('feature-heading');
     headerLeft.innerHTML = `
-      <span class="feature-kicker">Parameter Cleanup</span>
+      <span class="feature-kicker">파라미터 정리</span>
       <h2 class="feature-title">파라미터 GUID 검토 및 정리</h2>
       <p class="feature-sub">프로젝트/패밀리 파라미터 GUID를 검토하고 삭제용 엑셀 기준으로 정리합니다.</p>`;
 
@@ -77,7 +77,7 @@ export function renderGuid(root) {
     reviewTitle.className = 'guid-title';
     reviewTitle.innerHTML = '<h3>GUID 검토</h3><p class="feature-note">검토 대상 RVT를 등록한 뒤 GUID 검토를 실행합니다. 목록이 비어 있으면 현재 활성 문서를 기준으로 검토합니다.</p>';
     const rvtMeta = div('familylink-results-meta');
-    rvtMeta.textContent = '0 files';
+    rvtMeta.textContent = '파일 0개';
     reviewHeader.append(reviewTitle, rvtMeta);
 
     const reviewActions = div('familylink-rvt-actions');
@@ -146,7 +146,7 @@ export function renderGuid(root) {
     const tabHeadRight = div('guid-results-filters');
     const tabBtns = div('pill-tabs');
     const btnTabProject = document.createElement('button'); btnTabProject.type = 'button'; btnTabProject.className = 'pill-tab is-active'; btnTabProject.innerHTML = `<span class="pill-label">RVT 검토결과</span><span class="pill-count">0</span>`;
-    const btnTabFamily = document.createElement('button'); btnTabFamily.type = 'button'; btnTabFamily.className = 'pill-tab'; btnTabFamily.innerHTML = `<span class="pill-label">Family 검토결과</span><span class="pill-count">0</span>`;
+    const btnTabFamily = document.createElement('button'); btnTabFamily.type = 'button'; btnTabFamily.className = 'pill-tab'; btnTabFamily.innerHTML = `<span class="pill-label">패밀리 검토 결과</span><span class="pill-count">0</span>`;
     tabBtns.append(btnTabProject, btnTabFamily);
     tabHeadLeft.append(tabBtns);
     const filterBar = buildFamilyFilter();
@@ -156,7 +156,7 @@ export function renderGuid(root) {
     tabs.append(tabHead);
 
     const emptyState = div('guid-empty-state');
-    emptyState.textContent = 'RVT 등록 후 검토 시작해주세요';
+    emptyState.textContent = 'RVT를 등록한 뒤 검토를 시작해 주세요.';
     tabs.append(emptyState);
 
     const tabPanels = div('guid-tab-panels');
@@ -187,7 +187,7 @@ export function renderGuid(root) {
     const familyUserTitle = document.createElement('div'); familyUserTitle.className = 'guid-section-title'; familyUserTitle.textContent = '사용자 파라미터';
     const familyUserCount = document.createElement('span'); familyUserCount.className = 'guid-section-count'; familyUserCount.textContent = '0';
     familyUserHeader.append(familyUserTitle, familyUserCount);
-    const familyEmpty = div('guid-empty'); familyEmpty.textContent = '파라미터 없음';
+    const familyEmpty = div('guid-empty'); familyEmpty.textContent = '파라미터가 없습니다.';
     const detailTableWrap = div('guid-table-wrap guid-scroll-box');
     const detailTable = document.createElement('table'); detailTable.className = 'guid-table';
     const detailHead = document.createElement('thead');
@@ -198,7 +198,7 @@ export function renderGuid(root) {
 
     const builtSection = div('guid-section');
     const builtHeader = div('guid-section-header');
-    const builtTitle = document.createElement('div'); builtTitle.className = 'guid-section-title'; builtTitle.textContent = 'Built-in 파라미터';
+    const builtTitle = document.createElement('div'); builtTitle.className = 'guid-section-title'; builtTitle.textContent = '기본 제공 파라미터';
     const builtCount = document.createElement('span'); builtCount.className = 'guid-section-count'; builtCount.textContent = '0';
     const builtToggle = document.createElement('button'); builtToggle.type = 'button'; builtToggle.className = 'pill-tab'; builtToggle.textContent = '펼치기';
     builtHeader.append(builtTitle, builtCount, builtToggle);
@@ -340,9 +340,9 @@ export function renderGuid(root) {
         state.cleanupSourceExcelPath = String(path || state.cleanupSourceExcelPath || '').trim();
         syncCleanupPanel();
         if (path) {
-            showExcelSavedDialog('삭제용 엑셀로 내보냈습니다.', path, (p) => post('excel:open', { path: p }));
+            showExcelSavedDialog('파라미터 GUID 삭제용 엑셀을 저장했습니다.', path, (p) => post('excel:open', { path: p }));
         } else {
-            toast('엑셀 내보내기 완료', 'ok');
+            toast('파라미터 GUID 삭제용 엑셀 내보내기를 완료했습니다.', 'ok');
         }
     });
 
@@ -403,7 +403,7 @@ export function renderGuid(root) {
         state.acceptExcelProgress = false;
         state.runId = '';
         state.activeTab = 'project';
-        ProgressDialog.show('파라미터 GUID 검토', '준비 중…');
+        ProgressDialog.show('파라미터 GUID 검토', '검토를 준비하는 중입니다.');
         post('guid:run', payload);
     }
 
@@ -414,7 +414,7 @@ export function renderGuid(root) {
     function canRunWithSharedParam() {
         const status = state.sharedParamStatus || {};
         if (!status.status || status.status === 'ok') return true;
-        const msg = status.warning || 'Shared Parameter 파일 상태가 올바르지 않습니다.';
+        const msg = status.warning || '공유파라미터 파일 상태가 올바르지 않습니다.';
         toast(msg, 'err');
         return false;
     }
@@ -431,7 +431,7 @@ export function renderGuid(root) {
             state.acceptExcelProgress = true;
             state.acceptRunProgress = false;
             state.acceptCleanupProgress = false;
-            ProgressDialog.show('삭제용 엑셀 내보내기', '엑셀 파일을 만드는 중…');
+            ProgressDialog.show('삭제용 엑셀 내보내기', '엑셀 파일을 만드는 중입니다.');
             post('guid:export', { which, excelMode, locale: getLastExcelExportLocale() });
         });
     }
@@ -454,7 +454,7 @@ export function renderGuid(root) {
         state.acceptRunProgress = false;
         state.acceptExcelProgress = false;
         state.acceptCleanupProgress = true;
-        ProgressDialog.show('파라미터 GUID 정리', '삭제용 엑셀 기준으로 정리 준비 중…');
+        ProgressDialog.show('파라미터 GUID 정리', '삭제용 엑셀 기준으로 정리를 준비하는 중입니다.');
         post('guid:cleanup', {
             excelPath: state.cleanupSourceExcelPath,
             closeAllWorksetsOnOpen: true,
@@ -485,7 +485,7 @@ export function renderGuid(root) {
 
         const desc = document.createElement('div');
         desc.className = 'guid-settings-dialog__desc';
-        desc.textContent = '검토 시 포함할 패밀리 범위를 선택한 뒤 적용하세요.';
+        desc.textContent = '검토 시 포함할 패밀리 범위를 선택한 뒤 적용해 주세요.';
 
         const options = div('guid-setting-checks');
         const familyLabel = document.createElement('label');
@@ -503,7 +503,7 @@ export function renderGuid(root) {
         annotationCk.type = 'checkbox';
         annotationCk.checked = includeAnnotation;
         const annotationText = document.createElement('span');
-        annotationText.textContent = 'Annotation 패밀리 포함';
+        annotationText.textContent = '주석 패밀리 포함';
         annotationLabel.append(annotationCk, annotationText);
         options.append(familyLabel, annotationLabel);
 
@@ -557,7 +557,7 @@ export function renderGuid(root) {
         title.className = 'guid-title';
         title.innerHTML = '<h3>파라미터 정리용 엑셀</h3><p class="feature-note">검토 결과를 삭제용 엑셀로 내보낸 뒤, 삭제 표시한 엑셀을 다시 불러와 정리를 적용합니다.</p>';
         const meta = div('familylink-results-meta');
-        meta.textContent = '미선택';
+        meta.textContent = '삭제용 엑셀 선택 필요';
         processUi.meta = meta;
         head.append(title, meta);
 
@@ -572,7 +572,7 @@ export function renderGuid(root) {
 
         const excelDrop = div('feature-row__summary guid-apply-drop');
         const excelLead = document.createElement('strong');
-        excelLead.textContent = "선택한 삭제용 엑셀의 '삭제여부' 컬럼에 '삭제'가 입력된 행만 정리 대상으로 적용합니다.";
+        excelLead.textContent = "선택한 삭제용 엑셀의 '삭제여부' 열에 '삭제'가 입력된 행만 정리 대상으로 적용합니다.";
         const excelPath = div('feature-note');
         excelPath.textContent = '아직 선택한 삭제용 엑셀이 없습니다.';
         processUi.path = excelPath;
@@ -587,7 +587,7 @@ export function renderGuid(root) {
             buildProcessRow('1', '검토 시작으로 GUID 결과를 확인합니다.'),
             buildProcessRow('2', '삭제용 엑셀 내보내기로 작업용 엑셀을 저장합니다.'),
             buildProcessRow('3', "엑셀의 '삭제여부' 열에 삭제라고 입력한 뒤 다시 불러옵니다."),
-            buildProcessRow('4', '정리 시작을 누르면 센트럴 파일도 로컬로, 모든 Workset을 닫고 적용합니다.')
+            buildProcessRow('4', '정리 시작을 누르면 센트럴 파일도 로컬로, 모든 웍셋을 닫고 적용합니다.')
         );
         const rule = div('guid-setting-code');
         rule.innerHTML = '<span>입력 예시</span><strong>삭제여부 = 삭제</strong>';
@@ -646,7 +646,7 @@ export function renderGuid(root) {
         const wrap = div('sharedparam-status');
         wrap.innerHTML = `
           <div class="sharedparam-status__head">
-            <span class="sharedparam-status__title">Shared Parameter 상태</span>
+            <span class="sharedparam-status__title">공유파라미터 상태</span>
             <span class="sharedparam-status__badge chip">조회 중</span>
           </div>
           <div class="sharedparam-status__body">
@@ -676,10 +676,10 @@ export function renderGuid(root) {
         const hintEl = container.querySelector('[data-sp-hint]');
 
         const status = payload?.status || 'unknown';
-        const label = payload?.statusLabel || '알 수 없음';
+        const label = payload?.statusLabel || '상태를 확인할 수 없습니다.';
         const path = payload?.path || '미설정';
-        const exists = payload?.existsOnDisk ? '존재' : '없음';
-        const canOpen = payload?.canOpen ? 'OK' : '실패';
+        const exists = payload?.existsOnDisk ? '파일 있음' : '파일 없음';
+        const canOpen = payload?.canOpen ? '열기 가능' : '열기 실패';
         const warning = payload?.warning || payload?.errorMessage || '';
 
         if (pathEl) pathEl.textContent = path;
@@ -701,8 +701,8 @@ export function renderGuid(root) {
     function buildFamilyFilter() {
         const bar = div('guid-filter-bar');
         const btnAll = document.createElement('button'); btnAll.type = 'button'; btnAll.className = 'pill-tab is-active'; btnAll.textContent = '전체';
-        const btnShared = document.createElement('button'); btnShared.type = 'button'; btnShared.className = 'pill-tab'; btnShared.textContent = 'Shared';
-        const btnFamily = document.createElement('button'); btnFamily.type = 'button'; btnFamily.className = 'pill-tab'; btnFamily.textContent = 'Family';
+        const btnShared = document.createElement('button'); btnShared.type = 'button'; btnShared.className = 'pill-tab'; btnShared.textContent = '공유';
+        const btnFamily = document.createElement('button'); btnFamily.type = 'button'; btnFamily.className = 'pill-tab'; btnFamily.textContent = '패밀리';
         const sync = () => {
             btnAll.classList.toggle('is-active', state.familyFilter === 'all');
             btnShared.classList.toggle('is-active', state.familyFilter === 'shared');
@@ -783,7 +783,7 @@ export function renderGuid(root) {
     function paintFamily() {
         navList.innerHTML = '';
         if (!state.includeFamily) {
-            navList.innerHTML = '<li class="guid-nav-empty">Family 검토결과 추가 검토를 선택 후 실행하세요.</li>';
+            navList.innerHTML = '<li class="guid-nav-empty">패밀리 검토 결과 추가 검토를 선택한 뒤 실행해 주세요.</li>';
             detailHead.innerHTML = '';
             detailBody.innerHTML = '';
             builtHead.innerHTML = '';
@@ -838,7 +838,7 @@ export function renderGuid(root) {
             Array.from(info.families).sort((a, b) => a.localeCompare(b)).forEach(f => {
                 const li = document.createElement('li');
                 const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'nav-fam-item'; btn.textContent = f;
-                btn.title = f;
+                btn.setAttribute('aria-label', f);
                 btn.onclick = () => { onRequestFamilyDetail(key, f); };
                 if (state.activeFamilyDoc === key && state.activeFamily === f) btn.classList.add('is-active');
                 li.append(btn);
@@ -869,7 +869,7 @@ export function renderGuid(root) {
 
     function onRequestFamilyDetail(rvtPath, familyName) {
         if (!state.runId) {
-            toast('먼저 검토를 실행하세요.', 'warn');
+            toast('먼저 검토를 실행해 주세요.', 'warn');
             return;
         }
         state.activeFamilyDoc = rvtPath || familyName || '';
@@ -966,7 +966,7 @@ export function renderGuid(root) {
                     const td = document.createElement('td');
                     const text = safe(row[ci]);
                     td.textContent = text;
-                    td.title = text;
+                    td.setAttribute('aria-label', text || '-');
                     tr.append(td);
                 });
                 frag.append(tr);
@@ -1015,7 +1015,7 @@ export function renderGuid(root) {
         if (!auditUi.summary) return;
         const familyText = state.includeFamily ? '포함' : '미포함';
         const annotationText = state.includeFamily && state.includeAnnotation ? '포함' : '미포함';
-        auditUi.summary.textContent = `현재 설정: 패밀리 ${familyText} / Annotation 패밀리 ${annotationText}`;
+        auditUi.summary.textContent = `현재 설정: 패밀리 ${familyText} / 주석 패밀리 ${annotationText}`;
     }
 
     function setBusy(on) {
@@ -1098,7 +1098,7 @@ export function renderGuid(root) {
         const exporting = phase !== 'DONE' && phase !== 'ERROR';
         if (!state.busy && exporting) setBusy(true);
 
-        ProgressDialog.show('삭제용 엑셀 내보내기', subtitle || '엑셀 내보내기 중…');
+        ProgressDialog.show('삭제용 엑셀 내보내기', subtitle || '파라미터 GUID 삭제용 엑셀을 내보내는 중입니다.');
         ProgressDialog.update(percent, subtitle, detail);
 
         if (!exporting) {
@@ -1132,41 +1132,41 @@ export function renderGuid(root) {
     function buildExcelSubtitle(phase, current, total) {
         const norm = normalizeExcelPhase(phase);
         switch (norm) {
-            case 'EXCEL_INIT': return '엑셀 워크북 준비 중';
-            case 'EXCEL_WRITE': return `엑셀 데이터 작성 중 (${current}/${Math.max(total, current || 1)})`;
-            case 'EXCEL_SAVE': return '엑셀 내보내기 중';
-            case 'AUTOFIT': return '열 너비 자동 조정 중…';
-            case 'DONE': return '엑셀 내보내기 완료';
-            case 'ERROR': return '엑셀 내보내기 오류';
-            default: return '엑셀 내보내기 중…';
+            case 'EXCEL_INIT': return '파라미터 GUID 삭제용 엑셀 워크북을 준비하는 중입니다.';
+            case 'EXCEL_WRITE': return `파라미터 GUID 삭제용 엑셀 데이터를 작성하는 중입니다. (${current}/${Math.max(total, current || 1)})`;
+            case 'EXCEL_SAVE': return '파라미터 GUID 삭제용 엑셀을 내보내는 중입니다.';
+            case 'AUTOFIT': return '파라미터 GUID 삭제용 엑셀 열 너비를 자동 조정하는 중입니다.';
+            case 'DONE': return '파라미터 GUID 삭제용 엑셀 내보내기 완료';
+            case 'ERROR': return '파라미터 GUID 삭제용 엑셀 내보내기 오류';
+            default: return '파라미터 GUID 삭제용 엑셀을 내보내는 중입니다.';
         }
     }
 
     function formatExcelDetail(phase, message) {
         const norm = normalizeExcelPhase(phase);
-        if (norm === 'AUTOFIT') return '열 너비 자동 조정 중…';
+        if (norm === 'AUTOFIT') return '파라미터 GUID 삭제용 엑셀 열 너비를 자동 조정하는 중입니다.';
         return message || '';
     }
 
     function buildRunProgressSubtitle(percent, message) {
         const raw = String(message || '').trim();
-        if (!raw) return '진행 중…';
-        if (raw.includes('문서 여는 중')) return '문서를 여는 중…';
-        if (raw.includes('프로젝트 파라미터')) return `프로젝트 파라미터 검토 중 (${formatRunPercent(percent)})`;
-        if (raw.includes('패밀리 처리 중')) return `패밀리 검토 중 (${formatRunPercent(percent)})`;
+        if (!raw) return '파라미터 GUID 검토를 진행하는 중입니다.';
+        if (raw.includes('문서 여는 중')) return '파라미터 GUID 검토 대상 문서를 여는 중입니다.';
+        if (raw.includes('프로젝트 파라미터')) return `프로젝트 파라미터 GUID를 검토하는 중입니다. (${formatRunPercent(percent)})`;
+        if (raw.includes('패밀리 처리 중')) return `패밀리 파라미터 GUID를 검토하는 중입니다. (${formatRunPercent(percent)})`;
         if (raw.includes('실패')) return '문서 처리 실패';
         if (raw.includes('완료')) return '파라미터 GUID 검토 완료';
-        return `파라미터 GUID 검토 진행 중 (${formatRunPercent(percent)})`;
+        return `파라미터 GUID 검토를 진행하는 중입니다. (${formatRunPercent(percent)})`;
     }
 
     function buildCleanupProgressSubtitle(percent, message) {
         const raw = String(message || '').trim();
-        if (!raw) return '정리 진행 중…';
-        if (raw.includes('문서 여는 중')) return '삭제 대상 문서를 여는 중…';
-        if (raw.includes('프로젝트 파라미터 정리 중')) return `프로젝트 파라미터 정리 중 (${formatRunPercent(percent)})`;
-        if (raw.includes('로드 패밀리 파라미터 정리 중')) return `로드 패밀리 정리 중 (${formatRunPercent(percent)})`;
+        if (!raw) return '파라미터 GUID 정리를 진행하는 중입니다.';
+        if (raw.includes('문서 여는 중')) return '삭제 대상 문서를 여는 중입니다.';
+        if (raw.includes('프로젝트 파라미터 정리 중')) return `프로젝트 파라미터를 정리하는 중입니다. (${formatRunPercent(percent)})`;
+        if (raw.includes('로드 패밀리 파라미터 정리 중')) return `로드 패밀리를 정리하는 중입니다. (${formatRunPercent(percent)})`;
         if (raw.includes('완료')) return '파라미터 GUID 정리 완료';
-        return `파라미터 GUID 정리 진행 중 (${formatRunPercent(percent)})`;
+        return `파라미터 GUID 정리를 진행하는 중입니다. (${formatRunPercent(percent)})`;
     }
 
     function buildRunProgressDetail(percent, message) {
@@ -1182,7 +1182,7 @@ export function renderGuid(root) {
     }
 
     function onRemoveSelected() {
-        if (!state.rvtChecked.size) { toast('제거할 RVT를 선택하세요.', 'warn'); return; }
+        if (!state.rvtChecked.size) { toast('제거할 RVT를 선택해 주세요.', 'warn'); return; }
         state.rvtList = state.rvtList.filter(p => !state.rvtChecked.has(p));
         state.rvtChecked.clear();
         persistRvts();
@@ -1208,7 +1208,7 @@ export function renderGuid(root) {
     function syncRvtActionState() {
         if (btnRemove) btnRemove.disabled = state.rvtChecked.size === 0;
         if (btnClear) btnClear.disabled = state.rvtList.length === 0;
-        rvtMeta.textContent = `${state.rvtList.length} files`;
+        rvtMeta.textContent = `파일 ${state.rvtList.length}개`;
         rvtSummary.textContent = `파일 ${state.rvtList.length}개`;
         if (processButtons.run) processButtons.run.disabled = !!runBtn.disabled;
         if (processButtons.export) processButtons.export.disabled = !!exportBtn.disabled;
@@ -1217,7 +1217,7 @@ export function renderGuid(root) {
 
     function syncCleanupPanel() {
         if (processUi.meta) {
-            processUi.meta.textContent = state.cleanupSourceExcelPath ? '준비됨' : '미선택';
+            processUi.meta.textContent = state.cleanupSourceExcelPath ? '삭제용 엑셀 선택 완료' : '삭제용 엑셀 선택 필요';
         }
         if (processUi.path) {
             processUi.path.textContent = state.cleanupSourceExcelPath || '아직 선택한 삭제용 엑셀이 없습니다.';
@@ -1234,19 +1234,19 @@ export function renderGuid(root) {
         const familyDocCount = state.includeFamily ? countUniqueDocEntries(state.familyNav.columns, state.familyNav.rows) : 0;
         const notes = [];
 
-        if (state.includeFamily) notes.push('Family 탭에서 RVT별 패밀리 상세를 이어서 확인할 수 있습니다.');
-        if (payload?.includeAnnotation) notes.push('Annotation 패밀리까지 포함해 GUID를 비교했습니다.');
-        notes.push('삭제할 행은 엑셀의 삭제여부 컬럼에 삭제를 입력한 뒤, 삭제용 엑셀 불러오기로 다시 실행하면 됩니다.');
+        if (state.includeFamily) notes.push('패밀리 탭에서 RVT별 패밀리 상세를 이어서 확인할 수 있습니다.');
+        if (payload?.includeAnnotation) notes.push('주석 패밀리까지 포함해 GUID를 비교했습니다.');
+        notes.push("삭제할 행은 엑셀의 '삭제여부' 열에 '삭제'를 입력한 뒤, 삭제용 엑셀 불러오기로 다시 실행하면 됩니다.");
 
         showCompletionSummaryDialog({
             title: '파라미터 GUID 검토 완료',
             message: '프로젝트와 패밀리 GUID 검토가 끝났습니다. 아래 탭에서 상세 결과를 확인하거나 삭제용 엑셀로 바로 내보낼 수 있습니다.',
             summaryItems: [
-                { label: 'Project 결과 건수', value: String(projectCount) },
-                { label: 'Project 대상 RVT', value: `${projectDocCount}개` },
-                { label: 'Family 결과 건수', value: String(familyCount) },
-                { label: 'Family 대상 RVT', value: `${familyDocCount}개` },
-                { label: 'Family 검토 포함', value: state.includeFamily ? '예' : '아니오' }
+                { label: '프로젝트 결과 건수', value: String(projectCount) },
+                { label: '프로젝트 대상 RVT', value: `${projectDocCount}개` },
+                { label: '패밀리 결과 건수', value: String(familyCount) },
+                { label: '패밀리 대상 RVT', value: `${familyDocCount}개` },
+                { label: '패밀리 검토 포함', value: state.includeFamily ? '예' : '아니오' }
             ],
             notes,
             exportDisabled: !!exportBtn.disabled,
@@ -1263,7 +1263,7 @@ export function renderGuid(root) {
         const notes = [];
 
         if (payload?.sourceExcelPath) notes.push(`삭제 기준 엑셀: ${payload.sourceExcelPath}`);
-        if (payload?.settings?.closeAllWorksetsOnOpen) notes.push('Workshared 문서는 모든 Workset을 닫은 상태로 열었습니다.');
+        if (payload?.settings?.closeAllWorksetsOnOpen) notes.push('워크셰어링 문서는 모든 웍셋을 닫은 상태로 열었습니다.');
         if (payload?.settings?.useSyncComment) notes.push(`동기화 코멘트 사용: ${payload?.settings?.syncComment || '(빈 코멘트)'}`);
 
         showCompletionSummaryDialog({
@@ -1273,7 +1273,7 @@ export function renderGuid(root) {
                 { label: '삭제 요청 건수', value: String(instructionCount) },
                 { label: '실제 삭제 건수', value: String(deletedCount) },
                 { label: '성공 파일', value: `${successCount}개` },
-                { label: '변경 없음', value: `${noChangeCount}개` },
+                { label: '변경 없는 파일', value: `${noChangeCount}개` },
                 { label: '실패 파일', value: `${failCount}개` }
             ],
             notes,

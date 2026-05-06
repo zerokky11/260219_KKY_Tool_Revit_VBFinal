@@ -55,7 +55,7 @@ Namespace UI.Hub
                             .busy = False,
                             .showToast = True,
                             .kind = "err",
-                            .message = "업데이트 확인에 실패했습니다: " & ex.Message
+                            .message = BuildUpdateCheckFailureMessage(ex)
                         })
                     Finally
                         Interlocked.Exchange(_updateBusy, 0)
@@ -117,7 +117,7 @@ Namespace UI.Hub
                             .busy = False,
                             .showToast = Not silent,
                             .kind = "err",
-                            .message = "업데이트 확인에 실패했습니다: " & ex.Message
+                            .message = BuildUpdateCheckFailureMessage(ex)
                         })
                     Finally
                         Interlocked.Exchange(_updateBusy, 0)
@@ -187,7 +187,7 @@ Namespace UI.Hub
                             .busy = False,
                             .showToast = True,
                             .kind = "err",
-                            .message = "업데이트 설치 준비에 실패했습니다: " & ex.Message
+                            .message = BuildUpdateInstallFailureMessage(ex)
                         })
                     Finally
                         Interlocked.Exchange(_updateBusy, 0)
@@ -254,13 +254,34 @@ Namespace UI.Hub
                             .busy = False,
                             .showToast = True,
                             .kind = "err",
-                            .message = "업데이트 설치 준비에 실패했습니다: " & ex.Message
+                            .message = BuildUpdateInstallFailureMessage(ex)
                         })
                     Finally
                         Interlocked.Exchange(_updateBusy, 0)
                     End Try
                 End Sub)
         End Sub
+
+        Private Shared Function BuildUpdateCheckFailureMessage(ex As Exception) As String
+            Dim reason = GetReadableUpdateErrorReason(ex)
+            Return "업데이트 확인에 실패했습니다. 인터넷 연결, 사내 보안망, 업데이트 서버 주소를 확인해 주세요. 관리자에게는 이 내용을 전달하면 됩니다: " & reason
+        End Function
+
+        Private Shared Function BuildUpdateInstallFailureMessage(ex As Exception) As String
+            Dim reason = GetReadableUpdateErrorReason(ex)
+            Return "업데이트 파일 준비에 실패했습니다. 다운로드 권한, 저장 공간, 보안 프로그램 차단 여부를 확인해 주세요. 관리자에게는 이 내용을 전달하면 됩니다: " & reason
+        End Function
+
+        Private Shared Function GetReadableUpdateErrorReason(ex As Exception) As String
+            If ex Is Nothing Then Return "알 수 없는 오류"
+
+            Dim message = If(ex.Message, String.Empty).Trim()
+            If String.IsNullOrWhiteSpace(message) Then
+                message = ex.GetType().Name
+            End If
+
+            Return message
+        End Function
 
     End Class
 

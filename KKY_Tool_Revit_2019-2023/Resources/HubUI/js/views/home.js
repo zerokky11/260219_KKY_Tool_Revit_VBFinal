@@ -8,7 +8,7 @@ import {
   openHubEntry,
   searchHubEntries,
   setHubPanelSearch
-} from '../core/hubFavorites.js?v=20260427a';
+} from '../core/hubFavorites.js?v=20260504e';
 
 const MULTI_MODE_KEY = 'kky.hub.multiMode';
 const BQC_GROUP_LABEL = '납품 시 BQC 검토';
@@ -21,9 +21,9 @@ export function renderHome(root) {
   const view = div('home-choice');
   const hero = div('home-choice-hero');
   hero.innerHTML = `
-    <p class="home-choice-kicker">KKY Tool Hub</p>
-    <h2>검토 방식을 선택하세요</h2>
-    <p>납품 시 BQC 검토와 유틸리티 기능카드에서 원하는 기능을 빠르게 시작할 수 있습니다.</p>`;
+    <p class="home-choice-kicker">작업 시작</p>
+    <h2>검토 방식을 선택해 주세요</h2>
+    <p>납품 시 BQC 검토와 유틸리티 기능을 작업 흐름에 맞춰 바로 시작할 수 있습니다.</p>`;
 
   const bqcEntries = getHomeEntries(BQC_GROUP_LABEL);
   const utilityEntries = getHomeEntries(UTILITY_GROUP_LABEL);
@@ -31,13 +31,13 @@ export function renderHome(root) {
   const favorites = getFavoriteEntries(4);
   const favoriteItems = favorites.length
     ? favorites.map((entry) => entry.label)
-    : ['우클릭으로 즐겨찾기 추가', '선택형 / 별도 프로세스 분리', '즐겨찾기 전용 실행 화면'];
+    : ['기능 카드 우클릭으로 즐겨찾기 추가', '선택한 검토만 빠르게 실행', '즐겨찾기 전용 화면에서 관리'];
 
   const grid = div('home-choice-grid');
   grid.append(
     buildCard(
       '납품 시 BQC 검토',
-      '납품 검토에 필요한 선택형 검토와 별도 워크플로우를 실행합니다.',
+      '납품 전 검토에 필요한 기능을 선택해 실행하고 결과를 정리합니다.',
       'multi',
       bqcEntries.map((entry) => entry.label),
       'bqc',
@@ -46,7 +46,7 @@ export function renderHome(root) {
     ),
     buildCard(
       '유틸리티',
-      '보조 검토와 일괄 작업 기능을 실행합니다.',
+      '링크, 파라미터, 패밀리처럼 반복되는 보조 작업을 실행합니다.',
       'multi',
       utilityEntries.map((entry) => entry.label),
       'utility',
@@ -55,14 +55,13 @@ export function renderHome(root) {
     ),
     buildCard(
       '자주 사용하는 기능',
-      '즐겨찾기로 모은 기능만 따로 열어 선택형 검토와 별도 프로세스 실행을 바로 할 수 있습니다.',
+      '즐겨찾기로 모은 기능만 따로 열어 자주 쓰는 작업을 바로 실행합니다.',
       'favorites',
       favoriteItems
     )
   );
 
-  const featureListSection = buildFeatureListSection(bqcEntries, utilityEntries);
-  view.append(hero, searchSection, grid, featureListSection);
+  view.append(hero, searchSection, grid);
   target.append(view);
 
   function getHomeEntries(groupLabel) {
@@ -103,71 +102,13 @@ export function renderHome(root) {
     return index >= 0 ? index : order.length;
   }
 
-  function buildFeatureListSection(bqcItems, utilityItems) {
-    const section = div('home-manual');
-    const header = div('home-manual__header');
-    header.innerHTML = `
-      <p class="home-choice-kicker">Manual</p>
-      <h3>현재 기능 목록</h3>
-      <p>홈 검색과 즐겨찾기에 연결된 기능 기준입니다. 항목을 누르면 해당 화면으로 바로 이동합니다.</p>`;
-
-    const grid = div('home-manual-grid');
-    grid.append(
-      buildFeatureListGroup(BQC_GROUP_LABEL, '선택형 검토 + 별도 워크플로우', bqcItems),
-      buildFeatureListGroup(UTILITY_GROUP_LABEL, '보조 검토 + 일괄 작업', utilityItems)
-    );
-    section.append(header, grid);
-    return section;
-  }
-
-  function buildFeatureListGroup(title, desc, entries) {
-    const group = div('home-feature-group');
-    const head = div('home-feature-group__head');
-    const count = Array.isArray(entries) ? entries.length : 0;
-    head.innerHTML = `
-      <div>
-        <strong>${title}</strong>
-        <span>${desc}</span>
-      </div>
-      <em>${count}개</em>`;
-
-    const list = div('home-feature-list');
-    entries.forEach((entry) => {
-      const item = document.createElement('button');
-      item.type = 'button';
-      item.className = 'home-feature-item';
-      item.dataset.entryId = entry.id || '';
-
-      const titleEl = document.createElement('strong');
-      titleEl.className = 'home-feature-item__title';
-      titleEl.textContent = entry.label || '';
-
-      const descEl = document.createElement('span');
-      descEl.className = 'home-feature-item__desc';
-      descEl.textContent = entry.desc || '';
-
-      item.append(titleEl, descEl);
-      item.addEventListener('click', () => openHomeEntry(entry));
-      bindHubEntryContextMenu(item, entry.id);
-      list.append(item);
-    });
-
-    group.append(head, list);
-    return group;
-  }
-
-  function openHomeEntry(entry) {
-    if (!entry?.id) return;
-    openHubEntry(entry.id);
-  }
-
   function buildSearchSection() {
     const section = div('home-search');
     const top = div('home-search__top');
     top.innerHTML = `
-      <p class="home-choice-kicker">Search</p>
+      <p class="home-choice-kicker">검색</p>
       <h3>기능 검색</h3>
-      <p>검색 결과에서 경로를 누르면 BQC 또는 유틸리티 화면에서 같은 검색어로 바로 이어집니다.</p>`;
+      <p>기능명이나 업무 키워드를 검색하면 해당 화면으로 바로 이동할 수 있습니다.</p>`;
 
     const field = div('home-search__field');
     const icon = document.createElement('span');
@@ -184,11 +125,11 @@ export function renderHome(root) {
     field.append(icon, input);
 
     const hint = div('home-search__hint');
-    hint.textContent = '기능명이나 키워드를 입력하세요.';
+    hint.textContent = '기능명, 검토 항목, 업무 키워드를 입력해 주세요.';
 
     const results = div('home-search__results');
     const empty = div('home-search__empty');
-    empty.textContent = '검색 결과가 없습니다.';
+    empty.textContent = '검색 결과가 없습니다. 다른 기능명이나 업무 키워드를 입력해 주세요.';
 
     const renderSearchResults = () => {
       const query = String(input.value || '').trim();
@@ -196,7 +137,7 @@ export function renderHome(root) {
 
       if (!query) {
         section.classList.remove('is-searching');
-        hint.textContent = '기능명이나 키워드를 입력하세요.';
+        hint.textContent = '기능명, 검토 항목, 업무 키워드를 입력해 주세요.';
         return;
       }
 
@@ -204,7 +145,7 @@ export function renderHome(root) {
       section.classList.add('is-searching');
 
       if (!entries.length) {
-        hint.textContent = `"${query}" 검색 결과가 없습니다.`;
+        hint.textContent = `"${query}"에 대한 검색 결과가 없습니다. 다른 기능명이나 업무 키워드를 입력해 주세요.`;
         results.append(empty);
         return;
       }
@@ -214,16 +155,16 @@ export function renderHome(root) {
         const card = div('home-search-result');
         card.innerHTML = `
           <div class="home-search-result__meta">
-            <span>${entry.groupLabel || '기능'}</span>
+            <span>${escapeHtml(entry.groupLabel || '기능')}</span>
             ${entry.favorite ? '<span class="home-search-result__badge">즐겨찾기</span>' : ''}
           </div>
-          <strong class="home-search-result__title">${entry.label}</strong>
-          <span class="home-search-result__desc">${entry.desc}</span>`;
+          <strong class="home-search-result__title">${escapeHtml(entry.label)}</strong>
+          <span class="home-search-result__desc">${escapeHtml(entry.desc)}</span>`;
 
         const actions = div('home-search-result__actions');
         const pathLabel = document.createElement('span');
         pathLabel.className = 'home-search-result__path-label';
-        pathLabel.textContent = `경로: ${getEntryPathLabel(entry)}`;
+        pathLabel.textContent = `화면: ${getEntryPathLabel(entry)}`;
         const pathBtn = document.createElement('button');
         pathBtn.type = 'button';
         pathBtn.className = 'btn btn--secondary home-search-result__path';
@@ -253,75 +194,14 @@ export function renderHome(root) {
     return section;
   }
 
-  function buildFavoritePreviewSection() {
-    const section = div('home-frequent');
-    const header = div('home-frequent__header');
-    header.innerHTML = `
-      <div>
-        <p class="home-choice-kicker">Favorites</p>
-        <h3>자주 사용하는 기능</h3>
-        <p>홈에서는 이름만 간단히 보고, 전체 열기에서 바로 실행하세요.</p>
-      </div>`;
-
-    const openAllBtn = document.createElement('button');
-    openAllBtn.type = 'button';
-    openAllBtn.className = 'btn btn--primary';
-    openAllBtn.textContent = '전체 열기';
-    openAllBtn.addEventListener('click', () => {
-      location.hash = '#favorites';
-    });
-    header.append(openAllBtn);
-
-    const quickGrid = div('home-frequent-grid');
-    section.append(header, quickGrid);
-
-    const renderFavorites = () => {
-      clear(quickGrid);
-      const entries = getFavoriteEntries(10);
-
-      if (!entries.length) {
-        const empty = div('home-frequent-empty');
-        empty.textContent = '기능 카드에서 오른쪽 클릭으로 즐겨찾기를 추가하면 여기에서 바로 열 수 있습니다.';
-        quickGrid.append(empty);
-        return;
-      }
-
-      entries.forEach((entry) => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'home-frequent-chip';
-        chip.textContent = entry.label;
-        chip.title = `${entry.label} 열기`;
-        chip.addEventListener('click', () => {
-          openHubEntry(entry.id, { panelRoute: 'favorites', recordUsage: false });
-        });
-        bindHubEntryContextMenu(chip, entry.id);
-        quickGrid.append(chip);
-      });
-    };
-
-    renderFavorites();
-
-    const onFavoritesChange = () => {
-      if (!section.isConnected) {
-        window.removeEventListener(HUB_QUICK_ACCESS_CHANGE_EVENT, onFavoritesChange);
-        return;
-      }
-      renderFavorites();
-    };
-    window.addEventListener(HUB_QUICK_ACCESS_CHANGE_EVENT, onFavoritesChange);
-
-    return section;
-  }
-
   function getEntryMode(entry) {
     if (entry?.multiMode === 'utility') return 'utility';
     if (entry?.multiMode === 'bqc') return 'bqc';
-    return String(entry?.groupLabel || '').trim() === '유틸리티' ? 'utility' : 'bqc';
+    return String(entry?.groupLabel || '').trim() === UTILITY_GROUP_LABEL ? 'utility' : 'bqc';
   }
 
   function getEntryPathLabel(entry) {
-    return getEntryMode(entry) === 'utility' ? '유틸리티' : '납품 시 BQC 검토';
+    return getEntryMode(entry) === 'utility' ? UTILITY_GROUP_LABEL : BQC_GROUP_LABEL;
   }
 
   function openSearchPath(entry, query) {
@@ -344,13 +224,13 @@ export function renderHome(root) {
       ? `${metaLabel}: ${previewItems.join(', ')}${remainingCount > 0 ? ` 외 ${remainingCount}개` : ''}`
       : '';
     const listHtml = previewText
-      ? `<p class="home-choice-meta">${previewText}</p>`
+      ? `<p class="home-choice-meta">${escapeHtml(previewText)}</p>`
       : '';
     card.innerHTML = `
       <div class="home-choice-card__body">
         <div>
-          <h3>${title}</h3>
-          <p>${desc}</p>
+          <h3>${escapeHtml(title)}</h3>
+          <p>${escapeHtml(desc)}</p>
           ${listHtml}
         </div>
         <span class="home-choice-card__icon">+</span>
@@ -377,5 +257,14 @@ export function renderHome(root) {
     } catch {
       // Ignore localStorage failures in embedded hosts.
     }
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 }

@@ -20,7 +20,7 @@ export function renderLateralNozzle(root) {
   page.innerHTML = `
     <div class="feature-header deliverycleaner-header">
       <div class="feature-heading">
-        <span class="feature-kicker">UTILITY \xb7 EXCEL WORKFLOW</span>
+        <span class="feature-kicker">유틸리티 · 엑셀 워크플로</span>
         <h2 class="feature-title">\ub178\uc990\ucf54\ub4dc KTA \ub2e8\uc77c\ud654</h2>
         <p class="feature-sub">\uc811\uc218\ubc1b\uc740 KTA \uc591\uc2dd\uc744 \uc815\ud574\uc9c4 \ud558\ub098\uc758 \uc2dc\ud2b8\uc591\uc2dd\uc73c\ub85c \ucd94\ucd9c\ud569\ub2c8\ub2e4.</p>
       </div>
@@ -77,14 +77,14 @@ export function renderLateralNozzle(root) {
     setPageBusy(state, false);
     if (payload?.cancelled) return;
     if (payload?.ok === false) {
-      toast(payload?.message || '\uc5d1\uc140 \uc800\uc7a5\uc5d0 \uc2e4\ud328\ud588\uc2b5\ub2c8\ub2e4.', 'err', 3600);
+      toast(payload?.message || '노즐코드 KTA 단일화 결과 엑셀 저장에 실패했습니다. 저장 경로 권한과 파일이 열려 있는지 확인해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3600);
       return;
     }
     if (!payload?.path) return;
 
     if (state.lastResult) state.lastResult.resultWorkbookPath = payload.path;
     window.setTimeout(() => {
-      showExcelSavedDialog('\ub178\uc990\ucf54\ub4dc KTA \ub2e8\uc77c\ud654 \uc5d1\uc140\uc744 \uc800\uc7a5\ud588\uc2b5\ub2c8\ub2e4.', payload.path, (path) => post('excel:open', { path }));
+      showExcelSavedDialog('노즐코드 KTA 단일화 엑셀을 저장했습니다.', payload.path, (path) => post('excel:open', { path }));
     }, 120);
   });
   onHost('lateralnozzle:error', (payload) => {
@@ -94,7 +94,7 @@ export function renderLateralNozzle(root) {
     renderRunSummary(state);
     renderResultSummary(state);
     updateActionState(state);
-    toast(payload?.message || '\uc624\ub958\uac00 \ubc1c\uc0dd\ud588\uc2b5\ub2c8\ub2e4.', 'err', 3600);
+    toast(payload?.message || '노즐코드 KTA 단일화 중 오류가 발생했습니다. 선택한 엑셀 파일과 KTA 양식 상태를 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3600);
   });
 
   renderExcelTable(state);
@@ -271,12 +271,12 @@ function renderExcelTable(state) {
       const nameCell = document.createElement('td');
       nameCell.className = 'segmentpms-path-cell';
       nameCell.textContent = getFileName(path);
-      nameCell.title = getFileName(path);
+      nameCell.setAttribute('aria-label', getFileName(path));
 
       const pathCell = document.createElement('td');
       pathCell.className = 'segmentpms-path-cell';
       pathCell.textContent = path;
-      pathCell.title = path;
+      pathCell.setAttribute('aria-label', path || '-');
 
       tr.append(checkCell, indexCell, nameCell, pathCell);
       tbody.append(tr);
@@ -338,15 +338,15 @@ function updateActionState(state) {
 function runExtraction(state) {
   const paths = getCheckedExcelPaths(state);
   if (!paths.length) {
-    toast('\uc2e4\ud589\ud560 \uc5d1\uc140 \ud30c\uc77c\uc744 1\uac1c \uc774\uc0c1 \uc120\ud0dd\ud574 \uc8fc\uc138\uc694.', 'warn');
+    toast('실행할 엑셀 파일을 1개 이상 선택해 주세요.', 'warn');
     return;
   }
 
   state.acceptProgress = true;
   setPageBusy(state, true);
   ProgressDialog.setActions({});
-  ProgressDialog.show('\ub178\uc990\ucf54\ub4dc KTA \ub2e8\uc77c\ud654', '\uc5d1\uc140 \ud30c\uc77c\uc744 \uc77d\ub294 \uc911\uc785\ub2c8\ub2e4.');
-  ProgressDialog.update(0, '\uc5d1\uc140 \ud30c\uc77c\uc744 \uc77d\ub294 \uc911\uc785\ub2c8\ub2e4.', '\uc120\ud0dd\ud55c \uc5d1\uc140 \ud30c\uc77c \ubaa9\ub85d\uacfc \ubcc0\ud658 \ub300\uc0c1\uc744 \uc815\ub9ac\ud558\ub294 \uc911...');
+  ProgressDialog.show('노즐코드 KTA 단일화', '엑셀 파일을 읽는 중입니다.');
+  ProgressDialog.update(0, '엑셀 파일을 읽는 중입니다.', '선택한 엑셀 파일 목록과 변환 대상을 정리하는 중입니다.');
   post('lateralnozzle:run', {
     excelPaths: paths,
     outputFolder: ''
@@ -359,8 +359,8 @@ async function promptLateralNozzleExcelExport(state) {
 
   setPageBusy(state, true);
   ProgressDialog.setActions({});
-  ProgressDialog.show('\uc5d1\uc140 \ub0b4\ubcf4\ub0b4\uae30', '\uc5d1\uc140 \uc800\uc7a5\uc744 \uc900\ube44 \uc911\uc785\ub2c8\ub2e4.');
-  ProgressDialog.update(0, '\uc5d1\uc140 \uc800\uc7a5\uc744 \uc900\ube44 \uc911\uc785\ub2c8\ub2e4.', '');
+  ProgressDialog.show('엑셀 내보내기', '엑셀 저장을 준비하는 중입니다.');
+  ProgressDialog.update(0, '엑셀 저장을 준비하는 중입니다.', '결과 엑셀 저장 옵션을 정리하는 중입니다.');
   post('lateralnozzle:export', { excelMode: excelMode || 'fast', locale: getLastExcelExportLocale() });
 }
 
@@ -436,6 +436,6 @@ function actionButton(label, onClick, variant = 'secondary') {
 function setPageBusy(state, on) {
   state.busy = !!on;
   if (!state.busy) state.acceptProgress = false;
-  setBusy(on, on ? '\ub178\uc990\ucf54\ub4dc KTA \ub2e8\uc77c\ud654 \uc791\uc5c5\uc744 \ucc98\ub9ac\ud558\ub294 \uc911\uc785\ub2c8\ub2e4.' : '');
+  setBusy(on, on ? '노즐코드 KTA 단일화 작업을 처리하는 중입니다.' : '');
   updateActionState(state);
 }

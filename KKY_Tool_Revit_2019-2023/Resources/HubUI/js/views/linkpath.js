@@ -4,7 +4,7 @@ import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { attachExcelDropZone } from '../core/excelDrop.js';
 import { ProgressDialog } from '../core/progress.js';
 import { onHost, post } from '../core/bridge.js';
-import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
+import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js?v=20260504a';
 
 const EXCEL_PHASE_WEIGHT = {
   EXCEL_INIT: 0.05,
@@ -73,9 +73,9 @@ export function renderLinkPath(root) {
   const header = div('feature-header');
   const heading = div('feature-heading');
   heading.innerHTML = `
-    <span class="feature-kicker">Revit Link Path</span>
+    <span class="feature-kicker">Revit 링크 경로</span>
     <h2 class="feature-title">Revit 링크 경로 추출 및 변경</h2>
-    <p class="feature-sub">RVT에서 링크 현황을 추출하고, 엑셀 기준으로 Reload From 또는 신규 Revit 링크 생성을 일괄 반영합니다.</p>`;
+    <p class="feature-sub">RVT에서 링크 현황을 추출하고, 엑셀 기준으로 경로 다시 로드 또는 신규 Revit 링크 생성을 일괄 반영합니다.</p>`;
   header.append(heading);
   page.append(header);
 
@@ -87,7 +87,7 @@ export function renderLinkPath(root) {
   const rvtTitle = div('paramprop-title');
   rvtTitle.textContent = '1단계 · RVT 등록 및 링크 추출';
   const rvtMeta = div('familylink-results-meta');
-  rvtMeta.textContent = '0 files';
+  rvtMeta.textContent = '파일 0개';
   rvtHeader.append(rvtTitle, rvtMeta);
   rvtSection.append(rvtHeader);
 
@@ -138,7 +138,7 @@ export function renderLinkPath(root) {
       syncButtons();
       toast(`${added}개 RVT를 추가했습니다.`, 'ok');
     },
-    onInvalid: () => toast('RVT 파일만 끌어 놓아 추가할 수 있습니다.', 'warn')
+    onInvalid: () => toast('RVT 파일만 드래그해 추가할 수 있습니다.', 'warn')
   });
 
   const applySection = div('paramprop-card section familylink-card');
@@ -146,7 +146,7 @@ export function renderLinkPath(root) {
   const applyTitle = div('paramprop-title');
   applyTitle.textContent = '2단계 · 링크 수정 / 신규 생성 반영';
   const applyMeta = div('familylink-results-meta');
-  applyMeta.textContent = '미선택';
+  applyMeta.textContent = '엑셀 선택 필요';
   applyHeader.append(applyTitle, applyMeta);
   applySection.append(applyHeader);
 
@@ -210,7 +210,7 @@ export function renderLinkPath(root) {
   const excelLead = document.createElement('strong');
   excelLead.textContent = '대상 파일 경로를 적은 엑셀을 선택하면 자동으로 불러옵니다.';
   const excelPath = div('feature-note');
-  excelPath.textContent = '선택된 엑셀 파일 없음';
+  excelPath.textContent = '선택된 엑셀 파일이 없습니다.';
   excelDrop.append(excelLead, excelPath);
   applySection.append(excelDrop);
 
@@ -222,7 +222,7 @@ export function renderLinkPath(root) {
       renderWorkbookState();
       onImport();
     },
-    onInvalid: () => toast('엑셀 파일만 끌어 놓아 추가할 수 있습니다.', 'warn')
+    onInvalid: () => toast('엑셀 파일만 드래그해 추가할 수 있습니다.', 'warn')
   });
 
   const resultSection = div('familylink-results-panel');
@@ -230,7 +230,7 @@ export function renderLinkPath(root) {
   const resultTitle = div('familylink-results-title');
   resultTitle.textContent = '링크 현황';
   const resultMeta = div('familylink-results-meta');
-  resultMeta.textContent = '0 rows';
+  resultMeta.textContent = '결과 0개';
   resultHead.append(resultTitle, resultMeta);
   resultSection.append(resultHead);
 
@@ -304,7 +304,7 @@ export function renderLinkPath(root) {
         showExcelSavedDialog('링크 현황 엑셀을 저장했습니다.', payload.path, (path) => post('excel:open', { path }));
       });
     } else {
-      toast(payload?.message || '엑셀 저장에 실패했습니다.', 'err');
+      toast(payload?.message || '링크 경로 결과 엑셀 저장에 실패했습니다. 저장 경로 권한과 파일이 열려 있는지 확인해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
     }
     syncButtons();
   });
@@ -323,7 +323,7 @@ export function renderLinkPath(root) {
     ProgressDialog.hide();
     lastExcelPct = 0;
     syncButtons();
-    toast(payload?.message || '작업 중 오류가 발생했습니다.', 'err');
+    toast(payload?.message || 'Revit 링크 경로 처리 중 오류가 발생했습니다. 링크 파일 목록과 경로 변경 규칙을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
   });
 
   function appendRvts(paths) {
@@ -343,7 +343,7 @@ export function renderLinkPath(root) {
   }
 
   function renderRvtList() {
-    rvtMeta.textContent = `${state.rvtPaths.length} files`;
+    rvtMeta.textContent = `파일 ${state.rvtPaths.length}개`;
     const rows = state.rvtPaths.map((path, idx) => ({
       index: idx + 1,
       name: getRvtName(path, `RVT ${idx + 1}`),
@@ -353,6 +353,7 @@ export function renderLinkPath(root) {
         if (checked) state.rvtChecked.add(path);
         else state.rvtChecked.delete(path);
         syncMasterCheckbox();
+        syncButtons();
       }
     }));
     renderRvtRows(rvtTbody, rows, '등록된 RVT가 없습니다.');
@@ -376,15 +377,15 @@ export function renderLinkPath(root) {
 
   function renderWorkbookState() {
     const path = state.workbookPath || '';
-    applyMeta.textContent = path ? '선택됨' : '미선택';
-    excelPath.textContent = path || '선택된 엑셀 파일 없음';
-    excelPath.title = path || '';
+    applyMeta.textContent = path ? '엑셀 선택 완료' : '엑셀 선택 필요';
+    excelPath.textContent = path || '선택된 엑셀 파일이 없습니다.';
+    excelPath.setAttribute('aria-label', path || '선택된 엑셀 파일이 없습니다.');
   }
 
   function renderResultTable(summaryPayload = null) {
     const rows = Array.isArray(state.rows) ? state.rows : [];
     const summaryData = summaryPayload || buildSummary(rows);
-    resultMeta.textContent = `${rows.length} rows`;
+    resultMeta.textContent = `결과 ${rows.length}개`;
     summaryNote.textContent =
       `호스트 ${summaryData.hostCount}개, 링크 ${summaryData.rowCount}건, 대상 지정 ${summaryData.targetCount}건, 삭제 후보 ${summaryData.deleteCandidateCount || 0}건, 삭제 ${summaryData.deletedCount || 0}건, 변경 ${summaryData.changedCount}건, 오류 ${summaryData.errorCount}건`;
 
@@ -415,7 +416,7 @@ export function renderLinkPath(root) {
         const td = document.createElement('td');
         const text = row && row[key] != null ? String(row[key]) : '';
         td.textContent = text || '-';
-        td.title = text || '';
+        td.setAttribute('aria-label', text || '-');
         if (key.toLowerCase().includes('path') || key.toLowerCase().includes('message')) {
           td.className = 'segmentpms-path-cell';
         }
@@ -572,7 +573,7 @@ export function renderLinkPath(root) {
 
     if (isExtract) {
       notes.push('현재 결과는 아래 링크 현황 표와 엑셀 내보내기에서 같은 기준으로 확인할 수 있습니다.');
-      notes.push('TargetLinkPath를 입력한 기존 링크 행은 Reload From으로 반영됩니다.');
+      notes.push('TargetLinkPath를 입력한 기존 링크 행은 경로 다시 로드로 반영됩니다.');
       notes.push('LinkName과 ReferenceElementId가 빈 행은 선택한 배치 방식으로 신규 Revit 링크를 생성합니다.');
       notes.push('기존 링크 행에서 TargetLinkPath를 비우면 해당 링크를 삭제합니다.');
     } else {
@@ -616,7 +617,7 @@ export function renderLinkPath(root) {
 
     clearProgressHideTimer();
     const pct = Math.max(0, Math.min(100, Number(payload.percent) || 0));
-    const subtitle = payload.stage || payload.message || '링크 작업 진행 중';
+    const subtitle = payload.stage || payload.message || '링크 작업을 진행하는 중입니다.';
     const detail = payload.detail || payload.message || '';
     ProgressDialog.show('링크 작업', subtitle);
     ProgressDialog.update(pct, subtitle, detail);
@@ -635,7 +636,7 @@ export function renderLinkPath(root) {
     if (!state.busy && exporting) setBusyState(true);
     clearProgressHideTimer();
 
-    ProgressDialog.show('엑셀 내보내기', subtitle || '엑셀 내보내기 진행 중');
+    ProgressDialog.show('링크 경로 결과 엑셀 내보내기', subtitle || '링크 경로 결과 엑셀 내보내기를 진행하는 중입니다.');
     ProgressDialog.update(percent, subtitle, detail);
 
     if (!exporting) {
@@ -679,26 +680,28 @@ export function renderLinkPath(root) {
   function buildExcelSubtitle(phase, current, total) {
     switch (normalizeExcelPhase(phase)) {
       case 'EXCEL_INIT':
-        return '엑셀 준비 중';
+        return '링크 경로 결과 엑셀을 준비하는 중입니다.';
       case 'EXCEL_WRITE':
-        return `엑셀 데이터 작성 중 (${current}/${Math.max(total, current || 1)})`;
+        return `링크 경로 결과 엑셀 데이터를 작성하는 중입니다. (${current}/${Math.max(total, current || 1)})`;
       case 'EXCEL_SAVE':
-        return '엑셀 저장 중';
+        return '링크 경로 결과 엑셀을 저장하는 중입니다.';
       case 'AUTOFIT':
-        return '열 너비 조정 중';
+        return '열 너비를 조정하는 중입니다.';
       case 'DONE':
-        return '엑셀 저장 완료';
+        return '링크 경로 결과 엑셀 저장이 완료되었습니다.';
       case 'ERROR':
-        return '엑셀 저장 실패';
+        return '엑셀 저장 과정에서 오류가 발생했습니다. 저장 경로 권한과 파일이 열려 있는지 확인해 주세요.';
       default:
-        return '엑셀 작업 진행 중';
+        return '링크 경로 결과 엑셀 작업을 진행하는 중입니다.';
     }
   }
 
   function formatExcelDetail(phase, message) {
     const text = String(message || '').trim();
     if (text) return text;
-    return normalizeExcelPhase(phase) === 'DONE' ? '링크 현황 엑셀 저장이 완료되었습니다.' : '';
+    if (normalizeExcelPhase(phase) === 'DONE') return '링크 현황 엑셀 저장이 완료되었습니다.';
+    if (normalizeExcelPhase(phase) === 'ERROR') return '링크 경로 결과 엑셀 저장 과정에서 오류가 발생했습니다. 저장 경로 권한과 파일이 열려 있는지 확인해 주세요.';
+    return '';
   }
 
   function scheduleProgressHide(delay, onDone) {

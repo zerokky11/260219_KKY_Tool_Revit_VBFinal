@@ -43,7 +43,7 @@ export function renderTapAlign(root) {
   const header = div('feature-header');
   const heading = div('feature-heading');
   heading.innerHTML = `
-    <span class="feature-kicker">BQC Sub</span>
+    <span class="feature-kicker">BQC 보조</span>
     <h2 class="feature-title">탭/분기 축 틀어짐 검토</h2>
     <p class="feature-sub">탭 또는 분기 피팅의 연결 축이 연결된 배관/덕트 중심축을 통과하는지 검토합니다.</p>`;
 
@@ -65,9 +65,9 @@ export function renderTapAlign(root) {
   const tolInput = makeNumber(opts.tol ?? DEFAULTS.tol);
   const unitSelect = makeUnit(state.unit);
   const domainSelect = makeDomain(state.domain);
-  const extraParamsInput = makeText('', 'BQC 공통설정에서 관리');
-  const targetFilterInput = makeText('', 'BQC 공통설정에서 관리');
-  const featureTargetFilterInput = makeText(state.featureTargetFilter || '', 'ex) PM1=Value; PM2=Value2');
+  const extraParamsInput = makeText('', 'BQC 공통 설정에서 관리');
+  const targetFilterInput = makeText('', 'BQC 공통 설정에서 관리');
+  const featureTargetFilterInput = makeText(state.featureTargetFilter || '', '예: PM1=값; PM2=값2');
   const includePointXY = makeCheckbox(false);
   const includeLinearMetrics = makeCheckbox(false);
   const excludeEndDummy = makeCheckbox(false);
@@ -92,13 +92,13 @@ export function renderTapAlign(root) {
   excludeEndDummy.disabled = true;
 
   grid.append(
-    kv('허용범위', tolInput),
+    kv('허용 범위', tolInput),
     kv('거리 단위', unitSelect),
     kv('검토 범위', domainSelect),
     kv('추가 추출 파라미터', extraParamsInput),
     kv('공통 검토 대상 필터', targetFilterInput),
     kv('기능 전용 필터', featureTargetFilterInput),
-    kv('Point X / Y 추출', includePointXY),
+    kv('좌표 X/Y 추출', includePointXY),
     kv('선형 길이 / 방향 추출', includeLinearMetrics),
     kv('End_ + Dummy 패밀리 제외', excludeEndDummy)
   );
@@ -110,15 +110,15 @@ export function renderTapAlign(root) {
   guideList.className = 'conn-excel-hint';
   guideList.innerHTML = `
     <li><strong>검토 기준</strong>: 연결 커넥터 축과 연결 라인 중심축 사이의 최단거리</li>
-    <li><strong>오류 조건</strong>: 허용범위를 초과하면 "중심축에서 벗어났습니다."로 표시</li>
+    <li><strong>오류 조건</strong>: 허용 범위를 초과하면 "중심축에서 벗어났습니다."로 표시</li>
     <li><strong>필터 적용</strong>: 공통 검토 대상 필터를 먼저 적용하고, 기능 전용 필터를 추가 AND 조건으로 적용합니다.</li>
-    <li><strong>공통설정</strong>: 추가 추출 파라미터는 분기 객체와 연결 라인 값을 함께 추출하고, End Dummy 제외는 BQC 공통설정을 그대로 적용합니다.</li>
+    <li><strong>공통 설정</strong>: 추가 추출 파라미터는 분기 객체와 연결 라인 값을 함께 추출하고, End Dummy 제외는 BQC 공통 설정을 그대로 적용합니다.</li>
     <li><strong>엑셀 옵션</strong>: 거리 단위(mm / inch)는 현재 설정을 따르고, 결과 내용 언어는 내보내기 시 선택합니다.</li>`;
 
   const filterGuide = document.createElement('div');
   filterGuide.className = 'conn-preview-note';
   filterGuide.style.display = 'block';
-  filterGuide.textContent = '필터 예시: PM1=Value; PM2=Value2 또는 and(PM1=Value, PM2=Value2)';
+  filterGuide.textContent = '필터 예시: PM1=값; PM2=값2 또는 and(PM1=값, PM2=값2)';
 
   const commonSummary = div('conn-summary');
   commonSummary.style.display = 'grid';
@@ -155,7 +155,7 @@ export function renderTapAlign(root) {
 
   const emptyGuide = div('conn-empty');
   emptyGuide.setAttribute('aria-live', 'polite');
-  emptyGuide.textContent = '상단 설정을 확인한 뒤 [검토 시작]을 눌러주세요.';
+  emptyGuide.textContent = '상단 설정을 확인한 뒤 [검토 시작]을 눌러 주세요.';
 
   const tableWrap = div('conn-tablewrap');
   const table = document.createElement('table');
@@ -259,7 +259,7 @@ function bindListeners() {
     }
 
     if (!activeState.rows.length) {
-      activeState.refs.emptyGuide.textContent = '허용범위를 초과해 중심축에서 벗어난 탭/분기 피팅이 없습니다.';
+      activeState.refs.emptyGuide.textContent = '허용 범위를 초과해 중심축에서 벗어난 탭/분기 피팅이 없습니다.';
     } else {
       activeState.refs.emptyGuide.textContent = `${activeState.rows.length}건의 오류가 확인되었습니다.`;
     }
@@ -285,11 +285,11 @@ function bindListeners() {
     if (payload?.cancelled) return;
 
     if (payload?.ok === false) {
-      toast(payload?.message || '엑셀 저장에 실패했습니다.', 'err');
+      toast(payload?.message || '탭/분기 정렬 결과 엑셀 저장에 실패했습니다. 저장 경로 권한과 파일이 열려 있는지 확인해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
       return;
     }
 
-    showExcelSavedDialog('엑셀 파일을 저장했습니다.', payload?.path || '', (savedPath) => {
+    showExcelSavedDialog('탭/분기 정렬 결과 엑셀 저장 완료', payload?.path || '', (savedPath) => {
       post('excel:open', { path: savedPath });
     });
   });
@@ -305,16 +305,16 @@ function onRun(state) {
   state.extraHeaders = [];
   state.resultUnit = state.refs.unitSelect.value || DEFAULTS.unit;
   state.resultDomain = state.refs.domainSelect.value || DEFAULTS.domain;
-  state.refs.emptyGuide.textContent = '검토를 준비하는 중입니다...';
+  state.refs.emptyGuide.textContent = '검토를 준비하는 중입니다.';
   state.refs.emptyGuide.style.display = 'block';
   state.refs.tableWrap.style.display = 'none';
   state.refs.cardResults.style.display = 'block';
 
   renderState(state);
 
-  setBusy(true, '탭/분기 축 틀어짐을 검토하는 중...');
-  ProgressDialog.show('탭/분기 축 틀어짐 검토', '허용범위와 공통설정을 반영해 검토합니다.');
-  ProgressDialog.update(0, '준비 중', '');
+  setBusy(true, '탭/분기 축 틀어짐을 검토하는 중입니다.');
+  ProgressDialog.show('탭/분기 축 틀어짐 검토', '허용 범위와 공통 설정을 반영해 검토합니다.');
+  ProgressDialog.update(0, '검토를 준비하는 중입니다.', '');
 
   post('tapalign:run', {
     tol: parseFloat(state.refs.tolInput.value || String(DEFAULTS.tol)) || DEFAULTS.tol,
@@ -336,8 +336,8 @@ function onExport(state) {
     state.lastExcelPct = 0;
     renderState(state);
     ProgressDialog.setActions({});
-    ProgressDialog.show('탭/분기 축 검토 엑셀 내보내기', '저장 경로를 선택하는 중...');
-    ProgressDialog.update(0, '저장 경로를 선택하는 중...', '엑셀 저장 옵션을 준비하는 중...');
+    ProgressDialog.show('탭/분기 축 검토 엑셀 내보내기', '저장 경로를 선택하는 중입니다.');
+    ProgressDialog.update(0, '저장 경로를 선택하는 중입니다.', '엑셀 저장 옵션을 준비하는 중입니다.');
     post('tapalign:save-excel', {
       unit: state.resultUnit || state.unit || DEFAULTS.unit,
       excelMode: excelMode || 'fast',
@@ -397,13 +397,13 @@ function clamp01(value) {
 
 function buildExcelSubtitle(phase, current, total) {
   switch (normalizeExcelPhase(phase)) {
-    case 'EXCEL_INIT': return '엑셀 워크북 준비 중';
-    case 'EXCEL_WRITE': return `엑셀 데이터 작성 중 (${current}/${Math.max(total, current || 1)})`;
-    case 'EXCEL_SAVE': return '엑셀 파일 저장 중';
-    case 'AUTOFIT': return '열 너비 AutoFit 적용 중';
-    case 'DONE': return '엑셀 저장 완료';
-    case 'ERROR': return '엑셀 저장 오류';
-    default: return '엑셀 내보내기 진행 중';
+    case 'EXCEL_INIT': return '탭/분기 축 검토 엑셀 워크북을 준비하는 중입니다.';
+    case 'EXCEL_WRITE': return `탭/분기 축 검토 엑셀 데이터를 작성하는 중입니다. (${current}/${Math.max(total, current || 1)})`;
+    case 'EXCEL_SAVE': return '탭/분기 축 검토 엑셀 파일을 저장하는 중입니다.';
+    case 'AUTOFIT': return '열 너비를 자동으로 맞추는 중입니다.';
+    case 'DONE': return '탭/분기 축 검토 결과 엑셀 저장 완료';
+    case 'ERROR': return '탭/분기 축 검토 엑셀 저장 오류';
+    default: return '탭/분기 축 검토 엑셀 내보내기를 진행하는 중입니다.';
   }
 }
 
@@ -492,7 +492,7 @@ function renderState(state) {
       tr.append(td);
     });
 
-    tr.title = [row.File, row.HostType].filter(Boolean).join('\n');
+    tr.setAttribute('aria-label', [row.File, row.HostType].filter(Boolean).join(' / ') || '탭 정렬 결과');
     state.refs.tbody.append(tr);
   });
 
@@ -529,10 +529,10 @@ function renderCommonOptions(state) {
   const common = normalizeCommonOptions(state.commonOptions);
   state.refs.extraParamsInput.value = common.extraParamsText || '';
   state.refs.targetFilterInput.value = common.targetFilterText || '';
-  state.refs.targetFilterInput.title = common.targetFilterText || '';
-  state.refs.extraParamsInput.title = common.extraParamsText || '';
+  state.refs.targetFilterInput.setAttribute('aria-label', common.targetFilterText || '검토 대상 필터');
+  state.refs.extraParamsInput.setAttribute('aria-label', common.extraParamsText || '추가 추출 파라미터');
   state.refs.featureTargetFilterInput.value = state.featureTargetFilter || '';
-  state.refs.featureTargetFilterInput.title = state.featureTargetFilter || '';
+  state.refs.featureTargetFilterInput.setAttribute('aria-label', state.featureTargetFilter || '탭 정렬 대상 필터');
   state.refs.includePointXY.checked = !!common.includePointXY;
   state.refs.includeLinearMetrics.checked = !!common.includeLinearMetrics;
   state.refs.excludeEndDummy.checked = !!common.excludeEndDummy;

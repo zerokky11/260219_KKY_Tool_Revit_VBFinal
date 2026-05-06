@@ -1349,10 +1349,37 @@ input[type="checkbox"]:disabled {
     gap: 8px;
 }
 
+.update-result-callout.ok {
+    border-color: color-mix(in srgb, var(--success) 44%, var(--border-soft));
+    background: color-mix(in srgb, var(--success) 9%, var(--surface-sunken));
+}
+
+.update-result-callout.info {
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--border-soft));
+    background: color-mix(in srgb, var(--accent) 9%, var(--surface-sunken));
+}
+
+.update-result-callout.err {
+    border-color: color-mix(in srgb, var(--error) 42%, var(--border-soft));
+    background: color-mix(in srgb, var(--error) 9%, var(--surface-sunken));
+}
+
 .update-result-callout strong {
     font-size: 0.92rem;
     font-weight: 800;
     color: color-mix(in srgb, var(--warning) 80%, var(--text-main));
+}
+
+.update-result-callout.ok strong {
+    color: color-mix(in srgb, var(--success) 82%, var(--text-main));
+}
+
+.update-result-callout.info strong {
+    color: color-mix(in srgb, var(--accent-strong) 86%, var(--text-main));
+}
+
+.update-result-callout.err strong {
+    color: color-mix(in srgb, var(--error) 82%, var(--text-main));
 }
 
 .update-result-callout ul {

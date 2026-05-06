@@ -4,7 +4,7 @@ import { getLastExcelExportLocale } from '../core/dom.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
-import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
+import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js?v=20260504a';
 
 const DEFAULT_SUMMARY = { okCount: 0, failCount: 0, skipCount: 0 };
 const CATEGORY_PRESET_KEY = "kky_spb_cat_presets";
@@ -60,9 +60,9 @@ export function renderSharedParamBatch(root) {
   const header = div('feature-header');
   const heading = div('feature-heading');
   heading.innerHTML = `
-    <span class="feature-kicker">Project Parameter</span>
-    <h2 class="feature-title">Project Parameter 추가 (Project/Shared)</h2>
-    <p class="feature-sub">Project/Shared 파라미터를 여러 RVT에 일괄 추가/바인딩합니다.</p>`;
+    <span class="feature-kicker">프로젝트 파라미터</span>
+    <h2 class="feature-title">프로젝트/공유 파라미터 일괄 추가</h2>
+    <p class="feature-sub">프로젝트 또는 공유 파라미터를 여러 RVT에 일괄 추가하고 바인딩합니다.</p>`;
 
   const btnRun = cardBtn('실행', onRun);
   const btnExport = cardBtn('엑셀 내보내기', onExport, 'btn--secondary');
@@ -78,15 +78,15 @@ export function renderSharedParamBatch(root) {
 
   const warningSection = div('section sharedparambatch-section spb-warning');
   const warningText = document.createElement('div');
-  warningText.textContent = 'Shared Parameters TXT가 Revit에 설정되어 있지 않습니다. Manage > Shared Parameters에서 등록 후 새로고침하세요.';
+  warningText.textContent = '공유파라미터 TXT가 Revit에 설정되어 있지 않습니다. Revit의 관리 > 공유 매개변수에서 등록한 뒤 새로고침해 주세요.';
   const warningActions = div('section-actions');
   warningActions.append(cardBtn('새로고침', () => post('sharedparambatch:init', {}), 'btn--secondary'));
   warningSection.append(warningText, warningActions);
   warningSection.style.display = 'none';
 
   const selectSection = div('section sharedparambatch-section');
-  const paramPickerBtn = cardBtn('Parameter 선택하기', openParamPicker, 'btn--secondary');
-  const selectHeader = buildSelectHeader('Shared Parameter 선택', paramPickerBtn, btnRun, btnExport);
+  const paramPickerBtn = cardBtn('파라미터 선택', openParamPicker, 'btn--secondary');
+  const selectHeader = buildSelectHeader('공유파라미터 선택', paramPickerBtn, btnRun, btnExport);
   selectSection.append(selectHeader);
   const selectHeaderActions = selectHeader.querySelector('.spb-headerRight');
   if (selectHeaderActions) {
@@ -95,10 +95,10 @@ export function renderSharedParamBatch(root) {
 
   const selectedSection = div('section sharedparambatch-section');
   const bulkApplyBtn = cardBtn('설정 일괄 적용', applyBulkSettings, 'btn--secondary');
-  selectedSection.append(sectionHeader('Selected Parameters', [bulkApplyBtn]));
+  selectedSection.append(sectionHeader('선택한 파라미터', [bulkApplyBtn]));
   const paramTable = document.createElement('table');
   paramTable.className = 'sharedparambatch-table';
-  paramTable.innerHTML = '<thead><tr><th>Name</th><th>GUID</th><th>Binding</th><th>Group</th><th>Categories</th><th>Action</th></tr></thead><tbody></tbody>';
+  paramTable.innerHTML = '<thead><tr><th>이름</th><th>GUID</th><th>바인딩</th><th>그룹</th><th>카테고리</th><th>작업</th></tr></thead><tbody></tbody>';
   const paramBody = paramTable.querySelector('tbody');
   const paramWrap = div('spb-tableWrap');
   paramWrap.append(paramTable);
@@ -128,15 +128,15 @@ export function renderSharedParamBatch(root) {
   closeChk.id = 'spb-close-worksets';
   closeChk.addEventListener('change', () => { state.options.closeAllWorksetsOnOpen = !!closeChk.checked; });
   const closeLbl = document.createElement('span');
-  closeLbl.textContent = 'Workshared: Open CloseAllWorksets';
+  closeLbl.textContent = '워크셰어링 파일: 모든 웍셋 닫고 열기';
   closeWrap.append(closeChk, closeLbl);
 
   const syncInput = document.createElement('input');
   syncInput.type = 'text';
   syncInput.className = 'sharedparambatch-input spb-syncInput';
-  syncInput.placeholder = 'Sync Comment';
+  syncInput.placeholder = '동기화 코멘트';
   syncInput.addEventListener('input', () => { state.options.syncComment = syncInput.value || ''; });
-  rvtHeaderRight.append(closeWrap, labelSpan('Sync Comment'), syncInput);
+  rvtHeaderRight.append(closeWrap, labelSpan('동기화 코멘트'), syncInput);
 
   rvtHeader.append(rvtHeaderLeft, rvtHeaderRight);
   rvtSection.append(rvtHeader);
@@ -168,9 +168,9 @@ export function renderSharedParamBatch(root) {
   const resultHeader = sectionHeader('최근 실행 결과', []);
   resultSection.append(resultHeader);
   const summaryRow = div('sharedparambatch-summary');
-  const badgeOk = summaryBadge('OK', '0');
-  const badgeFail = summaryBadge('FAIL', '0');
-  const badgeSkip = summaryBadge('SKIP', '0');
+  const badgeOk = summaryBadge('정상', '0');
+  const badgeFail = summaryBadge('실패', '0');
+  const badgeSkip = summaryBadge('건너뜀', '0');
   summaryRow.append(badgeOk.wrap, badgeFail.wrap, badgeSkip.wrap);
 
   const logPathRow = div('sharedparambatch-logpath');
@@ -185,7 +185,7 @@ export function renderSharedParamBatch(root) {
 
   const logTable = document.createElement('table');
   logTable.className = 'sharedparambatch-table';
-  logTable.innerHTML = '<thead><tr><th>Level</th><th>RVT</th><th>Message</th></tr></thead><tbody></tbody>';
+  logTable.innerHTML = '<thead><tr><th>단계</th><th>RVT</th><th>메시지</th></tr></thead><tbody></tbody>';
   const logBody = logTable.querySelector('tbody');
   resultSection.append(summaryRow, logPathRow, logTable);
   resultSection.style.display = 'none';
@@ -205,12 +205,12 @@ export function renderSharedParamBatch(root) {
   onHost('revit:error', ({ message }) => {
     state.pendingFolderBrowse = false;
     finishRunning(true);
-    toast(message || 'Revit 오류가 발생했습니다.', 'err', 3200);
+    toast(message || '프로젝트 파라미터 추가 중 Revit 오류가 발생했습니다. 대상 RVT와 선택한 파라미터 설정을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3200);
   });
   onHost('host:error', ({ message }) => {
     state.pendingFolderBrowse = false;
     finishRunning(true);
-    toast(message || '호스트 오류가 발생했습니다.', 'err', 3200);
+    toast(message || '프로젝트 파라미터 추가 중 호스트 오류가 발생했습니다. Hub 화면을 다시 열고 Revit 연결 상태를 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3200);
   });
 
   post('sharedparambatch:init', {});
@@ -219,7 +219,7 @@ export function renderSharedParamBatch(root) {
   function handleInit(payload) {
     if (!payload || !payload.ok) {
       warningSection.style.display = 'flex';
-      toast(payload?.message || '초기화 실패', 'err');
+      toast(payload?.message || '프로젝트 파라미터 추가 화면을 초기화하지 못했습니다. 공유파라미터 파일 연결 상태를 확인한 뒤 Hub 화면을 다시 열어 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
       return;
     }
     warningSection.style.display = 'none';
@@ -243,7 +243,7 @@ export function renderSharedParamBatch(root) {
     if (!state.groups.length) {
       const opt = document.createElement('option');
       opt.value = '';
-      opt.textContent = '그룹 없음';
+      opt.textContent = '그룹이 없습니다.';
       groupSelect.append(opt);
       state.selectedGroup = '';
       return;
@@ -271,7 +271,7 @@ export function renderSharedParamBatch(root) {
     if (!filtered.length) {
       const opt = document.createElement('option');
       opt.value = '';
-      opt.textContent = '정의 없음';
+      opt.textContent = '정의가 없습니다.';
       defList.append(opt);
       return;
     }
@@ -302,7 +302,7 @@ export function renderSharedParamBatch(root) {
     const defList = modal.defList;
     if (!defList || !defList.options.length) return;
     const selected = Array.from(defList.selectedOptions || []);
-    if (!selected.length) { toast('추가할 파라미터를 선택하세요.', 'err'); return; }
+    if (!selected.length) { toast('추가할 파라미터를 선택해 주세요.', 'err'); return; }
 
     const nextSelection = new Set(state.defSelection);
     selected.forEach((opt) => {
@@ -346,7 +346,7 @@ export function renderSharedParamBatch(root) {
       const tr = document.createElement('tr');
       tr.append(tdText(p.name));
       tr.append(tdText(p.guid));
-      tr.append(tdText(p.settings.isInstanceBinding ? 'Instance' : 'Type'));
+      tr.append(tdText(p.settings.isInstanceBinding ? '인스턴스' : '타입'));
       tr.append(tdText(formatParamGroup(p.settings.paramGroup)));
       tr.append(tdText(String(p.settings.categories.length)));
 
@@ -413,12 +413,12 @@ export function renderSharedParamBatch(root) {
       refreshUiAfterHostDialog(() => renderRvtList());
     }
     if (payload?.fromFolder) {
-      toast(added ? `${added}개 추가됨` : '추가된 RVT가 없습니다.', added ? 'ok' : 'err');
+      toast(added ? `${added}개 추가 완료` : '추가된 RVT가 없습니다.', added ? 'ok' : 'err');
     }
   }
 
   function removeSelectedRvts() {
-    if (!state.rvtChecked.size) { toast('삭제할 RVT를 선택하세요.', 'err'); return; }
+    if (!state.rvtChecked.size) { toast('삭제할 RVT를 선택해 주세요.', 'err'); return; }
     state.rvtList = state.rvtList.filter(p => !state.rvtChecked.has(p));
     state.rvtChecked.clear();
     renderRvtList();
@@ -446,17 +446,17 @@ export function renderSharedParamBatch(root) {
   function onBrowseFolder() {
     if (state.running) return;
     state.pendingFolderBrowse = true;
-    ProgressDialog.show('RVT 폴더 선택', '폴더 내 RVT 파일을 찾는 중...');
-    ProgressDialog.update(20, '폴더 내 RVT 파일을 찾는 중...', '하위 폴더를 포함해 RVT 파일을 검색하는 중...');
+    ProgressDialog.show('RVT 폴더 선택', '폴더 내 RVT 파일을 찾는 중입니다.');
+    ProgressDialog.update(20, '폴더 내 RVT 파일을 찾는 중입니다.', '하위 폴더를 포함해 RVT 파일을 검색하는 중입니다.');
     post('sharedparambatch:browse-folder', {});
   }
 
   function onRun() {
     if (state.running) return;
-    if (!state.selectedParams.length) { toast('파라미터를 선택하세요.', 'err'); return; }
-    if (!state.rvtList.length) { toast('RVT 파일을 추가하세요.', 'err'); return; }
+    if (!state.selectedParams.length) { toast('파라미터를 선택해 주세요.', 'err'); return; }
+    if (!state.rvtList.length) { toast('RVT 파일을 추가해 주세요.', 'err'); return; }
     const selectedRvts = getCheckedRvtPaths();
-    if (!selectedRvts.length) { toast('적용할 RVT를 1개 이상 선택하세요.', 'err'); return; }
+    if (!selectedRvts.length) { toast('적용할 RVT를 1개 이상 선택해 주세요.', 'err'); return; }
     const missingCats = state.selectedParams.filter(p => !p.settings.categories.length);
     if (missingCats.length) {
       toast('카테고리를 지정하지 않은 파라미터가 있습니다.', 'err');
@@ -485,8 +485,8 @@ export function renderSharedParamBatch(root) {
 
     state.running = true;
     updateButtons();
-    ProgressDialog.show('Project Parameter 추가', '작업 준비 중...');
-    ProgressDialog.update(0, '작업 준비 중...', '선택한 파라미터와 RVT 목록을 정리하는 중...');
+    ProgressDialog.show('프로젝트 파라미터 추가', '작업을 준비하는 중입니다.');
+    ProgressDialog.update(0, '작업을 준비하는 중입니다.', '선택한 파라미터와 RVT 목록을 정리하는 중입니다.');
     post('sharedparambatch:run', payload);
   }
 
@@ -508,7 +508,7 @@ export function renderSharedParamBatch(root) {
     state.lastProgressPct = pct;
     const subtitle = buildRunProgressSubtitle(pct, text, step, total);
     const detail = buildRunProgressDetail(text, step, total);
-    ProgressDialog.show('Project Parameter 추가', subtitle);
+    ProgressDialog.show('프로젝트 파라미터 추가', subtitle);
     ProgressDialog.update(pct, subtitle, detail);
     if (pct >= 100) scheduleProgressHide();
   }
@@ -523,7 +523,7 @@ export function renderSharedParamBatch(root) {
     const detail = formatExcelDetail(phase, payload?.message, current, total);
 
     state.lastProgressPct = percent;
-    ProgressDialog.show('Project Parameter 결과 내보내기', subtitle);
+    ProgressDialog.show('프로젝트 파라미터 결과 내보내기', subtitle);
     ProgressDialog.update(percent, subtitle, detail);
 
     if (phase === 'DONE' || phase === 'ERROR') {
@@ -534,7 +534,7 @@ export function renderSharedParamBatch(root) {
   function handleDone(payload) {
     finishRunning(true);
     if (!payload || !payload.ok) {
-      toast(payload?.message || '실행 실패', 'err');
+      toast(payload?.message || '프로젝트 파라미터 추가 실행에 실패했습니다. 대상 RVT와 선택한 파라미터 설정을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
       return;
     }
     state.summary = payload.summary || { ...DEFAULT_SUMMARY };
@@ -564,20 +564,20 @@ export function renderSharedParamBatch(root) {
     if (!excelMode) return;
     state.running = true;
     updateButtons();
-    ProgressDialog.show('Project Parameter 결과 내보내기', '엑셀 파일을 준비하는 중...');
-    ProgressDialog.update(0, '엑셀 파일을 준비하는 중...', '로그 결과와 저장 옵션을 정리하는 중...');
+    ProgressDialog.show('프로젝트 파라미터 결과 내보내기', '엑셀 파일을 준비하는 중입니다.');
+    ProgressDialog.update(0, '엑셀 파일을 준비하는 중입니다.', '로그 결과와 저장 옵션을 정리하는 중입니다.');
     post('sharedparambatch:export-excel', { excelMode, locale: getLastExcelExportLocale() });
   }
 
   function handleExported(payload) {
     finishRunning(true);
     if (!payload || !payload.ok) {
-      toast(payload?.message || '엑셀 내보내기 실패', 'err');
+      toast(payload?.message || '프로젝트 파라미터 추가 결과 엑셀 내보내기에 실패했습니다. 저장 경로 권한과 파일이 열려 있는지 확인해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
       return;
     }
     const path = payload.filePath || payload.path;
     requestAnimationFrame(() => {
-      showExcelSavedDialog('엑셀로 내보냈습니다.', path, (p) => post('excel:open', { path: p }));
+      showExcelSavedDialog('프로젝트/공유 파라미터 일괄 추가 결과 엑셀을 저장했습니다.', path, (p) => post('excel:open', { path: p }));
     });
   }
 
@@ -599,10 +599,10 @@ export function renderSharedParamBatch(root) {
 
   function buildRunProgressSubtitle(percent, message, step, total) {
     const raw = String(message || '').trim();
-    if (raw.includes('정의 로드')) return 'Shared Parameter 정의를 읽는 중...';
-    if (raw.includes('완료')) return 'Project Parameter 추가 완료';
-    if (total > 0) return `RVT 처리 중 (${Math.max(step, 0)}/${total})`;
-    return `Project Parameter 추가 진행 중 (${formatProgressPercent(percent)})`;
+    if (raw.includes('정의 로드')) return '공유파라미터 정의를 읽는 중입니다.';
+    if (raw.includes('완료')) return '프로젝트 파라미터 추가 완료';
+    if (total > 0) return `RVT를 처리하는 중입니다. (${Math.max(step, 0)}/${total})`;
+    return `프로젝트 파라미터를 추가하는 중입니다. (${formatProgressPercent(percent)})`;
   }
 
   function buildRunProgressDetail(message, step, total) {
@@ -642,13 +642,13 @@ export function renderSharedParamBatch(root) {
   function buildExcelSubtitle(phase, current, total) {
     const norm = normalizeExcelPhase(phase);
     switch (norm) {
-      case 'EXCEL_INIT': return '엑셀 워크북 준비 중...';
-      case 'EXCEL_WRITE': return `엑셀 로그 작성 중 (${current}/${Math.max(total, current || 1)})`;
-      case 'EXCEL_SAVE': return '엑셀 파일 저장 중...';
-      case 'AUTOFIT': return '엑셀 스타일 적용 중...';
-      case 'DONE': return '엑셀 내보내기 완료';
-      case 'ERROR': return '엑셀 내보내기 오류';
-      default: return '엑셀 내보내기 진행 중...';
+      case 'EXCEL_INIT': return '엑셀 워크북을 준비하는 중입니다.';
+      case 'EXCEL_WRITE': return `엑셀 로그를 작성하는 중입니다. (${current}/${Math.max(total, current || 1)})`;
+      case 'EXCEL_SAVE': return '엑셀 파일을 저장하는 중입니다.';
+      case 'AUTOFIT': return '엑셀 스타일을 적용하는 중입니다.';
+      case 'DONE': return '프로젝트/공유 파라미터 일괄 추가 결과 엑셀 내보내기 완료';
+      case 'ERROR': return '프로젝트/공유 파라미터 일괄 추가 결과 엑셀 내보내기 오류';
+      default: return '프로젝트/공유 파라미터 일괄 추가 결과 엑셀 내보내기를 진행하는 중입니다.';
     }
   }
 
@@ -656,9 +656,9 @@ export function renderSharedParamBatch(root) {
     const raw = String(message || '').trim();
     if (raw) return raw;
     const norm = normalizeExcelPhase(phase);
-    if (norm === 'EXCEL_WRITE' && total > 0) return `${current} / ${total} 로그를 기록하는 중...`;
-    if (norm === 'AUTOFIT') return '셀 스타일과 열 너비를 정리하는 중...';
-    if (norm === 'DONE') return '엑셀 파일이 저장되었습니다.';
+    if (norm === 'EXCEL_WRITE' && total > 0) return `${current} / ${total} 로그를 기록하는 중입니다.`;
+    if (norm === 'AUTOFIT') return '셀 스타일과 열 너비를 정리하는 중입니다.';
+    if (norm === 'DONE') return '프로젝트/공유 파라미터 일괄 추가 결과 엑셀 파일이 저장되었습니다.';
     return '';
   }
 
@@ -795,7 +795,7 @@ export function renderSharedParamBatch(root) {
     overlay.addEventListener('click', (ev) => { if (ev.target === overlay) closeSettingsModal(); });
 
     buildSettingsModal.overlay = overlay;
-    buildSettingsModal.title = title;
+    buildSettingsModal.titleEl = title;
     buildSettingsModal.body = body;
     buildSettingsModal.saveBtn = saveBtn;
     buildSettingsModal.currentIndex = -1;
@@ -847,7 +847,7 @@ export function renderSharedParamBatch(root) {
     });
 
     const defHeader = div('spb-defHeader');
-    defHeader.append(labelSpan('Group'), groupSelect, searchInput);
+    defHeader.append(labelSpan('그룹'), groupSelect, searchInput);
 
     const defList = document.createElement('select');
     defList.className = 'sharedparambatch-def-list spb-defList';
@@ -986,13 +986,13 @@ export function renderSharedParamBatch(root) {
     modal.body.innerHTML = '';
 
     const bindingRow = div('sharedparambatch-modal-row');
-    bindingRow.append(subTitle('Binding'));
+    bindingRow.append(subTitle('바인딩'));
     const bindingOpts = div('sharedparambatch-binding');
-    const instRadio = radio('spb-binding', 'Instance', param.settings.isInstanceBinding, (checked) => {
+    const instRadio = radio('spb-binding', '인스턴스', param.settings.isInstanceBinding, (checked) => {
       if (checked) param.settings.isInstanceBinding = true;
       toggleVary();
     });
-    const typeRadio = radio('spb-binding', 'Type', !param.settings.isInstanceBinding, (checked) => {
+    const typeRadio = radio('spb-binding', '타입', !param.settings.isInstanceBinding, (checked) => {
       if (checked) param.settings.isInstanceBinding = false;
       toggleVary();
     });
@@ -1000,7 +1000,7 @@ export function renderSharedParamBatch(root) {
     bindingRow.append(bindingOpts);
 
     const groupRow = div('sharedparambatch-modal-row');
-    groupRow.append(subTitle('Parameter Group'));
+    groupRow.append(subTitle('파라미터 그룹'));
     const groupSelectEl = document.createElement('select');
     groupSelectEl.className = 'sharedparambatch-select';
     state.paramGroups.forEach((g) => {
@@ -1031,12 +1031,12 @@ export function renderSharedParamBatch(root) {
     varyChk.addEventListener('change', () => { param.settings.allowVaryBetweenGroups = !!varyChk.checked; });
     const varyLbl = document.createElement('label');
     varyLbl.setAttribute('for', 'spb-vary');
-    varyLbl.textContent = 'Vary between groups';
+    varyLbl.textContent = '그룹별 값 다르게 허용';
     varyWrap.append(varyChk, varyLbl);
     varyRow.append(varyWrap);
 
     const categoryRow = div('sharedparambatch-modal-row');
-    categoryRow.append(subTitle('Categories'));
+    categoryRow.append(subTitle('카테고리'));
     const categoryActions = div('sharedparambatch-category-actions');
     const btnAll = cardBtn('전체 선택', () => selectAllCategories(param), 'btn--secondary');
     const btnClear = cardBtn('전체 해제', () => clearAllCategories(param), 'btn--secondary');
@@ -1079,34 +1079,34 @@ export function renderSharedParamBatch(root) {
     const btnSavePreset = cardBtn('저장', () => {
       const nextName = (presetNameInput.value || presetSelect.value || '').trim();
       if (!nextName) {
-        toast('저장할 프리셋 이름을 입력하세요.', 'err');
+        toast('저장할 프리셋 이름을 입력해 주세요.', 'err');
         return;
       }
       saveCategoryPreset(nextName, param.settings.categories || []);
       openSettingsModal(modal.currentIndex);
-      toast(`프리셋 저장됨: ${nextName}`, 'ok');
+      toast(`프리셋 저장 완료: ${nextName}`, 'ok');
     }, 'btn--secondary');
 
     const btnLoadPreset = cardBtn('불러오기', () => {
       if (!presetSelect.value) {
-        toast('불러올 프리셋을 선택하세요.', 'err');
+        toast('불러올 프리셋을 선택해 주세요.', 'err');
         return;
       }
       applyCategoryPreset(param, presetSelect.value);
       const modalNow = buildSettingsModal;
       if (modalNow.body) renderCategoryTree(modalNow.body.querySelector('.sharedparambatch-category-tree'), param);
-      toast(`프리셋 적용됨: ${presetSelect.value}`, 'ok');
+      toast(`프리셋 적용 완료: ${presetSelect.value}`, 'ok');
     }, 'btn--secondary');
 
     const btnDeletePreset = cardBtn('삭제', () => {
       const presetName = (presetSelect.value || '').trim();
       if (!presetName) {
-        toast('삭제할 프리셋을 선택하세요.', 'err');
+        toast('삭제할 프리셋을 선택해 주세요.', 'err');
         return;
       }
       deleteCategoryPreset(presetName);
       openSettingsModal(modal.currentIndex);
-      toast(`프리셋 삭제됨: ${presetName}`, 'ok');
+      toast(`프리셋 삭제 완료: ${presetName}`, 'ok');
     }, 'btn--secondary');
 
     presetSelect.addEventListener('change', () => {

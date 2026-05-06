@@ -6,6 +6,9 @@ const MULTI_MODE_KEY = 'kky.hub.multiMode';
 const PANEL_SEARCH_KEY = 'kky.hub.panelSearch.v1';
 export const HUB_QUICK_ACCESS_CHANGE_EVENT = 'hub:quickaccess-changed';
 
+const BQC_GROUP_LABEL = '납품 시 BQC 검토';
+const UTILITY_GROUP_LABEL = '유틸리티';
+
 const HUB_ENTRY_CATALOG = Object.freeze({
   connector: {
     id: 'connector',
@@ -13,7 +16,7 @@ const HUB_ENTRY_CATALOG = Object.freeze({
     desc: '연결된 MEP 객체 사이의 파라미터 연속성을 검토합니다.',
     route: 'multi',
     multiMode: 'bqc',
-    groupLabel: '납품 시 BQC 검토'
+    groupLabel: BQC_GROUP_LABEL
   },
   floorinfo: {
     id: 'floorinfo',
@@ -21,15 +24,15 @@ const HUB_ENTRY_CATALOG = Object.freeze({
     desc: '선택한 레벨 영역을 기준으로 파라미터 일치 여부를 검토합니다.',
     route: 'multi',
     multiMode: 'bqc',
-    groupLabel: '납품 시 BQC 검토'
+    groupLabel: BQC_GROUP_LABEL
   },
   familysuitability: {
     id: 'familysuitability',
-    label: 'Family 적합성 검토',
-    desc: '기준 엑셀의 Category / Family / Type 조합으로 실제 사용 타입 적합성을 검토합니다.',
+    label: '패밀리 타입 적합성 검토',
+    desc: '기준 엑셀의 카테고리/패밀리/타입 조합으로 실제 사용 타입의 적합성을 검토합니다.',
     route: 'multi',
     multiMode: 'bqc',
-    groupLabel: '납품 시 BQC 검토'
+    groupLabel: BQC_GROUP_LABEL
   },
   tapalign: {
     id: 'tapalign',
@@ -37,102 +40,102 @@ const HUB_ENTRY_CATALOG = Object.freeze({
     desc: '탭/분기 피팅 축이 연결된 배관 또는 덕트 중심축에서 벗어났는지 검토합니다.',
     route: 'multi',
     multiMode: 'bqc',
-    groupLabel: '납품 시 BQC 검토'
+    groupLabel: BQC_GROUP_LABEL
   },
   dupclash: {
     id: 'dupclash',
-    label: '중복 / 자체간섭 검토',
-    desc: '여러 RVT를 대상으로 중복검토 또는 자체간섭검토 중 하나를 선택해 배치 검토합니다.',
+    label: '중복 / 자체 간섭 검토',
+    desc: '여러 RVT를 대상으로 중복 검토 또는 자체 간섭 검토를 선택해 배치 검토합니다.',
     route: 'multi',
     multiMode: 'bqc',
-    groupLabel: '납품 시 BQC 검토'
+    groupLabel: BQC_GROUP_LABEL
   },
   worksetassignment: {
     id: 'worksetassignment',
     label: '웍셋 배정 검토',
-    desc: '모델 객체의 workset 배정을 Workset1 또는 입력한 특정 workset 기준으로 검토합니다.',
+    desc: '모델 객체의 웍셋 배정을 기본 웍셋(Workset1) 또는 지정한 웍셋 기준으로 검토합니다.',
     route: 'multi',
     multiMode: 'bqc',
-    groupLabel: '납품 시 BQC 검토'
+    groupLabel: BQC_GROUP_LABEL
   },
   parameterduplication: {
     id: 'parameterduplication',
-    label: 'Project Parameter 중복 검토',
-    desc: '추가된 Project Parameter 중 이름이 중복된 항목을 검토합니다.',
+    label: '프로젝트 파라미터 중복 검토',
+    desc: '추가된 프로젝트 파라미터 중 이름이 중복된 항목을 검토합니다.',
     route: 'multi',
     multiMode: 'bqc',
-    groupLabel: '납품 시 BQC 검토'
+    groupLabel: BQC_GROUP_LABEL
   },
   parametermissing: {
     id: 'parametermissing',
     label: '파라미터 누락 검토',
-    desc: '공유 Text 파라미터의 누락 여부를 공통 대상 필터와 예외 규칙 기준으로 검토합니다.',
+    desc: '공유 텍스트 파라미터의 누락 여부를 공통 대상 필터와 예외 규칙 기준으로 검토합니다.',
     route: 'multi',
     multiMode: 'bqc',
-    groupLabel: '납품 시 BQC 검토'
+    groupLabel: BQC_GROUP_LABEL
   },
   deliverycleaner: {
     id: 'deliverycleaner',
     label: 'RVT 정리 (납품용)',
-    desc: '납품파일 작성을 위한 뷰정리, Purge, 검토용 속성 추출을 진행합니다.',
+    desc: '납품 파일 작성을 위한 뷰 정리, 불필요 항목 제거(Purge), 검토용 속성 추출을 진행합니다.',
     route: 'deliverycleaner',
-    groupLabel: '납품 시 BQC 검토'
+    groupLabel: BQC_GROUP_LABEL
   },
   conditionextract: {
     id: 'conditionextract',
     label: '조건별 객체 대상 속성 추출',
-    desc: '조건식으로 객체를 추려 지정 속성과 좌표, 선형 정보를 함께 추출합니다.',
+    desc: '조건식으로 객체를 추려 지정 속성, 좌표, 선형 정보를 함께 추출합니다.',
     route: 'conditionextract',
-    groupLabel: '납품 시 BQC 검토'
+    groupLabel: BQC_GROUP_LABEL
   },
   dup: {
     id: 'dup',
-    label: '중복 / 자체간섭 검토',
+    label: '중복 / 자체 간섭 검토',
     desc: '활성 문서에서 중복 객체 또는 자체 간섭을 검토합니다.',
     route: 'dup',
-    groupLabel: '유틸리티'
+    groupLabel: UTILITY_GROUP_LABEL
   },
   paramprop: {
     id: 'paramprop',
     label: '패밀리 공유파라미터 추가/연동',
     desc: '복합 및 하위 패밀리에 지정한 파라미터를 추가하고 연동합니다.',
     route: 'paramprop',
-    groupLabel: '유틸리티'
+    groupLabel: UTILITY_GROUP_LABEL
   },
   segmentpms: {
     id: 'segmentpms',
-    label: 'Segment↔PMS 비교 검토',
+    label: 'Segment-PMS 비교 검토',
     desc: 'PMS 양식을 입력받아 Segment와 OD, ID 값을 비교 검토합니다.',
     route: 'segmentpms',
-    groupLabel: '유틸리티'
+    groupLabel: UTILITY_GROUP_LABEL
   },
   parammodifier: {
     id: 'parammodifier',
     label: '파라미터 수정기',
-    desc: '입력 조건 기반 필터링 대상으로 지정 파라미터에 지정 속성을 일괄 입력합니다.',
+    desc: '입력 조건 기반 필터링 대상의 지정 파라미터에 값을 일괄 입력합니다.',
     route: 'parammodifier',
-    groupLabel: '유틸리티'
+    groupLabel: UTILITY_GROUP_LABEL
   },
   linkpath: {
     id: 'linkpath',
     label: 'Revit 링크 경로 추출/재지정',
-    desc: '닫힌 RVT의 Revit 링크 경로를 추출하고 엑셀 기준으로 대상 경로를 반영합니다.',
+    desc: '열린 RVT의 Revit 링크 경로를 추출하고 엑셀 기준으로 대상 경로를 반영합니다.',
     route: 'linkpath',
-    groupLabel: '유틸리티'
+    groupLabel: UTILITY_GROUP_LABEL
   },
   lateralnozzle: {
     id: 'lateralnozzle',
     label: '노즐코드 KTA 단일화',
     desc: '접수받은 KTA 양식을 정해진 하나의 시트 양식으로 추출합니다.',
     route: 'lateralnozzle',
-    groupLabel: '유틸리티'
+    groupLabel: UTILITY_GROUP_LABEL
   },
   guid: {
     id: 'guid',
     label: '파라미터 GUID 검토 및 정리',
     desc: '프로젝트와 패밀리 파라미터 GUID를 검토하고 정리 기준으로 정리합니다.',
     route: 'guid',
-    groupLabel: '유틸리티'
+    groupLabel: UTILITY_GROUP_LABEL
   },
   familylink: {
     id: 'familylink',
@@ -140,30 +143,30 @@ const HUB_ENTRY_CATALOG = Object.freeze({
     desc: '복합 패밀리를 대상으로 하위 패밀리와의 파라미터 연동 여부를 검토합니다.',
     route: 'multi',
     multiMode: 'utility',
-    groupLabel: '유틸리티'
+    groupLabel: UTILITY_GROUP_LABEL
   },
   points: {
     id: 'points',
-    label: '프로젝트대상 Point 좌표 추출',
-    desc: '지정한 RVT 파일의 Project/Survey 북각 좌표를 추출합니다.',
+    label: '기준점/북각 추출',
+    desc: 'RVT의 프로젝트 기준점, 측량 기준점, 북각 값을 추출합니다.',
     route: 'multi',
     multiMode: 'utility',
-    groupLabel: '유틸리티'
+    groupLabel: UTILITY_GROUP_LABEL
   },
   linkworkset: {
     id: 'linkworkset',
     label: '링크 기본 웍셋 점검/적용',
-    desc: '링크별 로드 상태와 open workset 현황을 확인하고 기본 Workset1만 열리도록 재적용합니다.',
+    desc: '링크별 로드 상태와 열려 있는 웍셋 현황을 확인하고 기본 웍셋(Workset1)만 열리도록 재적용합니다.',
     route: 'multi',
     multiMode: 'utility',
-    groupLabel: '유틸리티'
+    groupLabel: UTILITY_GROUP_LABEL
   },
   sharedparambatch: {
     id: 'sharedparambatch',
-    label: 'Project 파라미터 일괄 추가',
+    label: '프로젝트 파라미터 일괄 추가',
     desc: '프로젝트 파일에 지정한 파라미터를 일괄 추가합니다.',
     route: 'sharedparambatch',
-    groupLabel: '유틸리티'
+    groupLabel: UTILITY_GROUP_LABEL
   }
 });
 
@@ -409,7 +412,7 @@ function showContextMenu(x, y, entryId) {
   const action = document.createElement('button');
   action.type = 'button';
   action.className = 'hub-context-menu__action';
-  action.textContent = favorite ? '利먭꺼李얘린 ?댁젣' : '利먭꺼李얘린 異붽?';
+  action.textContent = favorite ? '즐겨찾기에서 제거' : '즐겨찾기에 추가';
   action.addEventListener('click', () => {
     setHubEntryFavorite(entryId, !favorite);
     hideContextMenu();
@@ -491,8 +494,8 @@ export function setHubEntryFavorite(entryId, nextFavorite) {
 
   toast(
     shouldFavorite
-      ? `'${entry.label}'???먯＜ ?ъ슜?섎뒗 湲곕뒫??異붽??덉뒿?덈떎.`
-      : `'${entry.label}'???먯＜ ?ъ슜?섎뒗 湲곕뒫?먯꽌 ?쒓굅?덉뒿?덈떎.`,
+      ? `'${entry.label}' 기능을 즐겨찾기에 추가했습니다.`
+      : `'${entry.label}' 기능을 즐겨찾기에서 제거했습니다.`,
     shouldFavorite ? 'ok' : 'info'
   );
 
@@ -514,11 +517,11 @@ export function replaceHubFavorites(entryIds, options = {}) {
 
   if (options?.toast !== false) {
     const sourceLabel = String(options?.sourceLabel || '').trim();
-    const prefix = sourceLabel ? `${sourceLabel}?먯꽌 ` : '';
+    const prefix = sourceLabel ? `${sourceLabel}에서 ` : '';
     toast(
       favorites.length
-        ? `${prefix}${favorites.length}媛?利먭꺼李얘린瑜?蹂듭썝?덉뒿?덈떎.`
-        : `${prefix}利먭꺼李얘린 紐⑸줉??鍮꾩썱?듬땲??`,
+        ? `${prefix}즐겨찾기 ${favorites.length}개를 복원했습니다.`
+        : `${prefix}즐겨찾기 목록이 비어 있습니다.`,
       favorites.length ? 'ok' : 'info'
     );
   }

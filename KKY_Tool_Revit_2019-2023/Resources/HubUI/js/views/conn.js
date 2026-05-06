@@ -82,9 +82,9 @@ export function renderConn(root) {
   const header = div('feature-header');
   const heading = div('feature-heading');
   heading.innerHTML = `
-    <span class="feature-kicker">Connector Diagnostics</span>
+    <span class="feature-kicker">커넥터 진단</span>
     <h2 class="feature-title">파라미터 연속성 검토</h2>
-    <p class="feature-sub">공유 파라미터 txt 목록에서 검토 대상을 선택하고 파이프/덕트 연결 객체의 값 연속성을 확인합니다.</p>`;
+    <p class="feature-sub">공유파라미터 TXT 목록에서 검토 대상을 선택하고 파이프/덕트 연결 객체의 값 연속성을 확인합니다.</p>`;
 
   const run = cardBtn('검토 시작', onRun);
   const save = cardBtn('엑셀 내보내기', onExport);
@@ -103,18 +103,18 @@ export function renderConn(root) {
 
   const cardSettings = div('conn-card section section-settings');
   const grid = div('conn-grid');
-  const targetFilterInput = makeText(opts.targetFilter || '', 'ex) PM1=Value;PM2=Value2');
+  const targetFilterInput = makeText(opts.targetFilter || '', '예: PM1=값; PM2=값2');
   const includePointXY = makeCheckbox(opts.includePointXY === true);
   const includeLinearMetrics = makeCheckbox(opts.includeLinearMetrics === true);
   const excludeEndDummy = makeCheckbox(opts.excludeEndDummy === true);
-  targetFilterInput.title = targetFilterInput.value || targetFilterInput.placeholder || '';
+  targetFilterInput.setAttribute('aria-label', targetFilterInput.value || targetFilterInput.placeholder || '검토 대상 필터');
 
   grid.append(
-    kv('허용범위', makeNumber(opts.tol ?? 1.0)),
+    kv('허용 범위', makeNumber(opts.tol ?? 1.0)),
     kv('단위', makeUnit(opts.unit || 'inch')),
-    kv('선택된 검토 파라미터', makeText((normalizeReviewParams(opts.reviewParams && opts.reviewParams.length ? opts.reviewParams : parseCsvParams(opts.param || 'Comments'))).join(', '), '목록에서 파라미터를 추가하세요')),
+    kv('선택된 검토 파라미터', makeText((normalizeReviewParams(opts.reviewParams && opts.reviewParams.length ? opts.reviewParams : parseCsvParams(opts.param || 'Comments'))).join(', '), '목록에서 파라미터를 추가해 주세요')),
     kv('추가 추출 파라미터', makeText(opts.extraParams || '', 'PM1, PM2, ... 복수 입력 가능')),
-    kv('Point X / Y 추출', includePointXY),
+    kv('좌표 X/Y 추출', includePointXY),
     kv('선형 길이 / 방향 추출', includeLinearMetrics),
     kv('검토 대상 필터', targetFilterInput),
     kv('End_ + Dummy 패밀리 제외', excludeEndDummy)
@@ -127,7 +127,7 @@ export function renderConn(root) {
   const paramSuggest = document.createElement('input');
   paramSuggest.type = 'text';
   paramSuggest.setAttribute('list', 'conn-param-datalist');
-  paramSuggest.placeholder = '공유 파라미터 검색/선택';
+  paramSuggest.placeholder = '공유파라미터 검색/선택';
   paramSuggest.className = 'conn-param-suggest';
   paramSuggest.style.width = '100%';
   paramSuggest.style.padding = '10px 12px';
@@ -183,12 +183,12 @@ export function renderConn(root) {
   const excelHelp = document.createElement('ul');
   excelHelp.className = 'conn-excel-hint';
   excelHelp.innerHTML = `
-    <li><strong>Connection Type</strong>: Proximity - 허용범위 내 연결 필요, Physical - 물리적 연결</li>
-    <li><strong>Status</strong>: 연결 필요 / Mismatch / Shared Parameter 등록 필요 / 연결 대상 객체 없음</li>
-    <li><strong>ParamCompare</strong>: Match / Mismatch / BothEmpty / N/A</li>
-    <li><strong>Value1 / Value2</strong>: 비교 대상의 Parameter 값</li>`;
+    <li><strong>연결 방식</strong>: 근접 연결 - 허용 범위 내 연결 필요, 물리적 연결 - 실제 연결</li>
+    <li><strong>상태</strong>: 연결 필요 / 불일치 / 공유파라미터 등록 필요 / 연결 대상 객체 없음</li>
+    <li><strong>파라미터 비교</strong>: 일치 / 불일치 / 양쪽 값 모두 비어 있음 / 비교 대상 없음</li>
+    <li><strong>값 1 / 값 2</strong>: 비교 대상의 파라미터 값</li>`;
 
-  const filterGuideBtn = cardBtn('And/Or 필터 사용방법', onOpenFilterGuide);
+  const filterGuideBtn = cardBtn('AND/OR 필터 사용 방법', onOpenFilterGuide);
   const filterGuideModal = createFilterGuideModal();
 
   cardActions.append(excelHelp, filterGuideBtn, filterGuideModal.overlay);
@@ -205,8 +205,8 @@ export function renderConn(root) {
 
   const tabBar = div('conn-tabs');
   const tabs = [
-    { key: 'mismatch', label: 'Mismatch' },
-    { key: 'not-connected', label: 'Disconnected' }
+    { key: 'mismatch', label: '불일치' },
+    { key: 'not-connected', label: '연결 안 됨' }
   ];
   const tabButtons = new Map();
 
@@ -227,7 +227,7 @@ export function renderConn(root) {
   // 안내문(최초 숨김 – [검토 시작] 때만 표시)
   const emptyGuide = div('conn-empty');
   emptyGuide.setAttribute('aria-live','polite');
-  emptyGuide.textContent = '🧩 검토를 시작하려면 상단에서 기준을 설정하고 [검토 시작]을 눌러주세요.';
+  emptyGuide.textContent = '검토를 시작하려면 상단에서 기준을 설정하고 [검토 시작]을 눌러 주세요.';
   const previewNotice = div('conn-preview-note');
   previewNotice.style.display = 'none';
 
@@ -286,21 +286,21 @@ export function renderConn(root) {
   /* ---- Head (ParamName 숨김) ---- */
   function headerDefs() {
     const isMm = String(unit.value) === 'mm';
-    const distHeader = isMm ? 'Distance (mm)' : 'Distance (inch)';
+    const distHeader = isMm ? '거리 (mm)' : '거리 (inch)';
     const base = [
-      { key: 'Id1', label: 'Id1', classes: ['mono'] },
-      { key: 'Id2', label: 'Id2', classes: ['mono'] },
-      { key: 'Category1', label: 'Category1' },
-      { key: 'Category2', label: 'Category2' },
-      { key: 'Family1', label: 'Family1', classes: ['dim'] },
-      { key: 'Family2', label: 'Family2', classes: ['dim'] },
+      { key: 'Id1', label: 'ID 1', classes: ['mono'] },
+      { key: 'Id2', label: 'ID 2', classes: ['mono'] },
+      { key: 'Category1', label: '카테고리 1' },
+      { key: 'Category2', label: '카테고리 2' },
+      { key: 'Family1', label: '패밀리 1', classes: ['dim'] },
+      { key: 'Family2', label: '패밀리 2', classes: ['dim'] },
       { key: 'Distance (inch)', label: distHeader, classes: ['num'] },
-      { key: 'ConnectionType', label: 'ConnectionType' },
-      { key: 'Value1', label: 'Value1', classes: ['dim', 'tone-cell'] },
-      { key: 'Value2', label: 'Value2', classes: ['dim', 'tone-cell'] },
-      { key: 'ParamCompare', label: 'ParamCompare', classes: ['tone-cell'] },
-      { key: 'Status', label: 'Status', classes: ['tone-cell'] },
-      { key: 'ErrorMessage', label: 'ErrorMessage', classes: ['dim'] }
+      { key: 'ConnectionType', label: '연결 방식' },
+      { key: 'Value1', label: '값 1', classes: ['dim', 'tone-cell'] },
+      { key: 'Value2', label: '값 2', classes: ['dim', 'tone-cell'] },
+      { key: 'ParamCompare', label: '파라미터 비교', classes: ['tone-cell'] },
+      { key: 'Status', label: '상태', classes: ['tone-cell'] },
+      { key: 'ErrorMessage', label: '오류 메시지', classes: ['dim'] }
     ];
 
     return base;
@@ -331,7 +331,7 @@ export function renderConn(root) {
     badgeFiltered.querySelector(".num").textContent = String(activeRows.length);
 
     if (hasMore) {
-      previewNotice.textContent = `미리보기에서는 상위 ${previewCount}건만 표시됩니다. 전체 ${activeTotal}건은 엑셀 내보내기로 확인하세요.`;
+      previewNotice.textContent = `미리보기에서는 상위 ${previewCount}건만 표시됩니다. 전체 ${activeTotal}건은 엑셀 내보내기로 확인해 주세요.`;
       previewNotice.style.display = 'block';
     } else {
       previewNotice.textContent = '';
@@ -453,7 +453,7 @@ export function renderConn(root) {
     if (!items.length) {
       const empty = document.createElement('span');
       empty.className = 'conn-chip';
-      empty.textContent = '선택된 파라미터 없음';
+      empty.textContent = '선택된 파라미터가 없습니다.';
       chipsWrap.append(empty);
       return;
     }
@@ -492,11 +492,11 @@ export function renderConn(root) {
       const hay = `${item.name || ''} ${item.groupName || ''}`.toLowerCase();
       return hay.includes(query);
     });
-    paramResultMeta.textContent = items.length ? `공유 파라미터 ${filtered.length}/${items.length}개` : '공유 파라미터 목록이 없습니다.';
+    paramResultMeta.textContent = items.length ? `공유파라미터 ${filtered.length}/${items.length}개` : '공유파라미터 목록이 없습니다.';
     paramResultWrap.innerHTML = '';
     if (!items.length) {
       const empty = div('familylink-target-empty');
-      empty.textContent = '공유 파라미터 목록을 불러오는 중이거나, 현재 사용할 수 없습니다.';
+      empty.textContent = '공유파라미터 목록을 불러오는 중이거나, 현재 사용할 수 없습니다.';
       paramResultWrap.append(empty);
       return;
     }
@@ -531,7 +531,7 @@ export function renderConn(root) {
 
       const badge = document.createElement('span');
       badge.className = selected.has(String(item.name || '').toLowerCase()) ? 'chip chip--ok' : 'chip chip--info';
-      badge.textContent = selected.has(String(item.name || '').toLowerCase()) ? '선택됨' : '추가';
+      badge.textContent = selected.has(String(item.name || '').toLowerCase()) ? '선택 완료' : '추가';
 
       row.append(info, badge);
       row.addEventListener('click', () => {
@@ -581,8 +581,8 @@ export function renderConn(root) {
       if (sendUnit === 'mm') { if (!isFinite(sendTol)) sendTol = 1; sendTol = sendTol / INCH_TO_MM; sendUnit = 'inch'; }
       const finalParams = getFinalReviewParams();
       const paramsCsv = finalParams.join(',');
-      ProgressDialog.show('커넥터 진단', '검토 조건을 준비하는 중...');
-      ProgressDialog.update(0, '검토 조건을 준비하는 중...', '허용 오차와 비교 파라미터를 정리하는 중...');
+      ProgressDialog.show('커넥터 진단', '검토 조건을 준비하는 중입니다.');
+      ProgressDialog.update(0, '검토 조건을 준비하는 중입니다.', '허용 오차와 비교 파라미터를 정리하는 중입니다.');
       post('connector:run', {
         tol: sendTol,
         unit: sendUnit,
@@ -608,8 +608,8 @@ export function renderConn(root) {
       const finalParams = getFinalReviewParams();
       const paramsCsv = finalParams.join(',');
       lastExcelPct = 0;
-      ProgressDialog.show('커넥터 엑셀 내보내기', '엑셀 내보내기를 준비하는 중...');
-      ProgressDialog.update(0, '엑셀 내보내기를 준비하는 중...', '결과 탭과 저장 옵션을 정리하는 중...');
+      ProgressDialog.show('커넥터 진단 엑셀 내보내기', '커넥터 진단 엑셀 내보내기를 준비하는 중입니다.');
+      ProgressDialog.update(0, '커넥터 진단 엑셀 내보내기를 준비하는 중입니다.', '결과 탭과 저장 옵션을 정리하는 중입니다.');
       post('connector:save-excel', {
         excelMode: mode || 'fast',
         tab,
@@ -670,11 +670,11 @@ export function renderConn(root) {
         updateSaveDisabled();
         const p = (payload && payload.path) || '';
         if (p) {
-          showExcelSavedDialog('엑셀 파일을 내보냈습니다.', p, (path) => {
+          showExcelSavedDialog('커넥터 진단 결과 엑셀을 저장했습니다.', p, (path) => {
             if (path) post('excel:open', { path });
           });
         } else {
-          toast('엑셀 파일을 내보냈습니다.', 'ok', 2600);
+          toast('커넥터 진단 결과 엑셀을 저장했습니다.', 'ok', 2600);
         }
         break;
       }
@@ -687,7 +687,7 @@ export function renderConn(root) {
         ProgressDialog.hide();
         run.disabled = false;
         updateSaveDisabled();
-        toast((payload && payload.message) || '오류가 발생했습니다.', 'err', 3200);
+        toast((payload && payload.message) || '커넥터 진단 중 Revit 오류가 발생했습니다. 현재 모델, 선택 조건, 커넥터 대상 설정을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3200);
         break;
       case 'host:error':
         setBusy(false);
@@ -698,7 +698,7 @@ export function renderConn(root) {
         ProgressDialog.hide();
         run.disabled = false;
         updateSaveDisabled();
-        toast((payload && payload.message) || '호스트 오류가 발생했습니다.', 'err', 3200);
+        toast((payload && payload.message) || '커넥터 진단 중 호스트 오류가 발생했습니다. Hub 화면을 다시 열고 Revit 연결 상태를 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3200);
         break;
       default: break;
     }
@@ -728,10 +728,10 @@ export function renderConn(root) {
 
   function buildRunProgressSubtitle(percent, message) {
     const raw = String(message || '').trim();
-    if (!raw) return '진행 중…';
-    if (raw.includes('시작')) return '초기 설정을 확인하는 중…';
+    if (!raw) return '커넥터 진단을 진행하는 중입니다.';
+    if (raw.includes('시작')) return '커넥터 진단 초기 설정을 확인하는 중입니다.';
     if (raw.includes('완료')) return '커넥터 진단 완료';
-    return `커넥터 비교 진행 중 (${formatRunPercent(percent)})`;
+    return `커넥터 비교를 진행하는 중입니다. (${formatRunPercent(percent)})`;
   }
 
   function buildRunProgressDetail(percent, message) {
@@ -767,7 +767,7 @@ export function renderConn(root) {
     run.disabled = exporting;
     updateSaveDisabled();
 
-    ProgressDialog.show('커넥터 엑셀 내보내기', subtitle);
+    ProgressDialog.show('커넥터 진단 엑셀 내보내기', subtitle);
     ProgressDialog.update(percent, subtitle, detail);
 
     if (!exporting) {
@@ -798,14 +798,14 @@ export function renderConn(root) {
 
   function buildExcelSubtitle(phase, current, total) {
     const labelMap = {
-      EXCEL_INIT: '엑셀 준비',
-      EXCEL_WRITE: '엑셀 작성',
-      EXCEL_SAVE: '파일 저장',
-      AUTOFIT: 'AutoFit',
-      DONE: '완료',
-      ERROR: '오류'
+      EXCEL_INIT: '엑셀을 준비하는 중입니다.',
+      EXCEL_WRITE: '엑셀 데이터를 작성하는 중입니다.',
+      EXCEL_SAVE: '결과 파일을 저장하는 중입니다.',
+      AUTOFIT: '열 너비를 맞추는 중입니다.',
+      DONE: '커넥터 진단 엑셀 내보내기 완료',
+      ERROR: '커넥터 진단 엑셀 내보내기 오류'
     };
-    const label = labelMap[normalizeExcelPhase(phase)] || '엑셀 작업';
+    const label = labelMap[normalizeExcelPhase(phase)] || '커넥터 진단 엑셀 내보내기를 진행하는 중입니다.';
     const count = total > 0 ? ` (${Math.max(current, 0)}/${total})` : '';
     return `${label}${count}`;
   }
@@ -895,8 +895,8 @@ export function renderConn(root) {
       message: '검토 결과를 요약했습니다. 필요하면 바로 엑셀로 내보내세요.',
       summaryItems: [
         { label: '전체 결과 건수', value: String(totalResults) },
-        { label: '오류/불일치 건수', value: String(mismatch) },
-        { label: 'near/연결 필요 건수', value: String(near) },
+        { label: '오류 또는 불일치 건수', value: String(mismatch) },
+        { label: '근접 연결 필요 건수', value: String(near) },
         { label: '정상 건수', value: String(normal) },
         { label: '표시 건수 / 전체 건수', value: `${shown} / ${shownTotal}` }
       ],
@@ -937,7 +937,7 @@ export function renderConn(root) {
   }
   function makeNumber(v){ const i=document.createElement('input'); i.type='number'; i.step='0.0001'; i.value=String(v); return i; }
   function makeUnit(v){ const s=document.createElement('select'); s.className='kkyt-select'; s.innerHTML='<option value="inch">inch</option><option value="mm">mm</option>'; s.value=String(v); return s; }
-  function makeText(v, placeholder=''){ const i=document.createElement('input'); i.type='text'; i.value=String(v); if(placeholder) i.placeholder=placeholder; i.style.width='100%'; i.title=i.value||placeholder||''; i.addEventListener('input',()=>{ i.title=i.value||placeholder||'';}); return i; }
+  function makeText(v, placeholder=''){ const i=document.createElement('input'); i.type='text'; i.value=String(v); if(placeholder) i.placeholder=placeholder; i.style.width='100%'; i.setAttribute('aria-label', i.value||placeholder||'텍스트 입력'); i.addEventListener('input',()=>{ i.setAttribute('aria-label', i.value||placeholder||'텍스트 입력');}); return i; }
   function makeCheckbox(v){ const i=document.createElement('input'); i.type='checkbox'; i.checked=!!v; return i; }
   function parseCsvParams(raw){
     const txt = Array.isArray(raw) ? raw.join(',') : String(raw || '');
@@ -1022,7 +1022,7 @@ export function renderConn(root) {
     headerEl.className = 'conn-filter-modal__header';
 
     const title = document.createElement('h3');
-    title.textContent = '검토대상 필터 사용방법';
+    title.textContent = '검토 대상 필터 사용 방법';
     title.className = 'conn-filter-modal__title';
 
     const closeBtn = document.createElement('button');
@@ -1038,7 +1038,7 @@ export function renderConn(root) {
     body.innerHTML = `
       <p class="conn-filter-modal__intro">열 이름과 값을 이용해 조건을 작성하면, 해당 조건을 만족하는 행만 엑셀에 포함됩니다.</p>
       <ul class="conn-excel-hint conn-filter-modal__list">
-        <li><strong>기본 비교식</strong>: <code>PM1=Value</code> (대소문자 무시)</li>
+        <li><strong>기본 비교식</strong>: <code>PM1=값</code> (대소문자 무시)</li>
         <li><strong>값에 공백</strong>: <code>PM_NAME='A B'</code> 또는 <code>PM_NAME="A B"</code></li>
         <li><strong>AND</strong>: <code>AND(cond1, cond2, ...)</code></li>
         <li><strong>OR</strong>: <code>OR(cond1, cond2, ...)</code></li>

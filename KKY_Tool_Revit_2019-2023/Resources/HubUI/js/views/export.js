@@ -2,7 +2,7 @@
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { getLastExcelExportLocale } from '../core/dom.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
-import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
+import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js?v=20260504a';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 
@@ -29,9 +29,9 @@ export function renderExport(root) {
     const header = div('feature-header');
     const heading = div('feature-heading');
     heading.innerHTML = `
-      <span class="feature-kicker">Export Points with Angle</span>
+      <span class="feature-kicker">좌표/북각 추출</span>
       <h2 class="feature-title">좌표/북각 추출</h2>
-      <p class="feature-sub">RVT 폴더를 선택해 포인트/북각을 미리보기 후 Excel로 저장합니다.</p>`;
+      <p class="feature-sub">RVT 폴더를 선택해 포인트/북각을 미리보기 후 엑셀로 저장합니다.</p>`;
 
     const pick = cardBtn('폴더 선택', () => post('export:browse-folder', {}));
     pick.id = 'btnExPick';
@@ -44,7 +44,7 @@ export function renderExport(root) {
       if (!targets.length) { toast('선택된 RVT가 없습니다.', 'warn'); return; }
       activeTask = 'preview';
       setWorking(true);
-      startProgress('COLLECT', '미리보기 준비 중…', targets.length);
+      startProgress('COLLECT', '미리보기를 준비하는 중입니다.', targets.length);
       post('export:preview', { files: targets, unit: state.unit });
     });
     preview.id = 'btnExPreview'; preview.disabled = true; preview.classList.add('btn-primary');
@@ -53,7 +53,7 @@ export function renderExport(root) {
         const payload = { rows: convertRowsForSave(), unit: state.unit, files: selectedFilePaths(), excelMode: mode || 'fast', locale: getLastExcelExportLocale() };
         activeTask = 'save';
         setWorking(true);
-        startProgress('EXCEL', '엑셀 내보내기 준비 중…', state.rowsRaw.length);
+        startProgress('EXCEL', '엑셀 내보내기를 준비하는 중입니다.', state.rowsRaw.length);
         post('export:save-excel', payload);
       });
     });
@@ -67,7 +67,7 @@ export function renderExport(root) {
     const lbar = div('segmentpms-actions-row');
     const removeBtn = cardBtn('선택 제거', () => {
       const checked = state.files.filter(f => f.checked);
-      if (!checked.length) { toast('제거할 RVT를 선택하세요.', 'warn'); return; }
+      if (!checked.length) { toast('제거할 RVT를 선택해 주세요.', 'warn'); return; }
       const removeSet = new Set(checked.map(f => f.path.toLowerCase()));
       state.files = state.files.filter(f => !removeSet.has(f.path.toLowerCase()));
       renderFiles();
@@ -170,18 +170,18 @@ export function renderExport(root) {
         ProgressDialog.hide();
         if (p) {
             requestAnimationFrame(() => {
-              showExcelSavedDialog('엑셀 파일을 내보냈습니다.', p, (fp) => {
+              showExcelSavedDialog('좌표/북각 추출 결과 엑셀을 저장했습니다.', p, (fp) => {
                   if (fp) post('excel:open', { path: fp });
               });
             });
         } else {
-            toast('엑셀 파일을 내보냈습니다.', 'ok', 2600);
+            toast('좌표/북각 추출 결과 엑셀을 저장했습니다.', 'ok', 2600);
         }
     });
 
     // === 에러 공통 처리(중요) ===
-    onHost('revit:error', ({ message }) => { handleError(message || 'Revit 오류가 발생했습니다.'); });
-    onHost('host:error', ({ message }) => { handleError(message || '호스트 오류가 발생했습니다.'); });
+    onHost('revit:error', ({ message }) => { handleError(message || '좌표/북각 추출 중 Revit 오류가 발생했습니다. 선택한 RVT 파일과 좌표 기준 설정을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.'); });
+    onHost('host:error', ({ message }) => { handleError(message || '좌표/북각 추출 중 호스트 오류가 발생했습니다. Hub 화면을 다시 열고 Revit 연결 상태를 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.'); });
 
     onHost('export:progress', handleProgress);
 
@@ -244,9 +244,9 @@ function buildUnitToggle() {
     wrap.className = 'unit-toggle';
     wrap.setAttribute('role', 'radiogroup');
     wrap.innerHTML = `
-      <label><input type="radio" name="unit" value="ft" checked> Decimal Feet</label>
-      <label><input type="radio" name="unit" value="m"> Meters (m)</label>
-      <label><input type="radio" name="unit" value="mm"> Millimeters (mm)</label>`;
+      <label><input type="radio" name="unit" value="ft" checked> 십진 피트</label>
+      <label><input type="radio" name="unit" value="m"> 미터 (m)</label>
+      <label><input type="radio" name="unit" value="mm"> 밀리미터 (mm)</label>`;
     wrap.querySelectorAll('input[type="radio"]').forEach(r => {
       r.checked = r.value === state.unit;
       r.onchange = () => { state.unit = r.value; paintHead(); repaintRows(); };
@@ -291,10 +291,10 @@ function paintHead(target) {
     const survey = HEADERS.filter(h => h.group === 'survey');
     const head = `
       <tr>
-        <th rowspan="2">File</th>
-        <th class="group" colspan="${project.length}">Project Point ${unitLabel}</th>
-        <th class="group" colspan="${survey.length}">Survey Point ${unitLabel}</th>
-        <th rowspan="2">Angle (True North)</th>
+        <th rowspan="2">파일</th>
+        <th class="group" colspan="${project.length}">프로젝트 기준점 ${unitLabel}</th>
+        <th class="group" colspan="${survey.length}">측량 기준점 ${unitLabel}</th>
+        <th rowspan="2">북각</th>
       </tr>
       <tr>
         ${project.map(h => `<th>${h.label}</th>`).join('')}
@@ -441,7 +441,7 @@ function handleError(message) {
     resetProgressState();
     finishWorking();
     ProgressDialog.hide();
-    toast(message || '오류가 발생했습니다.', 'err', 3200);
+    toast(message || '좌표/북각 추출 중 오류가 발생했습니다. 선택한 RVT 파일과 좌표 기준 설정을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3200);
 }
 
 function resetProgressState() {
@@ -537,16 +537,16 @@ function normalizePhase(phase) {
 
 function phaseLabel(phase) {
     switch (normalizePhase(phase)) {
-        case 'COLLECT': return '파일 준비';
-        case 'EXTRACT': return '포인트 추출';
-        case 'EXCEL_INIT': return '엑셀 준비';
-        case 'EXCEL_WRITE': return '엑셀 작성';
-        case 'EXCEL_SAVE': return '파일 저장';
-        case 'AUTOFIT': return 'AutoFit';
-        case 'EXCEL': return '엑셀 내보내기';
-        case 'DONE': return '완료';
-        case 'ERROR': return '오류';
-        default: return '진행 중';
+        case 'COLLECT': return '좌표/북각 추출 대상 파일을 준비하는 중입니다.';
+        case 'EXTRACT': return '좌표/북각 포인트를 추출하는 중입니다.';
+        case 'EXCEL_INIT': return '좌표/북각 추출 결과 엑셀을 준비하는 중입니다.';
+        case 'EXCEL_WRITE': return '좌표/북각 추출 결과 엑셀 데이터를 작성하는 중입니다.';
+        case 'EXCEL_SAVE': return '좌표/북각 추출 결과 엑셀 파일을 저장하는 중입니다.';
+        case 'AUTOFIT': return '좌표/북각 추출 결과 엑셀 열 너비를 맞추는 중입니다.';
+        case 'EXCEL': return '좌표/북각 추출 결과 엑셀을 내보내는 중입니다.';
+        case 'DONE': return '좌표/북각 추출 완료';
+        case 'ERROR': return '좌표/북각 추출 오류';
+        default: return '좌표/북각 추출을 진행하는 중입니다.';
     }
 }
 

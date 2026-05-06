@@ -16,8 +16,8 @@ import {
   recordHubEntryUse,
   searchHubEntries,
   setHubPanelSearch
-} from '../core/hubFavorites.js?v=20260427a';
-import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
+} from '../core/hubFavorites.js?v=20260504e';
+import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js?v=20260504a';
 
 const FEATURE_META = {
     connector: {
@@ -25,7 +25,7 @@ const FEATURE_META = {
       cardLabel: '파라미터 연속성 검토',
       desc: '연결된 MEP 객체의 파라미터 연속성을 검토',
       cardDesc: '연결된 MEP 객체의 파라미터 연속성을 검토',
-      categoryLabel: 'Parameter',
+      categoryLabel: '파라미터',
       categoryTitle: '파라미터 검토/연속성 확인 기능',
       requiresSharedParams: false
     },
@@ -34,16 +34,16 @@ const FEATURE_META = {
       cardLabel: '레벨 영역별 파라미터 검토',
       desc: '선택한 레벨 영역을 기준으로 파라미터 일치 여부를 검토',
       cardDesc: '선택한 레벨 영역을 기준으로 파라미터 일치 여부를 검토',
-      categoryLabel: 'Parameter',
+      categoryLabel: '파라미터',
       categoryTitle: '파라미터 값 검토 기능',
       requiresSharedParams: false
     },
     familysuitability: {
-      label: 'Family 적합성 검토',
-      cardLabel: 'Family 적합성 검토',
-      desc: '기준 엑셀의 Category / Family / Type 조합으로 실제 사용 타입 적합성을 검토',
-      cardDesc: '기준 엑셀의 Category / Family / Type 조합과 실제 사용 객체를 비교해 Review 문구를 출력합니다.',
-      categoryLabel: 'Family',
+      label: '패밀리 타입 적합성 검토',
+      cardLabel: '패밀리 타입 적합성 검토',
+      desc: '기준 엑셀의 카테고리/패밀리/타입 조합으로 실제 사용 타입 적합성을 검토',
+      cardDesc: '기준 엑셀의 카테고리/패밀리/타입 조합과 실제 사용 객체를 비교해 검토 문구를 출력합니다.',
+      categoryLabel: '패밀리',
       categoryTitle: '패밀리/타입 적합성 검토 기능',
       requiresSharedParams: false
     },
@@ -57,9 +57,9 @@ const FEATURE_META = {
       requiresSharedParams: false
     },
     dupclash: {
-      label: '중복 / 자체간섭 검토',
-      cardLabel: '중복 / 자체간섭 검토',
-      desc: '여러 RVT를 대상으로 중복검토 또는 자체간섭검토 중 하나를 선택해 약식 배치 검토',
+      label: '중복 / 자체 간섭 검토',
+      cardLabel: '중복 / 자체 간섭 검토',
+      desc: '여러 RVT를 대상으로 중복 검토 또는 자체 간섭 검토 중 하나를 선택해 약식 배치 검토',
       cardDesc: '기능 설정에서 검토 모드를 고르면 공통 설정의 포함/제외 대상 필터를 그대로 따라가며 선택한 검토만 실행합니다.',
       categoryLabel: 'MEP',
       categoryTitle: 'MEP 충돌/중복 검토 기능',
@@ -68,27 +68,27 @@ const FEATURE_META = {
     worksetassignment: {
       label: '웍셋 배정 검토',
       cardLabel: '웍셋 배정 검토',
-      desc: '모델 객체의 workset 배정을 Workset1 기준 또는 입력한 특정 workset 기준으로 검토',
-      cardDesc: '검토 대상 RVT의 모델 객체가 Workset1 이외 workset에 있는지, 또는 입력한 특정 workset에 속해 있는지 검토합니다.',
+      desc: '모델 객체의 웍셋 배정을 기본 웍셋(Workset1) 또는 입력한 특정 웍셋 기준으로 검토',
+      cardDesc: '검토 대상 RVT의 모델 객체가 기본 웍셋(Workset1) 이외 웍셋에 있는지, 또는 입력한 특정 웍셋에 속해 있는지 검토합니다.',
       categoryLabel: 'MEP',
       categoryTitle: 'BQC 웍셋 배정 검토 기능',
       requiresSharedParams: false
     },
     parameterduplication: {
-      label: 'Project Parameter 중복 검토',
-      cardLabel: 'Project Parameter 중복 검토',
-      desc: '추가된 Project Parameter 중 이름이 중복된 파라미터를 검토',
-      cardDesc: '지정한 파라미터 또는 추가된 전체 Project Parameter를 대상으로 이름 중복 여부를 검토합니다.',
-      categoryLabel: 'Parameter',
+      label: '프로젝트 파라미터 중복 검토',
+      cardLabel: '프로젝트 파라미터 중복 검토',
+      desc: '추가된 프로젝트 파라미터 중 이름이 중복된 파라미터를 검토',
+      cardDesc: '지정한 파라미터 또는 추가된 전체 프로젝트 파라미터를 대상으로 이름 중복 여부를 검토합니다.',
+      categoryLabel: '파라미터',
       categoryTitle: 'BQC 파라미터 중복 검토 기능',
       requiresSharedParams: false
     },
     parametermissing: {
       label: '파라미터 누락 검토',
       cardLabel: '파라미터 누락 검토',
-      desc: '조건별 객체 속성 추출과 같은 대상 기준으로 지정한 공유 Text 파라미터 누락 여부를 검토',
-      cardDesc: '공유 Text 파라미터를 선택하고, 공통 검토대상 필터 기준에 맞춰 누락 예외 규칙(AND/OR)을 설정해 누락 여부를 검토합니다.',
-      categoryLabel: 'Parameter',
+      desc: '조건별 객체 속성 추출과 같은 대상 기준으로 지정한 공유 텍스트 파라미터 누락 여부를 검토',
+      cardDesc: '공유 텍스트 파라미터를 선택하고, 공통 검토대상 필터 기준에 맞춰 누락 예외 규칙(AND/OR)을 설정해 누락 여부를 검토합니다.',
+      categoryLabel: '파라미터',
       categoryTitle: 'BQC 파라미터 누락 검토 기능',
       requiresSharedParams: true
     },
@@ -97,7 +97,7 @@ const FEATURE_META = {
         cardLabel: '파라미터 GUID 검토 및 정리',
         desc: '프로젝트/패밀리 파라미터 GUID를 검토하고 삭제용 엑셀 기준으로 정리',
         cardDesc: '프로젝트/패밀리 파라미터 GUID를 검토하고 삭제용 엑셀 기준으로 정리합니다.',
-        categoryLabel: 'Parameter',
+        categoryLabel: '파라미터',
         categoryTitle: '파라미터 검토 기능',
         requiresSharedParams: true
     },
@@ -106,26 +106,26 @@ const FEATURE_META = {
     cardLabel: '패밀리 공유파라미터 연동 검토',
     desc: '복합패밀리 대상으로 하위 패밀리와의 지정한 파라미터 연동 여부 검토',
     cardDesc: '복합패밀리 대상으로 하위 패밀리와의 지정한 파라미터 연동 여부 검토',
-    categoryLabel: 'Family',
+    categoryLabel: '패밀리',
     categoryTitle: '패밀리 연동/관리 기능',
     requiresSharedParams: true
   },
   points: {
-    label: '프로젝트대상 Point 좌표 추출',
-    cardLabel: '프로젝트대상 Point 좌표 추출',
-    desc: '지정한 RVT 파일의 Project/Survey 북각 좌표를 추출',
-    cardDesc: '지정한 RVT 파일의 Project/Survey 북각 좌표를 추출',
-    categoryLabel: 'Data',
+    label: '기준점/북각 추출',
+    cardLabel: '기준점/북각 추출',
+    desc: 'RVT의 프로젝트 기준점, 측량 기준점, 북각 값을 추출',
+    cardDesc: 'RVT의 프로젝트 기준점, 측량 기준점, 북각 값을 추출',
+    categoryLabel: '데이터',
     categoryTitle: '데이터 추출/좌표 확인 기능',
     requiresSharedParams: false
   },
   linkworkset: {
     label: '링크 기본 웍셋 점검/적용',
     cardLabel: '링크 기본 웍셋 점검/적용',
-    desc: '각 RVT의 Revit 링크를 점검하고 기본 workset1 만 열리도록 적용',
-    cardDesc: '링크별 로드 상태와 open workset 현황을 확인하고, 필요 시 기본 workset1 만 열리도록 재적용합니다.',
-    categoryLabel: 'Link',
-    categoryTitle: '링크 로드/워크셋 관리 기능',
+    desc: '각 RVT의 Revit 링크를 점검하고 기본 웍셋(Workset1)만 열리도록 적용',
+    cardDesc: '링크별 로드 상태와 열려 있는 웍셋 현황을 확인하고, 필요 시 기본 웍셋(Workset1)만 열리도록 재적용합니다.',
+    categoryLabel: '링크',
+    categoryTitle: '링크 로드/웍셋 관리 기능',
     requiresSharedParams: false
   }
 };
@@ -339,7 +339,7 @@ export function renderMulti(root, options = {}) {
   const mainCol = div('multi-workspace multi-workspace--main');
   const sideCol = div('multi-workspace multi-workspace--sidebar');
 
-  const group1 = buildGroupSection('납품 시 BQC 검토', '가장 많이 사용하는 핵심 검토를 먼저 선택하세요.', 'bqc');
+  const group1 = buildGroupSection('납품 시 BQC 검토', '가장 많이 사용하는 핵심 검토를 먼저 선택해 주세요.', 'bqc');
   const group3 = buildGroupSection('유틸리티', '활성 문서 검토 및 보조 워크플로우를 실행합니다.', 'utility');
   group3.section.id = 'utilities';
 
@@ -358,8 +358,8 @@ export function renderMulti(root, options = {}) {
   group1.section.append(buildToggleRow('parameterduplication', buildParameterDuplicationConfig()));
   group1.section.append(buildToggleRow('parametermissing', buildParameterMissingConfig()));
   group1.section.append(buildDupWorkflowRow({
-    chipLabel: 'BQC Sub',
-    chipTitle: 'BQC 보조 검토 항목에서 중복/자체간섭 검토를 바로 엽니다.'
+    chipLabel: 'BQC 보조',
+    chipTitle: 'BQC 보조 검토 항목에서 중복 / 자체 간섭 검토를 바로 엽니다.'
   }));
   organizeFeatureRows(group1.section);
   group3.section.append(buildDupWorkflowRow());
@@ -517,7 +517,7 @@ export function renderMulti(root, options = {}) {
     const pct = Math.max(0, Math.min(100, pctValue));
     state.ui.lastProgressPct = pct;
     const phase = String(payload?.phase || payload?.Phase || '').toLowerCase();
-    ProgressDialog.show(payload?.title || '납품시 BQC 검토', payload?.message || '');
+    ProgressDialog.show(payload?.title || '납품 시 BQC 검토', payload?.message || '');
     ProgressDialog.update(pct, payload?.message || '', payload?.detail || '');
     updateRunProgress(pct, payload?.message || '', payload?.detail || '');
     if (phase === 'done') {
@@ -568,7 +568,7 @@ export function renderMulti(root, options = {}) {
     resetExcelProgressState();
     ProgressDialog.hide();
     updateRunProgress(0, '오류 발생', payload?.message || '');
-    toast(payload?.message || '배치 검토 중 오류가 발생했습니다.', 'err');
+    toast(payload?.message || '다중 검토 실행 중 오류가 발생했습니다. 선택한 기능, 대상 RVT, 공통 설정과 필터를 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
     state.ui.runCompleted = false;
     updateRunActionLabel();
   });
@@ -595,7 +595,7 @@ export function renderMulti(root, options = {}) {
 
   onHost('favorites:preset-error', (payload) => {
     if (!page.isConnected || state.ui.multiMode !== 'favorites') return;
-    toast(payload?.message || '즐겨찾기 프리셋 처리 중 오류가 발생했습니다.', 'err');
+    toast(payload?.message || '즐겨찾기 프리셋을 처리하지 못했습니다. 프리셋 파일 형식과 현재 즐겨찾기 목록을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
   });
 
   onHost('hub:multi-exported', (payload) => {
@@ -608,7 +608,7 @@ export function renderMulti(root, options = {}) {
       const isFolder = payload?.kind === 'folder';
       requestAnimationFrame(() => {
         showExcelSavedDialog(
-          payload?.message || '엑셀 저장 완료',
+          payload?.message || '다중 검토 결과 엑셀 저장 완료',
           path,
           (p) => post('excel:open', { path: p }),
           isFolder
@@ -619,7 +619,7 @@ export function renderMulti(root, options = {}) {
     } else if (payload?.cancelled) {
       toast(payload?.message || '엑셀 저장이 취소되었습니다.', 'warn');
     } else {
-      toast(payload?.message || '엑셀 저장에 실패했습니다.', 'err');
+      toast(payload?.message || '다중 검토 결과 엑셀 저장에 실패했습니다. 저장 경로 권한과 파일이 열려 있는지 확인해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
     }
   });
 
@@ -716,7 +716,7 @@ export function renderMulti(root, options = {}) {
     if (mode === 'favorites') {
       return `
     <div class="feature-heading">
-      <span class="feature-kicker">Favorites</span>
+      <span class="feature-kicker">즐겨찾기</span>
       <h2 class="feature-title">자주 사용하는 기능</h2>
       <p class="feature-sub">즐겨찾기로 모은 기능만 따로 열어 선택형은 함께 검토하고, 별도 프로세스는 바로 실행합니다.</p>
     </div>`;
@@ -724,14 +724,14 @@ export function renderMulti(root, options = {}) {
     if (mode === 'utility') {
       return `
     <div class="feature-heading">
-      <span class="feature-kicker">Utilities</span>
+      <span class="feature-kicker">유틸리티</span>
       <h2 class="feature-title">유틸리티</h2>
       <p class="feature-sub">보조 검토와 일괄 작업 기능을 실행합니다.</p>
     </div>`;
     }
       return `
     <div class="feature-heading">
-      <span class="feature-kicker">Multi RVT Hub</span>
+      <span class="feature-kicker">BQC 검토</span>
       <h2 class="feature-title">납품 시 BQC 검토</h2>
       <p class="feature-sub">납품 검토에 필요한 기능을 선택해 실행합니다.</p>
     </div>`;
@@ -950,7 +950,7 @@ export function renderMulti(root, options = {}) {
     } else {
       const empty = div('feature-note');
       empty.dataset.favoritesEmpty = 'true';
-      empty.textContent = '아직 즐겨찾기한 기능이 없습니다. 각 기능 카드에서 오른쪽 클릭으로 즐겨찾기를 추가하세요.';
+      empty.textContent = '아직 즐겨찾기한 기능이 없습니다. 각 기능 카드에서 오른쪽 클릭으로 즐겨찾기를 추가해 주세요.';
       section.append(empty);
     }
 
@@ -1078,7 +1078,7 @@ export function renderMulti(root, options = {}) {
     row.dataset.tooltip = tooltip;
     row.dataset.infoTitle = String(info.title || '').trim();
     row.dataset.infoDesc = String(info.desc || '').trim();
-    row.title = tooltip;
+    row.removeAttribute('title');
     if (tooltip) {
       row.setAttribute('aria-description', tooltip);
     } else {
@@ -1101,7 +1101,7 @@ export function renderMulti(root, options = {}) {
     kicker.textContent = '선택 후 실행';
     kicker.style.width = 'fit-content';
     const title = document.createElement('strong');
-    title.textContent = '아래 기능 영역을 눌러 실행할 검토를 선택하세요.';
+    title.textContent = '아래 기능 영역을 눌러 실행할 검토를 선택해 주세요.';
     const sub = document.createElement('span');
     sub.textContent = '여러 기능을 한 번에 선택해 같은 RVT 목록으로 순차 검토할 수 있습니다. 별도 워크플로우 기능은 카드를 누르면 해당 화면으로 바로 전환됩니다.';
     guide.append(kicker, title, sub);
@@ -1173,9 +1173,9 @@ export function renderMulti(root, options = {}) {
     panel.append(header, summary);
 
     const fields = div('multi-config is-open');
-    const extra = makeField('추가 Parameter 값 추출', 'extra', 'PM1, PM2', 'textarea');
-    const filter = makeField('검토 대상 필터', 'filter', 'ex) PM1=Value;PM2=Value2', 'text');
-    const excludeFilter = makeField('검토 제외 대상 필터', 'exclude_filter', 'ex) Family=Dummy;Comments=SKIP', 'text');
+    const extra = makeField('추가 파라미터 값 추출', 'extra', 'PM1, PM2', 'textarea');
+    const filter = makeField('검토 대상 필터', 'filter', '예: PM1=값; PM2=값2', 'text');
+    const excludeFilter = makeField('검토 제외 대상 필터', 'exclude_filter', '예: Family=Dummy; Comments=SKIP', 'text');
 
     const draft = state.common.configDraft;
     extra.input.value = draft.extraParams;
@@ -1264,19 +1264,19 @@ export function renderMulti(root, options = {}) {
       const badge = document.createElement('span');
       badge.className = 'chip chip--info';
       badge.textContent = 'BQC 핵심';
-      badge.title = 'BQC 핵심 검토 기능';
+      badge.setAttribute('aria-label', 'BQC 핵심 검토 기능');
       right.append(badge);
     } else if (key === 'floorinfo' || key === 'familysuitability' || key === 'tapalign' || key === 'dupclash' || key === 'worksetassignment' || key === 'parameterduplication' || key === 'parametermissing') {
       const badge = document.createElement('span');
       badge.className = 'chip chip--info';
-      badge.textContent = 'BQC Sub';
-      badge.title = 'BQC 보조 검토 기능';
+      badge.textContent = 'BQC 보조';
+      badge.setAttribute('aria-label', 'BQC 보조 검토 기능');
       right.append(badge);
     } else if (meta.categoryLabel) {
       const badge = document.createElement('span');
       badge.className = 'chip chip--info';
       badge.textContent = meta.categoryLabel;
-      badge.title = meta.categoryTitle || `${meta.categoryLabel} 기능`;
+      badge.setAttribute('aria-label', meta.categoryTitle || `${meta.categoryLabel} 기능`);
       right.append(badge);
     }
 
@@ -1312,7 +1312,7 @@ export function renderMulti(root, options = {}) {
       summary.style.background = 'var(--surface-help)';
       const top = document.createElement('strong');
       const sub = document.createElement('span');
-      top.textContent = '체크 후 옵션을 열어 공유 파라미터 목록에서 검토 대상을 선택하세요.';
+      top.textContent = '필요할 때만 켠 뒤 설정 창에서 공유 파라미터 검토 대상을 선택해 주세요.';
       sub.textContent = '아직 검토 파라미터가 지정되지 않았습니다.';
       summary.append(top, sub);
       row.append(summary);
@@ -1344,8 +1344,8 @@ export function renderMulti(root, options = {}) {
       summary.style.background = 'var(--surface-help)';
       const top = document.createElement('strong');
       const sub = document.createElement('span');
-      top.textContent = '기준 엑셀의 Category / Family / Type 조합으로 실제 사용 타입 적합성을 검토합니다.';
-      sub.textContent = '아직 기준 엑셀과 Review 문구가 지정되지 않았습니다.';
+      top.textContent = '기준 엑셀의 카테고리/패밀리/타입 조합으로 실제 사용 타입 적합성을 검토합니다.';
+      sub.textContent = '아직 기준 엑셀과 검토 문구가 지정되지 않았습니다.';
       summary.append(top, sub);
       row.append(summary);
       state.ui.familySuitabilitySummary = { row, top, sub };
@@ -1360,8 +1360,8 @@ export function renderMulti(root, options = {}) {
       summary.style.background = 'var(--surface-help)';
       const top = document.createElement('strong');
       const sub = document.createElement('span');
-      top.textContent = '허용범위와 공통 옵션을 기준으로 탭/분기 피팅 축 이탈 여부를 검토합니다.';
-      sub.textContent = '아직 허용범위, 검토 범위, 엑셀 언어가 적용되지 않았습니다.';
+      top.textContent = '허용 범위와 공통 옵션을 기준으로 탭/분기 피팅 축 이탈 여부를 검토합니다.';
+      sub.textContent = '아직 허용 범위, 검토 범위, 엑셀 언어가 적용되지 않았습니다.';
       summary.append(top, sub);
       row.append(summary);
       state.ui.tapAlignSummary = { row, top, sub };
@@ -1376,7 +1376,7 @@ export function renderMulti(root, options = {}) {
       summary.style.background = 'var(--surface-help)';
       const top = document.createElement('strong');
       const sub = document.createElement('span');
-      top.textContent = '완전 중복과 자체간섭을 같은 배치에서 같이 검토합니다.';
+      top.textContent = '완전 중복과 자체 간섭을 같은 배치에서 같이 검토합니다.';
       sub.textContent = '개별 필터 없이 공통 설정의 포함/제외 대상 필터만 그대로 따릅니다.';
       summary.append(top, sub);
       row.append(summary);
@@ -1392,8 +1392,8 @@ export function renderMulti(root, options = {}) {
       summary.style.background = 'var(--surface-help)';
       const top = document.createElement('strong');
       const sub = document.createElement('span');
-      top.textContent = '모델 객체가 기본 Workset1에 배정되었는지 빠르게 확인합니다.';
-      sub.textContent = 'Workset1 이외의 workset에 속한 객체만 오류 행으로 내보냅니다.';
+      top.textContent = '모델 객체가 기본 웍셋(Workset1)에 배정되었는지 빠르게 확인합니다.';
+      sub.textContent = '기본 웍셋(Workset1) 이외의 웍셋에 속한 객체만 오류 행으로 내보냅니다.';
       summary.append(top, sub);
       row.append(summary);
       state.ui.worksetAssignmentSummary = { row, top, sub };
@@ -1408,7 +1408,7 @@ export function renderMulti(root, options = {}) {
       summary.style.background = 'var(--surface-help)';
       const top = document.createElement('strong');
       const sub = document.createElement('span');
-      top.textContent = '추가된 Project Parameter 이름이 중복되는지 확인합니다.';
+      top.textContent = '추가된 프로젝트 파라미터 이름이 중복되는지 확인합니다.';
       sub.textContent = '전체 검토 또는 지정 파라미터만 검토하도록 설정할 수 있습니다.';
       summary.append(top, sub);
       row.append(summary);
@@ -1432,7 +1432,7 @@ export function renderMulti(root, options = {}) {
       refreshParameterMissingFeatureSummary();
     }
 
-    config.title = meta.label || key;
+    config.displayTitle = meta.label || key;
     config.key = key;
     config.panel.classList.add('settings-panel', 'is-open');
     state.ui.panels[key] = config.panel;
@@ -1445,10 +1445,10 @@ export function renderMulti(root, options = {}) {
   function buildPmsWorkflowRow() {
     return buildWorkflowLaunchRow({
       iconLabel: 'PMS',
-      title: 'Segment↔PMS 비교 검토',
-      cardDesc: 'PMS양식을 입력받아 Segment와OD, ID 비교 검토',
-      infoDesc: 'PMS양식을 입력받아 Segment와OD, ID 비교 검토',
-      categoryLabel: 'Data',
+      title: 'Segment-PMS 비교 검토',
+      cardDesc: 'PMS 양식을 입력받아 Segment와 OD, ID를 비교 검토',
+      infoDesc: 'PMS 양식을 입력받아 Segment와 OD, ID를 비교 검토합니다.',
+      categoryLabel: '데이터',
       categoryTitle: '데이터 매핑/검토 기능',
       summary: '추출 → PMS 등록 → 매핑 준비 → 비교 실행 → 결과 내보내기',
       route: 'segmentpms'
@@ -1461,7 +1461,7 @@ export function renderMulti(root, options = {}) {
       title: '파라미터 수정기',
       cardDesc: '입력 조건 기반 필터링 대상으로\n지정 파라미터에 지정 속성 일괄입력',
       infoDesc: '입력 조건 기반 필터링 대상으로 지정 파라미터에 지정 속성 일괄입력',
-      categoryLabel: 'Parameter',
+      categoryLabel: '파라미터',
       categoryTitle: '파라미터 입력/수정 기능',
       summary: '활성 문서 또는 다중 RVT 선택 → 필터/조건/입력값 설정 → 실행 → 결과 엑셀/로그 저장',
       route: 'parammodifier'
@@ -1474,7 +1474,7 @@ export function renderMulti(root, options = {}) {
       title: '파라미터 GUID 검토 및 정리',
       cardDesc: '검토 결과를 삭제용 엑셀로 내보내고\n삭제 표시 후 다시 불러와 정리',
       infoDesc: '프로젝트/패밀리 파라미터 GUID를 검토한 뒤 삭제용 엑셀에서 삭제 대상을 표시하고 다시 불러와 정리합니다.',
-      categoryLabel: 'Parameter',
+      categoryLabel: '파라미터',
       categoryTitle: '파라미터 검토/정리 기능',
       summary: "GUID 검토 실행 → 삭제용 엑셀 내보내기 → 엑셀에서 '삭제여부=삭제' 입력 → 삭제용 엑셀 불러오기",
       route: 'guid'
@@ -1487,7 +1487,7 @@ export function renderMulti(root, options = {}) {
       title: 'Revit 링크 경로 추출/재지정',
       cardDesc: '닫힌 RVT의 링크 경로를 추출하고\n엑셀 기준으로 대상 경로를 반영',
       infoDesc: '닫힌 RVT의 Revit 링크 경로를 추출하고 엑셀에서 지정한 TargetLinkPath 기준으로 반영합니다.',
-      categoryLabel: 'Link',
+      categoryLabel: '링크',
       categoryTitle: '링크 경로 관리 기능',
       summary: 'RVT 등록 → 링크 추출 → 엑셀에서 대상 경로 지정 → 불러오기 → 적용',
       route: 'linkpath'
@@ -1498,9 +1498,9 @@ export function renderMulti(root, options = {}) {
     return buildWorkflowLaunchRow({
       iconLabel: 'KTA',
       title: '노즐코드 KTA 단일화',
-      cardDesc: '접수받은 KTA 양식을\n정해진 하나의 시트양식으로 추출',
-      infoDesc: '접수받은 KTA 양식을 정해진 하나의 시트양식으로 추출합니다.',
-      categoryLabel: 'Excel',
+      cardDesc: '접수받은 KTA 양식을\n정해진 하나의 시트 양식으로 추출',
+      infoDesc: '접수받은 KTA 양식을 정해진 하나의 시트 양식으로 추출합니다.',
+      categoryLabel: '엑셀',
       categoryTitle: '엑셀 추출/정리 기능',
       summary: '엑셀 파일 추가 → 헤더 블록 자동 탐색 → 누락/형식 검토 → 결과 시트 저장',
       route: 'lateralnozzle'
@@ -1524,9 +1524,9 @@ function buildConditionExtractWorkflowRow() {
     return buildWorkflowLaunchRow({
       iconLabel: 'SP',
       title: '패밀리 공유파라미터 추가/연동',
-      cardDesc: '복합, 하위패밀리에 지정 파라미터를 추가 후 연동',
-      infoDesc: '복합, 하위패밀리에 지정 파라미터를 추가 후 연동',
-      categoryLabel: 'Family',
+      cardDesc: '복합 및 하위 패밀리에 지정 파라미터를 추가하고 연동',
+      infoDesc: '복합 및 하위 패밀리에 지정 파라미터를 추가하고 연동합니다.',
+      categoryLabel: '패밀리',
       categoryTitle: '패밀리 연동/공유 파라미터 기능',
       summary: '공유 파라미터 선택 → 대상 그룹/모드 설정 → 연동 실행 → 결과 확인/엑셀 내보내기',
       route: 'paramprop'
@@ -1536,12 +1536,12 @@ function buildConditionExtractWorkflowRow() {
   function buildDupWorkflowRow(options = {}) {
     return buildWorkflowLaunchRow({
       iconLabel: 'DUP',
-      title: '중복 / 자체간섭 검토',
-      cardDesc: '활성문서에서 중복객체와 파일내 간섭을 검토',
-      infoDesc: '활성문서에서 중복객체와 파일내 간섭을 검토',
+      title: '중복 / 자체 간섭 검토',
+      cardDesc: '활성 문서에서 중복 객체와 파일 내 간섭을 검토',
+      infoDesc: '활성 문서에서 중복 객체와 파일 내 간섭을 검토합니다.',
       categoryLabel: options.chipLabel || 'RVT 검토',
       categoryTitle: options.chipTitle || '모델 검토/검사 기능',
-        summary: '중복 검토 ↔ 자체간섭 전환 → 규칙 설정 → 검토 실행 → 결과 확인/엑셀 내보내기',
+        summary: '중복 검토 ↔ 자체 간섭 전환 → 규칙 설정 → 검토 실행 → 결과 확인/엑셀 내보내기',
       route: 'dup'
     });
   }
@@ -1552,9 +1552,9 @@ function buildConditionExtractWorkflowRow() {
       title: '탭/분기 축 틀어짐 검토',
       cardDesc: '탭/분기 피팅의 삽입축이\n연결 라인 중심축을 통과하는지 검토',
       infoDesc: '탭/분기 피팅의 삽입축이 연결된 배관/덕트 중심축을 정확히 통과하는지 검토합니다.',
-      categoryLabel: options.chipLabel || 'BQC Sub',
+      categoryLabel: options.chipLabel || 'BQC 보조',
       categoryTitle: options.chipTitle || 'BQC 보조 검토 기능',
-      summary: '활성 문서 기준 → 허용범위/공종 선택 → 탭/분기 피팅 검토 → 결과 확인/엑셀 내보내기',
+      summary: '활성 문서 기준 → 허용 범위/공종 선택 → 탭/분기 피팅 검토 → 결과 확인/엑셀 내보내기',
       route: 'tapalign'
     });
   }
@@ -1563,11 +1563,11 @@ function buildConditionExtractWorkflowRow() {
     return buildWorkflowLaunchRow({
       iconLabel: 'RVT',
       title: 'RVT 정리 (납품용)',
-      cardDesc: '납품파일 작성을 위한 뷰정리/Purge/검토용 속성 추출',
-      infoDesc: '납품파일 작성을 위한 뷰정리/Purge/검토용 속성 추출',
+      cardDesc: '납품 파일 작성을 위한 뷰 정리/불필요 항목 제거/속성 추출',
+      infoDesc: '납품 파일 작성을 위한 뷰 정리, 불필요 항목 제거(Purge), 검토용 속성 추출',
       categoryLabel: options.chipLabel || 'RVT 검토',
       categoryTitle: options.chipTitle || '모델 검토/정리 기능',
-      summary: 'RVT 선택 → 정리 옵션 설정 → 정리 실행 → 검토/속성 추출 → Purge',
+      summary: 'RVT 선택 → 정리 옵션 설정 → 정리 실행 → 검토/속성 추출 → 불필요 항목 제거',
       route: 'deliverycleaner'
     });
   }
@@ -1575,10 +1575,10 @@ function buildConditionExtractWorkflowRow() {
   function buildSharedParamBatchRow() {
     return buildWorkflowLaunchRow({
       iconLabel: 'SP',
-      title: 'Project 파라미터 일괄 추가',
-      cardDesc: '프로젝트 파일에 지정 파라미터를\n일괄 추가 (Shared/Project)',
-      infoDesc: '프로젝트 파일에 지정 파라미터를 일괄 추가 (Shared/Project)',
-      categoryLabel: 'Parameter',
+      title: '프로젝트 파라미터 일괄 추가',
+      cardDesc: '프로젝트 파일에 지정 파라미터를\n일괄 추가',
+      infoDesc: '프로젝트 파일에 지정 파라미터를 일괄 추가합니다.',
+      categoryLabel: '파라미터',
       categoryTitle: '파라미터 추가/바인딩 기능',
       summary: '파라미터 선택 → 바인딩 설정 → RVT 실행 → 로그/엑셀',
       route: 'sharedparambatch'
@@ -1602,7 +1602,7 @@ function buildConditionExtractWorkflowRow() {
     const chip = document.createElement('span');
     chip.className = 'chip chip--info';
     chip.textContent = options.categoryLabel || '기능';
-    chip.title = options.categoryTitle || `${options.categoryLabel || '기능'} 분류`;
+    chip.setAttribute('aria-label', options.categoryTitle || `${options.categoryLabel || '기능'} 분류`);
     right.append(chip);
 
     const desc = div('feature-row__desc');
@@ -1688,7 +1688,7 @@ function buildConditionExtractWorkflowRow() {
     panel.style.minWidth = '0';
     panel.style.boxSizing = 'border-box';
 
-    const tol = makeField('허용범위', 'tol', '', 'number');
+    const tol = makeField('허용 범위', 'tol', '', 'number');
     tol.input.value = state.features.connector.configDraft.tol;
     tol.input.min = '0';
     tol.input.step = '0.01';
@@ -1711,7 +1711,7 @@ function buildConditionExtractWorkflowRow() {
       refreshConnectorFeatureSummary();
     });
 
-    const pointXY = makeCheckboxField('Point X / Point Y 추출');
+    const pointXY = makeCheckboxField('좌표 X/Y 추출');
     pointXY.input.checked = !!state.features.connector.configDraft.includePointXY;
     pointXY.input.addEventListener('change', () => {
       state.features.connector.configDraft.includePointXY = pointXY.input.checked;
@@ -1967,7 +1967,7 @@ function buildConditionExtractWorkflowRow() {
 
     function renderConnectorSelected() {
       const selected = getDraftParams();
-      selectedCount.textContent = selected.length ? `${selected.length}개 선택` : '미선택';
+      selectedCount.textContent = selected.length ? `${selected.length}개 선택` : '파라미터 선택 필요';
       pickerBadge.textContent = selected.length > 0 ? `선택 ${selected.length}` : '선택 필요';
       selectedChips.innerHTML = '';
       if (!selected.length) {
@@ -2060,7 +2060,7 @@ function buildConditionExtractWorkflowRow() {
 
         const action = document.createElement('span');
         action.className = selected.has(String(item.name || '').toLowerCase()) ? 'chip chip--ok' : 'chip chip--info';
-        action.textContent = selected.has(String(item.name || '').toLowerCase()) ? '선택됨' : '추가';
+        action.textContent = selected.has(String(item.name || '').toLowerCase()) ? '선택 완료' : '추가';
 
         row.append(info, action);
         row.addEventListener('click', () => {
@@ -2103,12 +2103,12 @@ function buildConditionExtractWorkflowRow() {
     panel.style.minWidth = '0';
     panel.style.boxSizing = 'border-box';
 
-    const tol = makeField('허용범위', 'tapalign_tol', '', 'number');
+    const tol = makeField('허용 범위', 'tapalign_tol', '', 'number');
     tol.input.value = state.features.tapalign.configDraft.tol;
     tol.input.min = '0';
     tol.input.step = '0.01';
     tol.input.style.fontWeight = '600';
-    const featureTargetFilter = makeField('기능 전용 필터', 'tapalign_feature_target_filter', 'ex) PM1=Value; PM2=Value2', 'text');
+    const featureTargetFilter = makeField('기능 전용 필터', 'tapalign_feature_target_filter', '예: PM1=값; PM2=값2', 'text');
     featureTargetFilter.input.value = state.features.tapalign.configDraft.featureTargetFilter || '';
 
     const unit = makeSelectField('거리 단위', [
@@ -2290,20 +2290,20 @@ function buildConditionExtractWorkflowRow() {
       const filterText = String(committed.targetFilter || '').trim();
       const excludeFilterText = String(committed.excludeTargetFilter || '').trim();
       const optionParts = [];
-      if (committed.includePointXY) optionParts.push('Point X / Point Y');
-      if (committed.includeLinearMetrics) optionParts.push('Curve Length / Direction');
+      if (committed.includePointXY) optionParts.push('좌표 X/Y');
+      if (committed.includeLinearMetrics) optionParts.push('선형 길이/방향');
 
-      const extraText = extras.length ? extras.join(', ') : '추가 파라미터 없음';
-      const optionText = optionParts.length ? optionParts.join(', ') : '추가 추출 옵션 없음';
+      const extraText = extras.length ? extras.join(', ') : '추가 파라미터가 없습니다.';
+      const optionText = optionParts.length ? optionParts.join(', ') : '추가 추출 옵션이 없습니다.';
 
       commonExtra.value.textContent = extraText;
-      commonExtra.value.title = extraText;
-      commonFilter.value.textContent = filterText || '필터 없음';
-      commonFilter.value.title = filterText || '필터 없음';
-      commonExcludeFilter.value.textContent = excludeFilterText || '제외 필터 없음';
-      commonExcludeFilter.value.title = excludeFilterText || '제외 필터 없음';
+      commonExtra.value.setAttribute('aria-label', extraText);
+      commonFilter.value.textContent = filterText || '필터가 없습니다.';
+      commonFilter.value.setAttribute('aria-label', filterText || '필터가 없습니다.');
+      commonExcludeFilter.value.textContent = excludeFilterText || '제외 필터가 없습니다.';
+      commonExcludeFilter.value.setAttribute('aria-label', excludeFilterText || '제외 필터가 없습니다.');
       commonOptions.value.textContent = optionText;
-      commonOptions.value.title = optionText;
+      commonOptions.value.setAttribute('aria-label', optionText);
     };
 
     renderCommonSummary();
@@ -2382,7 +2382,7 @@ function buildConditionExtractWorkflowRow() {
     };
 
     const duplicateMode = createModeCard('duplicate', '중복 검토', '완전 중복으로 판단되는 객체만 묶어서 결과에 남깁니다.');
-    const clashMode = createModeCard('clash', '자체간섭 검토', '연결되지 않은 묻힘/겹침 같은 자체간섭 대상만 결과에 남깁니다.');
+    const clashMode = createModeCard('clash', '자체 간섭 검토', '연결되지 않은 묻힘/겹침 같은 자체 간섭 대상만 결과에 남깁니다.');
 
     const markDirty = () => {
       const nextMode = duplicateMode.input.checked ? 'duplicate' : 'clash';
@@ -2418,7 +2418,7 @@ function buildConditionExtractWorkflowRow() {
     commonSummary.style.lineHeight = '1.5';
 
     const commonNote = div('feature-note');
-    commonNote.textContent = '기존 중복/자체간섭 화면의 세부 필터는 쓰지 않고, 공통 설정의 포함/제외 대상 필터를 그대로 적용합니다.';
+    commonNote.textContent = '기존 중복 / 자체 간섭 화면의 세부 필터는 쓰지 않고, 공통 설정의 포함/제외 대상 필터를 그대로 적용합니다.';
 
     const renderCommonSummary = () => {
       const committed = state.common.configCommitted || {};
@@ -2426,8 +2426,8 @@ function buildConditionExtractWorkflowRow() {
         .split(',')
         .map((value) => value.trim())
         .filter(Boolean);
-      const filterText = String(committed.targetFilter || '').trim() || '없음';
-      const excludeText = String(committed.excludeTargetFilter || '').trim() || '없음';
+      const filterText = String(committed.targetFilter || '').trim() || '필터가 없습니다.';
+      const excludeText = String(committed.excludeTargetFilter || '').trim() || '제외 필터가 없습니다.';
       commonSummary.textContent = `공통 포함 필터 ${filterText} · 제외 필터 ${excludeText} · 추가 파라미터 ${extras.length}개`;
     };
 
@@ -2489,7 +2489,7 @@ function buildConditionExtractWorkflowRow() {
 
     const controlsMeta = document.createElement('div');
     controlsMeta.className = 'floorinfo-config__control-note feature-note';
-    controlsMeta.textContent = '층정보 영역을 구분할 레벨만 체크하세요. 체크하지 않은 중간 레벨은 구간 계산에서 무시되며, 관통 객체는 시작하는 가장 아래 구간의 기대 층정보 값으로 판정합니다.';
+    controlsMeta.textContent = '층정보 영역을 구분할 레벨만 선택해 주세요. 선택하지 않은 중간 레벨은 구간 계산에서 무시되며, 관통 객체는 시작하는 가장 아래 구간의 기대 층정보 값으로 판정합니다.';
 
     const sourceCard = div('feature-row__summary floorinfo-config__rules');
     sourceCard.style.display = 'grid';
@@ -2576,7 +2576,7 @@ function buildConditionExtractWorkflowRow() {
         const cell = document.createElement('td');
         cell.colSpan = 4;
         cell.className = 'paramprop-empty';
-        cell.textContent = '레벨 목록이 없습니다. 활성 문서를 열고 레벨 새로고침을 눌러주세요.';
+        cell.textContent = '레벨 목록이 없습니다. 활성 문서를 열고 레벨 새로고침을 눌러 주세요.';
         row.append(cell);
         tbody.append(row);
         return;
@@ -2592,7 +2592,7 @@ function buildConditionExtractWorkflowRow() {
         const toggle = document.createElement('input');
         toggle.type = 'checkbox';
         toggle.checked = rule.useAsBoundary !== false;
-        toggle.title = '이 레벨을 층정보 영역 경계로 사용';
+        toggle.setAttribute('aria-label', '이 레벨을 층정보 영역 경계로 사용');
         toggle.addEventListener('change', () => {
           draft.levelRules = rules.map((item) => item.levelName === rule.levelName
             ? { ...item, useAsBoundary: toggle.checked }
@@ -2700,7 +2700,7 @@ function buildConditionExtractWorkflowRow() {
     const presetNote = div('feature-note');
     presetNote.textContent = '최근 적용한 설정은 자동으로 기억합니다. 자주 쓰는 조합은 이름을 붙여 저장해 두고 다시 불러올 수 있습니다.';
     const presetSelect = makeSelectField('저장된 설정', [
-      { value: '', label: '저장된 설정 없음' }
+      { value: '', label: '저장된 설정이 없습니다.' }
     ]);
     presetSelect.field.style.margin = '0';
     const presetName = makeField('설정 이름', 'familysuitabilityPresetName', '예: 기계 납품 기본', 'text');
@@ -2752,9 +2752,9 @@ function buildConditionExtractWorkflowRow() {
     criteriaActions.append(browseBtn, clearBtn);
     criteriaHead.append(criteriaTitle, criteriaActions);
 
-    const criteriaPath = makeField('기준 파일 경로', 'familysuitability-criteria', 'Category / Family / Type 헤더가 있는 Excel', 'text');
+    const criteriaPath = makeField('기준 파일 경로', 'familysuitability-criteria', '카테고리/패밀리/타입 헤더가 있는 엑셀', 'text');
     criteriaPath.input.readOnly = true;
-    criteriaPath.input.placeholder = '기준 엑셀 파일을 선택하세요.';
+    criteriaPath.input.placeholder = '기준 엑셀 파일을 선택해 주세요.';
     criteriaPath.field.style.margin = '0';
     const criteriaSummary = document.createElement('div');
     criteriaSummary.className = 'feature-note';
@@ -2764,7 +2764,7 @@ function buildConditionExtractWorkflowRow() {
     const reviewCard = div('feature-row__summary familysuitability-card');
 
     const reviewTitle = document.createElement('strong');
-    reviewTitle.textContent = '기본 Review 문구';
+    reviewTitle.textContent = '기본 검토 문구';
     const matchReview = makeField('기준 일치 문구', 'familysuitability-match-review', '예: 기준 리스트와 일치', 'text');
     const mismatchReview = makeField('기준 미일치 문구', 'familysuitability-mismatch-review', '예: 기준 리스트에 없는 조합', 'text');
     reviewCard.append(reviewTitle, matchReview.field, mismatchReview.field);
@@ -2787,7 +2787,7 @@ function buildConditionExtractWorkflowRow() {
 
     const filterGuide = document.createElement('div');
     filterGuide.className = 'feature-note';
-    filterGuide.textContent = '필터 규칙은 OR 조건으로 평가합니다. 하나라도 일치하면 필터 Review를 우선 적용하고, 여러 개가 동시에 일치하면 위에서 아래 순서로 먼저 등록된 문구를 사용합니다.';
+    filterGuide.textContent = '필터 규칙은 OR 조건으로 평가합니다. 하나라도 일치하면 필터 검토 문구를 우선 적용하고, 여러 개가 동시에 일치하면 위에서 아래 순서로 먼저 등록된 문구를 사용합니다.';
 
     const filterList = div('familysuitability-filter-list');
 
@@ -2810,7 +2810,7 @@ function buildConditionExtractWorkflowRow() {
       const fileLabel = getFamilySuitabilityCriteriaLabel(draft.criteriaExcelPath);
       criteriaPath.input.value = draft.criteriaExcelPath || '';
       if (!draft.criteriaExcelPath) {
-        criteriaSummary.textContent = '기준 엑셀을 선택하면 Category / Family / Type 헤더를 찾아 조합 수를 바로 확인합니다.';
+        criteriaSummary.textContent = '기준 엑셀을 선택하면 카테고리/패밀리/타입 헤더를 찾아 조합 수를 바로 확인합니다.';
         return;
       }
       const stats = [];
@@ -2829,7 +2829,7 @@ function buildConditionExtractWorkflowRow() {
 
       const defaultOption = document.createElement('option');
       defaultOption.value = '';
-      defaultOption.textContent = presets.length ? '저장된 설정 선택' : '저장된 설정 없음';
+      defaultOption.textContent = presets.length ? '저장된 설정 선택' : '저장된 설정이 없습니다.';
       presetSelect.select.append(defaultOption);
 
       presets.forEach((preset) => {
@@ -2862,9 +2862,9 @@ function buildConditionExtractWorkflowRow() {
         const targetButtons = [];
         const targetValue = normalizeFamilySuitabilityFilterTarget(rule.target);
         [
-          ['familyOrType', 'Family / Type'],
-          ['family', 'Family'],
-          ['type', 'Type']
+          ['familyOrType', '패밀리/타입'],
+          ['family', '패밀리'],
+          ['type', '타입']
         ].forEach(([value, label]) => {
           const optionBtn = document.createElement('button');
           optionBtn.type = 'button';
@@ -2885,7 +2885,7 @@ function buildConditionExtractWorkflowRow() {
         keywordField.field.style.margin = '0';
         keywordField.field.style.minWidth = '0';
 
-        const reviewField = makeField('출력 Review', `familysuitability-filter-review-${index}`, '예: 키워드 기준 별도 검토', 'text');
+        const reviewField = makeField('출력 검토 문구', `familysuitability-filter-review-${index}`, '예: 키워드 기준 별도 검토', 'text');
         reviewField.input.value = rule.reviewText || '';
         reviewField.field.style.margin = '0';
         reviewField.field.style.minWidth = '0';
@@ -2944,7 +2944,7 @@ function buildConditionExtractWorkflowRow() {
 
     function applyCriteriaPicked(payload) {
       if (payload?.ok === false) {
-        toast(payload?.message || '기준 엑셀을 읽지 못했습니다.', 'err');
+        toast(payload?.message || '기준 엑셀을 읽지 못했습니다. 선택한 파일이 열 수 있는 엑셀 파일인지 확인해 주세요.', 'err');
         return;
       }
       const draft = state.features.familysuitability.configDraft;
@@ -2955,7 +2955,7 @@ function buildConditionExtractWorkflowRow() {
       markFeatureDirty('familysuitability');
       renderCriteriaSummary();
       refreshFamilySuitabilityFeatureSummary();
-      toast('Family 적합성 기준 엑셀을 불러왔습니다.', 'ok');
+      toast('패밀리 타입 적합성 기준 엑셀을 불러왔습니다.', 'ok');
     }
 
     browseBtn.addEventListener('click', () => {
@@ -2997,20 +2997,20 @@ function buildConditionExtractWorkflowRow() {
     savePresetBtn.addEventListener('click', () => {
       const presetLabel = String(presetName.input.value || presetSelect.select.value || '').trim();
       if (!presetLabel) {
-        toast('저장할 설정 이름을 입력하세요.', 'warn');
+        toast('저장할 설정 이름을 입력해 주세요.', 'warn');
         return;
       }
       const currentDraft = collectDraft();
       saveFamilySuitabilityPreset(presetLabel, currentDraft);
       renderPresetOptions(presetLabel);
       presetName.input.value = presetLabel;
-      toast(`Family 적합성 설정을 저장했습니다: ${presetLabel}`, 'ok');
+      toast(`패밀리 타입 적합성 설정을 저장했습니다: ${presetLabel}`, 'ok');
     });
 
     loadPresetBtn.addEventListener('click', () => {
       const presetLabel = String(presetSelect.select.value || presetName.input.value || '').trim();
       if (!presetLabel) {
-        toast('불러올 설정을 선택하세요.', 'warn');
+        toast('불러올 설정을 선택해 주세요.', 'warn');
         return;
       }
       const loaded = applyFamilySuitabilityPreset(state.features.familysuitability.configDraft, presetLabel);
@@ -3024,19 +3024,19 @@ function buildConditionExtractWorkflowRow() {
       renderPresetOptions(presetLabel);
       presetName.input.value = presetLabel;
       refreshFamilySuitabilityFeatureSummary();
-      toast(`Family 적합성 설정을 불러왔습니다: ${presetLabel}`, 'ok');
+      toast(`패밀리 타입 적합성 설정을 불러왔습니다: ${presetLabel}`, 'ok');
     });
 
     deletePresetBtn.addEventListener('click', () => {
       const presetLabel = String(presetSelect.select.value || presetName.input.value || '').trim();
       if (!presetLabel) {
-        toast('삭제할 설정을 선택하세요.', 'warn');
+        toast('삭제할 설정을 선택해 주세요.', 'warn');
         return;
       }
       deleteFamilySuitabilityPreset(presetLabel);
       renderPresetOptions();
       if (presetName.input.value === presetLabel) presetName.input.value = '';
-      toast(`Family 적합성 설정을 삭제했습니다: ${presetLabel}`, 'ok');
+      toast(`패밀리 타입 적합성 설정을 삭제했습니다: ${presetLabel}`, 'ok');
     });
 
     buildFamilySuitabilityConfig.applyCriteriaPicked = applyCriteriaPicked;
@@ -3115,7 +3115,7 @@ function buildConditionExtractWorkflowRow() {
     const ruleList = document.createElement('ul');
     ruleList.className = 'guid-config-list';
     [
-      "삭제할 행은 '삭제여부' 컬럼에 '삭제'라고 입력합니다.",
+      "삭제할 행은 '삭제여부' 열에 '삭제'라고 입력합니다.",
       '삭제하지 않을 행은 비워 두면 됩니다.',
       '마지막 숨김 키 행은 건드리지 않고 그대로 유지해야 합니다.'
     ].forEach((text) => {
@@ -3138,7 +3138,7 @@ function buildConditionExtractWorkflowRow() {
       ['1', '검토 결과를 삭제용 엑셀로 내보냅니다.'],
       ['2', "엑셀에서 삭제할 행의 '삭제여부'에 '삭제'를 입력합니다."],
       ['3', "'삭제용 엑셀 불러오기'로 같은 파일을 다시 선택해 정리를 적용합니다."],
-      ['4', '센트럴 파일은 항상 로컬로, 모든 Workset을 닫은 상태로 열어 처리합니다.']
+      ['4', '센트럴 파일은 항상 로컬로, 모든 웍셋을 닫은 상태로 열어 처리합니다.']
     ].forEach(([num, text]) => {
       const row = div('guid-config-process__row');
       const numEl = document.createElement('strong');
@@ -3163,7 +3163,7 @@ function buildConditionExtractWorkflowRow() {
     syncComment.field.classList.add('guid-config-comment');
     syncComment.input.value = draft.syncComment || 'KKY Tools - 파라미터 GUID 정리';
     const cleanupNote = div('guid-config-card__note');
-    cleanupNote.textContent = '코멘트를 끄면 빈 코멘트로 동기화하고, 센트럴/Workshared 문서는 항상 동일한 열기 정책으로 처리합니다.';
+    cleanupNote.textContent = '코멘트를 끄면 빈 코멘트로 동기화하고, 센트럴/워크셰어링 문서는 항상 동일한 열기 정책으로 처리합니다.';
     cleanupCard.body.append(useSyncComment.field, syncComment.field, cleanupNote);
 
     const updateAnnotationState = () => {
@@ -3221,9 +3221,9 @@ function buildConditionExtractWorkflowRow() {
   function buildPointsConfig() {
     const panel = div('multi-config');
     const unit = makeSelectField('단위', [
-      { value: 'ft', label: 'Decimal Feet' },
-      { value: 'm', label: 'Meters (m)' },
-      { value: 'mm', label: 'Millimeters (mm)' }
+      { value: 'ft', label: '십진 피트' },
+      { value: 'm', label: '미터 (m)' },
+      { value: 'mm', label: '밀리미터 (mm)' }
     ]);
     unit.select.value = state.features.points.configDraft.unit;
     unit.select.addEventListener('change', () => {
@@ -3238,7 +3238,7 @@ function buildConditionExtractWorkflowRow() {
     const panel = div('multi-config');
     panel.style.display = 'grid';
     panel.style.gap = '12px';
-    const flaggedWorkset = makeField('오류로 볼 workset 이름', 'worksetassignmentFlaggedWorkset', '예: Workset2');
+    const flaggedWorkset = makeField('오류로 볼 웍셋 이름', 'worksetassignmentFlaggedWorkset', '예: Workset2');
     flaggedWorkset.input.value = state.features.worksetassignment.configDraft.flaggedWorksetName || '';
     flaggedWorkset.input.addEventListener('input', () => {
       state.features.worksetassignment.configDraft.flaggedWorksetName = String(flaggedWorkset.input.value || '').trim();
@@ -3246,7 +3246,7 @@ function buildConditionExtractWorkflowRow() {
       refreshWorksetAssignmentFeatureSummary();
     });
     const note = div('feature-note');
-    note.textContent = '비워두면 Workset1 이외의 workset을 모두 오류로 봅니다. 이름을 입력하면 그 workset에 속한 객체만 오류로 기록하고, 없으면 Workset1 정상 배정 요약 1행만 출력합니다.';
+    note.textContent = '비워두면 기본 웍셋(Workset1) 이외의 웍셋을 모두 오류로 봅니다. 이름을 입력하면 그 웍셋에 속한 객체만 오류로 기록하고, 없으면 기본 웍셋(Workset1) 정상 배정 요약 1행만 출력합니다.';
     panel.append(flaggedWorkset.field, note);
     return { panel, controls: { flaggedWorkset } };
   }
@@ -3268,7 +3268,7 @@ function buildConditionExtractWorkflowRow() {
     presetTitle.textContent = '파라미터 세트';
 
     const presetSelect = makeSelectField('저장된 세트', [
-      { value: '', label: '저장된 세트 없음' }
+      { value: '', label: '저장된 세트가 없습니다.' }
     ]);
     const presetName = makeField('세트 이름', 'parameterduplicationPresetName', '예: 기계 납품 기본 세트', 'text');
     const presetActions = div('feature-row__actions');
@@ -3305,7 +3305,7 @@ function buildConditionExtractWorkflowRow() {
     recentTitle.textContent = '최근 검토 항목';
 
     const recentSelect = makeSelectField('자동 저장 항목', [
-      { value: '', label: '최근 항목 없음' }
+      { value: '', label: '최근 항목이 없습니다.' }
     ]);
     const recentActions = div('feature-row__actions');
     recentActions.style.display = 'flex';
@@ -3326,10 +3326,10 @@ function buildConditionExtractWorkflowRow() {
     const recentSummary = div('feature-note');
 
     const scope = makeSelectField('검토 범위', [
-      { value: 'all', label: '추가된 전체 Project Parameter' },
+      { value: 'all', label: '추가된 전체 프로젝트 파라미터' },
       { value: 'selected', label: '지정 파라미터만' }
     ]);
-    const names = makeField('검토 파라미터명', 'parameterduplicationNames', '예: Comments, Mark, Type Comments', 'textarea');
+    const names = makeField('검토 파라미터명', 'parameterduplicationNames', '예: 설명(Comments), 마크(Mark), 타입 설명(Type Comments)', 'textarea');
     names.input.rows = 5;
 
     const importCard = div('feature-row__summary');
@@ -3366,13 +3366,13 @@ function buildConditionExtractWorkflowRow() {
     importActions.append(importBtn, clearNamesBtn);
     importHead.append(importTitle, importActions);
 
-    const sharedPath = makeField('가져온 TXT', 'parameterduplicationSharedParamTxt', '공유파라미터 TXT를 선택하세요.', 'text');
+    const sharedPath = makeField('가져온 TXT', 'parameterduplicationSharedParamTxt', '공유파라미터 TXT를 선택해 주세요.', 'text');
     sharedPath.input.readOnly = true;
-    sharedPath.input.placeholder = '공유파라미터 TXT를 선택하세요.';
+    sharedPath.input.placeholder = '공유파라미터 TXT를 선택해 주세요.';
     const sharedSummary = div('feature-note');
 
     const note = div('feature-note');
-    note.textContent = '지정 파라미터만 선택하면 입력한 이름과 일치하는 Project Parameter만 검토합니다. 구분자는 쉼표, 세미콜론, 줄바꿈을 모두 지원하며, 공유파라미터 TXT에서 이름 목록을 바로 추가할 수 있습니다.';
+    note.textContent = '지정 파라미터만 선택하면 입력한 이름과 일치하는 프로젝트 파라미터만 검토합니다. 구분자는 쉼표, 세미콜론, 줄바꿈을 모두 지원하며, 공유파라미터 TXT에서 이름 목록을 바로 추가할 수 있습니다.';
 
     const draft = state.features.parameterduplication.configDraft || {};
     scope.select.value = normalizeParameterDuplicationScope(draft.scope);
@@ -3387,7 +3387,7 @@ function buildConditionExtractWorkflowRow() {
         return;
       }
       const scopeLabel = current.scope === 'all'
-        ? '전체 Project Parameter'
+        ? '전체 프로젝트 파라미터'
         : `지정 ${current.parameterNames.length}개 · ${buildParameterDuplicationNamePreview(current.parameterNames, 4)}`;
       const sourcePath = String(current.sharedParamSourcePath || '').trim();
       const sourceLabel = sourcePath ? getPathLeafLabel(sourcePath, sourcePath) : '';
@@ -3402,7 +3402,7 @@ function buildConditionExtractWorkflowRow() {
 
       const defaultOption = document.createElement('option');
       defaultOption.value = '';
-      defaultOption.textContent = recents.length ? '최근 항목 선택' : '최근 항목 없음';
+      defaultOption.textContent = recents.length ? '최근 항목 선택' : '최근 항목이 없습니다.';
       recentSelect.select.append(defaultOption);
 
       recents.forEach((item) => {
@@ -3428,7 +3428,7 @@ function buildConditionExtractWorkflowRow() {
 
       const defaultOption = document.createElement('option');
       defaultOption.value = '';
-      defaultOption.textContent = presets.length ? '저장된 세트 선택' : '저장된 세트 없음';
+      defaultOption.textContent = presets.length ? '저장된 세트 선택' : '저장된 세트가 없습니다.';
       presetSelect.select.append(defaultOption);
 
       presets.forEach((preset) => {
@@ -3468,7 +3468,7 @@ function buildConditionExtractWorkflowRow() {
     function applySharedParams(payload) {
       if (payload?.cancelled) return;
       if (payload?.ok === false) {
-        toast(payload?.message || '공유파라미터 TXT를 읽지 못했습니다.', 'err');
+        toast(payload?.message || '공유파라미터 TXT를 읽지 못했습니다. Revit에 연결된 공유파라미터 파일과 파일 권한을 확인해 주세요.', 'err');
         return;
       }
 
@@ -3476,7 +3476,7 @@ function buildConditionExtractWorkflowRow() {
         ? payload.parameterNames.join('\n')
         : payload?.parameterNames);
       if (!importedNames.length) {
-        toast(payload?.message || 'TXT에서 사용할 파라미터 이름을 찾지 못했습니다.', 'warn');
+        toast(payload?.message || 'TXT에서 사용할 파라미터 이름을 찾지 못했습니다. 공유파라미터 TXT에 파라미터 정의가 있는지 확인해 주세요.', 'warn');
         return;
       }
 
@@ -3544,7 +3544,7 @@ function buildConditionExtractWorkflowRow() {
     savePresetBtn.addEventListener('click', () => {
       const presetLabel = String(presetName.input.value || presetSelect.select.value || '').trim();
       if (!presetLabel) {
-        toast('저장할 세트 이름을 입력하세요.', 'warn');
+        toast('저장할 세트 이름을 입력해 주세요.', 'warn');
         return;
       }
       const currentDraft = state.features.parameterduplication.configDraft || {};
@@ -3570,7 +3570,7 @@ function buildConditionExtractWorkflowRow() {
     loadPresetBtn.addEventListener('click', () => {
       const presetLabel = String(presetSelect.select.value || presetName.input.value || '').trim();
       if (!presetLabel) {
-        toast('불러올 세트를 선택하세요.', 'warn');
+        toast('불러올 세트를 선택해 주세요.', 'warn');
         return;
       }
       const loaded = applyParameterDuplicationPreset(state.features.parameterduplication.configDraft, presetLabel);
@@ -3589,7 +3589,7 @@ function buildConditionExtractWorkflowRow() {
     loadRecentBtn.addEventListener('click', () => {
       const recentKey = String(recentSelect.select.value || '').trim();
       if (!recentKey) {
-        toast('불러올 최근 항목을 선택하세요.', 'warn');
+        toast('불러올 최근 항목을 선택해 주세요.', 'warn');
         return;
       }
       const loaded = applyParameterDuplicationRecent(state.features.parameterduplication.configDraft, recentKey);
@@ -3613,7 +3613,7 @@ function buildConditionExtractWorkflowRow() {
     deletePresetBtn.addEventListener('click', () => {
       const presetLabel = String(presetSelect.select.value || presetName.input.value || '').trim();
       if (!presetLabel) {
-        toast('삭제할 세트를 선택하세요.', 'warn');
+        toast('삭제할 세트를 선택해 주세요.', 'warn');
         return;
       }
       deleteParameterDuplicationPreset(presetLabel);
@@ -3674,7 +3674,7 @@ function buildConditionExtractWorkflowRow() {
     recentTitle.textContent = '최근 검토 항목';
 
     const recentSelect = makeSelectField('자동 저장 항목', [
-      { value: '', label: '최근 항목 없음' }
+      { value: '', label: '최근 항목이 없습니다.' }
     ]);
     const recentActions = div('feature-row__actions');
     recentActions.style.display = 'flex';
@@ -3706,7 +3706,7 @@ function buildConditionExtractWorkflowRow() {
     overviewTitle.textContent = '검토 설정';
 
     const scope = makeSelectField('검토 범위', [
-      { value: 'all', label: '추가된 전체 Project Parameter' },
+      { value: 'all', label: '추가된 전체 프로젝트 파라미터' },
       { value: 'selected', label: '지정 파라미터만' }
     ]);
     const sourceInfo = div('feature-note');
@@ -3853,7 +3853,7 @@ function buildConditionExtractWorkflowRow() {
         return;
       }
       const scopeLabel = current.scope === 'all'
-        ? '전체 Project Parameter'
+        ? '전체 프로젝트 파라미터'
         : `지정 ${current.parameterNames.length}개 · ${buildParameterDuplicationNamePreview(current.parameterNames, 4)}`;
       const sourcePath = String(current.sharedParamSourcePath || '').trim();
       const sourceLabel = sourcePath ? getPathLeafLabel(sourcePath, sourcePath) : '';
@@ -3868,7 +3868,7 @@ function buildConditionExtractWorkflowRow() {
 
       const defaultOption = document.createElement('option');
       defaultOption.value = '';
-      defaultOption.textContent = recents.length ? '최근 항목 선택' : '최근 항목 없음';
+      defaultOption.textContent = recents.length ? '최근 항목 선택' : '최근 항목이 없습니다.';
       recentSelect.select.append(defaultOption);
 
       recents.forEach((item) => {
@@ -3911,7 +3911,7 @@ function buildConditionExtractWorkflowRow() {
       } else if (normalizeParameterDuplicationScope(currentDraft.scope) === 'selected') {
         sourceInfo.textContent = '현재 Revit에 연결된 공유파라미터 파일을 찾지 못했습니다.';
       } else {
-        sourceInfo.textContent = '전체 Project Parameter 검토는 공유파라미터 선택 없이도 실행할 수 있습니다.';
+        sourceInfo.textContent = '전체 프로젝트 파라미터 검토는 공유파라미터 선택 없이도 실행할 수 있습니다.';
       }
     }
 
@@ -3934,8 +3934,8 @@ function buildConditionExtractWorkflowRow() {
         emptyState.style.placeItems = 'center';
         emptyState.style.minHeight = '92px';
         emptyState.textContent = isSelectedScope
-          ? '오른쪽 목록에서 검토할 파라미터를 선택하세요.'
-          : '현재는 추가된 전체 Project Parameter를 검토하도록 설정되어 있습니다.';
+          ? '오른쪽 목록에서 검토할 파라미터를 선택해 주세요.'
+          : '현재는 추가된 전체 프로젝트 파라미터를 검토하도록 설정되어 있습니다.';
         selectedChips.append(emptyState);
         return;
       }
@@ -4052,7 +4052,7 @@ function buildConditionExtractWorkflowRow() {
 
         const action = document.createElement('span');
         action.className = selectedNow ? 'chip chip--ok' : 'chip chip--info';
-        action.textContent = selectedNow ? '선택됨' : (isSelectedScope ? '추가' : '선택');
+        action.textContent = selectedNow ? '선택 완료' : (isSelectedScope ? '추가' : '선택');
 
         row.append(info, action);
         row.addEventListener('click', () => {
@@ -4089,7 +4089,7 @@ function buildConditionExtractWorkflowRow() {
     loadRecentBtn.addEventListener('click', () => {
       const recentKey = String(recentSelect.select.value || '').trim();
       if (!recentKey) {
-        toast('불러올 최근 항목을 선택하세요.', 'warn');
+        toast('불러올 최근 항목을 선택해 주세요.', 'warn');
         return;
       }
       const loaded = applyParameterDuplicationRecent(state.features.parameterduplication.configDraft, recentKey);
@@ -4151,7 +4151,7 @@ function buildConditionExtractWorkflowRow() {
 
   function buildLinkWorksetConfig() {
     const panel = div('multi-config');
-    const applyDefault = makeCheckboxField('실행 시 기본 workset1 만 열리도록 자동 적용');
+    const applyDefault = makeCheckboxField('실행 시 기본 웍셋(Workset1)만 열리도록 자동 적용');
     applyDefault.input.checked = state.features.linkworkset.configDraft.applyDefaultWorksetOnly !== false;
     applyDefault.input.addEventListener('change', () => {
       state.features.linkworkset.configDraft.applyDefaultWorksetOnly = applyDefault.input.checked;
@@ -4177,7 +4177,7 @@ function buildConditionExtractWorkflowRow() {
     updateSyncCommentState();
 
     const note = div('feature-note');
-    note.textContent = 'top-level Revit 링크를 대상으로 현재 로드 상태와 open user workset 현황을 추출하고, 필요 시 기본 workset1 만 열리도록 재로드합니다. 코멘트 적용을 켜면 동기화 시 입력한 문구를 함께 기록합니다.';
+    note.textContent = '최상위 Revit 링크를 대상으로 현재 로드 상태와 열려 있는 사용자 웍셋 현황을 추출하고, 필요 시 기본 웍셋(Workset1)만 열리도록 재로드합니다. 코멘트 적용을 켜면 동기화 시 입력한 문구를 함께 기록합니다.';
 
     panel.append(applyDefault.field, useSyncComment.field, syncComment.field, note);
     return { panel, controls: { applyDefault, useSyncComment, syncComment } };
@@ -4260,7 +4260,7 @@ function buildConditionExtractWorkflowRow() {
 
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
-    searchInput.placeholder = '공유 Text 파라미터 이름 / 그룹 / GUID 검색';
+    searchInput.placeholder = '공유 텍스트 파라미터 이름 / 그룹 / GUID 검색';
     styleConditionInput(searchInput);
 
     const pickerMeta = document.createElement('div');
@@ -4311,7 +4311,7 @@ function buildConditionExtractWorkflowRow() {
     const selectedSummary = div('feature-note');
     selectedSummary.style.margin = '0';
     const recentSelect = makeSelectField('최근 설정', [
-      { value: '', label: '최근 설정 없음' }
+      { value: '', label: '최근 설정이 없습니다.' }
     ]);
     recentSelect.field.style.margin = '0';
     const recentActions = div('feature-row__actions');
@@ -4355,7 +4355,7 @@ function buildConditionExtractWorkflowRow() {
 
       if (!names.length) {
         const empty = div('familylink-target-empty');
-        empty.textContent = '공유 Text 파라미터를 선택하면 여기 표시됩니다.';
+        empty.textContent = '공유 텍스트 파라미터를 선택하면 여기 표시됩니다.';
         selectedChips.append(empty);
       } else {
         names.forEach((name) => {
@@ -4395,7 +4395,7 @@ function buildConditionExtractWorkflowRow() {
       recentSummary.textContent = [
         timeLabel,
         `파라미터 ${snapshot.parameterNames.length}개`,
-        exceptionRuleCount ? `예외 ${exceptionRuleCount}개` : '예외 없음',
+        exceptionRuleCount ? `예외 ${exceptionRuleCount}개` : '예외가 없습니다.',
         buildParameterMissingSelectionPreview(snapshot.parameterNames, 4)
       ].filter(Boolean).join(' · ');
     }
@@ -4407,7 +4407,7 @@ function buildConditionExtractWorkflowRow() {
 
       const defaultOption = document.createElement('option');
       defaultOption.value = '';
-      defaultOption.textContent = recents.length ? '최근 설정 선택' : '최근 설정 없음';
+      defaultOption.textContent = recents.length ? '최근 설정 선택' : '최근 설정이 없습니다.';
       recentSelect.select.append(defaultOption);
 
       recents.forEach((item) => {
@@ -4435,7 +4435,7 @@ function buildConditionExtractWorkflowRow() {
         const sourceText = status.path ? ` · ${getPathLeafLabel(status.path, status.path)}` : '';
         pickerInfo.textContent = `연결된 공유파라미터 TXT 기준 Text 정의 ${availableCount}개${sourceText}`;
       } else {
-        pickerInfo.textContent = status.warning || status.errorMessage || 'Shared Parameter 상태를 확인하는 중입니다.';
+        pickerInfo.textContent = status.warning || status.errorMessage || '공유파라미터 상태를 확인하는 중입니다.';
       }
     }
 
@@ -4507,7 +4507,7 @@ function buildConditionExtractWorkflowRow() {
 
         const action = document.createElement('span');
         action.className = selectedNow ? 'chip chip--ok' : 'chip chip--info';
-        action.textContent = selectedNow ? '선택됨' : '추가';
+        action.textContent = selectedNow ? '선택 완료' : '추가';
 
         row.append(info, action);
         row.addEventListener('click', () => {
@@ -4565,7 +4565,7 @@ function buildConditionExtractWorkflowRow() {
     function syncValueInputState(input, row) {
       const valueless = isParameterMissingConditionValueless(row?.operatorName);
       input.disabled = valueless;
-      input.placeholder = valueless ? '값 없음' : '값';
+      input.placeholder = valueless ? '값 입력 불필요' : '값';
       if (valueless) {
         input.value = '';
         row.value = '';
@@ -4579,7 +4579,7 @@ function buildConditionExtractWorkflowRow() {
 
       if (!draft.parameterNames.length) {
         const empty = div('familylink-target-empty');
-        empty.textContent = '먼저 누락 검토 파라미터를 선택하세요.';
+        empty.textContent = '먼저 누락 검토 파라미터를 선택해 주세요.';
         exceptionWrap.append(empty);
         return;
       }
@@ -4715,7 +4715,7 @@ function buildConditionExtractWorkflowRow() {
     loadRecentBtn.addEventListener('click', () => {
       const recentKey = String(recentSelect.select.value || '').trim();
       if (!recentKey) {
-        toast('불러올 최근 설정을 선택하세요.', 'warn');
+        toast('불러올 최근 설정을 선택해 주세요.', 'warn');
         return;
       }
       const loaded = applyParameterMissingRecent(state.features.parametermissing.configDraft, recentKey);
@@ -4739,17 +4739,17 @@ function buildConditionExtractWorkflowRow() {
     saveFileBtn.addEventListener('click', () => {
       const currentDraft = getDraft();
       if (!currentDraft.parameterNames.length) {
-        toast('저장할 누락 검토 파라미터를 1개 이상 선택하세요.', 'warn');
+        toast('저장할 누락 검토 파라미터를 1개 이상 선택해 주세요.', 'warn');
         return;
       }
       if (hasIncompleteParameterMissingConfig(currentDraft)) {
-        toast('누락 예외 조건을 먼저 완성한 뒤 저장하세요.', 'warn');
+        toast('누락 예외 조건을 먼저 완성한 뒤 저장해 주세요.', 'warn');
         return;
       }
       const json = buildParameterMissingPresetJson(currentDraft);
       const fileName = buildParameterMissingPresetDefaultName(currentDraft);
       downloadParameterMissingPresetInBrowser(json, fileName);
-      toast(`설정 파일을 저장했습니다: ${fileName}`, 'ok');
+      toast(`파라미터 누락 검토 설정 파일을 저장했습니다: ${fileName}`, 'ok');
     });
 
     loadFileBtn.addEventListener('click', () => {
@@ -4758,7 +4758,7 @@ function buildConditionExtractWorkflowRow() {
         try {
           snapshot = parseParameterMissingPresetSnapshot(payload?.json || '');
         } catch (error) {
-          toast(error?.message || '설정 파일을 읽지 못했습니다.', 'err');
+          toast(error?.message || '파라미터 누락 검토 설정 파일을 읽지 못했습니다.', 'err');
           return;
         }
         Object.assign(state.features.parametermissing.configDraft, snapshot);
@@ -4766,7 +4766,7 @@ function buildConditionExtractWorkflowRow() {
         syncControlsFromDraft('parametermissing');
         refreshParameterMissingFeatureSummary();
         const fileLabel = String(payload?.fileName || '').trim();
-        toast(fileLabel ? `설정 파일을 불러왔습니다: ${fileLabel}` : '설정 파일을 불러왔습니다.', 'ok');
+        toast(fileLabel ? `파라미터 누락 검토 설정 파일을 불러왔습니다: ${fileLabel}` : '파라미터 누락 검토 설정 파일을 불러왔습니다.', 'ok');
       });
     });
 
@@ -4809,12 +4809,12 @@ function buildConditionExtractWorkflowRow() {
     const searchWrap = div('familylink-search');
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
-    searchInput.placeholder = '파라미터 검색...';
+    searchInput.placeholder = '파라미터 검색';
     searchWrap.append(searchInput);
 
     const listWrap = div('familylink-target-list');
     const listEmpty = div('familylink-target-empty');
-    listEmpty.textContent = 'Shared Parameter 목록이 없습니다.';
+    listEmpty.textContent = '공유파라미터 목록이 없습니다.';
     listWrap.append(listEmpty);
 
     const selectedWrap = div('familylink-selected');
@@ -4844,7 +4844,7 @@ function buildConditionExtractWorkflowRow() {
       listWrap.innerHTML = '';
       if (!ok) {
         const error = div('familylink-target-empty');
-        error.textContent = payload?.message || 'Shared Parameter 목록을 불러오지 못했습니다.';
+        error.textContent = payload?.message || '공유파라미터 목록을 불러오지 못했습니다.';
         listWrap.append(error);
       } else if (!items.length) {
         listWrap.append(listEmpty);
@@ -4890,7 +4890,7 @@ function buildConditionExtractWorkflowRow() {
 
     function renderFamilyLinkSelected() {
       const selected = state.features.familylink.configDraft.selectedTargets || [];
-      selectedCount.textContent = `선택됨 ${selected.length}개`;
+      selectedCount.textContent = `${selected.length}개 선택 완료`;
       selectedChips.innerHTML = '';
       selected.forEach((item) => {
         const chip = document.createElement('span');
@@ -4939,7 +4939,7 @@ function buildConditionExtractWorkflowRow() {
     const emptyTitle = document.createElement('strong');
     emptyTitle.textContent = '등록된 RVT가 없습니다.';
     const emptySub = document.createElement('span');
-    emptySub.textContent = 'RVT 추가 또는 드래그앤드롭으로 파일을 등록하세요.';
+    emptySub.textContent = 'RVT 추가 또는 드래그 앤 드롭으로 파일을 등록해 주세요.';
     const emptyBtn = cardBtn('RVT 추가', handleAddRvt, 'btn--primary');
     empty.append(emptyTitle, emptySub, emptyBtn);
 
@@ -4978,6 +4978,9 @@ function buildConditionExtractWorkflowRow() {
           if (checked) state.rvtChecked.add(path);
           else state.rvtChecked.delete(path);
           syncMaster();
+          btnRemove.disabled = state.rvtChecked.size === 0;
+          updateRunSummary();
+          if (buildRvtExpandedModal.render) buildRvtExpandedModal.render();
         }
       }));
       const count = state.rvtList.length;
@@ -5013,8 +5016,8 @@ function buildConditionExtractWorkflowRow() {
     headTitle.textContent = '검토 실행';
     const headText = document.createElement('span');
     headText.textContent = mode === 'favorites'
-      ? '왼쪽 즐겨찾기 영역에서 선택형 기능을 켠 뒤 검토를 시작하세요.'
-      : '왼쪽 기능 영역을 눌러 선택한 뒤 검토를 시작하세요.';
+      ? '왼쪽 즐겨찾기 영역에서 선택형 기능을 켠 뒤 검토를 시작해 주세요.'
+      : '왼쪽 기능 영역을 눌러 선택한 뒤 검토를 시작해 주세요.';
     head.append(headTitle, headText);
 
     const summary = div('multi-action-card__summary');
@@ -5042,7 +5045,7 @@ function buildConditionExtractWorkflowRow() {
     recentBtn.classList.add('btn--action-main');
     actionRow.append(currentBtn, recentBtn);
 
-    const multiBtn = cardBtn('RVT 여러개 검토', openExpandedRvtModal, 'btn--secondary');
+    const multiBtn = cardBtn('RVT 여러 개 검토', openExpandedRvtModal, 'btn--secondary');
     multiBtn.classList.add('btn--multi', 'btn--action-main');
     actionRow.append(multiBtn);
 
@@ -5215,7 +5218,7 @@ function buildConditionExtractWorkflowRow() {
         });
       };
       reader.onerror = () => {
-        toast('프리셋 파일을 읽지 못했습니다.', 'err');
+        toast('다중 검토 즐겨찾기 프리셋 파일을 읽지 못했습니다.', 'err');
       };
       reader.readAsText(file, 'utf-8');
     }, { once: true });
@@ -5229,20 +5232,20 @@ function buildConditionExtractWorkflowRow() {
     state.ui.favoritePresetName = name;
     state.ui.favoritePresetPath = path || name;
     updateFavoritePresetSummary();
-    toast(`프리셋을 저장했습니다. (${name})`, 'ok');
+    toast(`다중 검토 즐겨찾기 프리셋을 저장했습니다. (${name})`, 'ok');
   }
 
   function handleFavoritePresetLoaded(payload) {
     const json = String(payload?.json || '').replace(/^\uFEFF/, '').trim();
     if (!json) {
-      toast('불러온 프리셋 파일이 비어 있습니다.', 'err');
+      toast('불러온 다중 검토 즐겨찾기 프리셋 파일이 비어 있습니다.', 'err');
       return;
     }
     let snapshot = null;
     try {
       snapshot = parseFavoritePresetSnapshot(json);
     } catch (error) {
-      toast(error?.message || '프리셋 형식을 읽지 못했습니다.', 'err');
+      toast(error?.message || '다중 검토 즐겨찾기 프리셋 형식을 읽지 못했습니다.', 'err');
       return;
     }
     applyFavoritePresetSnapshot(snapshot, {
@@ -5254,18 +5257,18 @@ function buildConditionExtractWorkflowRow() {
   function parseFavoritePresetSnapshot(json) {
     const snapshot = JSON.parse(json);
     if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
-      throw new Error('프리셋 형식이 올바르지 않습니다.');
+      throw new Error('다중 검토 즐겨찾기 프리셋 형식이 올바르지 않습니다.');
     }
     const kind = String(snapshot.kind || '').trim();
     if (kind && kind !== FAVORITE_PRESET_KIND) {
-      throw new Error('KKY 즐겨찾기 프리셋 파일이 아닙니다.');
+      throw new Error('KKY 다중 검토 즐겨찾기 프리셋 파일이 아닙니다.');
     }
     const version = Number(snapshot.version || FAVORITE_PRESET_VERSION);
     if (version > FAVORITE_PRESET_VERSION) {
-      throw new Error('현재 버전보다 최신 프리셋이라 불러올 수 없습니다.');
+      throw new Error('현재 버전보다 최신 다중 검토 즐겨찾기 프리셋이라 불러올 수 없습니다.');
     }
     if (!snapshot.features || typeof snapshot.features !== 'object' || Array.isArray(snapshot.features)) {
-      throw new Error('프리셋에 기능 정보가 없습니다.');
+      throw new Error('다중 검토 즐겨찾기 프리셋에 기능 정보가 없습니다.');
     }
     return snapshot;
   }
@@ -5295,7 +5298,7 @@ function buildConditionExtractWorkflowRow() {
     const favoritePreset = getFavoriteEntryIdsFromSnapshot(snapshot);
     const targetFavoriteIds = favoritePreset.hasExplicitList ? favoritePreset.ids : snapshotKeys;
     if (!targetFavoriteIds.length && !snapshotKeys.length) {
-      toast('적용할 수 있는 즐겨찾기 정보가 없는 프리셋입니다.', 'warn');
+      toast('적용할 수 있는 즐겨찾기 정보가 없는 다중 검토 프리셋입니다.', 'warn');
       return false;
     }
 
@@ -5329,7 +5332,7 @@ function buildConditionExtractWorkflowRow() {
     const skipMessage = skippedKeys.length
       ? ` 일부 기능 ${skippedKeys.length}개는 현재 등록할 수 없어 제외했습니다.`
       : '';
-    toast(`프리셋을 불러왔습니다. (${summaryParts.join(', ')})${skipMessage}`, skippedKeys.length ? 'warn' : 'ok');
+    toast(`다중 검토 즐겨찾기 프리셋을 불러왔습니다. (${summaryParts.join(', ')})${skipMessage}`, skippedKeys.length ? 'warn' : 'ok');
     return true;
   }
 
@@ -5394,9 +5397,9 @@ function buildConditionExtractWorkflowRow() {
     }
     note.textContent = `${source === 'loaded' ? '불러온 프리셋' : '마지막 저장 프리셋'}: ${name}`;
     if (path) {
-      note.title = path;
+      note.setAttribute('aria-label', path);
     } else {
-      note.removeAttribute('title');
+      note.removeAttribute('aria-label');
     }
   }
 
@@ -5456,7 +5459,7 @@ function buildConditionExtractWorkflowRow() {
     const toolbar = div('rvt-expand-toolbar');
     const titleWrap = div('rvt-expand-title');
     const title = document.createElement('h3');
-    title.textContent = 'RVT 여러개 검토';
+    title.textContent = 'RVT 여러 개 검토';
     const badge = document.createElement('span');
     badge.className = 'chip chip--info';
     titleWrap.append(title, badge);
@@ -5476,7 +5479,7 @@ function buildConditionExtractWorkflowRow() {
     const listTitle = document.createElement('h4');
     listTitle.textContent = '선택한 RVT 목록';
     const listSub = document.createElement('span');
-    listSub.textContent = '목록에서 체크된 파일만 제거할 수 있고, 탐색기에서 .rvt 파일을 드래그해 바로 추가할 수 있습니다.';
+    listSub.textContent = '목록에서 선택한 파일만 제거할 수 있고, 탐색기에서 .rvt 파일을 드래그해 바로 추가할 수 있습니다.';
     listHead.append(listTitle, listSub);
     const tableWrap = div('rvt-expand-table rvt-drop-zone');
     const { table, tbody, master } = createRvtTable();
@@ -5686,7 +5689,7 @@ function buildConditionExtractWorkflowRow() {
 
     buildReviewSummaryModal.overlay = overlay;
     buildReviewSummaryModal.body = body;
-    buildReviewSummaryModal.title = title;
+    buildReviewSummaryModal.titleEl = title;
     buildReviewSummaryModal.stats = stats;
     buildReviewSummaryModal.tbody = tbody;
     buildReviewSummaryModal.featureList = featureList;
@@ -5730,8 +5733,8 @@ function buildConditionExtractWorkflowRow() {
     const skipped = Number(payload?.skipped) || 0;
     const failed = Number(payload?.failed) || 0;
     const rows = getReviewTableRows(payload);
-    if (buildReviewSummaryModal.title) {
-      buildReviewSummaryModal.title.textContent = '최근 결과 보기';
+    if (buildReviewSummaryModal.titleEl) {
+      buildReviewSummaryModal.titleEl.textContent = '최근 결과 보기';
     }
 
     stats.innerHTML = '';
@@ -6059,7 +6062,7 @@ function buildConditionExtractWorkflowRow() {
         const fileCell = document.createElement('td');
         fileCell.className = 'multi-recent-table__file';
         fileCell.textContent = item.file || '-';
-        fileCell.title = item.file || '-';
+        fileCell.setAttribute('aria-label', item.file || '-');
         const totalCell = document.createElement('td');
         totalCell.textContent = formatReviewMetric(item.total);
         const issueCell = document.createElement('td');
@@ -6131,19 +6134,19 @@ function buildConditionExtractWorkflowRow() {
   function getFeatureExportActionLabel(key) {
     if (key === 'connector') return '커넥터 결과 엑셀';
     if (key === 'floorinfo') return '층정보 결과 엑셀';
-    if (key === 'familysuitability') return 'Family 적합성 결과 엑셀';
+    if (key === 'familysuitability') return '패밀리 타입 적합성 결과 엑셀';
     if (key === 'tapalign') return '탭/분기 축 결과 엑셀';
     if (key === 'dupclash') {
       return normalizeDupClashMode(state.features.dupclash?.configCommitted?.mode) === 'clash'
-        ? '자체간섭 결과 엑셀'
+        ? '자체 간섭 결과 엑셀'
         : '중복 결과 엑셀';
     }
     if (key === 'worksetassignment') return '웍셋 배정 결과 엑셀';
-    if (key === 'parameterduplication') return 'Parameter 중복 결과 엑셀';
+    if (key === 'parameterduplication') return '파라미터 중복 결과 엑셀';
     if (key === 'parametermissing') return '파라미터 누락 결과 엑셀';
     if (key === 'guid') return 'GUID 결과 엑셀';
     if (key === 'familylink') return '패밀리 연동 결과 엑셀';
-    if (key === 'points') return 'Point 결과 엑셀';
+    if (key === 'points') return '기준점/북각 결과 엑셀';
     if (key === 'linkworkset') return '링크 웍셋 결과 엑셀';
     return '엑셀 내보내기';
   }
@@ -6211,7 +6214,7 @@ function buildConditionExtractWorkflowRow() {
 
     buildSettingsModal.overlay = overlay;
     buildSettingsModal.modal = modal;
-    buildSettingsModal.title = title;
+    buildSettingsModal.titleEl = title;
     buildSettingsModal.badge = badge;
     buildSettingsModal.form = form;
     buildSettingsModal.body = body;
@@ -6270,7 +6273,7 @@ function buildConditionExtractWorkflowRow() {
     const banner = div('sharedparam-banner');
     const head = div('sharedparam-banner__head');
     const title = document.createElement('strong');
-    title.textContent = 'Shared Parameter 상태';
+    title.textContent = '공유파라미터 상태';
     const badge = document.createElement('span');
     badge.className = 'sharedparam-banner__badge';
     const refresh = document.createElement('button');
@@ -6363,8 +6366,8 @@ function buildConditionExtractWorkflowRow() {
       return;
     }
     setBusyState(true);
-    ProgressDialog.show('현재 파일 검토', '검토 구성을 확인하는 중...');
-    ProgressDialog.update(0, '검토 구성을 확인하는 중...', '선택한 기능과 활성 문서 상태를 정리하는 중...');
+    ProgressDialog.show('현재 파일 검토', '검토 구성을 확인하는 중입니다.');
+    ProgressDialog.update(0, '검토 구성을 확인하는 중입니다.', '선택한 기능과 활성 문서 상태를 정리하는 중입니다.');
     const payload = buildPayload();
     payload.useActiveDocument = true;
     payload.rvtPaths = [];
@@ -6376,7 +6379,8 @@ function buildConditionExtractWorkflowRow() {
     (state.ui.currentDocButtons || []).forEach((btn) => {
       if (!btn) return;
       btn.disabled = state.busy || !!blockReason;
-      btn.title = btn.disabled ? blockReason : '';
+      if (btn.disabled && blockReason) btn.setAttribute('aria-label', blockReason);
+      else btn.removeAttribute('aria-label');
     });
   }
 
@@ -6395,8 +6399,8 @@ function buildConditionExtractWorkflowRow() {
       closeExpandedRvtModal();
     }
     setBusyState(true);
-    ProgressDialog.show('납품시 BQC 검토', '검토 구성을 확인하는 중...');
-    ProgressDialog.update(0, '검토 구성을 확인하는 중...', '선택한 기능과 RVT 목록을 정리하는 중...');
+    ProgressDialog.show('납품 시 BQC 검토', '검토 구성을 확인하는 중입니다.');
+    ProgressDialog.update(0, '검토 구성을 확인하는 중입니다.', '선택한 기능과 RVT 목록을 정리하는 중입니다.');
     post('hub:multi-run', buildPayload());
   }
 
@@ -6409,12 +6413,12 @@ function buildConditionExtractWorkflowRow() {
     if (needsShared && status.status !== 'ok') {
       if (!silent && !status.status) {
         requestSharedParamStatus('run');
-        return 'Shared Parameter 상태를 확인 중입니다.';
+        return '공유파라미터 상태를 확인 중입니다.';
       }
       if (!silent && status.status && status.status !== 'ok') {
         requestSharedParamStatus('run');
       }
-      return status.warning || status.errorMessage || 'Shared Parameter 상태를 확인하세요.';
+      return status.warning || status.errorMessage || '공유파라미터 상태를 확인해 주세요.';
     }
     if (state.features.familylink.enabled) {
       const targets = state.features.familylink.configCommitted.selectedTargets || [];
@@ -6425,10 +6429,10 @@ function buildConditionExtractWorkflowRow() {
       const rules = normalizeFloorInfoRules(config.levelRules);
       const selectedRules = rules.filter((rule) => rule.useAsBoundary !== false);
       const configuredCount = selectedRules.filter((rule) => String(rule.expectedValue || '').trim()).length;
-      if (!String(config.parameterName || '').trim()) return '층정보 검토 파라미터명을 입력하세요.';
-      if (!rules.length) return '활성 문서에서 레벨 목록을 불러와 층정보 검토 규칙을 설정하세요.';
-      if (!selectedRules.length) return '층정보 영역을 구분할 레벨을 최소 1개 이상 선택하세요.';
-      if (!configuredCount) return '선택한 영역 기준 레벨에 기대 층정보 값을 최소 1개 이상 입력하세요.';
+      if (!String(config.parameterName || '').trim()) return '층정보 검토 파라미터명을 입력해 주세요.';
+      if (!rules.length) return '활성 문서에서 레벨 목록을 불러와 층정보 검토 규칙을 설정해 주세요.';
+      if (!selectedRules.length) return '층정보 영역을 구분할 레벨을 최소 1개 이상 선택해 주세요.';
+      if (!configuredCount) return '선택한 영역 기준 레벨에 기대 층정보 값을 최소 1개 이상 입력해 주세요.';
     }
     if (state.features.familysuitability.enabled) {
       const config = state.features.familysuitability.configCommitted || {};
@@ -6438,24 +6442,24 @@ function buildConditionExtractWorkflowRow() {
         const reviewText = String(rule.reviewText || '').trim();
         return (!!keyword || !!reviewText) && (!keyword || !reviewText);
       });
-      if (!String(config.criteriaExcelPath || '').trim()) return 'Family 적합성 기준 엑셀 파일을 선택하세요.';
-      if (!String(config.matchReviewText || '').trim()) return '기준 일치 Review 문구를 입력하세요.';
-      if (!String(config.mismatchReviewText || '').trim()) return '기준 미일치 Review 문구를 입력하세요.';
-      if (invalidFilter) return 'Family 적합성 필터 규칙은 키워드와 Review 문구를 함께 입력하세요.';
+      if (!String(config.criteriaExcelPath || '').trim()) return '패밀리 타입 적합성 기준 엑셀 파일을 선택해 주세요.';
+      if (!String(config.matchReviewText || '').trim()) return '기준 일치 검토 문구를 입력해 주세요.';
+      if (!String(config.mismatchReviewText || '').trim()) return '기준 미일치 검토 문구를 입력해 주세요.';
+      if (invalidFilter) return '패밀리 타입 적합성 필터 규칙은 키워드와 검토 문구를 함께 입력해 주세요.';
     }
     if (state.features.parameterduplication.enabled) {
       const config = state.features.parameterduplication.configCommitted || {};
       const scope = normalizeParameterDuplicationScope(config.scope);
       const names = Array.isArray(config.parameterNames) ? config.parameterNames : [];
-      if (scope === 'selected' && !names.length) return '중복 검토 대상 파라미터명을 1개 이상 입력하세요.';
+      if (scope === 'selected' && !names.length) return '중복 검토 대상 파라미터명을 1개 이상 입력해 주세요.';
     }
     if (state.features.parametermissing.enabled) {
       const config = createParameterMissingConfigSnapshot(state.features.parametermissing.configCommitted || {});
-      if (!config.parameterNames.length) return '파라미터 누락 검토 대상 파라미터를 1개 이상 선택하세요.';
-      if (hasIncompleteParameterMissingConfig(config)) return '파라미터 누락 검토의 누락 예외 조건을 모두 입력하세요.';
+      if (!config.parameterNames.length) return '파라미터 누락 검토 대상 파라미터를 1개 이상 선택해 주세요.';
+      if (hasIncompleteParameterMissingConfig(config)) return '파라미터 누락 검토의 누락 예외 조건을 모두 입력해 주세요.';
     }
-    if (options.requireRvt && !state.rvtList.length) return 'RVT 파일을 추가하세요.';
-    if (options.requireRvt && !getCheckedRvtPaths().length) return '검토할 RVT를 1개 이상 선택하세요.';
+    if (options.requireRvt && !state.rvtList.length) return 'RVT 파일을 추가해 주세요.';
+    if (options.requireRvt && !getCheckedRvtPaths().length) return '검토할 RVT를 1개 이상 선택해 주세요.';
     return '';
   }
 
@@ -6490,13 +6494,13 @@ function buildConditionExtractWorkflowRow() {
       const splitByFile = !!(choice && typeof choice === 'object' && choice.splitByFile);
       resetExcelProgressState();
       setBusyState(true);
-      ProgressDialog.show('엑셀 내보내기', '엑셀 내보내기를 준비하는 중...');
+      ProgressDialog.show('엑셀 내보내기', '엑셀 내보내기를 준비하는 중입니다.');
       ProgressDialog.update(
         0,
-        splitByFile ? '엑셀 저장 폴더를 준비하는 중...' : '엑셀 내보내기를 준비하는 중...',
+        splitByFile ? '엑셀 저장 폴더를 준비하는 중입니다.' : '엑셀 내보내기를 준비하는 중입니다.',
         splitByFile
           ? '저장 폴더를 선택한 뒤 파일별 개별 엑셀을 생성합니다.'
-          : '결과 시트와 저장 옵션을 정리하는 중...'
+          : '결과 시트와 저장 옵션을 정리하는 중입니다.'
       );
       post('hub:multi-export', {
         key,
@@ -6512,14 +6516,15 @@ function buildConditionExtractWorkflowRow() {
     (state.ui.openMultiButtons || []).forEach((btn) => {
       if (!btn) return;
       btn.disabled = !!blockReason;
-      btn.title = blockReason || '';
+      if (blockReason) btn.setAttribute('aria-label', blockReason);
+      else btn.removeAttribute('aria-label');
     });
   }
 
   function getOpenMultiBlockingReason() {
-    if (state.busy) return '작업 진행 중입니다.';
+    if (state.busy) return '작업을 진행하는 중입니다.';
     const enabledCount = FEATURE_KEYS.filter((k) => state.features[k].enabled).length;
-    if (!enabledCount) return '선택된 기능이 있을 때만 RVT 여러개 검토를 열 수 있습니다.';
+    if (!enabledCount) return '선택된 기능이 있을 때만 RVT 여러 개 검토를 열 수 있습니다.';
     return '';
   }
 
@@ -6528,7 +6533,8 @@ function buildConditionExtractWorkflowRow() {
     (state.ui.modalRunButtons || []).forEach((btn) => {
       if (!btn) return;
       btn.disabled = state.busy || !!blockReason;
-      btn.title = btn.disabled ? blockReason : '';
+      if (btn.disabled && blockReason) btn.setAttribute('aria-label', blockReason);
+      else btn.removeAttribute('aria-label');
     });
   }
 
@@ -6562,7 +6568,8 @@ function buildConditionExtractWorkflowRow() {
 
     if (state.ui.bqcRecentOpenBtn) {
       state.ui.bqcRecentOpenBtn.disabled = state.busy;
-      state.ui.bqcRecentOpenBtn.title = rows.length ? '' : '현재 화면의 최근 결과를 확인합니다.';
+      if (rows.length) state.ui.bqcRecentOpenBtn.removeAttribute('aria-label');
+      else state.ui.bqcRecentOpenBtn.setAttribute('aria-label', '현재 화면의 최근 결과를 확인합니다.');
     }
 
     (state.ui.resultResetButtons || []).forEach((btn) => {
@@ -6775,7 +6782,7 @@ function buildConditionExtractWorkflowRow() {
       buildSettingsModal.body.style.width = '100%';
       buildSettingsModal.body.style.justifyContent = 'stretch';
     }
-    buildSettingsModal.title.textContent = `${title || ''} 설정`;
+    buildSettingsModal.titleEl.textContent = `${title || ''} 설정`;
     const readiness = key === 'common' ? { label: '설정', className: 'chip--ok' } : getFeatureReadiness(config);
     if (buildSettingsModal.badge) {
       buildSettingsModal.badge.textContent = readiness.label;
@@ -6941,7 +6948,7 @@ function buildConditionExtractWorkflowRow() {
       && Number.isFinite(explicitEnd)
       && explicitEnd > explicitStart;
     const isSplitBatchInit = phase === 'EXCEL_INIT'
-      && message.includes('파일별 엑셀 저장 중')
+      && message.includes('파일별 엑셀 저장')
       && total > 0;
 
     if (hasExplicitWindow || isSplitBatchInit) {
@@ -7026,20 +7033,20 @@ function buildConditionExtractWorkflowRow() {
 
   function buildExcelSubtitle(phase, current, total) {
     switch (normalizeExcelPhase(phase)) {
-      case 'EXCEL_INIT': return '엑셀 워크북 준비 중';
-      case 'EXCEL_WRITE': return `엑셀 데이터 작성 중 (${current}/${Math.max(total, current || 1)})`;
-      case 'EXCEL_SAVE': return '엑셀 저장 중';
-      case 'AUTOFIT': return '열 너비 자동 조정 중';
-      case 'DONE': return '엑셀 내보내기 완료';
-      case 'ERROR': return '엑셀 내보내기 오류';
-      default: return '엑셀 내보내기 진행중';
+      case 'EXCEL_INIT': return '다중 검토 결과 엑셀 워크북을 준비하는 중입니다.';
+      case 'EXCEL_WRITE': return `다중 검토 결과 엑셀 데이터를 작성하는 중입니다. (${current}/${Math.max(total, current || 1)})`;
+      case 'EXCEL_SAVE': return '다중 검토 결과 엑셀을 저장하는 중입니다.';
+      case 'AUTOFIT': return '다중 검토 결과 엑셀 열 너비를 자동으로 맞추는 중입니다.';
+      case 'DONE': return '다중 검토 결과 엑셀 내보내기 완료';
+      case 'ERROR': return '다중 검토 결과 엑셀 내보내기 오류';
+      default: return '다중 검토 결과 엑셀 내보내기를 진행하는 중입니다.';
     }
   }
 
   function formatExcelDetail(phase, message, detail) {
     if (detail) return detail;
     if (message) return message;
-    return normalizeExcelPhase(phase) === 'DONE' ? '엑셀 내보내기가 완료되었습니다.' : '';
+    return normalizeExcelPhase(phase) === 'DONE' ? '다중 검토 결과 엑셀 내보내기가 완료되었습니다.' : '';
   }
 
   function updateActionSummaryVisibility() {
@@ -7107,7 +7114,7 @@ function buildConditionExtractWorkflowRow() {
         return { label: '설정 필요', className: 'chip--warn' };
       }
     }
-    return { label: '검토 준비됨', className: 'chip--ok' };
+    return { label: '검토 준비 완료', className: 'chip--ok' };
   }
 
   function updateDrawerBadge(key) {
@@ -7134,9 +7141,9 @@ function buildConditionExtractWorkflowRow() {
   function buildCommonSummary() {
     const committed = state.common.configCommitted;
     const extraCount = committed.extraParams ? committed.extraParams.split(',').filter((v) => v.trim()).length : 0;
-    const filterText = committed.targetFilter ? `포함:${committed.targetFilter}` : '포함:없음';
-    const excludeText = committed.excludeTargetFilter ? `제외:${committed.excludeTargetFilter}` : '제외:없음';
-    return `extra=${extraCount} / ${filterText} / ${excludeText}`;
+    const filterText = committed.targetFilter ? `포함 필터 ${committed.targetFilter}` : '포함 필터가 없습니다.';
+    const excludeText = committed.excludeTargetFilter ? `제외 필터 ${committed.excludeTargetFilter}` : '제외 필터가 없습니다.';
+    return `추가 파라미터 ${extraCount}개 / ${filterText} / ${excludeText}`;
   }
 
   function updateCommonSummary(el) {
@@ -7196,7 +7203,7 @@ function buildConditionExtractWorkflowRow() {
   function getHelpItems(key) {
     if (key === 'common') {
       return [
-        '추가 Parameter 값은 콤마로 구분해 입력합니다.',
+        '추가 파라미터 값은 콤마로 구분해 입력합니다.',
         '검토 대상 필터는 필터에 맞는 객체만 검토합니다.',
         '검토 제외 대상 필터는 필터에 맞는 객체를 제외하고 검토합니다.'
       ];
@@ -7206,79 +7213,79 @@ function buildConditionExtractWorkflowRow() {
         '공유 파라미터 txt 목록에서 검토 대상을 검색해 선택합니다.',
         '여러 파라미터를 선택하면 같은 논리로 연속성 검토를 진행합니다.',
         '추가 추출 파라미터는 인스턴스 우선, 없으면 타입 파라미터에서도 값을 찾습니다.',
-        'Point X / Point Y 옵션을 켜면 결과에 좌표 컬럼이 자동으로 추가됩니다.',
-        '선형 길이 / 방향 벡터 옵션을 켜면 Curve Length, Direction X/Y/Z 컬럼이 함께 추가됩니다.',
-        '허용범위와 단위는 기존 커넥터 검토 로직 그대로 적용됩니다.'
+        '좌표 X/Y 옵션을 켜면 결과 엑셀에 좌표 열이 자동으로 추가됩니다.',
+        '선형 길이/방향 벡터 옵션을 켜면 결과 엑셀에 선형 길이(Curve Length)와 방향 벡터(Direction X/Y/Z) 열이 함께 추가됩니다.',
+        '허용 범위와 단위는 기존 커넥터 검토 로직 그대로 적용됩니다.'
       ];
     }
     if (key === 'floorinfo') {
       return [
         '활성 문서의 레벨 중 층정보 영역을 구분할 레벨만 선택하고, 그 구간별 기대 층정보 값을 설정합니다.',
-        '체크하지 않은 중간 레벨은 무시되므로 1F, 1.5F, 2F 중 1F와 2F만 선택해 1F~2F 구간을 1F로 판정할 수 있습니다.',
+        '선택하지 않은 중간 레벨은 무시되므로 1F, 1.5F, 2F 중 1F와 2F만 선택해 1F~2F 구간을 1F로 판정할 수 있습니다.',
         '객체가 여러 레벨 구간을 관통하면 가장 아래 구간의 층정보를 기대값으로 사용합니다.',
-        '공통 옵션의 검토 대상/검토 제외 필터로 평가 대상을 제한하고, 추가 Parameter 값은 결과 엑셀 컬럼으로 함께 저장합니다.',
-        'BQC Sub 기능이라 필요한 프로젝트에서만 선택해 보조 검토로 활용하면 됩니다.'
+        '공통 옵션의 검토 대상/검토 제외 필터로 평가 대상을 제한하고, 추가 파라미터 값은 결과 엑셀 열로 함께 저장합니다.',
+        'BQC 보조 기능이라 필요한 프로젝트에서만 선택해 추가 검토로 활용하면 됩니다.'
       ];
     }
     if (key === 'familysuitability') {
       return [
-        '기준 엑셀에서 Category, Family, Type 헤더를 찾아 실제 사용 객체의 조합과 비교합니다.',
+        '기준 엑셀에서 카테고리, 패밀리, 타입 헤더를 찾아 실제 사용 객체의 조합과 비교합니다.',
         '시스템 타입과 로더블 패밀리를 모두 집계하지만, 타입 정의만 있고 실제 배치되지 않은 항목은 제외합니다.',
-        '기준 일치, 기준 미일치, 필터 일치의 Review 문구를 각각 다르게 입력할 수 있습니다.',
-        '필터 규칙은 OR 조건으로 평가되며, 하나라도 일치하면 필터 Review를 적용합니다. 여러 개가 동시에 일치하면 위에서 아래 순서로 먼저 등록한 문구를 사용합니다.',
+        '기준 일치, 기준 미일치, 필터 일치의 검토 문구를 각각 다르게 입력할 수 있습니다.',
+        '필터 규칙은 OR 조건으로 평가되며, 하나라도 일치하면 필터 검토 문구를 적용합니다. 여러 개가 동시에 일치하면 위에서 아래 순서로 먼저 등록한 문구를 사용합니다.',
         '최근 적용한 설정은 자동으로 기억하고, 자주 쓰는 조합은 이름을 붙여 저장/불러오기로 재사용할 수 있습니다.'
       ];
     }
     if (key === 'tapalign') {
       return [
         '탭 또는 분기 피팅의 연결 커넥터 축이 연결된 배관/덕트 중심축을 통과하는지 확인합니다.',
-        '허용범위 이내의 중심축 이탈은 오류로 보지 않으며, 초과한 경우만 결과에 포함합니다.',
+        '허용 범위 이내의 중심축 이탈은 오류로 보지 않으며, 초과한 경우만 결과에 포함합니다.',
         '거리 단위는 설정값을 따르고, 결과 내용 언어는 엑셀 내보내기 시점에 선택합니다.',
         '추가 추출 파라미터, 포함/제외 대상 필터와 추가 추출 옵션은 BQC 공통 설정 값을 사용합니다.'
       ];
     }
     if (key === 'dupclash') {
       return [
-        '기능 설정에서 중복 검토 또는 자체간섭 검토 중 하나를 선택합니다.',
-        '기존 중복/자체간섭 화면의 개별 범위, 제외 키워드 같은 세부 필터는 사용하지 않습니다.',
-        '공통 설정의 포함/제외 대상 필터만 그대로 따라가며, 추가 파라미터는 결과 엑셀 컬럼으로 저장합니다.',
+        '기능 설정에서 중복 검토 또는 자체 간섭 검토 중 하나를 선택합니다.',
+        '기존 중복 / 자체 간섭 화면의 개별 범위, 제외 키워드 같은 세부 필터는 사용하지 않습니다.',
+        '공통 설정의 포함/제외 대상 필터만 그대로 따라가며, 추가 파라미터는 결과 엑셀 열로 저장합니다.',
         '실행 결과 요약과 엑셀 내보내기도 선택한 모드 결과만 표시합니다.'
       ];
     }
     if (key === 'guid') {
       return [
         '먼저 GUID 검토 결과를 삭제용 엑셀로 내보내고, 같은 엑셀을 수정한 뒤 다시 불러오는 흐름으로 사용합니다.',
-        "삭제할 행은 엑셀의 '삭제여부' 컬럼에 '삭제'라고 입력하면 됩니다.",
+        "삭제할 행은 엑셀의 '삭제여부' 열에 '삭제'라고 입력하면 됩니다.",
         '삭제용 엑셀 불러오기는 마지막 숨김 키 행을 기준으로 프로젝트/로드 패밀리 파라미터를 찾아 적용합니다.',
-        '센트럴 파일과 Workshared 파일은 항상 로컬로, 모든 Workset을 닫은 상태로 열어 처리합니다.'
+        '센트럴 파일과 워크셰어링 파일은 항상 로컬로, 모든 웍셋을 닫은 상태로 열어 처리합니다.'
       ];
     }
     if (key === 'worksetassignment') {
       return [
-        '모델 카테고리 객체를 순회하면서 현재 배정된 workset 이름을 확인합니다.',
-        '오류 대상 workset 이름을 입력하면 그 workset에 속한 객체만 오류로 출력하고, 비워두면 Workset1 이외의 workset을 모두 오류로 봅니다.',
-        '공통 옵션의 검토 대상/검토 제외 필터로 검토 범위를 제한하고, 추가 Parameter 값은 오류 결과 행의 엑셀 컬럼으로 함께 저장합니다.',
-        '오류가 하나도 없을 때는 검토한 객체 수와 함께 Workset1 정상 배정 요약 1행만 내보냅니다.'
+        '모델 카테고리 객체를 순회하면서 현재 배정된 웍셋 이름을 확인합니다.',
+        '오류 대상 웍셋 이름을 입력하면 그 웍셋에 속한 객체만 오류로 출력하고, 비워두면 기본 웍셋(Workset1) 이외의 웍셋을 모두 오류로 봅니다.',
+        '공통 옵션의 검토 대상/검토 제외 필터로 검토 범위를 제한하고, 추가 파라미터 값은 오류 결과 행의 엑셀 열로 함께 저장합니다.',
+        '오류가 하나도 없을 때는 검토한 객체 수와 함께 기본 웍셋(Workset1) 정상 배정 요약 1행만 내보냅니다.'
       ];
     }
     if (key === 'parameterduplication') {
       return [
-        '추가된 Project Parameter를 수집한 뒤 이름이 중복되는 파라미터를 찾습니다.',
-        '검토 범위를 전체 Project Parameter 또는 지정한 파라미터 이름만으로 제한할 수 있습니다.',
+        '추가된 프로젝트 파라미터를 수집한 뒤 이름이 중복되는 파라미터를 찾습니다.',
+        '검토 범위를 전체 프로젝트 파라미터 또는 지정한 파라미터 이름만으로 제한할 수 있습니다.',
         '지정 파라미터는 현재 Revit에 연결된 공유파라미터 파일에서 검색해 선택합니다.',
         '전체 검토 상태에서 목록을 클릭하면 지정 파라미터 검토로 자동 전환됩니다.',
         '최근 적용한 검토 대상은 자동으로 기억되며, 최근 검토 항목에서 바로 다시 불러올 수 있습니다.',
-        '엑셀은 BQC 결과 포맷으로 내보내고, 중복이면 Error, 아니면 OK와 성공 메시지를 기록합니다.'
+        '엑셀은 BQC 결과 포맷으로 내보내고, 중복이면 오류(Error), 아니면 정상(OK)과 성공 메시지를 기록합니다.'
       ];
     }
     if (key === 'parametermissing') {
       return [
         '누락 검토 파라미터는 현재 Revit에 연결된 공유파라미터 TXT의 Text 정의만 검색해 선택합니다.',
         '검토 대상은 BQC 공통 옵션의 검토 대상/검토 제외 대상 필터를 그대로 사용합니다.',
-        '공통 옵션의 추가 Parameter 값은 누락 오류 결과 엑셀 컬럼으로 함께 저장합니다.',
+        '공통 옵션의 추가 파라미터 값은 누락 오류 결과 엑셀 열로 함께 저장합니다.',
         '누락 예외 필터는 선택한 파라미터마다 따로 설정하며, 조건이 맞으면 비어 있어도 누락으로 보지 않습니다.',
         '최근 적용한 설정은 자동으로 기억하며, 현재 설정은 파일로 저장하거나 다시 불러올 수 있습니다.',
-        '값이 필요한 조건은 파라미터명과 값을 함께 입력하고, HasValue / HasNoValue는 값 없이 사용할 수 있습니다.'
+        '값이 필요한 조건은 파라미터명과 값을 함께 입력하고, 값 있음 / 값 없음 조건은 값 없이 사용할 수 있습니다.'
       ];
     }
     if (key === 'familylink') {
@@ -7290,13 +7297,13 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'points') {
       return [
         '좌표 추출 단위를 선택합니다.',
-        'Decimal Feet / Meter / Millimeter를 지원합니다.'
+        '십진 피트, 미터, 밀리미터를 지원합니다.'
       ];
     }
     if (key === 'linkworkset') {
       return [
-        'top-level Revit 링크를 순회하면서 현재 로드 상태와 open user workset 현황을 점검합니다.',
-        '자동 적용을 켜면 기본 workset1 만 열리도록 링크를 재로드합니다.',
+        '최상위 Revit 링크를 순회하면서 현재 로드 상태와 열려 있는 사용자 웍셋 현황을 점검합니다.',
+        '자동 적용을 켜면 기본 웍셋(Workset1)만 열리도록 링크를 재로드합니다.',
         '활성 문서와 다중 RVT 배치 실행 모두 같은 결과 포맷으로 요약과 엑셀 내보내기를 지원합니다.'
       ];
     }
@@ -7377,7 +7384,7 @@ function buildConditionExtractWorkflowRow() {
     const names = (Array.isArray(items) ? items : [])
       .map((item) => String(item || '').trim())
       .filter(Boolean);
-    if (!names.length) return '입력 없음';
+    if (!names.length) return '입력한 파라미터가 없습니다.';
     if (names.length <= maxCount) return names.join(', ');
     return `${names.slice(0, maxCount).join(', ')} 외 ${names.length - maxCount}개`;
   }
@@ -7542,7 +7549,7 @@ function buildConditionExtractWorkflowRow() {
 
   function buildParameterMissingConditionSummary(rows, combinationMode) {
     const configured = (Array.isArray(rows) ? rows : []).filter((row) => isParameterMissingConditionConfigured(row));
-    if (!configured.length) return '없음';
+    if (!configured.length) return '조건이 없습니다.';
     const joiner = normalizeParameterMissingCombinationMode(combinationMode, 'And') === 'Or' ? ' OR ' : ' AND ';
     return configured
       .map((row) => {
@@ -7557,7 +7564,7 @@ function buildConditionExtractWorkflowRow() {
 
   function buildParameterMissingSelectionPreview(items, maxCount = 4) {
     const names = (Array.isArray(items) ? items : []).map((item) => String(item || '').trim()).filter(Boolean);
-    if (!names.length) return '선택 없음';
+    if (!names.length) return '선택한 파라미터가 없습니다.';
     if (names.length <= maxCount) return names.join(', ');
     return `${names.slice(0, maxCount).join(', ')} 외 ${names.length - maxCount}개`;
   }
@@ -7581,7 +7588,7 @@ function buildConditionExtractWorkflowRow() {
   function buildParameterDuplicationRecentOptionLabel(item) {
     const snapshot = createParameterDuplicationConfigSnapshot(item);
     const baseLabel = snapshot.scope === 'all'
-      ? '전체 Project Parameter'
+      ? '전체 프로젝트 파라미터'
       : `지정 ${snapshot.parameterNames.length}개 · ${buildParameterDuplicationNamePreview(snapshot.parameterNames, 3)}`;
     const sourcePath = String(snapshot.sharedParamSourcePath || '').trim();
     const sourceLabel = sourcePath ? getPathLeafLabel(sourcePath, sourcePath) : '';
@@ -7809,7 +7816,7 @@ function buildConditionExtractWorkflowRow() {
     return [
       timeLabel,
       `파라미터 ${snapshot.parameterNames.length}개`,
-      exceptionRuleCount ? `예외 ${exceptionRuleCount}개` : '예외 없음',
+      exceptionRuleCount ? `예외 ${exceptionRuleCount}개` : '예외가 없습니다.',
       buildParameterMissingSelectionPreview(snapshot.parameterNames, 3)
     ].filter(Boolean).join(' · ');
   }
@@ -7896,11 +7903,11 @@ function buildConditionExtractWorkflowRow() {
     try {
       parsed = JSON.parse(String(json || ''));
     } catch {
-      throw new Error('설정 파일 JSON을 읽지 못했습니다.');
+      throw new Error('파라미터 누락 검토 설정 파일 JSON을 읽지 못했습니다.');
     }
 
     if (!parsed || typeof parsed !== 'object') {
-      throw new Error('올바른 설정 파일이 아닙니다.');
+      throw new Error('올바른 파라미터 누락 검토 설정 파일이 아닙니다.');
     }
 
     if (parsed.kind && parsed.kind !== PARAMETER_MISSING_PRESET_KIND) {
@@ -7909,13 +7916,13 @@ function buildConditionExtractWorkflowRow() {
 
     const version = Number(parsed.version || PARAMETER_MISSING_PRESET_VERSION);
     if (version > PARAMETER_MISSING_PRESET_VERSION) {
-      throw new Error('더 최신 버전의 설정 파일입니다.');
+      throw new Error('현재 버전보다 최신 파라미터 누락 검토 설정 파일입니다.');
     }
 
     const source = parsed.config && typeof parsed.config === 'object' ? parsed.config : parsed;
     const snapshot = createParameterMissingConfigSnapshot(source);
     if (!snapshot.parameterNames.length) {
-      throw new Error('설정 파일에 누락 검토 파라미터가 없습니다.');
+      throw new Error('파라미터 누락 검토 설정 파일에 검토 파라미터가 없습니다.');
     }
     return snapshot;
   }
@@ -7950,7 +7957,7 @@ function buildConditionExtractWorkflowRow() {
         }
       };
       reader.onerror = () => {
-        toast('설정 파일을 읽지 못했습니다.', 'err');
+        toast('파라미터 누락 검토 설정 파일을 읽지 못했습니다.', 'err');
       };
       reader.readAsText(file, 'utf-8');
     }, { once: true });
@@ -8083,7 +8090,7 @@ function buildConditionExtractWorkflowRow() {
 
   function getFamilySuitabilityCriteriaLabel(path) {
     const text = String(path || '').trim();
-    if (!text) return '기준 엑셀 미선택';
+    if (!text) return '기준 엑셀이 선택되지 않았습니다.';
     const parts = text.split(/[\\/]/).filter(Boolean);
     return parts.length ? parts[parts.length - 1] : text;
   }
@@ -8108,16 +8115,16 @@ function buildConditionExtractWorkflowRow() {
     const excludeEndDummy = !!(feature.configDraft?.excludeEndDummy ?? feature.configCommitted?.excludeEndDummy);
     const includePointXY = !!(feature.configDraft?.includePointXY ?? feature.configCommitted?.includePointXY);
     const includeLinearMetrics = !!(feature.configDraft?.includeLinearMetrics ?? feature.configCommitted?.includeLinearMetrics);
-    const selectedText = selected.length ? selected.join(', ') : '선택 없음';
+    const selectedText = selected.length ? selected.join(', ') : '선택한 파라미터가 없습니다.';
     const optionParts = [];
     if (excludeEndDummy) optionParts.push('End+Dummy 제외');
-    if (includePointXY) optionParts.push('XY');
-    if (includeLinearMetrics) optionParts.push('Dir');
+    if (includePointXY) optionParts.push('좌표 X/Y');
+    if (includeLinearMetrics) optionParts.push('선형 길이/방향');
     const optionText = optionParts.length ? ` · 옵션 ${optionParts.join(', ')}` : '';
     target.top.textContent = feature.enabled
-      ? '체크됨 · 설정창에서 검토 파라미터를 선택하거나 수정할 수 있습니다.'
-      : '체크 후 옵션을 열어 공유 파라미터 목록에서 검토 대상을 선택하세요.';
-    target.sub.textContent = `선택 파라미터 ${selected.length}개 · ${selectedText} · 허용범위 ${tol} ${unit}${optionText}`;
+      ? '선택 완료 · 설정 창에서 검토 파라미터를 선택하거나 수정할 수 있습니다.'
+      : '필요할 때만 켠 뒤 설정 창에서 공유 파라미터 검토 대상을 선택해 주세요.';
+    target.sub.textContent = `선택 파라미터 ${selected.length}개 · ${selectedText} · 허용 범위 ${tol} ${unit}${optionText}`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
       FEATURE_META.connector?.label || '파라미터 값 연속성 검토',
@@ -8139,7 +8146,7 @@ function buildConditionExtractWorkflowRow() {
     const rules = draftRules.length ? draftRules : committedRules;
     const selectedRules = rules.filter((rule) => rule.useAsBoundary !== false);
     const configuredCount = selectedRules.filter((rule) => String(rule.expectedValue || '').trim()).length;
-    const parameterName = feature.configDraft?.parameterName || feature.configCommitted?.parameterName || '(미입력)';
+    const parameterName = feature.configDraft?.parameterName || feature.configCommitted?.parameterName || '입력 필요';
     const common = state.common.configCommitted || {};
     const commonExtraCount = String(common.extraParams || '')
       .split(',')
@@ -8148,9 +8155,9 @@ function buildConditionExtractWorkflowRow() {
       .length;
     const hasCommonScope = !!String(common.targetFilter || '').trim() || !!String(common.excludeTargetFilter || '').trim();
     target.top.textContent = feature.enabled
-      ? '체크됨 · 설정창에서 영역 기준 레벨과 기대 층정보 값을 관리할 수 있습니다.'
-      : 'Sub 기능입니다. 필요할 때만 켜서 층정보 파라미터의 레벨/Z 일치 여부를 검토하세요.';
-    target.sub.textContent = `파라미터 ${parameterName} · 영역 기준 ${selectedRules.length || 0}개 · 규칙 ${configuredCount}/${selectedRules.length || 0}개 · ${hasCommonScope ? '공통필터 적용' : '공통필터 없음'} · 추가추출 ${commonExtraCount}개`;
+      ? '선택 완료 · 설정 창에서 영역 기준 레벨과 기대 층정보 값을 관리할 수 있습니다.'
+      : '보조 기능입니다. 필요할 때만 켜서 층정보 파라미터의 레벨/Z 일치 여부를 검토해 주세요.';
+    target.sub.textContent = `파라미터 ${parameterName} · 영역 기준 ${selectedRules.length || 0}개 · 규칙 ${configuredCount}/${selectedRules.length || 0}개 · ${hasCommonScope ? '공통 필터 적용됨' : '공통 필터가 없습니다.'} · 추가 추출 ${commonExtraCount}개`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
       FEATURE_META.floorinfo?.label || '층/레벨 정보 검토',
@@ -8186,11 +8193,11 @@ function buildConditionExtractWorkflowRow() {
     });
     const criteriaLabel = getFamilySuitabilityCriteriaLabel(criteriaPath);
     if (!feature.enabled) {
-      target.top.textContent = 'Sub 기능입니다. 필요할 때만 켜서 실제 사용 Family / Type 조합의 기준 적합성을 검토하세요.';
+      target.top.textContent = '보조 기능입니다. 필요할 때만 켜서 실제 사용 패밀리/타입 조합의 기준 적합성을 검토해 주세요.';
     } else if (!criteriaPath || !matchReview || !mismatchReview || invalidFilter) {
-      target.top.textContent = '체크됨 · 기준 엑셀, Review 문구, 필터 규칙을 마저 확인하면 바로 실행할 수 있습니다.';
+      target.top.textContent = '선택 완료 · 기준 엑셀, 검토 문구, 필터 규칙을 마저 확인하면 바로 실행할 수 있습니다.';
     } else {
-      target.top.textContent = '체크됨 · 실제 사용된 객체만 집계해 기준 일치, 미일치, 필터 우선 Review를 출력합니다.';
+      target.top.textContent = '선택 완료 · 실제 사용된 객체만 집계해 기준 일치, 미일치, 필터 우선 검토 문구를 출력합니다.';
     }
 
     const reviewState = `${matchReview ? '일치 문구 설정' : '일치 문구 필요'} / ${mismatchReview ? '미일치 문구 설정' : '미일치 문구 필요'}`;
@@ -8201,16 +8208,16 @@ function buildConditionExtractWorkflowRow() {
       ? `기준 ${comboCount}조합`
       : rowCount
         ? `원본 ${rowCount}행`
-        : '기준 정보 없음';
+        : '기준 정보가 없습니다.';
     target.sub.textContent = `${criteriaLabel} · ${basisState} · ${filterState} · ${reviewState}`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
-      FEATURE_META.familysuitability?.label || 'Family 적합성 검토',
+      FEATURE_META.familysuitability?.label || '패밀리 타입 적합성 검토',
       FEATURE_META.familysuitability?.desc || '',
       target.top.textContent,
       target.sub.textContent
     ], {
-      title: FEATURE_META.familysuitability?.label || 'Family 적합성 검토',
+      title: FEATURE_META.familysuitability?.label || '패밀리 타입 적합성 검토',
       desc: `${FEATURE_META.familysuitability?.desc || ''} ${target.sub.textContent}`.trim()
     });
   }
@@ -8233,14 +8240,14 @@ function buildConditionExtractWorkflowRow() {
       .filter(Boolean)
       .length;
     const optionParts = [];
-    if (common.includePointXY) optionParts.push('XY');
-    if (common.includeLinearMetrics) optionParts.push('Dir');
-    const optionText = optionParts.length ? ` · 공통옵션 ${optionParts.join(', ')}` : '';
-    const featureFilterNote = featureFilterText ? ' · 기능필터 적용' : '';
+    if (common.includePointXY) optionParts.push('좌표 X/Y');
+    if (common.includeLinearMetrics) optionParts.push('선형 길이/방향');
+    const optionText = optionParts.length ? ` · 공통 옵션 ${optionParts.join(', ')}` : '';
+    const featureFilterNote = featureFilterText ? ' · 기능 필터 적용' : '';
     target.top.textContent = feature.enabled
-      ? '체크됨 · 연결 라인 중심축과 탭/분기 피팅 축의 정렬 상태를 검토합니다.'
-      : 'Sub 기능입니다. 필요할 때만 켜서 탭/분기 피팅 축 이탈 여부를 검토하세요.';
-    target.sub.textContent = `허용범위 ${tol} ${unit} · 범위 ${resolveTapAlignDomainLabel(domain)} · 추가추출 ${extraCount}개${optionText}${featureFilterNote}`;
+      ? '선택 완료 · 연결 라인 중심축과 탭/분기 피팅 축의 정렬 상태를 검토합니다.'
+      : '보조 기능입니다. 필요할 때만 켜서 탭/분기 피팅 축 이탈 여부를 검토해 주세요.';
+    target.sub.textContent = `허용 범위 ${tol} ${unit} · 범위 ${resolveTapAlignDomainLabel(domain)} · 추가 추출 ${extraCount}개${optionText}${featureFilterNote}`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
       FEATURE_META.tapalign?.label || '탭/분기 축 틀어짐 검토',
@@ -8267,21 +8274,21 @@ function buildConditionExtractWorkflowRow() {
       .map((value) => value.trim())
       .filter(Boolean)
       .length;
-    const filterText = String(common.targetFilter || '').trim() || '없음';
-    const excludeText = String(common.excludeTargetFilter || '').trim() || '없음';
+    const filterText = String(common.targetFilter || '').trim() || '필터가 없습니다.';
+    const excludeText = String(common.excludeTargetFilter || '').trim() || '제외 필터가 없습니다.';
 
     target.top.textContent = feature.enabled
-      ? '체크됨 · 설정창에서 중복검토와 자체간섭검토 중 하나를 선택해 실행합니다.'
-      : 'Sub 기능입니다. 체크 후 설정창에서 검토 모드를 고르세요.';
+      ? '선택 완료 · 설정 창에서 중복 검토와 자체 간섭 검토 중 하나를 선택해 실행합니다.'
+      : '보조 기능입니다. 필요할 때만 켠 뒤 설정 창에서 검토 모드를 선택해 주세요.';
     target.sub.textContent = `선택 모드 ${modeLabel} · 포함 필터 ${filterText} · 제외 필터 ${excludeText} · 추가 파라미터 ${extraCount}개`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
-      FEATURE_META.dupclash?.label || '중복 / 자체간섭 검토',
+      FEATURE_META.dupclash?.label || '중복 / 자체 간섭 검토',
       FEATURE_META.dupclash?.desc || '',
       target.top.textContent,
       target.sub.textContent
     ], {
-      title: FEATURE_META.dupclash?.label || '중복 / 자체간섭 검토',
+      title: FEATURE_META.dupclash?.label || '중복 / 자체 간섭 검토',
       desc: `${FEATURE_META.dupclash?.desc || ''} ${target.sub.textContent}`.trim()
     });
   }
@@ -8303,16 +8310,16 @@ function buildConditionExtractWorkflowRow() {
     const hasCommonScope = !!String(common.targetFilter || '').trim() || !!String(common.excludeTargetFilter || '').trim();
 
     if (!feature.enabled) {
-      target.top.textContent = 'Sub 기능입니다. 필요할 때만 켜서 Workset1 기준 또는 특정 workset 존재 여부를 검토하세요.';
+      target.top.textContent = '보조 기능입니다. 필요할 때만 켜서 기본 웍셋(Workset1) 기준 또는 특정 웍셋 존재 여부를 검토해 주세요.';
     } else if (flaggedWorksetName) {
-      target.top.textContent = '체크됨 · 입력한 workset에 속한 객체만 오류로 검토합니다.';
+      target.top.textContent = '선택 완료 · 입력한 웍셋에 속한 객체만 오류로 검토합니다.';
     } else {
-      target.top.textContent = '체크됨 · Workset1 이외의 workset에 속한 객체를 오류로 검토합니다.';
+      target.top.textContent = '선택 완료 · 기본 웍셋(Workset1) 이외의 웍셋에 속한 객체를 오류로 검토합니다.';
     }
 
     target.sub.textContent = flaggedWorksetName
-      ? `기준 ${expectedWorksetName} · 오류 대상 ${flaggedWorksetName} · ${hasCommonScope ? '공통필터 적용' : '공통필터 없음'} · 추가추출 ${commonExtraCount}개`
-      : `기준 ${expectedWorksetName} · 입력 대상 없음(Workset1 외 전체 오류) · ${hasCommonScope ? '공통필터 적용' : '공통필터 없음'} · 추가추출 ${commonExtraCount}개`;
+      ? `기준 ${expectedWorksetName} · 오류 대상 ${flaggedWorksetName} · ${hasCommonScope ? '공통 필터 적용됨' : '공통 필터가 없습니다.'} · 추가 추출 ${commonExtraCount}개`
+      : `기준 ${expectedWorksetName} · 입력 대상이 없습니다. 기본 웍셋 외 전체를 오류로 검토합니다. · ${hasCommonScope ? '공통 필터 적용됨' : '공통 필터가 없습니다.'} · 추가 추출 ${commonExtraCount}개`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
       FEATURE_META.worksetassignment?.label || '웍셋 배정 검토',
@@ -8338,29 +8345,29 @@ function buildConditionExtractWorkflowRow() {
         ? committed.parameterNames
         : [];
     const sourcePath = String(draft.sharedParamSourcePath || committed.sharedParamSourcePath || '').trim();
-    const scopeLabel = scope === 'selected' ? '지정 파라미터만' : '추가된 전체 Project Parameter';
+    const scopeLabel = scope === 'selected' ? '지정 파라미터만' : '추가된 전체 프로젝트 파라미터';
     const selectedText = buildParameterDuplicationNamePreview(names);
     const sourceText = sourcePath ? ` · 공유파라미터 ${getPathLeafLabel(sourcePath, sourcePath)}` : '';
 
     if (!feature.enabled) {
-      target.top.textContent = 'Sub 기능입니다. 필요할 때만 켜서 Project Parameter 이름 중복 여부를 검토하세요.';
+      target.top.textContent = '보조 기능입니다. 필요할 때만 켜서 프로젝트 파라미터 이름 중복 여부를 검토해 주세요.';
     } else if (scope === 'selected' && !names.length) {
-      target.top.textContent = '체크됨 · 지정 파라미터만 검토하려면 공유파라미터 목록에서 대상 파라미터를 1개 이상 선택하세요.';
+      target.top.textContent = '선택 완료 · 지정 파라미터만 검토하려면 공유파라미터 목록에서 대상 파라미터를 1개 이상 선택해 주세요.';
     } else {
-      target.top.textContent = '체크됨 · Project Parameter 이름 중복 여부를 BQC 포맷으로 정리합니다.';
+      target.top.textContent = '선택 완료 · 프로젝트 파라미터 이름 중복 여부를 BQC 포맷으로 정리합니다.';
     }
 
     target.sub.textContent = scope === 'selected'
       ? `검토 범위 ${scopeLabel} · 대상 ${names.length}개${sourceText} · ${selectedText}`
-      : `검토 범위 ${scopeLabel} · 문서에 추가된 모든 Project Parameter를 검토합니다.`;
+      : `검토 범위 ${scopeLabel} · 문서에 추가된 모든 프로젝트 파라미터를 검토합니다.`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
-      FEATURE_META.parameterduplication?.label || 'Project Parameter 중복 검토',
+      FEATURE_META.parameterduplication?.label || '프로젝트 파라미터 중복 검토',
       FEATURE_META.parameterduplication?.desc || '',
       target.top.textContent,
       target.sub.textContent
     ], {
-      title: FEATURE_META.parameterduplication?.label || 'Project Parameter 중복 검토',
+      title: FEATURE_META.parameterduplication?.label || '프로젝트 파라미터 중복 검토',
       desc: `${FEATURE_META.parameterduplication?.desc || ''} ${target.sub.textContent}`.trim()
     });
   }
@@ -8384,16 +8391,16 @@ function buildConditionExtractWorkflowRow() {
     const hasCommonScope = !!String(common.targetFilter || '').trim() || !!String(common.excludeTargetFilter || '').trim();
 
     if (!feature.enabled) {
-      target.top.textContent = 'Sub 기능입니다. 필요한 경우에만 켜서 지정한 공유 Text 파라미터의 누락을 검토하세요.';
+      target.top.textContent = '보조 기능입니다. 필요한 경우에만 켜서 지정한 공유 텍스트 파라미터의 누락을 검토해 주세요.';
     } else if (!parameterCount) {
-      target.top.textContent = '체크됨 · 공유파라미터 목록에서 누락 검토할 파라미터를 1개 이상 선택하세요.';
+      target.top.textContent = '선택 완료 · 공유파라미터 목록에서 누락 검토할 파라미터를 1개 이상 선택해 주세요.';
     } else if (hasIncomplete) {
-      target.top.textContent = '체크됨 · 누락 예외 규칙의 미완성 항목을 확인하세요.';
+      target.top.textContent = '선택 완료 · 누락 예외 규칙의 미완성 항목을 확인해 주세요.';
     } else {
-      target.top.textContent = '체크됨 · 공통 검토대상 필터 기준으로 지정 파라미터의 누락 여부를 BQC 포맷으로 정리합니다.';
+      target.top.textContent = '선택 완료 · 공통 검토대상 필터 기준으로 지정 파라미터의 누락 여부를 BQC 포맷으로 정리합니다.';
     }
 
-    target.sub.textContent = `파라미터 ${parameterCount}개 · 누락 예외 ${exceptionRuleCount}개 · ${hasCommonScope ? '공통필터 적용' : '공통필터 없음'} · 추가추출 ${commonExtraCount}개 · ${buildParameterMissingSelectionPreview(config.parameterNames, 5)}`;
+    target.sub.textContent = `파라미터 ${parameterCount}개 · 누락 예외 ${exceptionRuleCount}개 · ${hasCommonScope ? '공통 필터 적용됨' : '공통 필터가 없습니다.'} · 추가 추출 ${commonExtraCount}개 · ${buildParameterMissingSelectionPreview(config.parameterNames, 5)}`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
       FEATURE_META.parametermissing?.label || '파라미터 누락 검토',
@@ -8432,10 +8439,12 @@ function buildConditionExtractWorkflowRow() {
       const nameWrap = div('selected-name');
       const nameMain = document.createElement('strong');
       nameMain.textContent = FEATURE_META[key]?.label || key;
-      nameMain.title = FEATURE_META[key]?.label || key;
+      nameMain.setAttribute('aria-label', FEATURE_META[key]?.label || key);
       const nameSub = document.createElement('span');
       nameSub.textContent = FEATURE_META[key]?.desc || '';
-      nameSub.title = FEATURE_META[key]?.desc || '';
+      if (FEATURE_META[key]?.desc) {
+        nameSub.setAttribute('aria-label', FEATURE_META[key].desc);
+      }
       nameWrap.append(nameMain, nameSub);
       nameCell.append(nameWrap);
 
@@ -8487,7 +8496,7 @@ function buildConditionExtractWorkflowRow() {
     const feature = state.features[key];
     if (!feature) return { label: '검토 전', className: 'status-chip--idle' };
     if (requiresSharedParams(key) && state.sharedParamStatus?.status && state.sharedParamStatus.status !== 'ok') {
-      return { label: 'Shared Param 확인 필요', className: 'status-chip--warn' };
+      return { label: '공유파라미터 확인 필요', className: 'status-chip--warn' };
     }
     if (key === 'familylink') {
       const targets = feature.configCommitted.selectedTargets || [];
@@ -8542,7 +8551,7 @@ function buildConditionExtractWorkflowRow() {
     if (!feature.applied || feature.dirty) {
       return { label: '검토 전', className: 'status-chip--idle' };
     }
-    return { label: '검토 준비됨', className: 'status-chip--ready' };
+    return { label: '검토 준비 완료', className: 'status-chip--ready' };
   }
 
   function requiresSharedParams(key) {
@@ -8598,7 +8607,7 @@ function buildConditionExtractWorkflowRow() {
     if (pathValue) {
       const pathText = status.path || '미설정';
       pathValue.textContent = pathText;
-      pathValue.title = pathText;
+      pathValue.setAttribute('aria-label', pathText);
     }
     if (note) {
       const warning = status.warning || status.errorMessage || '';
@@ -8632,7 +8641,7 @@ function buildConditionExtractWorkflowRow() {
     const familyLinkNeedsTargets = state.features.familylink?.enabled && familyLinkTargets.length < 1;
     if (buildRunBar.runSharedParamHint) {
       if (needsShared && !ok) {
-        const warning = state.sharedParamStatus?.warning || 'Shared Parameter 미등록으로 실행이 제한됩니다.';
+        const warning = state.sharedParamStatus?.warning || '공유파라미터 미등록으로 실행이 제한됩니다.';
         buildRunBar.runSharedParamHint.textContent = warning;
         buildRunBar.runSharedParamHint.style.display = 'block';
       } else if (familyLinkNeedsTargets) {
@@ -8656,11 +8665,11 @@ function buildConditionExtractWorkflowRow() {
     if (status.status === 'ok') return true;
     if (!status.status) {
       requestSharedParamStatus('run');
-      toast('Shared Parameter 상태를 확인 중입니다.', 'warn');
+      toast('공유파라미터 상태를 확인 중입니다.', 'warn');
       return false;
     }
     requestSharedParamStatus('run');
-    const msg = status.warning || status.errorMessage || 'Shared Parameter 상태를 확인하세요.';
+    const msg = status.warning || status.errorMessage || '공유파라미터 상태를 확인해 주세요.';
     toast(msg, 'warn');
     return false;
   }
@@ -8695,7 +8704,7 @@ function buildConditionExtractWorkflowRow() {
   }
 
   function resolveDupClashModeLabel(value) {
-    return normalizeDupClashMode(value) === 'clash' ? '자체간섭 검토' : '중복 검토';
+    return normalizeDupClashMode(value) === 'clash' ? '자체 간섭 검토' : '중복 검토';
   }
 
   function normalizeTapAlignDomain(value) {
@@ -9264,7 +9273,7 @@ function buildConditionExtractWorkflowRow() {
     const title = document.createElement('strong');
     title.textContent = '필터 예시';
     const note = document.createElement('p');
-    note.textContent = '검토 대상 필터와 검토 제외 대상 필터는 같은 구문을 사용합니다. 좌측 Param 토큰은 공백 없는 이름을 권장하고, 구분자는 콤마(,) 또는 세미콜론(;)을 사용할 수 있습니다.';
+    note.textContent = '검토 대상 필터와 검토 제외 대상 필터는 같은 구문을 사용합니다. 좌측 파라미터 토큰은 공백 없는 이름을 권장하고, 구분자는 콤마(,) 또는 세미콜론(;)을 사용할 수 있습니다.';
     note.className = 'filter-examples__note';
     const list = document.createElement('ul');
     list.className = 'filter-examples__list';
@@ -9296,7 +9305,9 @@ function buildConditionExtractWorkflowRow() {
 
   function copyToClipboard(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => toast('복사되었습니다.', 'ok')).catch(() => toast('복사에 실패했습니다.', 'err'));
+      navigator.clipboard.writeText(text)
+        .then(() => toast('예시 문구를 클립보드에 복사했습니다.', 'ok'))
+        .catch(() => toast('브라우저 보안 설정 때문에 예시 문구를 복사하지 못했습니다. 직접 선택해 복사해 주세요.', 'err'));
       return;
     }
     const temp = document.createElement('textarea');
@@ -9308,9 +9319,9 @@ function buildConditionExtractWorkflowRow() {
     temp.select();
     try {
       document.execCommand('copy');
-      toast('복사되었습니다.', 'ok');
+      toast('예시 문구를 클립보드에 복사했습니다.', 'ok');
     } catch (e) {
-      toast('복사에 실패했습니다.', 'err');
+      toast('예시 문구를 복사하지 못했습니다. 직접 선택해 복사해 주세요.', 'err');
     } finally {
       temp.remove();
     }

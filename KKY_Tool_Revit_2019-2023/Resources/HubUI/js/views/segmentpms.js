@@ -2,7 +2,7 @@
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { getLastExcelExportLocale } from '../core/dom.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
-import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
+import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js?v=20260504a';
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 
@@ -24,16 +24,16 @@ const PROGRESS_STAGE_WEIGHT = {
   error: 1
 };
 const PROGRESS_STAGE_TITLE = {
-  open: 'RVT 준비 중',
-  start: 'RVT 준비 중',
-  extract: 'Segment 추출 중',
-  route: 'PMS 매핑 적용 중',
-  save: '결과 저장 중',
-  excel_init: '엑셀 준비 중',
-  excel_write: '엑셀 작성 중',
-  excel_save: '엑셀 내보내기 중',
-  autofit: 'AutoFit 적용 중',
-  finish: '검토 마무리 중',
+  open: 'RVT를 준비하는 중입니다.',
+  start: 'RVT를 준비하는 중입니다.',
+  extract: 'Segment를 추출하는 중입니다.',
+  route: 'PMS 매핑을 적용하는 중입니다.',
+  save: '결과를 저장하는 중입니다.',
+  excel_init: '엑셀을 준비하는 중입니다.',
+  excel_write: '엑셀을 작성하는 중입니다.',
+  excel_save: '엑셀 파일을 저장하는 중입니다.',
+  autofit: '열 너비를 맞추는 중입니다.',
+  finish: '검토를 마무리하는 중입니다.',
   done: '검토 완료',
   error: '오류 발생'
 };
@@ -41,15 +41,15 @@ const PROGRESS_STAGE_DETAIL = {
   open: 'Revit 파일을 여는 중입니다.',
   start: 'Revit 파일을 여는 중입니다.',
   extract: 'Segment 데이터를 추출하고 있습니다.',
-  route: 'PMS 룰과 매핑을 준비하고 있습니다.',
+  route: 'PMS 규칙과 매핑을 준비하고 있습니다.',
   save: '결과를 저장하고 있습니다.',
   excel_init: '엑셀 워크북을 준비하고 있습니다.',
   excel_write: '엑셀 데이터를 작성하고 있습니다.',
   excel_save: '파일을 저장하는 중입니다.',
-  autofit: 'AutoFit을 적용하고 있습니다.',
+  autofit: '엑셀 열 너비를 자동으로 맞추고 있습니다.',
   finish: '처리가 곧 완료됩니다.',
   done: '모든 파일 처리가 완료되었습니다.',
-  error: '진행 중 오류가 발생했습니다.'
+  error: 'Segment-PMS 검토 중 오류가 발생했습니다. 현재 RVT/추출 엑셀, PMS 양식, 매핑 선택을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.'
 };
 let progressPrevPct = 0;
 
@@ -89,14 +89,14 @@ export function renderSegmentPms(root) {
   const page = div('feature-shell segmentpms-page');
   const header = div('feature-header');
   const heading = div('feature-heading');
-  heading.innerHTML = `<span class="feature-kicker">PipeType - PMS</span><h2 class="feature-title">PMS 검토</h2><p class="feature-sub">추출(Excel)과 PMS를 분리하여 그룹 단위 매핑 후 비교합니다.</p>`;
+  heading.innerHTML = `<span class="feature-kicker">시스템 타입 - PMS</span><h2 class="feature-title">PMS 검토</h2><p class="feature-sub">추출 엑셀과 PMS를 분리해 그룹 단위로 매핑한 뒤 비교합니다.</p>`;
   header.append(heading);
   page.append(header);
 
   /* Extract section */
   const extractSection = div('section segmentpms-extract');
   const exHeader = document.createElement('div'); exHeader.className = 'section-header';
-  exHeader.innerHTML = '<h3>1단계: 추출 (RVT → Excel)</h3>';
+  exHeader.innerHTML = '<h3>1단계: 추출 (RVT → 엑셀)</h3>';
   const exActions = div('segmentpms-actions-row');
   const btnAddRvt = cardBtn('RVT 파일 추가', () => post('segmentpms:rvt-pick-files', {}));
   const btnAddFolder = cardBtn('폴더 선택', () => post('segmentpms:rvt-pick-folder', {}));
@@ -107,7 +107,7 @@ export function renderSegmentPms(root) {
   exActions.append(btnAddRvt, btnAddFolder, btnRemoveSel, btnClearAll, btnExtract, btnSaveExtract);
   exHeader.append(exActions);
   const rvtHint = div('rvt-drop-hint');
-  rvtHint.textContent = 'RVT 파일 추가, 폴더 선택 또는 탐색기 드래그앤드롭으로 여러 .rvt를 바로 등록할 수 있습니다.';
+  rvtHint.textContent = 'RVT 파일 추가, 폴더 선택 또는 탐색기 드래그 앤 드롭으로 여러 .rvt를 바로 등록할 수 있습니다.';
 
   const { table: rvtTable, tbody: rvtBody, master: rvtMaster } = createRvtTable();
   const rvtBox = div('segmentpms-rvtlist rvt-drop-zone');
@@ -136,24 +136,24 @@ export function renderSegmentPms(root) {
   /* Check section */
   const checkSection = div('section segmentpms-check');
   const chHeader = document.createElement('div'); chHeader.className = 'section-header';
-  chHeader.innerHTML = '<h3>2단계: 검토 (추출 Excel + PMS)</h3>';
+  chHeader.innerHTML = '<h3>2단계: 검토 (추출 엑셀 + PMS)</h3>';
   const chActions = div('segmentpms-actions-row');
-  const btnRegisterPms = cardBtn('PMS 등록/업데이트', () => { setBusy(true, 'PMS 불러오는 중'); state.busy = true; updateButtons(); post('segmentpms:register-pms', {}); });
-  const btnTemplate = cardBtn('PMS 양식 추출하기', () => { setBusy(true, 'PMS 양식 저장 중'); state.busy = true; updateButtons(); post('segmentpms:pms-template', {}); });
+  const btnRegisterPms = cardBtn('PMS 등록/업데이트', () => { setBusy(true, 'PMS 기준표를 불러오는 중입니다.'); state.busy = true; updateButtons(); post('segmentpms:register-pms', {}); });
+  const btnTemplate = cardBtn('PMS 양식 추출하기', () => { setBusy(true, 'PMS 양식을 저장하는 중입니다.'); state.busy = true; updateButtons(); post('segmentpms:pms-template', {}); });
   const btnPrepare = cardBtn('매핑 준비', onPrepareMapping);
   const btnRun = cardBtn('검토 시작', onRun);
   const btnSave = cardBtn('엑셀 내보내기', () => {
-    if (!state.results) { toast('저장할 결과가 없습니다.', 'err'); return; }
+    if (!state.results) { toast('먼저 검토를 실행한 뒤 결과를 내보내 주세요.', 'err'); return; }
     chooseExcelMode((mode) => post('segmentpms:save-result', { excelMode: mode || 'fast', locale: getLastExcelExportLocale() }));
   });
   btnSaveExtract.onclick = () => chooseExcelMode((mode) => {
-    beginSegmentPmsProgress('추출 결과 내보내기를 준비하는 중...');
+    beginSegmentPmsProgress('추출 결과 내보내기를 준비하는 중입니다.');
     post('segmentpms:save-extract', { excelMode: mode || 'fast', locale: getLastExcelExportLocale() });
   });
   btnSave.onclick = () => {
-    if (!state.results) { toast('내보낼 결과가 없습니다.', 'err'); return; }
+    if (!state.results) { toast('먼저 검토를 실행한 뒤 결과를 내보내 주세요.', 'err'); return; }
     chooseExcelMode((mode) => {
-      beginSegmentPmsProgress('검토 결과 내보내기를 준비하는 중...');
+      beginSegmentPmsProgress('검토 결과 내보내기를 준비하는 중입니다.');
       post('segmentpms:save-result', { excelMode: mode || 'fast', locale: getLastExcelExportLocale() });
     });
   };
@@ -162,15 +162,15 @@ export function renderSegmentPms(root) {
   btnSave.onclick = () => startSegmentPmsExport('result');
   chHeader.append(chActions);
   const pmsGuide = div('segmentpms-summary');
-  pmsGuide.textContent = "처음 사용자는 ‘PMS 양식 추출하기’로 샘플을 내려받아 동일 형식으로 작성하세요.";
+  pmsGuide.textContent = "처음 사용자는 ‘PMS 양식 추출하기’로 샘플을 내려받아 동일 형식으로 작성해 주세요.";
   checkSection.append(chHeader, pmsGuide);
 
   const groupTable = document.createElement('table'); groupTable.className = 'segmentpms-table';
-  groupTable.innerHTML = '<thead><tr><th>Revit Segment 그룹</th><th>사용처</th><th>PMS Segment</th><th>추천</th></tr></thead><tbody></tbody>';
+  groupTable.innerHTML = '<thead><tr><th>Revit 세그먼트 그룹</th><th>사용처</th><th>PMS 세그먼트</th><th>추천</th></tr></thead><tbody></tbody>';
   const groupBody = groupTable.querySelector('tbody');
   checkSection.append(groupTable);
 
-  const resInfo = div('segmentpms-summary'); resInfo.textContent = '결과 없음';
+  const resInfo = div('segmentpms-summary'); resInfo.textContent = '검토 결과가 없습니다.';
   checkSection.append(resInfo);
   page.append(checkSection);
 
@@ -222,24 +222,24 @@ export function renderSegmentPms(root) {
   }
 
   function removeCheckedRvt() {
-    if (!state.rvtChecked.size) { toast('제거할 항목을 선택하세요.', 'err'); return; }
+    if (!state.rvtChecked.size) { toast('제거할 항목을 선택해 주세요.', 'err'); return; }
     state.rvtList = state.rvtList.filter(p => !state.rvtChecked.has(p));
     state.rvtChecked.clear(); persistRvt(); renderRvtList(); updateButtons();
   }
 
   function onExtract() {
     const targets = state.rvtList.filter(p => state.rvtChecked.has(p));
-    if (!targets.length) { toast('추출할 RVT를 선택하세요.', 'err'); return; }
+    if (!targets.length) { toast('추출할 RVT를 선택해 주세요.', 'err'); return; }
     state.busy = true; updateButtons();
-    ProgressDialog.show('Segment 매핑/검증', '추출 작업을 준비 중입니다.');
-    ProgressDialog.update(0, '추출 작업을 준비 중입니다.', '선택한 RVT와 추출 대상을 정리하는 중...');
+    ProgressDialog.show('Segment 매핑/검증', '추출 작업을 준비하는 중입니다.');
+    ProgressDialog.update(0, '추출 작업을 준비하는 중입니다.', '선택한 RVT와 추출 대상을 정리하는 중입니다.');
     post('segmentpms:extract', { files: targets });
   }
 
   function onPrepareMapping() {
-    if (!state.extractLoaded) { toast('추출 결과를 먼저 불러오세요.', 'err'); return; }
-    setBusy(true, '매핑 준비'); state.busy = true; updateButtons();
-    beginSegmentPmsProgress('Preparing mapping...');
+    if (!state.extractLoaded) { toast('먼저 추출 결과를 불러와 주세요.', 'err'); return; }
+    setBusy(true, '매핑을 준비하는 중입니다.'); state.busy = true; updateButtons();
+    beginSegmentPmsProgress('매핑을 준비하는 중입니다.');
     post('segmentpms:prepare-mapping', {});
   }
 
@@ -247,7 +247,7 @@ export function renderSegmentPms(root) {
     groupBody.innerHTML = '';
     state.selections.clear();
     if (!state.groups.length) {
-      const tr = document.createElement('tr'); const td1 = document.createElement('td'); td1.colSpan = 4; td1.textContent = '추출 결과와 PMS를 불러와 매핑을 준비하세요.'; tr.append(td1); groupBody.append(tr); updateButtons(); return;
+      const tr = document.createElement('tr'); const td1 = document.createElement('td'); td1.colSpan = 4; td1.textContent = '추출 결과와 PMS를 불러와 매핑을 준비해 주세요.'; tr.append(td1); groupBody.append(tr); updateButtons(); return;
     }
     state.groups.forEach(g => {
       const tr = document.createElement('tr');
@@ -309,13 +309,13 @@ export function renderSegmentPms(root) {
   }
 
   function onRun() {
-    if (!state.extractLoaded) { toast('추출 데이터를 먼저 불러오세요.', 'err'); return; }
-    if (!state.pmsLoaded) { toast('PMS를 등록하세요.', 'err'); return; }
+    if (!state.extractLoaded) { toast('먼저 추출 데이터를 불러와 주세요.', 'err'); return; }
+    if (!state.pmsLoaded) { toast('먼저 PMS 기준표를 등록해 주세요.', 'err'); return; }
     const groups = [...state.selections.values()];
     state.results = null;
-    setBusy(true, '검토 실행'); state.busy = true; updateButtons();
-    ProgressDialog.show('Segment 매핑/검증', '검토를 준비 중입니다.');
-    ProgressDialog.update(0, '검토를 준비 중입니다.', '매핑 선택과 PMS 데이터를 확인하는 중...');
+    setBusy(true, '검토를 실행하는 중입니다.'); state.busy = true; updateButtons();
+    ProgressDialog.show('Segment 매핑/검증', '검토를 준비하는 중입니다.');
+    ProgressDialog.update(0, '검토를 준비하는 중입니다.', '매핑 선택과 PMS 데이터를 확인하는 중입니다.');
     post('segmentpms:run', { groups });
   }
 
@@ -325,39 +325,39 @@ export function renderSegmentPms(root) {
     const total = resultSummary.totalCount;
     resInfo.textContent = total > 0
       ? `총 ${total}건의 결과가 준비되었습니다. 정상 ${resultSummary.okCount}건 / 검토 필요 ${resultSummary.reviewCount}건 / 오류 ${resultSummary.errorCount}건`
-      : '결과 없음';
-    toast('검토가 완료되었습니다. 엑셀로 내보내세요.', 'ok');
+      : '검토 결과가 없습니다.';
+    toast('검토가 완료되었습니다. 필요하면 엑셀로 내보내 주세요.', 'ok');
   }
 
   function beginSegmentPmsProgress(subtitle) {
-    ProgressDialog.show('Segment PMS', subtitle || 'Preparing...');
-    ProgressDialog.update(0, subtitle || 'Preparing...', '단계별 입력 데이터를 확인하는 중...');
+    ProgressDialog.show('Segment-PMS 검토', subtitle || '작업을 준비하는 중입니다.');
+    ProgressDialog.update(0, subtitle || '작업을 준비하는 중입니다.', '단계별 입력 데이터를 확인하는 중입니다.');
   }
 
   async function startSegmentPmsExport(kind) {
     if (state.busy) return;
     if (kind === 'extract' && !state.extractLoaded) {
-      toast('내보낼 추출 결과가 없습니다.', 'err');
+      toast('먼저 추출을 실행하거나 추출 결과를 불러온 뒤 내보내 주세요.', 'err');
       return;
     }
     if (kind === 'result' && !state.results) {
-      toast('저장할 결과가 없습니다.', 'err');
+      toast('먼저 검토를 실행한 뒤 결과를 내보내 주세요.', 'err');
       return;
     }
 
     const excelMode = await chooseExcelMode();
     if (!excelMode) return;
     state.busy = true;
-    setBusy(true, '엑셀 내보내기 중...');
+    setBusy(true, '엑셀을 내보내는 중입니다.');
     updateButtons();
 
     if (kind === 'extract') {
-      beginSegmentPmsProgress('추출 결과를 저장하는 중...');
+      beginSegmentPmsProgress('추출 결과를 저장하는 중입니다.');
       post('segmentpms:save-extract', { excelMode: excelMode || 'fast', locale: getLastExcelExportLocale() });
       return;
     }
 
-    beginSegmentPmsProgress('검토 결과를 저장하는 중...');
+    beginSegmentPmsProgress('검토 결과를 저장하는 중입니다.');
     post('segmentpms:save-result', { excelMode: excelMode || 'fast', locale: getLastExcelExportLocale() });
   }
 
@@ -372,7 +372,7 @@ export function renderSegmentPms(root) {
     if (resultSummary.uncertainCount > 0) notes.push(`분류가 애매한 항목 ${resultSummary.uncertainCount}건은 검토 필요로 집계했습니다.`);
 
     showCompletionSummaryDialog({
-      title: 'Segment PMS 검토 완료',
+      title: 'Segment-PMS 검토 완료',
       message: '검토가 끝났습니다. 그룹 매핑과 결과를 확인하고 필요하면 바로 엑셀로 내보낼 수 있습니다.',
       summaryItems: [
         { label: '대상 그룹 수', value: String(groupCount) },
@@ -479,9 +479,9 @@ export function renderSegmentPms(root) {
       ProgressDialog.hide();
       updateButtons();
       requestAnimationFrame(() => {
-        showExcelSavedDialog('결과를 저장했습니다.', msg.payload?.path, (p) => {
+        showExcelSavedDialog('Segment-PMS 검토 결과 엑셀을 저장했습니다.', msg.payload?.path, (p) => {
           const target = p || msg.payload?.path;
-          if (!target) { toast('열 수 있는 경로가 없습니다.', 'err'); return; }
+          if (!target) { toast('저장된 파일 경로가 없습니다. 결과를 다시 저장해 주세요.', 'err'); return; }
           post('excel:open', { path: target });
         });
       });
@@ -547,7 +547,7 @@ export function renderSegmentPms(root) {
         setBusy(false); state.busy = false;
         showExcelSavedDialog('PMS 양식을 저장했습니다.', msg.payload?.path, (p) => {
           const target = p || msg.payload?.path;
-          if (!target) { toast('열 수 있는 경로가 없습니다.', 'err'); return; }
+          if (!target) { toast('저장된 PMS 양식 경로가 없습니다. 양식을 다시 저장해 주세요.', 'err'); return; }
           post('excel:open', { path: target });
         });
         updateButtons();
@@ -565,7 +565,7 @@ export function renderSegmentPms(root) {
       case 'segmentpms:error':
         setBusy(false); state.busy = false;
         ProgressDialog.hide();
-        toast(msg.payload?.message || '오류가 발생했습니다.', 'err');
+        toast(msg.payload?.message || 'Segment-PMS 검토 중 오류가 발생했습니다. 현재 RVT/추출 엑셀, PMS 양식, 매핑 선택을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
         updateButtons();
         break;
       default: break;
@@ -598,7 +598,7 @@ function handleProgress(payload) {
 
   const file = payload.file || payload.fileName || '';
   const msg = payload.message || '';
-  const title = PROGRESS_STAGE_TITLE[stage] || 'Segment/PMS 진행 중';
+  const title = PROGRESS_STAGE_TITLE[stage] || 'Segment-PMS를 검토하는 중입니다.';
   const subtitle = buildProgressDetail(stage, msg, file);
   const meta = buildProgressMeta(total, index, file);
 

@@ -352,6 +352,9 @@
 .active-menu-card h3 {
     margin: 0 0 6px;
     font-size: 1.05rem;
+    line-height: 1.35;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
 }
 
 .home-choice-card p,
@@ -359,6 +362,9 @@
     margin: 0;
     color: var(--text-soft);
     font-size: 0.9rem;
+    line-height: 1.5;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
 }
 
 .home-choice-meta {
@@ -366,6 +372,8 @@
     color: var(--text-main);
     font-size: 0.82rem;
     line-height: 1.45;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
 }
 
 .home-choice-card__icon,

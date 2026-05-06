@@ -4,7 +4,7 @@ import { chooseExcelMode, getLastExcelExportLocale, showExcelSavedDialog } from 
 import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { post, onHost } from '../core/bridge.js';
-import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
+import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js?v=20260504a';
 
 const FILTER_OPERATORS = [
   'Equals', 'NotEquals', 'Contains', 'NotContains', 'BeginsWith', 'NotBeginsWith',
@@ -108,11 +108,17 @@ export function renderConditionExtract(root) {
     const savedPath = payload?.path || payload?.resultWorkbookPath || '';
     if (payload?.ok && savedPath) {
       requestAnimationFrame(() => {
-        showExcelSavedDialog(payload?.message || '결과 엑셀을 저장했습니다.', savedPath, (path) => post('excel:open', { path }));
+        showExcelSavedDialog(payload?.message || '조건별 객체 속성 추출 결과 엑셀을 저장했습니다.', savedPath, (path) => post('excel:open', { path }));
       });
     } else {
       requestAnimationFrame(() => openCompletionResultDialog(state, payload || {}));
-      toast(payload?.message || '결과 파일을 저장했습니다.', payload?.ok === false ? 'err' : 'ok', 3200);
+      toast(
+        payload?.message || (payload?.ok === false
+          ? '조건별 객체 속성 추출 결과 파일 저장에 실패했습니다.'
+          : '조건별 객체 속성 추출 결과 파일을 저장했습니다.'),
+        payload?.ok === false ? 'err' : 'ok',
+        3200
+      );
     }
   });
   onHost('conditionextract:error', (payload) => {
@@ -123,7 +129,7 @@ export function renderConditionExtract(root) {
     renderRunSummary(state);
     renderRvtModal(state);
     updateActionState(state);
-    toast(payload?.message || '오류가 발생했습니다.', 'err', 3600);
+    toast(payload?.message || '조건별 객체 속성 추출 중 오류가 발생했습니다. 현재 모델, 대상 RVT, 추출 조건 설정을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3600);
   });
 
   renderConditionRows(state);
@@ -140,14 +146,14 @@ function buildRunCard(state) {
     <div class="deliverycleaner-card__head">
       <div>
         <h3>실행</h3>
-        <p>활성 문서, 활성 문서의 전체 Revit Link, 또는 여러 RVT를 대상으로 조건 추출을 실행합니다.</p>
+        <p>활성 문서, 활성 문서의 전체 Revit 링크, 또는 여러 RVT를 대상으로 조건 추출을 실행합니다.</p>
       </div>
     </div>
   `;
 
   const actionRow = div('deliverycleaner-inline-actions multi-action-card__actions');
-  const activeBtn = actionButton('활성문서 검토', () => runActiveDocument(state), 'primary');
-  const activeLinksBtn = actionButton('활성문서 + Link 검토', () => runActiveDocumentWithLinks(state), 'secondary');
+  const activeBtn = actionButton('활성 문서 검토', () => runActiveDocument(state), 'primary');
+  const activeLinksBtn = actionButton('활성 문서 + 링크 검토', () => runActiveDocumentWithLinks(state), 'secondary');
   const batchBtn = actionButton('여러 RVT 검토', () => openRvtModal(state), 'secondary');
   activeLinksBtn.classList.add('btn--multi');
   batchBtn.classList.add('btn--multi');
@@ -215,8 +221,8 @@ function buildConditionPanel(state) {
     <thead>
       <tr>
         <th>필터 파라미터</th>
-        <th>Operator</th>
-        <th>Value</th>
+        <th>연산자</th>
+        <th>값</th>
         <th>관리</th>
       </tr>
     </thead>
@@ -231,7 +237,7 @@ function buildConditionPanel(state) {
   const extractField = div('deliverycleaner-field');
   extractField.innerHTML = `
     <label>파라미터 목록</label>
-    <textarea rows="4" placeholder="예: Comments, Mark, Type Comments, Area, Volume"></textarea>
+    <textarea rows="4" placeholder="예: 설명(Comments), 마크(Mark), 타입 설명(Type Comments), 면적(Area), 체적(Volume)"></textarea>
   `;
   const extractInput = extractField.querySelector('textarea');
   extractInput.addEventListener('input', () => {
@@ -260,7 +266,7 @@ function buildConditionPanel(state) {
   const extractOptionsText = div('deliverycleaner-vg-rulebar__text');
   extractOptionsText.innerHTML = `
     <strong>추출 옵션</strong>
-    <span>좌표는 X / Y / Z 열로 저장되고, 선형 객체는 DirectionX / DirectionY / DirectionZ 와 Length 열을 함께 기록합니다. 단위는 단위 탭 설정을 따릅니다.</span>
+    <span>좌표는 X / Y / Z 열로 저장되고, 선형 객체는 방향 X/Y/Z(DirectionX/DirectionY/DirectionZ)와 길이(Length) 열을 함께 기록합니다. 단위는 단위 탭 설정을 따릅니다.</span>
   `;
   const extractOptionsControls = div('deliverycleaner-inline-controls');
   extractOptionsControls.append(coordLine, linearLine);
@@ -310,7 +316,7 @@ function buildConditionPanel(state) {
   const optionPanel = div('deliverycleaner-panel');
   const optionSection = createCompactSection('추가 옵션 안내', '필터와 추출 대상의 동작 기준을 확인합니다.');
   const optionNote = div('deliverycleaner-note');
-  optionNote.textContent = '필터는 인스턴스와 타입 파라미터를 모두 검사합니다. 좌표는 X / Y / Z, 선형 정보는 DirectionX / DirectionY / DirectionZ 와 Length 열에 기록됩니다.';
+  optionNote.textContent = '필터는 인스턴스와 타입 파라미터를 모두 검사합니다. 좌표는 X / Y / Z, 선형 정보는 방향 X/Y/Z(DirectionX/DirectionY/DirectionZ)와 길이(Length) 열에 기록됩니다.';
   optionSection.append(optionNote);
   optionPanel.append(optionSection);
 
@@ -385,7 +391,7 @@ function buildRvtModal(state) {
   const listTitle = document.createElement('h4');
   listTitle.textContent = '선택된 RVT 목록';
   const listSub = document.createElement('span');
-  listSub.textContent = 'Central File은 Detach로 열고, 워크셋은 모두 닫은 상태로 검토합니다. 탐색기에서 .rvt 파일을 끌어와 바로 추가할 수도 있습니다.';
+  listSub.textContent = '센트럴 파일은 분리(Detach)로 열고, 웍셋은 모두 닫은 상태로 검토합니다. 탐색기에서 .rvt 파일을 끌어와 바로 추가할 수도 있습니다.';
   listHead.append(listTitle, listSub);
 
   const tableWrap = div('rvt-expand-table rvt-drop-zone');
@@ -489,11 +495,11 @@ function openCompletionResultDialog(state, payload) {
   if (outputFolder) notes.push(`기본 저장 위치: ${outputFolder}`);
   if (workbookPath) notes.push(`결과 파일: ${workbookPath}`);
   if (logPath) notes.push(`로그 파일: ${logPath}`);
-  if (!workbookPath) notes.push('자동 저장은 하지 않습니다. 필요할 때 아래 엑셀 내보내기 버튼으로 저장하세요.');
-  notes.push('Detail 시트에는 ElementId 열이 함께 포함됩니다.');
+  if (!workbookPath) notes.push('자동 저장은 하지 않습니다. 필요할 때 아래 엑셀 내보내기 버튼으로 저장해 주세요.');
+  notes.push('상세 시트에는 ElementId 열이 함께 포함됩니다.');
   notes.push(`좌표와 길이는 ${lengthUnitLabel} 기준으로 저장됩니다.`);
   notes.push(`면적 파라미터는 ${areaUnitLabel}, 체적 파라미터는 ${volumeUnitLabel} 기준으로 저장됩니다.`);
-  notes.push('선형 방향은 DirectionX / DirectionY / DirectionZ 열에 기록됩니다.');
+  notes.push('선형 방향은 방향 X/Y/Z(DirectionX/DirectionY/DirectionZ) 열에 기록됩니다.');
 
   const actions = [];
   if (workbookPath) {
@@ -505,7 +511,7 @@ function openCompletionResultDialog(state, payload) {
   showCompletionSummaryDialog({
     dialogClassName: 'completion-summary-dialog--wide',
     title: '조건별 객체 속성 추출 완료',
-    message: '검토와 추출이 완료되었습니다. 결과를 이어서 확인하세요.',
+    message: '검토와 추출이 완료되었습니다. 결과를 이어서 확인해 주세요.',
     summaryItems: [
       { label: '대상 파일', value: `${fileCount || successCount + failCount + noDataCount || (state.rvtPaths.length || 1)}개` },
       { label: '성공', value: `${successCount}개` },
@@ -522,7 +528,7 @@ function openCompletionResultDialog(state, payload) {
     onExport: async () => {
       const excelMode = await chooseExcelMode();
       if (!excelMode) return;
-      beginConditionExtractProgress('조건별 객체 속성 추출', '결과 엑셀 저장을 준비 중입니다.');
+      beginConditionExtractProgress('조건별 객체 속성 추출', '결과 엑셀 저장을 준비하는 중입니다.');
       post('conditionextract:export-results', { excelMode: excelMode || 'fast', locale: getLastExcelExportLocale() });
     }
   });
@@ -536,7 +542,7 @@ function runActiveDocument(state) {
 
   state.acceptProgress = true;
   setPageBusy(state, true);
-  beginConditionExtractProgress('조건별 객체 속성 추출', '활성 문서 검토를 준비 중입니다.');
+  beginConditionExtractProgress('조건별 객체 속성 추출', '활성 문서 검토를 준비하는 중입니다.');
   post('conditionextract:run', buildPayload(state, true, false));
 }
 
@@ -548,7 +554,7 @@ function runActiveDocumentWithLinks(state) {
 
   state.acceptProgress = true;
   setPageBusy(state, true);
-  beginConditionExtractProgress('조건별 객체 속성 추출', '활성 문서와 전체 Link 문서 검토를 준비 중입니다.');
+  beginConditionExtractProgress('조건별 객체 속성 추출', '활성 문서와 전체 링크 문서 검토를 준비하는 중입니다.');
   post('conditionextract:run', buildPayload(state, true, true));
 }
 
@@ -561,7 +567,7 @@ function runBatchDocuments(state) {
   state.acceptProgress = true;
   setPageBusy(state, true);
   closeRvtModal(state);
-  beginConditionExtractProgress('조건별 객체 속성 추출', '여러 RVT 검토를 준비 중입니다.');
+  beginConditionExtractProgress('조건별 객체 속성 추출', '여러 RVT 검토를 준비하는 중입니다.');
   post('conditionextract:run', buildPayload(state, false));
 }
 
@@ -581,8 +587,8 @@ function closeRvtModal(state) {
 
 function beginConditionExtractProgress(title, message, detail = '', percent = 0) {
   ProgressDialog.setActions({});
-  ProgressDialog.show(title || '조건별 객체 속성 추출', message || '준비 중...');
-  ProgressDialog.update(percent, message || '준비 중...', detail || '');
+  ProgressDialog.show(title || '조건별 객체 속성 추출', message || '조건별 객체 속성 추출을 준비하는 중입니다.');
+  ProgressDialog.update(percent, message || '조건별 객체 속성 추출을 준비하는 중입니다.', detail || '');
 }
 
 function applyHostState(state, payload) {
@@ -659,14 +665,14 @@ function renderSettingSummary(state) {
     ? conditions.map((row) => (row.operatorName === 'HasValue' || row.operatorName === 'HasNoValue')
       ? `${row.parameterName} ${row.operatorName}`
       : `${row.parameterName} ${row.operatorName} ${row.value || ''}`).join(joiner)
-    : '추가 필터 없음';
-  const extractText = extractNames.length ? extractNames.join(', ') : '추출 파라미터 없음';
+    : '추가 필터가 없습니다.';
+  const extractText = extractNames.length ? extractNames.join(', ') : '추출 파라미터가 없습니다.';
   const extras = [];
   if (state.includeCoordinates) extras.push('좌표 X/Y/Z');
   if (state.includeLinearMetrics) extras.push('선형 방향/길이');
   const unitsText = `길이 ${formatLengthUnit(state.lengthUnit)} / 면적 ${formatAreaUnit(state.areaUnit)} / 체적 ${formatVolumeUnit(state.volumeUnit)}`;
 
-  state.ui.settingSummary.textContent = `필터: ${conditionText}\n추출: ${extractText}\n단위: ${unitsText}\n추가 옵션: ${extras.length ? extras.join(' / ') : '없음'}`;
+  state.ui.settingSummary.textContent = `필터: ${conditionText}\n추출: ${extractText}\n단위: ${unitsText}\n추가 옵션: ${extras.length ? extras.join(' / ') : '선택한 추가 옵션이 없습니다.'}`;
   renderRunSummary(state);
   renderBatchReadyCard(state);
   updateActionState(state);
@@ -676,17 +682,17 @@ function renderRunSummary(state) {
   if (!state.ui.runSummary || !state.ui.runGuide) return;
 
   const title = state.activeDocument?.title || '활성 문서를 찾을 수 없습니다.';
-  const docType = state.activeDocument?.isWorkshared ? '워크셋 문서' : '일반 문서';
+  const docType = state.activeDocument?.isWorkshared ? '웍셋 문서' : '일반 문서';
   const extractCount = getExtractParameterRows(state).length;
   const extraCount = Number(!!state.includeCoordinates) + Number(!!state.includeLinearMetrics);
   state.ui.runSummary.textContent = `현재 문서: ${title}\n문서 유형: ${docType}\n등록된 RVT: ${state.rvtPaths.length}개\n활성 Link 포함 실행: 가능\n추출 항목: ${extractCount + extraCount}개`;
 
   if (state.busy) {
-    state.ui.runGuide.textContent = '작업이 진행 중입니다. 완료되면 결과 요약을 보여주고, 필요할 때 엑셀 내보내기로 저장할 수 있습니다.';
+    state.ui.runGuide.textContent = '조건별 객체 속성 추출을 진행하는 중입니다. 완료되면 결과 요약을 보여주고, 필요할 때 엑셀 내보내기로 저장할 수 있습니다.';
   } else if (getBatchOpenBlockingReason(state)) {
     state.ui.runGuide.textContent = '추출 파라미터 또는 좌표/선형 옵션을 1개 이상 설정하면 검토 버튼이 활성화됩니다.';
   } else {
-  state.ui.runGuide.textContent = '필터 파라미터는 인스턴스/타입을 모두 검사합니다. 활성문서만 검토하거나, 활성문서의 전체 Revit Link까지 함께 검토하거나, 여러 RVT를 배치로 검토할 수 있습니다.';
+  state.ui.runGuide.textContent = '필터 파라미터는 인스턴스/타입을 모두 검사합니다. 활성 문서만 검토하거나, 활성 문서의 전체 Revit 링크까지 함께 검토하거나, 여러 RVT를 배치로 검토할 수 있습니다.';
   }
 }
 
@@ -739,17 +745,21 @@ function renderBatchReadyCard(state) {
   state.ui.batchReadyHint.textContent = state.rvtPaths.length
     ? `${state.rvtPaths.length}개 RVT가 등록되어 있습니다.`
     : 'RVT를 추가하면 바로 배치 검토를 시작할 수 있습니다.';
-  state.ui.batchReadyBadge.textContent = ready ? '검토 준비됨' : '설정 필요';
+  state.ui.batchReadyBadge.textContent = ready ? '검토 준비 완료' : '설정 필요';
+  const extraOptionLabels = [
+    state.includeCoordinates ? '좌표' : null,
+    state.includeLinearMetrics ? '선형' : null
+  ].filter(Boolean);
 
   state.ui.batchReadyList.innerHTML = '';
   [
     `필터 ${conditions.length}개`,
     `추출 파라미터 ${extractNames.length}개`,
     `단위 ${formatLengthUnit(state.lengthUnit)} / ${formatAreaUnit(state.areaUnit)} / ${formatVolumeUnit(state.volumeUnit)}`,
-    `추가 옵션 ${[state.includeCoordinates ? '좌표' : null, state.includeLinearMetrics ? '선형' : null].filter(Boolean).join(' / ') || '없음'}`,
+    extraOptionLabels.length ? `추가 옵션 ${extraOptionLabels.join(' / ')}` : '추가 옵션: 선택한 추가 옵션이 없습니다.',
     '필터 파라미터는 인스턴스와 타입을 모두 검사합니다.',
-    'Central File은 Detach로 열고, 워크셋은 모두 닫은 상태로 처리합니다.',
-    '활성문서 + Link 검토는 현재 문서에 연결된 Revit Link 문서를 함께 읽습니다.'
+    '센트럴 파일은 분리(Detach)로 열고, 웍셋은 모두 닫은 상태로 처리합니다.',
+    '활성 문서 + 링크 검토는 현재 문서에 연결된 Revit 링크 문서를 함께 읽습니다.'
   ].forEach((line) => {
     const item = document.createElement('li');
     item.textContent = line;

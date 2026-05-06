@@ -388,10 +388,11 @@
 
 .hub-context-menu {
     position: fixed;
-    min-width: 180px;
+    min-width: 220px;
+    max-width: min(320px, calc(100vw - 24px));
     display: grid;
     gap: 10px;
-    padding: 10px;
+    padding: 12px;
     border: 1px solid var(--border-soft);
     border-radius: 12px;
     background: var(--surface-modal);
@@ -400,18 +401,25 @@
 }
 
 .hub-context-menu__meta {
-    font-size: 0.82rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.84rem;
     color: var(--text-soft);
     line-height: 1.4;
 }
 
 .hub-context-menu__action {
-    min-height: 34px;
+    min-height: 40px;
+    padding: 0 14px;
     border: 1px solid var(--border-soft);
     border-radius: 10px;
     background: color-mix(in srgb, var(--accent) 14%, var(--surface-card));
     color: var(--text-main);
+    font-size: 0.94rem;
     font-weight: 600;
+    white-space: nowrap;
     cursor: pointer;
     transition: border-color 160ms ease, background 160ms ease;
 }

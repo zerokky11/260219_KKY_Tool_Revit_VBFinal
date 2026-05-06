@@ -4,7 +4,7 @@ import { refreshUiAfterHostDialog } from '../core/hostDialog.js';
 import { attachRvtDropZone } from '../core/rvtDrop.js';
 import { ProgressDialog } from '../core/progress.js';
 import { onHost, post } from '../core/bridge.js';
-import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js';
+import { createRvtTable, renderRvtRows, getRvtName } from './rvtTable.js?v=20260504a';
 
 const EXCEL_PHASE_WEIGHT = { EXCEL_INIT: 0.05, EXCEL_WRITE: 0.85, EXCEL_SAVE: 0.08, AUTOFIT: 0.02, DONE: 1, ERROR: 1 };
 const DEFAULT_SCHEMA = [
@@ -52,9 +52,9 @@ export function renderFamilyLink(root) {
   const header = div('feature-header');
   const heading = div('feature-heading');
   heading.innerHTML = `
-    <span class="feature-kicker">Nested Family Association</span>
+    <span class="feature-kicker">네스티드 패밀리 연동</span>
     <h2 class="feature-title">패밀리 공유파라미터 연동 검토</h2>
-    <p class="feature-sub">Shared GUID 기준으로 네스티드 패밀리 파라미터 연동 상태를 점검합니다.</p>`;
+    <p class="feature-sub">공유 GUID 기준으로 네스티드 패밀리 파라미터 연동 상태를 점검합니다.</p>`;
 
   const runBtn = cardBtn('검토 시작', onRun);
   const exportBtn = cardBtn('엑셀 내보내기', onExport);
@@ -69,7 +69,7 @@ export function renderFamilyLink(root) {
   const topPanels = div('familylink-top-panels');
   const resultsPanel = div('familylink-results-panel');
 
-  // ----- Shared Parameter 선택 (ParamProp 스타일 재사용) -----
+  // ----- 공유파라미터 선택 (ParamProp 스타일 재사용) -----
   const paramCard = div('paramprop-card section familylink-card');
   const paramTitle = div('paramprop-title');
   paramTitle.textContent = '공유 파라미터 선택';
@@ -100,7 +100,7 @@ export function renderFamilyLink(root) {
   const groupTable = document.createElement('table');
   groupTable.className = 'paramprop-table paramprop-group-table';
   const groupThead = document.createElement('thead');
-  groupThead.innerHTML = '<tr><th>선택</th><th>Group</th></tr>';
+  groupThead.innerHTML = '<tr><th>선택</th><th>그룹</th></tr>';
   const groupTbody = document.createElement('tbody');
   groupTable.append(groupThead, groupTbody);
   const groupListWrap = div('paramprop-table-wrap paramprop-group-wrap');
@@ -117,7 +117,7 @@ export function renderFamilyLink(root) {
   const table = document.createElement('table');
   table.className = 'paramprop-table';
   const thead = document.createElement('thead');
-  thead.innerHTML = '<tr><th>선택</th><th>Name</th></tr>';
+  thead.innerHTML = '<tr><th>선택</th><th>이름</th></tr>';
   const tbody = document.createElement('tbody');
   table.append(thead, tbody);
   const tableWrap = div('paramprop-table-wrap');
@@ -149,7 +149,7 @@ export function renderFamilyLink(root) {
   rvtActions.append(btnAddRvt, btnRemoveRvt, btnClearRvt);
   rvtCard.append(rvtActions);
   const rvtHint = div('rvt-drop-hint');
-  rvtHint.textContent = 'RVT 파일 추가 버튼 또는 탐색기 드래그앤드롭으로 여러 .rvt를 바로 등록할 수 있습니다.';
+  rvtHint.textContent = 'RVT 파일 추가 버튼 또는 탐색기 드래그 앤 드롭으로 여러 .rvt를 바로 등록할 수 있습니다.';
   rvtCard.append(rvtHint);
 
   const rvtTableWrap = div('familylink-rvt-table rvt-drop-zone');
@@ -175,7 +175,7 @@ export function renderFamilyLink(root) {
   const resultTitle = div('familylink-results-title');
   resultTitle.textContent = '검토 결과';
   const resultMeta = div('familylink-results-meta');
-  resultMeta.textContent = '0 rows';
+  resultMeta.textContent = '결과 0개';
   resultHead.append(resultTitle, resultMeta);
 
   const resultBody = div('familylink-results-body');
@@ -277,7 +277,7 @@ export function renderFamilyLink(root) {
     if (!state.busy && exporting) setBusy(true);
     clearProgressHideTimer();
 
-    ProgressDialog.show('엑셀 내보내기', subtitle || '엑셀 내보내기 진행중');
+    ProgressDialog.show('엑셀 내보내기', subtitle || '엑셀 내보내기 진행 중');
     ProgressDialog.update(percent, subtitle, detail);
 
     if (!exporting) {
@@ -304,7 +304,7 @@ export function renderFamilyLink(root) {
     setBusy(false);
     ProgressDialog.hide();
     lastExcelPct = 0;
-    const message = payload?.message || '작업 중 오류가 발생했습니다.';
+    const message = payload?.message || '패밀리 적합성 검토 중 오류가 발생했습니다. 현재 모델과 기준 엑셀 설정을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.';
     toast(message, 'err', 3200);
   }
 
@@ -317,10 +317,10 @@ export function renderFamilyLink(root) {
     exportBtn.disabled = state.rows.length === 0 || state.busy;
     if (ok) {
       requestAnimationFrame(() => {
-        showExcelSavedDialog('엑셀 내보내기가 완료되었습니다.', payload.path, (p) => post('excel:open', { path: p }));
+        showExcelSavedDialog('패밀리 적합성 결과 엑셀 저장 완료', payload.path, (p) => post('excel:open', { path: p }));
       });
     } else {
-      toast(payload?.message || '엑셀 내보내기 실패', 'err');
+      toast(payload?.message || '패밀리 적합성 결과 엑셀 내보내기에 실패했습니다. 저장 경로 권한과 파일이 열려 있는지 확인해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
     }
   }
 
@@ -343,12 +343,12 @@ export function renderFamilyLink(root) {
   function onRun() {
     if (state.busy) return;
     if (!state.rvtPaths.length) {
-      toast('검토할 RVT 파일을 추가하세요.', 'warn');
+      toast('검토할 RVT 파일을 추가해 주세요.', 'warn');
       return;
     }
     const selectedRvts = getCheckedRvtPaths();
     if (!selectedRvts.length) {
-      toast('검토할 RVT를 1개 이상 선택하세요.', 'warn');
+      toast('검토할 RVT를 1개 이상 선택해 주세요.', 'warn');
       return;
     }
 
@@ -358,14 +358,14 @@ export function renderFamilyLink(root) {
       .map(item => ({ name: item.name, guid: item.guid }));
 
     if (!targets.length) {
-      toast('검토할 파라미터를 선택하세요.', 'warn');
+      toast('검토할 파라미터를 선택해 주세요.', 'warn');
       return;
     }
 
     setBusy(true);
     exportBtn.disabled = true;
-    ProgressDialog.show('패밀리 연동 검토', '검토 구성을 준비하는 중...');
-    ProgressDialog.update(0, '검토 구성을 준비하는 중...', '선택한 RVT와 대상 파라미터를 정리하는 중...');
+    ProgressDialog.show('패밀리 연동 검토', '검토 구성을 준비하는 중입니다.');
+    ProgressDialog.update(0, '검토 구성을 준비하는 중입니다.', '선택한 RVT와 대상 파라미터를 정리하는 중입니다.');
 
     post('familylink:run', {
       rvtPaths: selectedRvts,
@@ -380,8 +380,8 @@ export function renderFamilyLink(root) {
       const selected = mode || 'fast';
       lastExcelPct = 0;
       setBusy(true);
-      ProgressDialog.show('엑셀 내보내기', '엑셀 내보내기를 준비하는 중...');
-      ProgressDialog.update(0, '엑셀 내보내기를 준비하는 중...', '결과 행과 저장 옵션을 정리하는 중...');
+      ProgressDialog.show('엑셀 내보내기', '엑셀 내보내기를 준비하는 중입니다.');
+      ProgressDialog.update(0, '엑셀 내보내기를 준비하는 중입니다.', '결과 행과 저장 옵션을 정리하는 중입니다.');
       post('familylink:export', {
         fastExport: selected === 'fast',
         autoFit: selected === 'normal',
@@ -426,8 +426,8 @@ export function renderFamilyLink(root) {
     chk.addEventListener('change', (e) => { e.stopPropagation(); toggleGroup(name, chk.checked); });
     const tdChk = document.createElement('td');
     tdChk.append(chk);
-    const nameCell = td(name);
-    nameCell.title = name;
+    const nameCell = td(formatGroupDisplayName(name));
+    nameCell.setAttribute('aria-label', formatGroupDisplayName(name));
     tr.append(tdChk, nameCell);
     tr.addEventListener('click', () => toggleGroup(name, !state.selectedGroups.has(name)));
     return tr;
@@ -458,7 +458,7 @@ export function renderFamilyLink(root) {
       tdEmpty.colSpan = 2;
       tdEmpty.textContent = state.items.length
         ? '조건에 맞는 항목이 없습니다.'
-        : 'Shared Parameter 등록이 필요합니다. Revit에서 Shared Parameter Text를 등록/연결 후 다시 시도하세요.';
+        : '공유파라미터 등록이 필요합니다. Revit에서 공유파라미터 TXT를 등록하거나 연결한 뒤 다시 시도해 주세요.';
       tdEmpty.className = 'paramprop-empty';
       tr.append(tdEmpty);
       tbody.append(tr);
@@ -483,7 +483,7 @@ export function renderFamilyLink(root) {
       });
       tdChk.append(chk);
       const nameCell = td(def.name);
-      nameCell.title = `${def.groupName || ''} • ${def.dataTypeToken || ''}`.trim();
+      nameCell.setAttribute('aria-label', `${def.name || ''} / ${def.groupName || ''} / ${def.dataTypeToken || ''}`.trim());
       tr.append(tdChk, nameCell);
       tr.addEventListener('click', () => {
         if (state.selectedParams.has(key)) state.selectedParams.delete(key); else state.selectedParams.add(key);
@@ -555,28 +555,28 @@ export function renderFamilyLink(root) {
   function buildExcelSubtitle(phase, current, total) {
     const norm = normalizeExcelPhase(phase);
     switch (norm) {
-      case 'EXCEL_INIT': return '엑셀 워크북 준비 중';
-      case 'EXCEL_WRITE': return `엑셀 데이터 작성 중 (${current}/${Math.max(total, current || 1)})`;
-      case 'EXCEL_SAVE': return '엑셀 저장 중';
-      case 'AUTOFIT': return '열 너비 자동 조정 중';
-      case 'DONE': return '엑셀 내보내기 완료';
-      case 'ERROR': return '엑셀 내보내기 오류';
-      default: return '엑셀 내보내기 진행중';
+      case 'EXCEL_INIT': return '엑셀 워크북을 준비하는 중입니다.';
+      case 'EXCEL_WRITE': return `엑셀 데이터를 작성하는 중입니다. (${current}/${Math.max(total, current || 1)})`;
+      case 'EXCEL_SAVE': return '엑셀을 저장하는 중입니다.';
+      case 'AUTOFIT': return '열 너비를 자동 조정하는 중입니다.';
+      case 'DONE': return '패밀리 적합성 결과 엑셀 내보내기 완료';
+      case 'ERROR': return '패밀리 적합성 결과 엑셀 내보내기 오류';
+      default: return '패밀리 적합성 결과 엑셀 내보내기를 진행하는 중입니다.';
     }
   }
 
   function formatExcelDetail(phase, message) {
     if (message) return message;
-    return normalizeExcelPhase(phase) === 'DONE' ? '엑셀 내보내기 완료' : '';
+    return normalizeExcelPhase(phase) === 'DONE' ? '패밀리 적합성 결과 엑셀 내보내기 완료' : '';
   }
 
   function buildRunProgressSubtitle(percent, message) {
     const raw = String(message || '').trim();
-    if (!raw) return '진행 중...';
-    if (raw.includes('프로젝트 스캔 시작')) return '문서를 준비하는 중...';
-    if (raw.includes('패밀리 검사 중')) return `패밀리 검사 중 (${formatRunPercent(percent)})`;
+    if (!raw) return '패밀리 연동 검토를 진행하는 중입니다.';
+    if (raw.includes('프로젝트 스캔 시작')) return '문서를 준비하는 중입니다.';
+    if (raw.includes('패밀리 검사 중')) return `패밀리 검사 중입니다. (${formatRunPercent(percent)})`;
     if (raw.includes('완료')) return '패밀리 연동 검토 완료';
-    return `패밀리 연동 검토 진행 중 (${formatRunPercent(percent)})`;
+    return `패밀리 연동 검토를 진행하는 중입니다. (${formatRunPercent(percent)})`;
   }
 
   function buildRunProgressDetail(percent, message) {
@@ -632,7 +632,7 @@ export function renderFamilyLink(root) {
       const td = document.createElement('td');
       td.colSpan = state.schema.length;
       td.className = 'familylink-empty';
-      td.textContent = '결과가 없습니다. 검토를 실행하세요.';
+      td.textContent = '결과가 없습니다. 검토를 실행해 주세요.';
       tr.append(td);
       resultTbody.append(tr);
     } else {
@@ -648,7 +648,7 @@ export function renderFamilyLink(root) {
       });
     }
 
-    resultMeta.textContent = `${state.rows.length} rows`;
+    resultMeta.textContent = `결과 ${state.rows.length}개`;
   }
 
   function showFamilyLinkCompletionDialog() {
@@ -666,7 +666,7 @@ export function renderFamilyLink(root) {
         { label: '이슈 행', value: String(issueCount) },
         { label: '정상 행', value: String(okCount) },
         { label: '대상 RVT', value: `${fileCount}개` },
-        { label: 'Host Family', value: `${hostFamilyCount}개` }
+        { label: '호스트 패밀리', value: `${hostFamilyCount}개` }
       ],
       exportDisabled: !!exportBtn.disabled,
       onExport: () => exportBtn.click()
@@ -709,4 +709,8 @@ function td(value) {
   const cell = document.createElement('td');
   cell.textContent = value ?? '';
   return cell;
+}
+
+function formatGroupDisplayName(name) {
+  return name === '(All Groups)' ? '전체 그룹' : (name ?? '');
 }

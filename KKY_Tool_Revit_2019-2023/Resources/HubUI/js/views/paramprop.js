@@ -3,7 +3,7 @@ import { clear, div, toast, setBusy, showExcelSavedDialog, showCompletionSummary
 import { ProgressDialog } from '../core/progress.js';
 import { post, onHost } from '../core/bridge.js';
 
-const DEFAULT_GUIDE = '복합패밀리 공유 파라미터 추가/연동을 실행하면 결과가 여기에 표시됩니다.';
+const DEFAULT_GUIDE = '복합패밀리 공유파라미터 추가/연동을 실행하면 결과가 여기에 표시됩니다.';
 const PHASE_WEIGHT = {
     collect: 0.15,
     analyze: 0.25,
@@ -18,16 +18,16 @@ const PHASE_WEIGHT = {
 };
 const PHASE_ORDER = ['collect', 'analyze', 'apply', 'save', 'close', 'excel_init', 'excel_write', 'excel_save', 'autofit', 'done'];
 const PHASE_LABEL = {
-    collect: '수집 중',
-    analyze: '분석 중',
-    apply: '적용 중',
-    save: '저장 중',
-    close: '마무리 중',
-    excel_init: '엑셀 준비',
-    excel_write: '엑셀 작성',
-    excel_save: '파일 저장',
-    autofit: 'AutoFit 적용',
-    done: '완료'
+    collect: '대상 패밀리를 수집하는 중입니다.',
+    analyze: '공유파라미터 구성을 분석하는 중입니다.',
+    apply: '공유파라미터를 적용하는 중입니다.',
+    save: '패밀리 파일을 저장하는 중입니다.',
+    close: '작업을 마무리하는 중입니다.',
+    excel_init: '엑셀 내보내기를 준비하는 중입니다.',
+    excel_write: '엑셀 시트를 작성하는 중입니다.',
+    excel_save: '엑셀 파일을 저장하는 중입니다.',
+    autofit: '열 너비를 자동으로 맞추는 중입니다.',
+    done: '작업이 완료되었습니다.'
 };
 
 function formatRevitParamGroupLabel(value) {
@@ -74,9 +74,9 @@ export function renderParamProp(root) {
     const header = div('feature-header');
     const heading = div('feature-heading');
     heading.innerHTML = `
-      <span class="feature-kicker">Shared Parameter Propagator</span>
-      <h2 class="feature-title">복합패밀리 공유 파라미터 추가/연동</h2>
-      <p class="feature-sub">복합 패밀리의 하위 패밀리에 공유 파라미터를 추가하고 연동 및 검증을 수행합니다.</p>`;
+      <span class="feature-kicker">공유파라미터 연동</span>
+      <h2 class="feature-title">복합패밀리 공유파라미터 추가/연동</h2>
+      <p class="feature-sub">복합 패밀리의 하위 패밀리에 공유파라미터를 추가하고 연동 및 검증을 수행합니다.</p>`;
 
     const runBtn = cardBtn('연동 실행', onRun);
     runBtn.id = 'btnParamPropRun';
@@ -93,7 +93,7 @@ export function renderParamProp(root) {
     page.append(layout);
 
     const pickerCard = div('paramprop-card section paramprop-picker-card');
-    pickerCard.innerHTML = '<div class="paramprop-title">공유 파라미터 선택</div>';
+    pickerCard.innerHTML = '<div class="paramprop-title">공유파라미터 선택</div>';
 
     const searchRow = div('paramprop-row paramprop-search-row');
     const searchBox = document.createElement('input');
@@ -116,7 +116,7 @@ export function renderParamProp(root) {
     const groupTable = document.createElement('table');
     groupTable.className = 'paramprop-table paramprop-group-table';
     const groupThead = document.createElement('thead');
-    groupThead.innerHTML = '<tr><th>선택</th><th>Group</th></tr>';
+    groupThead.innerHTML = '<tr><th>선택</th><th>그룹</th></tr>';
     const groupTbody = document.createElement('tbody');
     groupTable.append(groupThead, groupTbody);
     const groupListWrap = div('paramprop-table-wrap paramprop-group-wrap');
@@ -130,7 +130,7 @@ export function renderParamProp(root) {
     const table = document.createElement('table');
     table.className = 'paramprop-table';
     const thead = document.createElement('thead');
-    thead.innerHTML = '<tr><th>선택</th><th>Name</th></tr>';
+    thead.innerHTML = '<tr><th>선택</th><th>이름</th></tr>';
     const tbody = document.createElement('tbody');
     table.append(thead, tbody);
     const tableWrap = div('paramprop-table-wrap');
@@ -182,7 +182,7 @@ export function renderParamProp(root) {
     const savePathInput = document.createElement('input');
     savePathInput.type = 'text';
     savePathInput.className = 'paramprop-search paramprop-folder-input';
-    savePathInput.placeholder = '수정된 패밀리(.rfa)를 저장할 폴더를 선택하세요';
+    savePathInput.placeholder = '수정된 패밀리(.rfa)를 저장할 폴더를 선택해 주세요';
     savePathInput.disabled = true;
     const saveBrowseBtn = document.createElement('button');
     saveBrowseBtn.type = 'button';
@@ -201,19 +201,19 @@ export function renderParamProp(root) {
     reportBox.textContent = DEFAULT_GUIDE;
 
     const filterRow = div('paramprop-row paramprop-filters');
-    filterRow.innerHTML = '<span class="opt-label">Type 필터</span>';
+    filterRow.innerHTML = '<span class="opt-label">결과 필터</span>';
     const filterAll = chip('전체', 'all');
-    const filterScan = chip('ScanFail', 'ScanFail');
-    const filterSkip = chip('Skip', 'Skip');
-    const filterErr = chip('Error', 'Error');
-    const filterChild = chip('ChildError', 'ChildError');
+    const filterScan = chip('스캔 실패', 'ScanFail');
+    const filterSkip = chip('건너뜀', 'Skip');
+    const filterErr = chip('오류', 'Error');
+    const filterChild = chip('하위 오류', 'ChildError');
     const filters = [filterAll, filterScan, filterSkip, filterErr, filterChild];
     filterAll.classList.add('is-active');
     filterRow.append(filterAll, filterScan, filterSkip, filterErr, filterChild);
 
     const detailTable = document.createElement('table');
     detailTable.className = 'paramprop-detail';
-    detailTable.innerHTML = '<thead><tr><th>Type</th><th>Family</th><th>Detail</th></tr></thead><tbody></tbody>';
+    detailTable.innerHTML = '<thead><tr><th>상태</th><th>패밀리</th><th>상세</th></tr></thead><tbody></tbody>';
     const detailWrap = div('paramprop-detail-wrap');
     detailWrap.append(detailTable);
 
@@ -236,14 +236,14 @@ export function renderParamProp(root) {
         lastProgressPct = 0;
         ProgressDialog.hide();
         setBusy(false);
-        toast(message || 'Revit 오류가 발생했습니다.', 'err', 3200);
+        toast(message || '패밀리 공유파라미터 연동 중 Revit 오류가 발생했습니다. 공유파라미터 TXT 연결, 대상 패밀리, 저장 옵션을 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3200);
     });
     onHost('host:error', ({ message }) => {
         state.acceptProgress = false;
         lastProgressPct = 0;
         ProgressDialog.hide();
         setBusy(false);
-        toast(message || '호스트 오류가 발생했습니다.', 'err', 3200);
+        toast(message || '패밀리 공유파라미터 연동 중 호스트 오류가 발생했습니다. Hub 화면을 다시 열고 Revit 연결 상태를 확인한 뒤 다시 실행해 주세요. 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err', 3200);
     });
 
     fetchDefinitions();
@@ -265,7 +265,7 @@ export function renderParamProp(root) {
     syncSaveOptions();
 
     function fetchDefinitions() {
-        setBusy(true, '공유 파라미터를 불러오는 중...');
+        setBusy(true, '공유파라미터를 불러오는 중입니다.');
         post('sharedparam:list', {});
     }
 
@@ -273,7 +273,7 @@ export function renderParamProp(root) {
         setBusy(false);
         const ok = payload?.ok !== false;
         if (!ok) {
-            toast(payload?.message || '공유 파라미터 목록을 불러오지 못했습니다.', 'warn');
+            toast(payload?.message || '공유파라미터 목록을 불러오지 못했습니다.', 'warn');
             state.defs = [];
             state.groups = [];
             renderGroups();
@@ -313,9 +313,9 @@ export function renderParamProp(root) {
         paintDetails(getActiveFilterKey());
         exportBtn.disabled = state.lastDetails.length === 0;
 
-        const msg = message || (good ? '공유 파라미터 연동이 완료되었습니다.' : '공유 파라미터 연동에 실패했습니다.');
+        const msg = message || (good ? '공유파라미터 연동이 완료되었습니다.' : '공유파라미터 연동에 실패했습니다.');
         toast(msg, good ? 'ok' : (status === 'cancelled' ? 'info' : 'err'), 2800);
-        ProgressDialog.update(100, '완료', '공유 파라미터 추가 및 연동이 완료되었습니다.');
+        ProgressDialog.update(100, '작업이 완료되었습니다.', '공유파라미터 추가 및 연동이 완료되었습니다.');
         const targetGroup = state.targetGroups.find((item) => item?.id === state.targetGroupId);
         const detailSummary = summarizeDetailRows(state.lastDetails);
         const summaryItems = [
@@ -328,18 +328,18 @@ export function renderParamProp(root) {
         const notes = [];
         if (targetGroup) notes.push(`대상 그룹: ${targetGroup?.name || targetGroup?.label || '-'}`);
         if (detailSummary.totalCount === 0 && good) notes.push('상세 결과에 표시할 오류 또는 건너뜀 항목이 없습니다.');
-        if (detailSummary.scanFailCount > 0) notes.push(`ScanFail: ${detailSummary.scanFailCount}건`);
-        if (detailSummary.childErrorCount > 0) notes.push(`ChildError: ${detailSummary.childErrorCount}건`);
+        if (detailSummary.scanFailCount > 0) notes.push(`스캔 실패: ${detailSummary.scanFailCount}건`);
+        if (detailSummary.childErrorCount > 0) notes.push(`하위 오류: ${detailSummary.childErrorCount}건`);
         if (message) notes.push(String(message));
         setTimeout(() => {
             lastProgressPct = 0;
             ProgressDialog.hide();
             requestAnimationFrame(() => {
                 showCompletionSummaryDialog({
-                    title: '공유 파라미터 연동 완료',
+                    title: '공유파라미터 연동 완료',
                     message: good
-                        ? '공유 파라미터 추가 및 연동이 끝났습니다. 결과를 확인하거나 바로 엑셀로 내보낼 수 있습니다.'
-                        : '공유 파라미터 연동이 끝났습니다. 결과를 확인하고 필요하면 다시 실행해 주세요.',
+                        ? '공유파라미터 추가 및 연동이 끝났습니다. 결과를 확인하거나 바로 엑셀로 내보낼 수 있습니다.'
+                        : '공유파라미터 연동이 끝났습니다. 결과를 확인하고 필요하면 다시 실행해 주세요.',
                     summaryItems,
                     notes,
                     exportDisabled: exportBtn.disabled,
@@ -390,9 +390,9 @@ export function renderParamProp(root) {
         setBusy(false);
         exportBtn.disabled = state.lastDetails.length === 0;
         if (ok && path) {
-            showExcelSavedDialog('엑셀 내보내기가 완료되었습니다.', path, (p) => post('excel:open', { path: p }));
+            showExcelSavedDialog('패밀리 공유파라미터 연동 결과 엑셀을 저장했습니다.', path, (p) => post('excel:open', { path: p }));
         } else {
-            toast(message || '엑셀 내보내기에 실패했습니다.', 'err');
+            toast(message || '패밀리 공유파라미터 연동 결과 엑셀 내보내기에 실패했습니다. 저장 경로 권한과 파일 열림 상태를 확인한 뒤, 계속 실패하면 메시지를 관리자에게 전달해 주세요.', 'err');
         }
     }
 
@@ -408,9 +408,9 @@ export function renderParamProp(root) {
         }
         lastProgressPct = 0;
         state.acceptProgress = true;
-        setBusy(true, '공유 파라미터 연동 중...');
-        ProgressDialog.show('공유 파라미터 추가 및 연동', '연동 구성을 확인하는 중...');
-        ProgressDialog.update(0, '연동 구성을 확인하는 중...', '선택한 파라미터와 저장 옵션을 정리하는 중...');
+        setBusy(true, '공유파라미터를 연동하는 중입니다.');
+        ProgressDialog.show('공유파라미터 추가 및 연동', '연동 구성을 확인하는 중입니다.');
+        ProgressDialog.update(0, '연동 구성을 확인하는 중입니다.', '선택한 파라미터와 저장 옵션을 정리하는 중입니다.');
         exportBtn.disabled = true;
         const payload = {
             paramNames: selected,
@@ -433,9 +433,9 @@ export function renderParamProp(root) {
         const excelMode = await chooseExcelMode();
         if (!excelMode) return;
         state.acceptProgress = true;
-        setBusy(true, '엑셀 내보내기 중...');
-        ProgressDialog.show('공유 파라미터 결과 내보내기', '엑셀 파일을 준비하는 중...');
-        ProgressDialog.update(0, '엑셀 파일을 준비하는 중...', '검토 결과와 저장 옵션을 정리하는 중...');
+        setBusy(true, '엑셀을 내보내는 중입니다.');
+        ProgressDialog.show('공유파라미터 결과 내보내기', '엑셀 내보내기를 준비하는 중입니다.');
+        ProgressDialog.update(0, '엑셀 내보내기를 준비하는 중입니다.', '검토 결과와 저장 옵션을 정리하는 중입니다.');
         post('sharedparam:export-excel', { excelMode, locale: getLastExcelExportLocale() });
     }
 
@@ -456,8 +456,8 @@ export function renderParamProp(root) {
         chk.addEventListener('change', (e) => { e.stopPropagation(); toggleGroup(name, chk.checked); });
         const tdChk = document.createElement('td');
         tdChk.append(chk);
-        const nameCell = td(name);
-        nameCell.title = name;
+        const nameCell = td(formatGroupDisplayName(name));
+        nameCell.setAttribute('aria-label', formatGroupDisplayName(name));
         tr.append(tdChk, nameCell);
         tr.addEventListener('click', () => toggleGroup(name, !state.selectedGroups.has(name)));
         return tr;
@@ -486,7 +486,7 @@ export function renderParamProp(root) {
             tdEmpty.colSpan = 2;
             tdEmpty.textContent = state.defs.length
                 ? '조건에 맞는 항목이 없습니다.'
-                : 'Shared Parameter 등록이 필요합니다. Revit에서 Shared Parameter Text를 등록/연결한 뒤 다시 시도해 주세요.';
+                : '공유파라미터 등록이 필요합니다. Revit에서 공유파라미터 TXT를 등록하거나 연결한 뒤 다시 시도해 주세요.';
             tdEmpty.className = 'paramprop-empty';
             tr.append(tdEmpty);
             tbody.append(tr);
@@ -512,7 +512,8 @@ export function renderParamProp(root) {
             });
             tdChk.append(chk);
             const nameCell = td(def.name);
-            nameCell.title = `${def.groupName || ''} · ${def.paramType || ''} · ${def.visible ? 'Visible' : 'Hidden'}`.trim();
+            const visibilityText = def.visible ? '표시' : '숨김';
+            nameCell.setAttribute('aria-label', `${def.groupName || ''} · ${def.paramType || ''} · ${visibilityText}`.trim());
             tr.append(tdChk, nameCell);
             tr.addEventListener('click', () => {
                 if (state.selectedParams.has(key)) state.selectedParams.delete(key); else state.selectedParams.add(key);
@@ -632,6 +633,10 @@ export function renderParamProp(root) {
         return cell;
     }
 
+    function formatGroupDisplayName(name) {
+        return name === '(All Groups)' ? '전체 그룹' : (name ?? '');
+    }
+
     function cardBtn(label, onClick) {
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -670,7 +675,7 @@ export function renderParamProp(root) {
         const subtitle = buildSubtitle(phase, current, total);
         const detail = buildDetail(message, targetLabel);
 
-        ProgressDialog.show('공유 파라미터 추가 및 연동', subtitle);
+        ProgressDialog.show('공유파라미터 추가 및 연동', subtitle);
         ProgressDialog.update(percent, subtitle, detail);
 
         if (phase === 'done') {
@@ -695,7 +700,7 @@ export function renderParamProp(root) {
     }
 
     function buildSubtitle(phase, current, total) {
-        const label = PHASE_LABEL[phase] || '진행 중';
+        const label = PHASE_LABEL[phase] || '패밀리 공유파라미터 연동을 진행하는 중입니다.';
         const count = total > 0 ? ` (${Math.max(current, 0)}/${total})` : '';
         return `${label}${count}`;
     }

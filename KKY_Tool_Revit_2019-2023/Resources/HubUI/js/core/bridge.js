@@ -278,7 +278,7 @@ export function post(ev, payload = {}) {
             break;
         }
         case "familylink:run": {
-            _emitHost("familylink:progress", { percent: 25, message: "(DEV) 스캔 중..." }, { __seq: seq });
+            _emitHost("familylink:progress", { percent: 25, message: "(DEV) 스캔 중입니다." }, { __seq: seq });
             _emitHost("familylink:result", {
                 schema: ["ProjectPath", "HostFamilyName", "HostFamilyCategory", "NestedFamilyName", "NestedTypeName", "NestedCategory", "TargetParamName", "ExpectedGuid", "FoundScope", "NestedParamGuid", "NestedParamDataType", "AssocHostParamName", "HostParamGuid", "HostParamIsShared", "Issue", "Notes"],
                 rows: [
@@ -323,7 +323,7 @@ export function post(ev, payload = {}) {
             break;
         }
         case "lateralnozzle:run": {
-            _emitHost("lateralnozzle:progress", { title: "노즐코드 KTA 단일화", percent: 35, message: "(DEV) 엑셀 읽는 중...", detail: "KTA_Form_A.xlsx" }, { __seq: seq });
+            _emitHost("lateralnozzle:progress", { title: "노즐코드 KTA 단일화", percent: 35, message: "(DEV) 엑셀 읽는 중입니다.", detail: "KTA_Form_A.xlsx" }, { __seq: seq });
             _emitHost("lateralnozzle:done", {
                 ok: true,
                 message: "(DEV) 추출 완료: 12건",
