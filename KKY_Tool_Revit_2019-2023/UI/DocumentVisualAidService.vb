@@ -1675,7 +1675,13 @@ Namespace UI
         Private _navigatorSnapshot As DocumentViewNavigatorSnapshot
         Private _sessions As List(Of DocumentVisualAidSessionState) = New List(Of DocumentVisualAidSessionState)()
         Private _selectedSessionProcessId As Integer
+        Private _manualSessionProcessId As Integer
         Private _foregroundSessionProcessId As Integer
+        Private _manualNavigatorSessionProcessId As Integer
+        Private _manualNavigatorDocumentKey As String = String.Empty
+        Private _manualNavigatorCategoryKey As String = String.Empty
+        Private _manualNavigatorViewId As Integer = -1
+        Private _isUpdatingNavigatorControls As Boolean
         Private _forceClosing As Boolean
 
         Public Sub New(navigateAction As Action(Of Integer, DocumentViewOption),
@@ -1773,6 +1779,7 @@ Namespace UI
         End Function
 
         Private Sub UpdateSessions(aggregate As DocumentVisualAidAggregateState)
+            Dim previousSelectedSessionProcessId = _selectedSessionProcessId
             _sessions = If(aggregate?.Sessions, New List(Of DocumentVisualAidSessionState)()).ToList()
 
             _foregroundSessionProcessId =
@@ -1780,18 +1787,41 @@ Namespace UI
                     _sessions.Where(Function(item) item IsNot Nothing).
                               Select(Function(item) item.ProcessId))
 
-            If _foregroundSessionProcessId > 0 Then
+            Dim hasManualSession =
+                _manualSessionProcessId > 0 AndAlso
+                _sessions.Any(Function(item) item IsNot Nothing AndAlso item.ProcessId = _manualSessionProcessId)
+
+            If _manualSessionProcessId > 0 AndAlso Not hasManualSession Then
+                _manualSessionProcessId = 0
+            End If
+
+            If hasManualSession Then
+                _selectedSessionProcessId = _manualSessionProcessId
+            ElseIf _foregroundSessionProcessId > 0 AndAlso Not IsActive Then
                 _selectedSessionProcessId = _foregroundSessionProcessId
             End If
 
             If _selectedSessionProcessId <= 0 OrElse
                Not _sessions.Any(Function(item) item IsNot Nothing AndAlso item.ProcessId = _selectedSessionProcessId) Then
-                Dim preferredSession = _sessions.FirstOrDefault(Function(item) item IsNot Nothing AndAlso item.IsLocalProcess)
+                Dim preferredSession =
+                    If(_foregroundSessionProcessId > 0,
+                       _sessions.FirstOrDefault(Function(item) item IsNot Nothing AndAlso item.ProcessId = _foregroundSessionProcessId),
+                       Nothing)
+
+                If preferredSession Is Nothing Then
+                    preferredSession = _sessions.FirstOrDefault(Function(item) item IsNot Nothing AndAlso item.IsLocalProcess)
+                End If
+
                 If preferredSession Is Nothing Then
                     preferredSession = _sessions.FirstOrDefault()
                 End If
 
                 _selectedSessionProcessId = If(preferredSession Is Nothing, 0, preferredSession.ProcessId)
+            End If
+
+            If previousSelectedSessionProcessId > 0 AndAlso
+               previousSelectedSessionProcessId <> _selectedSessionProcessId Then
+                ClearManualNavigatorSelection()
             End If
 
             RenderVersionTabs()
@@ -1810,7 +1840,9 @@ Namespace UI
                 Dim versionLabel = If(String.IsNullOrWhiteSpace(selectedSession.VersionLabel),
                                       If(String.IsNullOrWhiteSpace(selectedSession.TabLabel), "Revit", selectedSession.TabLabel),
                                       selectedSession.VersionLabel)
-                If _foregroundSessionProcessId > 0 Then
+                If _manualSessionProcessId > 0 Then
+                    _versionTabsHint.Text = $"Selected Revit version: {versionLabel}"
+                ElseIf _foregroundSessionProcessId > 0 Then
                     _versionTabsHint.Text = $"Active Revit version: {versionLabel}"
                 Else
                     _versionTabsHint.Text = $"Selected Revit version: {versionLabel}"
@@ -1822,6 +1854,7 @@ Namespace UI
             For Each session In _sessions
                 If session Is Nothing Then Continue For
 
+                Dim capturedSession = session
                 Dim isForeground = _foregroundSessionProcessId > 0 AndAlso session.ProcessId = _foregroundSessionProcessId
                 Dim isActive = session.ProcessId = _selectedSessionProcessId
                 Dim tabButton As New WpfButton With {
@@ -1848,10 +1881,12 @@ Namespace UI
                 }
                 AddHandler tabButton.Click,
                     Sub()
-                        _selectedSessionProcessId = session.ProcessId
+                        _manualSessionProcessId = capturedSession.ProcessId
+                        _selectedSessionProcessId = capturedSession.ProcessId
+                        ClearManualNavigatorSelection()
                         RefreshSelectedSessionContents()
                         If _focusProcessAction IsNot Nothing Then
-                            _focusProcessAction.Invoke(session.ProcessId)
+                            _focusProcessAction.Invoke(capturedSession.ProcessId)
                         End If
                     End Sub
 
@@ -1919,46 +1954,80 @@ Namespace UI
 
         Private Sub UpdateNavigator(navigator As DocumentViewNavigatorSnapshot)
             _navigatorSnapshot = navigator
+            _isUpdatingNavigatorControls = True
 
-            If navigator Is Nothing OrElse navigator.Documents Is Nothing OrElse navigator.Documents.Count = 0 Then
-                _navigatorSummaryText.Text = "Open a document to browse views."
-                _navigatorEmptyText.Text = "Pick a document, then a view type, then jump to the view you want."
-                _navigatorEmptyText.Visibility = System.Windows.Visibility.Visible
-                _documentCombo.ItemsSource = Nothing
-                _documentCombo.IsEnabled = False
-                _viewTypeCombo.ItemsSource = Nothing
-                _viewTypeCombo.IsEnabled = False
-                _viewCombo.ItemsSource = Nothing
-                _viewCombo.IsEnabled = False
-                _goButton.IsEnabled = False
-                Return
-            End If
+            Try
+                If navigator Is Nothing OrElse navigator.Documents Is Nothing OrElse navigator.Documents.Count = 0 Then
+                    _navigatorSummaryText.Text = "Open a document to browse views."
+                    _navigatorEmptyText.Text = "Pick a document, then a view type, then jump to the view you want."
+                    _navigatorEmptyText.Visibility = System.Windows.Visibility.Visible
+                    _documentCombo.ItemsSource = Nothing
+                    _documentCombo.IsEnabled = False
+                    _viewTypeCombo.ItemsSource = Nothing
+                    _viewTypeCombo.IsEnabled = False
+                    _viewCombo.ItemsSource = Nothing
+                    _viewCombo.IsEnabled = False
+                    _goButton.IsEnabled = False
+                    Return
+                End If
 
-            _navigatorSummaryText.Text = "Active document follows automatically."
-            _navigatorEmptyText.Visibility = System.Windows.Visibility.Collapsed
+                _navigatorSummaryText.Text = "Active document follows automatically."
+                _navigatorEmptyText.Visibility = System.Windows.Visibility.Collapsed
 
-            _documentCombo.ItemsSource = navigator.Documents
-            _documentCombo.IsEnabled = True
+                _documentCombo.ItemsSource = navigator.Documents
+                _documentCombo.IsEnabled = True
 
-            Dim selectedDocument = navigator.Documents.FirstOrDefault(
-                Function(item) String.Equals(item.DocumentKey, navigator.SelectedDocumentKey, StringComparison.OrdinalIgnoreCase))
-            If selectedDocument Is Nothing Then
-                selectedDocument = navigator.Documents.FirstOrDefault()
-            End If
+                Dim hasManualNavigatorSelection =
+                    _manualNavigatorSessionProcessId = _selectedSessionProcessId AndAlso
+                    Not String.IsNullOrWhiteSpace(_manualNavigatorDocumentKey)
 
-            _documentCombo.SelectedItem = selectedDocument
+                Dim selectedDocument As DocumentViewNavigatorDocument = Nothing
+                If hasManualNavigatorSelection Then
+                    selectedDocument = navigator.Documents.FirstOrDefault(
+                        Function(item) String.Equals(item.DocumentKey, _manualNavigatorDocumentKey, StringComparison.OrdinalIgnoreCase))
+                    If selectedDocument Is Nothing Then
+                        ClearManualNavigatorSelection()
+                        hasManualNavigatorSelection = False
+                    End If
+                End If
 
-            If selectedDocument IsNot Nothing Then
-                UpdateCategorySelection(selectedDocument,
-                                        preferredCategoryKey:=selectedDocument.DefaultCategoryKey,
-                                        preferredViewId:=selectedDocument.ActiveViewId)
-            Else
-                _viewTypeCombo.ItemsSource = Nothing
-                _viewTypeCombo.IsEnabled = False
-                _viewCombo.ItemsSource = Nothing
-                _viewCombo.IsEnabled = False
-                _goButton.IsEnabled = False
-            End If
+                If selectedDocument Is Nothing Then
+                    selectedDocument = navigator.Documents.FirstOrDefault(
+                        Function(item) String.Equals(item.DocumentKey, navigator.SelectedDocumentKey, StringComparison.OrdinalIgnoreCase))
+                End If
+                If selectedDocument Is Nothing Then
+                    selectedDocument = navigator.Documents.FirstOrDefault()
+                End If
+
+                _documentCombo.SelectedItem = selectedDocument
+
+                If selectedDocument IsNot Nothing Then
+                    Dim preferredCategoryKey = selectedDocument.DefaultCategoryKey
+                    Dim preferredViewId = selectedDocument.ActiveViewId
+
+                    If hasManualNavigatorSelection AndAlso
+                       String.Equals(selectedDocument.DocumentKey, _manualNavigatorDocumentKey, StringComparison.OrdinalIgnoreCase) Then
+                        If Not String.IsNullOrWhiteSpace(_manualNavigatorCategoryKey) Then
+                            preferredCategoryKey = _manualNavigatorCategoryKey
+                            preferredViewId = _manualNavigatorViewId
+                        ElseIf _manualNavigatorViewId > 0 Then
+                            preferredViewId = _manualNavigatorViewId
+                        End If
+                    End If
+
+                    UpdateCategorySelection(selectedDocument,
+                                            preferredCategoryKey:=preferredCategoryKey,
+                                            preferredViewId:=preferredViewId)
+                Else
+                    _viewTypeCombo.ItemsSource = Nothing
+                    _viewTypeCombo.IsEnabled = False
+                    _viewCombo.ItemsSource = Nothing
+                    _viewCombo.IsEnabled = False
+                    _goButton.IsEnabled = False
+                End If
+            Finally
+                _isUpdatingNavigatorControls = False
+            End Try
         End Sub
 
         Private Shared Function CreateSectionCard(content As UIElement, Optional marginBottom As Double = 0.0R) As UIElement
@@ -2145,8 +2214,11 @@ Namespace UI
         End Sub
 
         Private Sub OnSelectedDocumentChanged(sender As Object, e As SelectionChangedEventArgs)
+            If _isUpdatingNavigatorControls Then Return
+
             Dim selectedDocument = TryCast(_documentCombo.SelectedItem, DocumentViewNavigatorDocument)
             If selectedDocument Is Nothing Then
+                ClearManualNavigatorSelection()
                 _viewTypeCombo.ItemsSource = Nothing
                 _viewTypeCombo.IsEnabled = False
                 _viewCombo.ItemsSource = Nothing
@@ -2155,22 +2227,44 @@ Namespace UI
                 Return
             End If
 
-            UpdateCategorySelection(selectedDocument,
-                                    preferredCategoryKey:=selectedDocument.DefaultCategoryKey,
-                                    preferredViewId:=selectedDocument.ActiveViewId)
+            RememberManualNavigatorSelection(selectedDocument, Nothing, Nothing)
+
+            Dim previousUpdating = _isUpdatingNavigatorControls
+            _isUpdatingNavigatorControls = True
+            Try
+                UpdateCategorySelection(selectedDocument,
+                                        preferredCategoryKey:=selectedDocument.DefaultCategoryKey,
+                                        preferredViewId:=selectedDocument.ActiveViewId)
+            Finally
+                _isUpdatingNavigatorControls = previousUpdating
+            End Try
         End Sub
 
         Private Sub OnViewTypeChanged(sender As Object, e As SelectionChangedEventArgs)
-            Dim preferredViewId As Integer = -1
-            Dim selectedDocument = TryCast(_documentCombo.SelectedItem, DocumentViewNavigatorDocument)
-            If selectedDocument IsNot Nothing Then
-                preferredViewId = selectedDocument.ActiveViewId
-            End If
+            If _isUpdatingNavigatorControls Then Return
 
-            UpdateViewSelection(preferredViewId)
+            Dim selectedDocument = TryCast(_documentCombo.SelectedItem, DocumentViewNavigatorDocument)
+            Dim selectedCategory = TryCast(_viewTypeCombo.SelectedItem, DocumentViewCategory)
+
+            RememberManualNavigatorSelection(selectedDocument, selectedCategory, Nothing)
+
+            Dim previousUpdating = _isUpdatingNavigatorControls
+            _isUpdatingNavigatorControls = True
+            Try
+                UpdateViewSelection(-1)
+            Finally
+                _isUpdatingNavigatorControls = previousUpdating
+            End Try
         End Sub
 
         Private Sub OnSelectedViewChanged(sender As Object, e As SelectionChangedEventArgs)
+            If _isUpdatingNavigatorControls Then Return
+
+            Dim selectedDocument = TryCast(_documentCombo.SelectedItem, DocumentViewNavigatorDocument)
+            Dim selectedCategory = TryCast(_viewTypeCombo.SelectedItem, DocumentViewCategory)
+            Dim selectedView = TryCast(_viewCombo.SelectedItem, DocumentViewOption)
+
+            RememberManualNavigatorSelection(selectedDocument, selectedCategory, selectedView)
             _goButton.IsEnabled = TypeOf _viewCombo.SelectedItem Is DocumentViewOption
         End Sub
 
@@ -2228,7 +2322,26 @@ Namespace UI
             Dim selectedView = TryCast(_viewCombo.SelectedItem, DocumentViewOption)
             If selectedView Is Nothing OrElse _navigateAction Is Nothing Then Return
 
+            RememberManualNavigatorSelection(TryCast(_documentCombo.SelectedItem, DocumentViewNavigatorDocument),
+                                             TryCast(_viewTypeCombo.SelectedItem, DocumentViewCategory),
+                                             selectedView)
             _navigateAction.Invoke(_selectedSessionProcessId, selectedView)
+        End Sub
+
+        Private Sub RememberManualNavigatorSelection(selectedDocument As DocumentViewNavigatorDocument,
+                                                     selectedCategory As DocumentViewCategory,
+                                                     selectedView As DocumentViewOption)
+            _manualNavigatorSessionProcessId = _selectedSessionProcessId
+            _manualNavigatorDocumentKey = If(selectedDocument?.DocumentKey, String.Empty)
+            _manualNavigatorCategoryKey = If(selectedCategory?.Key, String.Empty)
+            _manualNavigatorViewId = If(selectedView Is Nothing, -1, selectedView.ViewId)
+        End Sub
+
+        Private Sub ClearManualNavigatorSelection()
+            _manualNavigatorSessionProcessId = 0
+            _manualNavigatorDocumentKey = String.Empty
+            _manualNavigatorCategoryKey = String.Empty
+            _manualNavigatorViewId = -1
         End Sub
 
         Private Function CreateEntryRow(entry As DocumentColorEntry) As UIElement

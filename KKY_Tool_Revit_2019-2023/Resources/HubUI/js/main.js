@@ -1,7 +1,7 @@
-import { initTheme } from './core/theme.js';
-import { beginHostListenerScope, clearHostListenerScope, endHostListenerScope, onHost, post } from './core/bridge.js';
-import { updateTopMost, setActiveDocument, setDocList, setDocumentVisualAidSettings, setUpdateInfo, setUpdateState, renderTopbar } from './core/topbar.js?v=20260505j';
-import { initLogConsole, toggleLogConsole, log } from './core/dom.js';
+import { initTheme } from './core/theme.js?v=20260506a';
+import { beginHostListenerScope, clearHostListenerScope, endHostListenerScope, onHost, post } from './core/bridge.js?v=20260506a';
+import { updateTopMost, setActiveDocument, setDocList, setDocumentVisualAidSettings, setUpdateInfo, setUpdateState, renderTopbar } from './core/topbar.js?v=20260507a';
+import { initLogConsole, toggleLogConsole, log } from './core/dom.js?v=20260506a';
 import { renderHome } from './views/home.js?v=20260505d';
 import { renderActiveMenu } from './views/activeMenu.js?v=20260504d';
 import { renderDup } from './views/dup.js?v=20260505p';
