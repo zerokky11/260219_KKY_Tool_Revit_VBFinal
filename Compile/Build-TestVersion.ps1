@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '2.22',
+    [string]$Version = '2.25',
     [string]$TestLabel = 'test',
     [switch]$SkipBackup
 )

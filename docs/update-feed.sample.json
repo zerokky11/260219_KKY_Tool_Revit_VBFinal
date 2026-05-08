@@ -1,6 +1,6 @@
-﻿{
-  "version": "2.03",
-  "url": "https://example.com/KKY_Tool_Revit(2019,21,23,25)_v2.03.exe",
-  "publishedAt": "2026-03-20",
-  "notes": "허브 업데이트 체크 기능 추가"
+{
+  "version": "2.25",
+  "url": "https://update.zerokky.com/KKY_Tool_Revit(2019,21,23,25)_v2.25.zip",
+  "publishedAt": "2026-05-08",
+  "notes": "View Navigator 창 전환 안정화, 문서 색상 구분 개선, 납품용 RVT 정리 결과 폴더 선택창 개선을 반영했습니다."
 }

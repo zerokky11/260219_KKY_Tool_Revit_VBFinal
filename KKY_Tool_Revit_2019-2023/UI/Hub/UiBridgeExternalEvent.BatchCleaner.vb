@@ -223,11 +223,17 @@ Namespace UI.Hub
         End Sub
 
         Private Sub HandleDeliveryCleanerBrowseOutputFolder(app As UIApplication, payload As Object)
-            Using dlg As New WinForms.FolderBrowserDialog()
-                dlg.Description = "정리 결과 폴더 선택"
-                If dlg.ShowDialog() <> WinForms.DialogResult.OK Then Return
-                SendToWebAfterDialog("deliverycleaner:output-folder-picked", New With {.ok = True, .path = dlg.SelectedPath})
-            End Using
+            Dim initialFolder = NormalizeDeliveryCleanerText(GetProp(payload, "currentPath"))
+            If String.IsNullOrWhiteSpace(initialFolder) Then
+                SyncLock _deliveryCleanerLock
+                    If _deliveryCleanerSession IsNot Nothing Then initialFolder = _deliveryCleanerSession.OutputFolder
+                    If String.IsNullOrWhiteSpace(initialFolder) AndAlso _deliveryCleanerSettings IsNot Nothing Then initialFolder = _deliveryCleanerSettings.OutputFolder
+                End SyncLock
+            End If
+
+            Dim selectedPath As String = String.Empty
+            If Not ExplorerFolderPicker.TryPickFolder("정리 결과 폴더 선택", initialFolder, selectedPath) Then Return
+            SendToWebAfterDialog("deliverycleaner:output-folder-picked", New With {.ok = True, .path = selectedPath})
         End Sub
 
         Private Sub HandleDeliveryCleanerFilterImport(app As UIApplication, payload As Object)

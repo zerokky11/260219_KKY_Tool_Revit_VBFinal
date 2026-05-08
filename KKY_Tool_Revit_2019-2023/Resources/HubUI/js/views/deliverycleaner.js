@@ -501,7 +501,7 @@ function buildBasicsCard(state) {
     state.outputFolder = outputInput.value.trim();
     updateActionState(state);
   });
-  const browseBtn = actionButton('찾아보기', () => post('deliverycleaner:browse-output-folder', {}));
+  const browseBtn = actionButton('찾아보기', () => post('deliverycleaner:browse-output-folder', { currentPath: state.outputFolder || '' }));
   outputRow.append(outputInput, browseBtn);
   outputField.append(outputRow);
 

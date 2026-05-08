@@ -9,6 +9,7 @@ $issPath = Join-Path $PSScriptRoot 'KKY_Tool_Compiler.iss'
 $feedScriptPath = Join-Path $PSScriptRoot 'New-UpdateFeed.ps1'
 $zipScriptPath = Join-Path $PSScriptRoot 'New-UpdateZip.ps1'
 $historyScriptPath = Join-Path $PSScriptRoot 'Update-ReleaseHistory.ps1'
+$verifyScriptPath = Join-Path $PSScriptRoot 'Verify-KKYToolRelease.ps1'
 $releaseDir = Join-Path $repoRoot 'Sever\Release'
 $stageRoot = Join-Path $repoRoot 'artifacts\release-stage\single'
 $indexPath = Join-Path $releaseDir 'index.html'
@@ -33,6 +34,10 @@ if (-not (Test-Path -LiteralPath $zipScriptPath)) {
 
 if (-not (Test-Path -LiteralPath $historyScriptPath)) {
     throw "Release history script not found: $historyScriptPath"
+}
+
+if (-not (Test-Path -LiteralPath $verifyScriptPath)) {
+    throw "Release verification script not found: $verifyScriptPath"
 }
 
 if (-not (Test-Path -LiteralPath $isccPath)) {
@@ -134,6 +139,12 @@ if (Test-Path -LiteralPath $indexPath) {
     [System.IO.File]::WriteAllText($indexPath, $indexContent, [System.Text.Encoding]::UTF8)
 }
 
+$verifyReportPath = Join-Path $repoRoot ("artifacts\release-verify\release-{0}.json" -f $version)
+& $verifyScriptPath -Version $version -ReportPath $verifyReportPath
+if ($LASTEXITCODE -ne 0) {
+    throw 'Release verification failed.'
+}
+
 Write-Host ''
 Write-Host 'Release build completed.'
 Write-Host "Version      : $version"
@@ -141,3 +152,4 @@ Write-Host "Installer    : $exePath"
 Write-Host "Update zip   : $zipPath"
 Write-Host "Feed file    : $feedPath"
 Write-Host "Package URL  : $packageUrl"
+Write-Host "Verify report: $verifyReportPath"

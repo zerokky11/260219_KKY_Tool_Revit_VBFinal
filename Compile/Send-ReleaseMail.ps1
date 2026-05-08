@@ -32,6 +32,7 @@ $smtpHost = 'smtp.mail.nate.com'
 $smtpPort = 465
 $sender = 'kkykiki89@nate.com'
 $recipient = 'kcim03@samoo.co.kr'
+$releaseYearLabel = '2019,21,23,25'
 
 function Resolve-AttachmentPaths {
     param(
@@ -71,8 +72,8 @@ function Resolve-AttachmentPaths {
         }
     }
 
-    $exeName = "KKY_Tool_Revit(2019,21,23,25)_v$ResolvedVersion.exe"
-    $zipName = "KKY_Tool_Revit(2019,21,23,25)_v$ResolvedVersion.zip"
+    $exeName = "KKY_Tool_Revit($releaseYearLabel)_v$ResolvedVersion.exe"
+    $zipName = "KKY_Tool_Revit($releaseYearLabel)_v$ResolvedVersion.zip"
     $exePath = Join-Path $baseDir $exeName
     $zipPath = Join-Path $baseDir $zipName
 

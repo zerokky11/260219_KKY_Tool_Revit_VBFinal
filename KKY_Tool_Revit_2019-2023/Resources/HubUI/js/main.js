@@ -1,6 +1,6 @@
 import { initTheme } from './core/theme.js?v=20260506a';
 import { beginHostListenerScope, clearHostListenerScope, endHostListenerScope, onHost, post } from './core/bridge.js?v=20260506a';
-import { updateTopMost, setActiveDocument, setDocList, setDocumentVisualAidSettings, setUpdateInfo, setUpdateState, renderTopbar } from './core/topbar.js?v=20260507a';
+import { updateTopMost, setActiveDocument, setDocList, setDocumentVisualAidSettings, setUpdateInfo, setUpdateState, renderTopbar } from './core/topbar.js?v=20260508a';
 import { initLogConsole, toggleLogConsole, log } from './core/dom.js?v=20260506a';
 import { renderHome } from './views/home.js?v=20260505d';
 import { renderActiveMenu } from './views/activeMenu.js?v=20260504d';
@@ -14,7 +14,7 @@ import { renderGuid } from './views/guid.js?v=20260505k';
 import { renderFamilyLink } from './views/familylink.js?v=20260505f';
 import { renderLinkPath } from './views/linkpath.js?v=20260505h';
 import { renderMulti } from './views/multi.js?v=20260505ao';
-import { renderDeliveryCleaner } from './views/deliverycleaner.js?v=20260505n';
+import { renderDeliveryCleaner } from './views/deliverycleaner.js?v=20260508a';
 import { renderParamModifier } from './views/parammodifier.js?v=20260505j';
 import { renderConditionExtract } from './views/conditionextract.js?v=20260505j';
 import { renderLateralNozzle } from './views/lateralnozzle.js?v=20260505e';

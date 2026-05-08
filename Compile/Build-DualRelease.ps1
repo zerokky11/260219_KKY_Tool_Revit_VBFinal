@@ -12,6 +12,7 @@ $issPath = Join-Path $repoRoot 'Compile\KKY_Tool_Compiler.iss'
 $feedScriptPath = Join-Path $repoRoot 'Compile\New-UpdateFeed.ps1'
 $zipScriptPath = Join-Path $repoRoot 'Compile\New-UpdateZip.ps1'
 $historyScriptPath = Join-Path $repoRoot 'Compile\Update-ReleaseHistory.ps1'
+$verifyScriptPath = Join-Path $repoRoot 'Compile\Verify-KKYToolRelease.ps1'
 $releaseDir = Join-Path $repoRoot 'Sever\Release'
 $stageRoot = Join-Path $repoRoot 'artifacts\release-stage'
 $proj2019To2023 = Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\KKY_Tool_Revit.vbproj'
@@ -20,6 +21,13 @@ $indexPath = Join-Path $releaseDir 'index.html'
 $historyPath = Join-Path $releaseDir 'release-history.json'
 $domainRoot = 'https://update.zerokky.com'
 $isccPath = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+$releaseYearLabel = '2019,21,23,25'
+
+foreach ($requiredPath in @($issPath, $feedScriptPath, $zipScriptPath, $historyScriptPath, $verifyScriptPath)) {
+    if (-not (Test-Path -LiteralPath $requiredPath)) {
+        throw "Required release script not found: $requiredPath"
+    }
+}
 
 $assemblyOriginal = Get-Content -Raw -LiteralPath $assemblyInfoPath
 $topbarOriginal = Get-Content -Raw -LiteralPath $topbarPath
@@ -120,7 +128,7 @@ function Build-StagedOutputs {
     & $zipScriptPath `
         -Version $Version `
         -BuildRoot $stageDir `
-        -OutputPath (Join-Path $releaseDir "KKY_Tool_Revit(2019,21,23,25)_v$Version.zip")
+        -OutputPath (Join-Path $releaseDir "KKY_Tool_Revit($releaseYearLabel)_v$Version.zip")
 
     if ($LASTEXITCODE -ne 0) {
         throw "Zip package build failed for version $Version"
@@ -133,8 +141,8 @@ Build-StagedOutputs -Version $FirstVersion
 Set-VersionFiles -Version $SecondVersion
 Build-StagedOutputs -Version $SecondVersion
 
-$finalZipName = "KKY_Tool_Revit(2019,21,23,25)_v$SecondVersion.zip"
-$finalExeName = "KKY_Tool_Revit(2019,21,23,25)_v$SecondVersion.exe"
+$finalZipName = "KKY_Tool_Revit($releaseYearLabel)_v$SecondVersion.zip"
+$finalExeName = "KKY_Tool_Revit($releaseYearLabel)_v$SecondVersion.exe"
 $finalDownloadUrl = "$domainRoot/$finalZipName"
 
 & $feedScriptPath `
@@ -154,17 +162,24 @@ $finalDownloadUrl = "$domainRoot/$finalZipName"
 
 if (Test-Path -LiteralPath $indexPath) {
     $indexText = Get-Content -Raw -LiteralPath $indexPath
-    $indexText = [regex]::Replace($indexText, 'KKY_Tool_Revit\(2019,21,23,25\)_v[0-9.]+\.exe', $finalExeName)
-    $indexText = [regex]::Replace($indexText, 'KKY_Tool_Revit\(2019,21,23,25\)_v[0-9.]+\.zip', $finalZipName)
-    $indexText = [regex]::Replace($indexText, 'https://update\.zerokky\.com/KKY_Tool_Revit\(2019,21,23,25\)_v[0-9.]+\.exe', "$domainRoot/$finalExeName")
-    $indexText = [regex]::Replace($indexText, 'https://update\.zerokky\.com/KKY_Tool_Revit\(2019,21,23,25\)_v[0-9.]+\.zip', $finalDownloadUrl)
+    $indexText = [regex]::Replace($indexText, 'KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.exe', $finalExeName)
+    $indexText = [regex]::Replace($indexText, 'KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.zip', $finalZipName)
+    $indexText = [regex]::Replace($indexText, 'https://update\.zerokky\.com/KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.exe', "$domainRoot/$finalExeName")
+    $indexText = [regex]::Replace($indexText, 'https://update\.zerokky\.com/KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.zip', $finalDownloadUrl)
     Set-Content -LiteralPath $indexPath -Value $indexText -Encoding utf8
+}
+
+$verifyReportPath = Join-Path $repoRoot ("artifacts\release-verify\dual-{0}.json" -f $SecondVersion)
+& $verifyScriptPath -Version $SecondVersion -ReportPath $verifyReportPath
+if ($LASTEXITCODE -ne 0) {
+    throw 'Dual release verification failed.'
 }
 
 Write-Host ''
 Write-Host 'Dual release build completed.'
-Write-Host (Join-Path $releaseDir "KKY_Tool_Revit(2019,21,23,25)_v$FirstVersion.exe")
-Write-Host (Join-Path $releaseDir "KKY_Tool_Revit(2019,21,23,25)_v$SecondVersion.exe")
-Write-Host (Join-Path $releaseDir "KKY_Tool_Revit(2019,21,23,25)_v$FirstVersion.zip")
-Write-Host (Join-Path $releaseDir "KKY_Tool_Revit(2019,21,23,25)_v$SecondVersion.zip")
+Write-Host (Join-Path $releaseDir "KKY_Tool_Revit($releaseYearLabel)_v$FirstVersion.exe")
+Write-Host (Join-Path $releaseDir "KKY_Tool_Revit($releaseYearLabel)_v$SecondVersion.exe")
+Write-Host (Join-Path $releaseDir "KKY_Tool_Revit($releaseYearLabel)_v$FirstVersion.zip")
+Write-Host (Join-Path $releaseDir "KKY_Tool_Revit($releaseYearLabel)_v$SecondVersion.zip")
 Write-Host (Join-Path $releaseDir 'latest.json')
+Write-Host "Verify report: $verifyReportPath"

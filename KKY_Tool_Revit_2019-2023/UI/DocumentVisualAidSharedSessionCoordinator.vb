@@ -133,6 +133,7 @@ Namespace UI
                 ThenBy(Function(item) item.ProcessId).
                 ToList()
 
+            ApplyGlobalColorSlots(sessions)
             ApplyTabLabels(sessions)
 
             Return New DocumentVisualAidAggregateState With {
@@ -235,7 +236,9 @@ Namespace UI
             Dim hWnd = ResolveMainWindowHandle(processId)
             If hWnd = IntPtr.Zero Then Return
 
-            ShowWindow(hWnd, SW_RESTORE)
+            If IsIconic(hWnd) Then
+                ShowWindow(hWnd, SW_RESTORE)
+            End If
             BringWindowToTop(hWnd)
             SetForegroundWindow(hWnd)
         End Sub
@@ -258,6 +261,48 @@ Namespace UI
 
                 session.TabLabel = If(nextIndex = 1, versionKey, $"{versionKey} #{nextIndex}")
                 session.TabToolTip = versionKey
+            Next
+        End Sub
+
+        Private Shared Sub ApplyGlobalColorSlots(sessions As IList(Of DocumentVisualAidSessionState))
+            If sessions Is Nothing Then Return
+
+            Dim documentKeys As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+            For Each session In sessions
+                If session Is Nothing OrElse session.Entries Is Nothing Then Continue For
+
+                For Each entry In session.Entries
+                    If entry Is Nothing OrElse String.IsNullOrWhiteSpace(entry.Key) Then Continue For
+
+                    Dim normalizedKey = entry.Key.Trim()
+                    If Not documentKeys.ContainsKey(normalizedKey) Then
+                        documentKeys(normalizedKey) = normalizedKey
+                    End If
+                Next
+            Next
+
+            If documentKeys.Count = 0 Then Return
+
+            Dim orderedKeys = documentKeys.Values.
+                OrderBy(Function(key) key, StringComparer.OrdinalIgnoreCase).
+                ToList()
+            Dim slotByKey As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+
+            For index = 0 To orderedKeys.Count - 1
+                slotByKey(orderedKeys(index)) = index
+            Next
+
+            For Each session In sessions
+                If session Is Nothing OrElse session.Entries Is Nothing Then Continue For
+
+                For Each entry In session.Entries
+                    If entry Is Nothing OrElse String.IsNullOrWhiteSpace(entry.Key) Then Continue For
+
+                    Dim slot As Integer = 0
+                    If slotByKey.TryGetValue(entry.Key.Trim(), slot) Then
+                        ApplyColorSlot(entry, slot)
+                    End If
+                Next
             Next
         End Sub
 
@@ -355,27 +400,16 @@ Namespace UI
             For Each item In entries
                 If item Is Nothing Then Continue For
 
-                Dim slot = Math.Max(0, item.ColorSlot)
-                Dim baseColor = Palette(slot Mod Palette.Length)
-                Dim chipColor = BlendWithWhite(baseColor, 0.08R)
-                Dim tabColor = BlendWithWhite(baseColor, 0.46R)
-                Dim activeTabColor = BlendWithWhite(baseColor, 0.34R)
-                Dim borderColor = BlendWithWhite(baseColor, 0.18R)
-                Dim accentColor = BlendWithWhite(baseColor, 0.14R)
-
-                results.Add(New DocumentColorEntry With {
+                Dim entry = New DocumentColorEntry With {
                     .Key = item.Key,
                     .DisplayName = item.DisplayName,
                     .FullPath = item.FullPath,
-                    .ColorSlot = slot,
+                    .ColorSlot = Math.Max(0, item.ColorSlot),
                     .IsActive = item.IsActive,
-                    .ChipBrush = CreateFrozenBrush(WpfColor.FromArgb(255, chipColor.R, chipColor.G, chipColor.B)),
-                    .TabFillBrush = CreateFrozenBrush(WpfColor.FromArgb(46, tabColor.R, tabColor.G, tabColor.B)),
-                    .ActiveTabFillBrush = CreateFrozenBrush(WpfColor.FromArgb(82, activeTabColor.R, activeTabColor.G, activeTabColor.B)),
-                    .BorderBrush = CreateFrozenBrush(WpfColor.FromArgb(194, borderColor.R, borderColor.G, borderColor.B)),
-                    .AccentBrush = CreateFrozenBrush(WpfColor.FromArgb(214, accentColor.R, accentColor.G, accentColor.B)),
                     .MatchTokens = New List(Of String)()
-                })
+                }
+                ApplyColorSlot(entry, entry.ColorSlot)
+                results.Add(entry)
             Next
 
             Return results
@@ -597,6 +631,89 @@ Namespace UI
             Return brush
         End Function
 
+        Private Shared Sub ApplyColorSlot(entry As DocumentColorEntry, slot As Integer)
+            If entry Is Nothing Then Return
+
+            Dim normalizedSlot = Math.Max(0, slot)
+            Dim baseColor = ResolveBaseColor(normalizedSlot)
+            Dim chipColor = BlendWithWhite(baseColor, 0.28R)
+            Dim tabColor = BlendWithWhite(baseColor, 0.72R)
+            Dim activeTabColor = BlendWithWhite(baseColor, 0.64R)
+            Dim borderColor = BlendWithWhite(baseColor, 0.55R)
+            Dim accentColor = BlendWithWhite(baseColor, 0.48R)
+
+            entry.ColorSlot = normalizedSlot
+            entry.ChipBrush = CreateFrozenBrush(WpfColor.FromArgb(230, chipColor.R, chipColor.G, chipColor.B))
+            entry.TabFillBrush = CreateFrozenBrush(WpfColor.FromArgb(34, tabColor.R, tabColor.G, tabColor.B))
+            entry.ActiveTabFillBrush = CreateFrozenBrush(WpfColor.FromArgb(52, activeTabColor.R, activeTabColor.G, activeTabColor.B))
+            entry.BorderBrush = CreateFrozenBrush(WpfColor.FromArgb(145, borderColor.R, borderColor.G, borderColor.B))
+            entry.AccentBrush = CreateFrozenBrush(WpfColor.FromArgb(160, accentColor.R, accentColor.G, accentColor.B))
+        End Sub
+
+        Private Shared Function ResolveBaseColor(slot As Integer) As WpfColor
+            Dim normalizedSlot = Math.Max(0, slot)
+            If normalizedSlot < Palette.Length Then
+                Return Palette(normalizedSlot)
+            End If
+
+            Return CreateGeneratedBaseColor(normalizedSlot)
+        End Function
+
+        Private Shared Function CreateGeneratedBaseColor(slot As Integer) As WpfColor
+            Dim hue = ((CDbl(slot) * 137.508R) Mod 360.0R) / 360.0R
+            Dim saturation = 0.62R + (CDbl(slot Mod 3) * 0.06R)
+            Dim value = 0.82R - (CDbl((slot \ Palette.Length) Mod 3) * 0.05R)
+            Return FromHsv(hue, saturation, value)
+        End Function
+
+        Private Shared Function FromHsv(hue As Double, saturation As Double, value As Double) As WpfColor
+            Dim normalizedHue = hue - Math.Floor(hue)
+            Dim h = normalizedHue * 6.0R
+            Dim sector = CInt(Math.Floor(h)) Mod 6
+            Dim f = h - Math.Floor(h)
+            Dim p = value * (1.0R - saturation)
+            Dim q = value * (1.0R - (saturation * f))
+            Dim t = value * (1.0R - (saturation * (1.0R - f)))
+
+            Dim r As Double
+            Dim g As Double
+            Dim b As Double
+
+            Select Case sector
+                Case 0
+                    r = value
+                    g = t
+                    b = p
+                Case 1
+                    r = q
+                    g = value
+                    b = p
+                Case 2
+                    r = p
+                    g = value
+                    b = t
+                Case 3
+                    r = p
+                    g = q
+                    b = value
+                Case 4
+                    r = t
+                    g = p
+                    b = value
+                Case Else
+                    r = value
+                    g = p
+                    b = q
+            End Select
+
+            Return WpfColor.FromRgb(ToColorByte(r), ToColorByte(g), ToColorByte(b))
+        End Function
+
+        Private Shared Function ToColorByte(component As Double) As Byte
+            Dim normalized = Math.Max(0.0R, Math.Min(1.0R, component))
+            Return CByte(Math.Max(0, Math.Min(255, CInt(Math.Round(normalized * 255.0R, MidpointRounding.AwayFromZero)))))
+        End Function
+
         Private Shared Function BlendWithWhite(color As WpfColor, amount As Double) As WpfColor
             Dim normalizedAmount = Math.Max(0.0R, Math.Min(1.0R, amount))
 
@@ -650,6 +767,10 @@ Namespace UI
 
         <DllImport("user32.dll")>
         Private Shared Function IsWindowVisible(hWnd As IntPtr) As Boolean
+        End Function
+
+        <DllImport("user32.dll")>
+        Private Shared Function IsIconic(hWnd As IntPtr) As Boolean
         End Function
 
         <DllImport("user32.dll")>
