@@ -4397,8 +4397,8 @@ function buildConditionExtractWorkflowRow() {
       return draft.targetFilter;
     }
 
-    function renderTargetFilterSummary() {
-      const filter = getTargetFilterDraft();
+    function renderTargetFilterSummary(filterOverride = null) {
+      const filter = filterOverride || getTargetFilterDraft();
       const configuredCount = countParameterMissingConfiguredConditions(filter.conditions);
       if (!configuredCount) {
         targetFilterSummary.textContent = '전용 객체 필터가 없습니다. 공통 BQC 검토 대상 필터만 적용됩니다.';
@@ -4424,10 +4424,14 @@ function buildConditionExtractWorkflowRow() {
         line.style.gridTemplateColumns = 'minmax(180px, 1.4fr) minmax(150px, 0.9fr) minmax(160px, 1fr) auto';
         line.style.gap = '8px';
         line.style.alignItems = 'center';
+        line.dataset.pmTargetFilterRow = 'true';
 
         const paramInput = createConditionInput(row.parameterName);
         const operatorSelect = createOperatorSelect(row.operatorName);
         const valueInput = createValueInput(row.value);
+        paramInput.dataset.pmTargetFilterField = 'parameter';
+        operatorSelect.dataset.pmTargetFilterField = 'operator';
+        valueInput.dataset.pmTargetFilterField = 'value';
         syncValueInputState(valueInput, row);
 
         paramInput.addEventListener('input', () => {
@@ -4452,10 +4456,11 @@ function buildConditionExtractWorkflowRow() {
         removeBtn.className = 'btn btn--ghost';
         removeBtn.textContent = '삭제';
         removeBtn.addEventListener('click', () => {
-          if (filter.conditions.length <= 1) {
-            filter.conditions = [createEmptyParameterMissingCondition()];
+          const currentFilter = syncTargetFilterDraftFromControls();
+          if (currentFilter.conditions.length <= 1) {
+            currentFilter.conditions = [createEmptyParameterMissingCondition()];
           } else {
-            filter.conditions.splice(conditionIndex, 1);
+            currentFilter.conditions.splice(conditionIndex, 1);
           }
           renderTargetFilterRows();
           markParameterMissingDirty();
@@ -4468,8 +4473,35 @@ function buildConditionExtractWorkflowRow() {
       renderTargetFilterSummary();
     }
 
+    function readConditionFromElement(rowEl, fieldAttributeName) {
+      const findField = (name) => rowEl.querySelector(`[${fieldAttributeName}="${name}"]`);
+      const operatorName = String(findField('operator')?.value || 'Equals').trim() || 'Equals';
+      return {
+        enabled: true,
+        parameterName: String(findField('parameter')?.value || '').trim(),
+        operatorName,
+        value: isParameterMissingConditionValueless(operatorName)
+          ? ''
+          : String(findField('value')?.value || '')
+      };
+    }
+
+    function syncTargetFilterDraftFromControls() {
+      const filter = getTargetFilterDraft();
+      filter.mode = normalizeParameterMissingTargetFilterMode(targetFilterMode.select.value);
+      filter.combinationMode = normalizeParameterMissingCombinationMode(targetFilterCombination.select.value, 'And');
+      const rows = Array.from(targetFilterRows.querySelectorAll('[data-pm-target-filter-row="true"]'))
+        .map((rowEl) => readConditionFromElement(rowEl, 'data-pm-target-filter-field'));
+      filter.conditions = normalizeParameterMissingConditionRows(rows, { keepEmpty: true });
+      renderTargetFilterSummary(filter);
+      return filter;
+    }
+
     targetFilterToggleBtn.addEventListener('click', () => {
       const willOpen = targetFilterBody.style.display === 'none';
+      if (!willOpen) {
+        syncTargetFilterDraftFromControls();
+      }
       targetFilterBody.style.display = willOpen ? 'grid' : 'none';
       targetFilterToggleBtn.textContent = willOpen ? '객체 필터 접기' : '객체 필터 설정';
       if (willOpen) renderTargetFilterRows();
@@ -4485,7 +4517,7 @@ function buildConditionExtractWorkflowRow() {
       markParameterMissingDirty();
     });
     targetFilterAddBtn.addEventListener('click', () => {
-      const filter = getTargetFilterDraft();
+      const filter = syncTargetFilterDraftFromControls();
       filter.conditions = normalizeParameterMissingConditionRows(filter.conditions, { keepEmpty: true });
       filter.conditions.push(createEmptyParameterMissingCondition());
       renderTargetFilterRows();
@@ -4746,6 +4778,8 @@ function buildConditionExtractWorkflowRow() {
         ruleCard.style.borderRadius = '14px';
         ruleCard.style.border = '1px solid var(--border-soft)';
         ruleCard.style.background = 'var(--surface-help)';
+        ruleCard.dataset.pmExceptionRule = 'true';
+        ruleCard.dataset.pmExceptionParameter = rule.parameterName || '';
 
         const head = document.createElement('strong');
         head.textContent = `${rule.parameterName} 누락 예외`;
@@ -4754,8 +4788,12 @@ function buildConditionExtractWorkflowRow() {
           { value: 'And', label: 'AND (모두 만족해야 제외)' }
         ]);
         combo.select.value = normalizeParameterMissingCombinationMode(rule.combinationMode, 'Or');
+        combo.select.dataset.pmExceptionField = 'combination';
         combo.select.addEventListener('change', () => {
-          draft.exceptionRules[ruleIndex].combinationMode = combo.select.value;
+          syncExceptionRulesFromControls();
+          if (draft.exceptionRules[ruleIndex]) {
+            draft.exceptionRules[ruleIndex].combinationMode = combo.select.value;
+          }
           renderExceptionRules();
           markParameterMissingDirty();
         });
@@ -4776,12 +4814,14 @@ function buildConditionExtractWorkflowRow() {
 
         ruleRows.forEach((row, conditionIndex) => {
           const tr = document.createElement('tr');
+          tr.dataset.pmExceptionCondition = 'true';
           const paramTd = document.createElement('td');
           const operatorTd = document.createElement('td');
           const valueTd = document.createElement('td');
           const actionTd = document.createElement('td');
 
           const paramInput = createConditionInput(row.parameterName);
+          paramInput.dataset.pmExceptionField = 'parameter';
           paramInput.addEventListener('input', () => {
             draft.exceptionRules[ruleIndex].conditions[conditionIndex].parameterName = paramInput.value;
             renderRuleSummary();
@@ -4789,6 +4829,7 @@ function buildConditionExtractWorkflowRow() {
           });
 
           const operatorSelect = createOperatorSelect(row.operatorName);
+          operatorSelect.dataset.pmExceptionField = 'operator';
           operatorSelect.addEventListener('change', () => {
             draft.exceptionRules[ruleIndex].conditions[conditionIndex].operatorName = operatorSelect.value;
             syncValueInputState(valueInput, draft.exceptionRules[ruleIndex].conditions[conditionIndex]);
@@ -4797,6 +4838,7 @@ function buildConditionExtractWorkflowRow() {
           });
 
           const valueInput = createValueInput(row.value);
+          valueInput.dataset.pmExceptionField = 'value';
           syncValueInputState(valueInput, row);
           valueInput.addEventListener('input', () => {
             draft.exceptionRules[ruleIndex].conditions[conditionIndex].value = valueInput.value;
@@ -4809,9 +4851,12 @@ function buildConditionExtractWorkflowRow() {
           removeBtn.className = 'btn btn--ghost';
           removeBtn.textContent = '삭제';
           removeBtn.addEventListener('click', () => {
-            const currentRows = draft.exceptionRules[ruleIndex].conditions;
+            syncExceptionRulesFromControls();
+            const currentRows = draft.exceptionRules[ruleIndex]?.conditions || [];
             if (currentRows.length <= 1) {
-              draft.exceptionRules[ruleIndex].conditions = [createEmptyParameterMissingCondition()];
+              if (draft.exceptionRules[ruleIndex]) {
+                draft.exceptionRules[ruleIndex].conditions = [createEmptyParameterMissingCondition()];
+              }
             } else {
               currentRows.splice(conditionIndex, 1);
             }
@@ -4832,6 +4877,9 @@ function buildConditionExtractWorkflowRow() {
         addRuleBtn.className = 'btn btn--secondary';
         addRuleBtn.textContent = '예외 조건 추가';
         addRuleBtn.addEventListener('click', () => {
+          syncExceptionRulesFromControls();
+          if (!draft.exceptionRules[ruleIndex]) return;
+          draft.exceptionRules[ruleIndex].conditions = normalizeParameterMissingConditionRows(draft.exceptionRules[ruleIndex].conditions, { keepEmpty: true });
           draft.exceptionRules[ruleIndex].conditions.push(createEmptyParameterMissingCondition());
           renderExceptionRules();
           markParameterMissingDirty();
@@ -4851,6 +4899,40 @@ function buildConditionExtractWorkflowRow() {
         ruleCard.append(head, combo.field, table, addRuleBtn, ruleSummary);
         exceptionWrap.append(ruleCard);
       });
+    }
+
+    function syncExceptionRulesFromControls() {
+      const draft = getDraft();
+      const ruleElements = Array.from(exceptionWrap.querySelectorAll('[data-pm-exception-rule="true"]'));
+      if (!ruleElements.length) {
+        draft.exceptionRules = normalizeParameterMissingExceptionRules(draft.exceptionRules, draft.parameterNames, { keepEmpty: true });
+        return draft.exceptionRules;
+      }
+      const rules = ruleElements.map((ruleEl) => {
+        const parameterName = String(ruleEl.dataset.pmExceptionParameter || '').trim();
+        const combinationMode = normalizeParameterMissingCombinationMode(
+          ruleEl.querySelector('[data-pm-exception-field="combination"]')?.value,
+          'Or'
+        );
+        const conditions = Array.from(ruleEl.querySelectorAll('[data-pm-exception-condition="true"]'))
+          .map((rowEl) => readConditionFromElement(rowEl, 'data-pm-exception-field'));
+        return {
+          enabled: true,
+          parameterName,
+          combinationMode,
+          conditions: normalizeParameterMissingConditionRows(conditions, { keepEmpty: true })
+        };
+      });
+      draft.exceptionRules = normalizeParameterMissingExceptionRules(rules, draft.parameterNames, { keepEmpty: true });
+      return draft.exceptionRules;
+    }
+
+    function syncParameterMissingDraftFromControls() {
+      const draft = getDraft();
+      syncTargetFilterDraftFromControls();
+      syncExceptionRulesFromControls();
+      Object.assign(draft, createParameterMissingConfigSnapshot(draft));
+      return draft;
     }
 
     searchInput.addEventListener('input', () => {
@@ -4891,13 +4973,13 @@ function buildConditionExtractWorkflowRow() {
     });
 
     saveFileBtn.addEventListener('click', () => {
-      const currentDraft = getDraft();
+      const currentDraft = syncParameterMissingDraftFromControls();
       if (!currentDraft.parameterNames.length) {
         toast('저장할 누락 검토 파라미터를 1개 이상 선택해 주세요.', 'warn');
         return;
       }
       if (hasIncompleteParameterMissingConfig(currentDraft)) {
-        toast('누락 예외 조건을 먼저 완성한 뒤 저장해 주세요.', 'warn');
+        toast('객체 필터 또는 누락 예외 조건을 먼저 완성한 뒤 저장해 주세요.', 'warn');
         return;
       }
       const json = buildParameterMissingPresetJson(currentDraft);
@@ -4956,7 +5038,8 @@ function buildConditionExtractWorkflowRow() {
         renderParameterMissingSelected,
         renderTargetFilterRows,
         renderExceptionRules,
-        renderRecentOptions
+        renderRecentOptions,
+        syncDraftFromControls: syncParameterMissingDraftFromControls
       }
     };
   }
@@ -5273,6 +5356,13 @@ function buildConditionExtractWorkflowRow() {
     return collectCurrentFavoriteEntryIds().filter((key) => FEATURE_KEYS.includes(key));
   }
 
+  function buildFavoriteFeaturePresetConfig(key, config) {
+    if (key === 'parametermissing') {
+      return createParameterMissingSerializableConfig(config);
+    }
+    return deepCopy(config || {});
+  }
+
   function buildFavoritePresetSnapshot() {
     const favoriteEntryIds = collectCurrentFavoriteEntryIds();
     const favoriteKeys = collectCurrentFavoriteKeys();
@@ -5282,7 +5372,7 @@ function buildConditionExtractWorkflowRow() {
       if (!feature) return;
       features[key] = {
         enabled: !!feature.enabled,
-        config: deepCopy(feature.configCommitted || {})
+        config: buildFavoriteFeaturePresetConfig(key, feature.configCommitted || {})
       };
     });
     return {
@@ -5503,6 +5593,13 @@ function buildConditionExtractWorkflowRow() {
     return Object.assign(base, source);
   }
 
+  function buildFavoriteFeatureDraftFromPreset(key, baseConfig, incomingConfig) {
+    if (key === 'parametermissing') {
+      return createParameterMissingConfigSnapshot(incomingConfig || {});
+    }
+    return mergeFavoritePresetConfig(baseConfig, incomingConfig);
+  }
+
   function applyFavoriteFeaturePreset(key, featureSnapshot) {
     const feature = state.features[key];
     if (!feature) return false;
@@ -5512,7 +5609,7 @@ function buildConditionExtractWorkflowRow() {
     const previousActiveKey = state.ui.activeFeatureKey;
     state.ui.activeFeatureKey = key;
     feature.enabled = desiredEnabled;
-    feature.configDraft = mergeFavoritePresetConfig(feature.configCommitted, configSource);
+    feature.configDraft = buildFavoriteFeatureDraftFromPreset(key, feature.configCommitted, configSource);
     commitConfig(feature);
     state.ui.activeFeatureKey = previousActiveKey;
     if (!desiredEnabled) {
@@ -9246,6 +9343,9 @@ function buildConditionExtractWorkflowRow() {
       Object.assign(target.configDraft, createParameterDuplicationConfigSnapshot(target.configDraft));
     }
     if (state.ui.activeFeatureKey === 'parametermissing') {
+      if (state.ui.modalOpen && typeof state.ui.controls.parametermissing?.syncDraftFromControls === 'function') {
+        state.ui.controls.parametermissing.syncDraftFromControls();
+      }
       Object.assign(target.configDraft, createParameterMissingConfigSnapshot(target.configDraft));
     }
     if (state.ui.activeFeatureKey === 'worksetassignment') {
