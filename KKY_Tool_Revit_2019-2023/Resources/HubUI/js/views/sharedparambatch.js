@@ -982,7 +982,7 @@ export function renderSharedParamBatch(root) {
 
     const param = state.selectedParams[index];
     modal.currentIndex = index;
-    modal.title.textContent = `${param.name} 설정`;
+    modal.titleEl.textContent = `${param.name} 설정`;
     modal.body.innerHTML = '';
 
     const bindingRow = div('sharedparambatch-modal-row');
