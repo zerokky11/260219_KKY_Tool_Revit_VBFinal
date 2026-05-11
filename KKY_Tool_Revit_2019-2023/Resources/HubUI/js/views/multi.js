@@ -158,6 +158,10 @@ const PARAMETER_MISSING_FILTER_OPERATORS = [
   'HasValue', 'HasNoValue'
 ];
 const PARAMETER_MISSING_VALUELESS_OPERATORS = new Set(['HasValue', 'HasNoValue']);
+const PARAMETER_MISSING_TARGET_FILTER_MODES = [
+  { value: 'include', label: '조건에 해당하는 객체만 검토' },
+  { value: 'exclude', label: '조건에 해당하지 않는 객체만 검토' }
+];
 const FAVORITE_PRESET_KIND = 'kky.hub.favoritesPreset';
 const FAVORITE_PRESET_VERSION = 2;
 const FAVORITE_PRESET_EXTENSION = '.kkyfav.json';
@@ -4347,6 +4351,156 @@ function buildConditionExtractWorkflowRow() {
     exceptionWrap.style.gridTemplateColumns = 'repeat(auto-fit, minmax(320px, 1fr))';
     exceptionWrap.style.gap = '12px';
 
+    const targetFilterCard = makeCard('검토 대상 필터링', { fullWidth: true });
+    const targetFilterDesc = div('feature-note');
+    targetFilterDesc.textContent = '이 기능에서만 추가로 적용할 객체 필터입니다. 공통 검토대상 필터 이후에 한 번 더 범위를 좁히거나 제외할 수 있습니다.';
+    targetFilterDesc.style.margin = '0';
+    const targetFilterActions = div('feature-row__actions');
+    targetFilterActions.style.display = 'flex';
+    targetFilterActions.style.flexWrap = 'wrap';
+    targetFilterActions.style.gap = '8px';
+    const targetFilterToggleBtn = document.createElement('button');
+    targetFilterToggleBtn.type = 'button';
+    targetFilterToggleBtn.className = 'btn btn--secondary';
+    targetFilterToggleBtn.textContent = '객체 필터 설정';
+    const targetFilterClearBtn = document.createElement('button');
+    targetFilterClearBtn.type = 'button';
+    targetFilterClearBtn.className = 'btn btn--ghost';
+    targetFilterClearBtn.textContent = '필터 비우기';
+    targetFilterActions.append(targetFilterToggleBtn, targetFilterClearBtn);
+
+    const targetFilterBody = div('multi-config');
+    targetFilterBody.style.display = 'none';
+    targetFilterBody.style.gridTemplateColumns = 'repeat(auto-fit, minmax(280px, 1fr))';
+    targetFilterBody.style.gap = '12px';
+    targetFilterBody.style.alignItems = 'start';
+    const targetFilterMode = makeSelectField('검토 방식', PARAMETER_MISSING_TARGET_FILTER_MODES);
+    const targetFilterCombination = makeSelectField('조건 결합', [
+      { value: 'And', label: 'AND (모두 만족)' },
+      { value: 'Or', label: 'OR (하나라도 만족)' }
+    ]);
+    const targetFilterRows = div('multi-config');
+    targetFilterRows.style.gridColumn = '1 / -1';
+    targetFilterRows.style.display = 'grid';
+    targetFilterRows.style.gap = '8px';
+    const targetFilterAddBtn = document.createElement('button');
+    targetFilterAddBtn.type = 'button';
+    targetFilterAddBtn.className = 'btn btn--secondary';
+    targetFilterAddBtn.textContent = '필터 조건 추가';
+    const targetFilterSummary = div('feature-note');
+    targetFilterSummary.style.margin = '0';
+    targetFilterBody.append(targetFilterMode.field, targetFilterCombination.field, targetFilterRows, targetFilterAddBtn);
+
+    function getTargetFilterDraft() {
+      const draft = getDraft();
+      draft.targetFilter = createParameterMissingTargetFilterState(draft.targetFilter);
+      return draft.targetFilter;
+    }
+
+    function renderTargetFilterSummary() {
+      const filter = getTargetFilterDraft();
+      const configuredCount = countParameterMissingConfiguredConditions(filter.conditions);
+      if (!configuredCount) {
+        targetFilterSummary.textContent = '전용 객체 필터가 없습니다. 공통 BQC 검토 대상 필터만 적용됩니다.';
+        targetFilterClearBtn.disabled = true;
+        return;
+      }
+      const modeLabel = resolveParameterMissingTargetFilterModeLabel(filter.mode);
+      const comboLabel = normalizeParameterMissingCombinationMode(filter.combinationMode, 'And') === 'Or' ? 'OR' : 'AND';
+      targetFilterSummary.textContent = `${modeLabel} · 조건 ${configuredCount}개 · ${comboLabel} · ${buildParameterMissingConditionSummary(filter.conditions, filter.combinationMode)}`;
+      targetFilterClearBtn.disabled = false;
+    }
+
+    function renderTargetFilterRows() {
+      const filter = getTargetFilterDraft();
+      filter.conditions = normalizeParameterMissingConditionRows(filter.conditions, { keepEmpty: true });
+      targetFilterMode.select.value = normalizeParameterMissingTargetFilterMode(filter.mode);
+      targetFilterCombination.select.value = normalizeParameterMissingCombinationMode(filter.combinationMode, 'And');
+      targetFilterRows.innerHTML = '';
+
+      filter.conditions.forEach((row, conditionIndex) => {
+        const line = div('multi-config');
+        line.style.display = 'grid';
+        line.style.gridTemplateColumns = 'minmax(180px, 1.4fr) minmax(150px, 0.9fr) minmax(160px, 1fr) auto';
+        line.style.gap = '8px';
+        line.style.alignItems = 'center';
+
+        const paramInput = createConditionInput(row.parameterName);
+        const operatorSelect = createOperatorSelect(row.operatorName);
+        const valueInput = createValueInput(row.value);
+        syncValueInputState(valueInput, row);
+
+        paramInput.addEventListener('input', () => {
+          filter.conditions[conditionIndex].parameterName = paramInput.value;
+          renderTargetFilterSummary();
+          markParameterMissingDirty();
+        });
+        operatorSelect.addEventListener('change', () => {
+          filter.conditions[conditionIndex].operatorName = operatorSelect.value;
+          syncValueInputState(valueInput, filter.conditions[conditionIndex]);
+          renderTargetFilterSummary();
+          markParameterMissingDirty();
+        });
+        valueInput.addEventListener('input', () => {
+          filter.conditions[conditionIndex].value = valueInput.value;
+          renderTargetFilterSummary();
+          markParameterMissingDirty();
+        });
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'btn btn--ghost';
+        removeBtn.textContent = '삭제';
+        removeBtn.addEventListener('click', () => {
+          if (filter.conditions.length <= 1) {
+            filter.conditions = [createEmptyParameterMissingCondition()];
+          } else {
+            filter.conditions.splice(conditionIndex, 1);
+          }
+          renderTargetFilterRows();
+          markParameterMissingDirty();
+        });
+
+        line.append(paramInput, operatorSelect, valueInput, removeBtn);
+        targetFilterRows.append(line);
+      });
+
+      renderTargetFilterSummary();
+    }
+
+    targetFilterToggleBtn.addEventListener('click', () => {
+      const willOpen = targetFilterBody.style.display === 'none';
+      targetFilterBody.style.display = willOpen ? 'grid' : 'none';
+      targetFilterToggleBtn.textContent = willOpen ? '객체 필터 접기' : '객체 필터 설정';
+      if (willOpen) renderTargetFilterRows();
+    });
+    targetFilterMode.select.addEventListener('change', () => {
+      getTargetFilterDraft().mode = normalizeParameterMissingTargetFilterMode(targetFilterMode.select.value);
+      renderTargetFilterSummary();
+      markParameterMissingDirty();
+    });
+    targetFilterCombination.select.addEventListener('change', () => {
+      getTargetFilterDraft().combinationMode = normalizeParameterMissingCombinationMode(targetFilterCombination.select.value, 'And');
+      renderTargetFilterSummary();
+      markParameterMissingDirty();
+    });
+    targetFilterAddBtn.addEventListener('click', () => {
+      const filter = getTargetFilterDraft();
+      filter.conditions = normalizeParameterMissingConditionRows(filter.conditions, { keepEmpty: true });
+      filter.conditions.push(createEmptyParameterMissingCondition());
+      renderTargetFilterRows();
+      markParameterMissingDirty();
+    });
+    targetFilterClearBtn.addEventListener('click', () => {
+      const filter = getTargetFilterDraft();
+      filter.mode = 'include';
+      filter.combinationMode = 'And';
+      filter.conditions = [createEmptyParameterMissingCondition()];
+      renderTargetFilterRows();
+      renderTargetFilterSummary();
+      markParameterMissingDirty();
+    });
+
     function renderParameterMissingSelected() {
       const draft = getDraft();
       const names = Array.isArray(draft.parameterNames) ? draft.parameterNames : [];
@@ -4779,13 +4933,15 @@ function buildConditionExtractWorkflowRow() {
     const scopeNote = div('feature-note');
     scopeNote.textContent = '검토 대상은 BQC 공통 옵션의 검토 대상 필터 / 검토 제외 대상 필터를 그대로 사용합니다.';
     scopeNote.style.margin = '0';
+    targetFilterCard.card.append(targetFilterDesc, targetFilterActions, targetFilterBody, targetFilterSummary);
     exceptionCard.card.append(exceptionDesc, scopeNote, exceptionWrap);
 
-    panel.append(picker.card, selectedCard.card, exceptionCard.card, sharedParamList);
+    panel.append(picker.card, selectedCard.card, targetFilterCard.card, exceptionCard.card, sharedParamList);
 
     renderSharedParamStatus();
     renderParameterMissingSelected();
     renderSharedParamList();
+    renderTargetFilterRows();
     renderExceptionRules();
     renderRecentOptions();
 
@@ -4798,6 +4954,7 @@ function buildConditionExtractWorkflowRow() {
         renderSharedParamList,
         renderSharedParamStatus,
         renderParameterMissingSelected,
+        renderTargetFilterRows,
         renderExceptionRules,
         renderRecentOptions
       }
@@ -6456,7 +6613,7 @@ function buildConditionExtractWorkflowRow() {
     if (state.features.parametermissing.enabled) {
       const config = createParameterMissingConfigSnapshot(state.features.parametermissing.configCommitted || {});
       if (!config.parameterNames.length) return '파라미터 누락 검토 대상 파라미터를 1개 이상 선택해 주세요.';
-      if (hasIncompleteParameterMissingConfig(config)) return '파라미터 누락 검토의 누락 예외 조건을 모두 입력해 주세요.';
+      if (hasIncompleteParameterMissingConfig(config)) return '파라미터 누락 검토의 객체 필터 또는 누락 예외 조건을 모두 입력해 주세요.';
     }
     if (options.requireRvt && !state.rvtList.length) return 'RVT 파일을 추가해 주세요.';
     if (options.requireRvt && !getCheckedRvtPaths().length) return '검토할 RVT를 1개 이상 선택해 주세요.';
@@ -7408,6 +7565,17 @@ function buildConditionExtractWorkflowRow() {
     return String(fallback || '').trim().toLowerCase() === 'or' ? 'Or' : 'And';
   }
 
+  function normalizeParameterMissingTargetFilterMode(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized === 'exclude' || normalized === 'except' || normalized === 'not' ? 'exclude' : 'include';
+  }
+
+  function resolveParameterMissingTargetFilterModeLabel(value) {
+    return normalizeParameterMissingTargetFilterMode(value) === 'exclude'
+      ? '조건에 해당하지 않는 객체만 검토'
+      : '조건에 해당하는 객체만 검토';
+  }
+
   function createEmptyParameterMissingCondition() {
     return {
       enabled: true,
@@ -7436,6 +7604,7 @@ function buildConditionExtractWorkflowRow() {
   function createParameterMissingTargetFilterState(raw) {
     return {
       enabled: true,
+      mode: normalizeParameterMissingTargetFilterMode(raw?.mode || raw?.targetMode || raw?.filterMode),
       combinationMode: normalizeParameterMissingCombinationMode(raw?.combinationMode, 'And'),
       conditions: normalizeParameterMissingConditionRows(raw?.conditions, { keepEmpty: true }),
       assignments: []
@@ -7486,7 +7655,7 @@ function buildConditionExtractWorkflowRow() {
     );
     return {
       parameterNames,
-      targetFilter: createParameterMissingTargetFilterState(),
+      targetFilter: createParameterMissingTargetFilterState(config?.targetFilter),
       exceptionRules: normalizeParameterMissingExceptionRules(config?.exceptionRules, parameterNames, { keepEmpty: true })
     };
   }
@@ -7542,6 +7711,9 @@ function buildConditionExtractWorkflowRow() {
   }
 
   function hasIncompleteParameterMissingConfig(config) {
+    if (createParameterMissingTargetFilterState(config?.targetFilter).conditions.some((row) => isParameterMissingConditionIncomplete(row))) {
+      return true;
+    }
     return (Array.isArray(config?.exceptionRules) ? config.exceptionRules : []).some((rule) =>
       (Array.isArray(rule?.conditions) ? rule.conditions : []).some((row) => isParameterMissingConditionIncomplete(row))
     );
@@ -7765,8 +7937,27 @@ function buildConditionExtractWorkflowRow() {
 
   function createParameterMissingSerializableConfig(config) {
     const snapshot = createParameterMissingConfigSnapshot(config);
+    const targetFilter = createParameterMissingTargetFilterState(snapshot.targetFilter);
+    const targetFilterConditions = (Array.isArray(targetFilter.conditions) ? targetFilter.conditions : [])
+      .filter((row) => isParameterMissingConditionConfigured(row))
+      .map((row) => {
+        const operatorName = String(row?.operatorName || 'Equals').trim() || 'Equals';
+        return {
+          enabled: row?.enabled !== false,
+          parameterName: String(row?.parameterName || '').trim(),
+          operatorName,
+          value: isParameterMissingConditionValueless(operatorName) ? '' : String(row?.value || '').trim()
+        };
+      });
     return {
       parameterNames: Array.isArray(snapshot.parameterNames) ? [...snapshot.parameterNames] : [],
+      targetFilter: {
+        enabled: targetFilterConditions.length > 0,
+        mode: normalizeParameterMissingTargetFilterMode(targetFilter.mode),
+        combinationMode: normalizeParameterMissingCombinationMode(targetFilter.combinationMode, 'And'),
+        conditions: targetFilterConditions,
+        assignments: []
+      },
       exceptionRules: (Array.isArray(snapshot.exceptionRules) ? snapshot.exceptionRules : [])
         .map((rule) => ({
           parameterName: String(rule?.parameterName || '').trim(),
@@ -7790,6 +7981,15 @@ function buildConditionExtractWorkflowRow() {
     const snapshot = createParameterMissingSerializableConfig(config);
     return JSON.stringify({
       parameterNames: snapshot.parameterNames.map((name) => String(name || '').trim().toLowerCase()),
+      targetFilter: {
+        mode: normalizeParameterMissingTargetFilterMode(snapshot.targetFilter?.mode),
+        combinationMode: normalizeParameterMissingCombinationMode(snapshot.targetFilter?.combinationMode, 'And'),
+        conditions: (Array.isArray(snapshot.targetFilter?.conditions) ? snapshot.targetFilter.conditions : []).map((row) => ({
+          parameterName: String(row.parameterName || '').trim().toLowerCase(),
+          operatorName: String(row.operatorName || 'Equals').trim() || 'Equals',
+          value: String(row.value || '').trim()
+        }))
+      },
       exceptionRules: snapshot.exceptionRules.map((rule) => ({
         parameterName: String(rule.parameterName || '').trim().toLowerCase(),
         combinationMode: normalizeParameterMissingCombinationMode(rule.combinationMode, 'Or'),
@@ -7809,6 +8009,10 @@ function buildConditionExtractWorkflowRow() {
       .length;
   }
 
+  function countParameterMissingTargetFilterConditions(config) {
+    return countParameterMissingConfiguredConditions(createParameterMissingConfigSnapshot(config).targetFilter.conditions);
+  }
+
   function buildParameterMissingRecentOptionLabel(item) {
     const snapshot = createParameterMissingConfigSnapshot(item);
     const timeLabel = formatParameterDuplicationRecentTimestamp(item?.updatedAt);
@@ -7816,6 +8020,7 @@ function buildConditionExtractWorkflowRow() {
     return [
       timeLabel,
       `파라미터 ${snapshot.parameterNames.length}개`,
+      countParameterMissingTargetFilterConditions(snapshot) ? '객체 필터 적용' : '',
       exceptionRuleCount ? `예외 ${exceptionRuleCount}개` : '예외가 없습니다.',
       buildParameterMissingSelectionPreview(snapshot.parameterNames, 3)
     ].filter(Boolean).join(' · ');
@@ -8381,6 +8586,7 @@ function buildConditionExtractWorkflowRow() {
     const exceptionRuleCount = (Array.isArray(config.exceptionRules) ? config.exceptionRules : [])
       .filter((rule) => countParameterMissingConfiguredConditions(rule.conditions) > 0)
       .length;
+    const targetFilterCount = countParameterMissingTargetFilterConditions(config);
     const hasIncomplete = hasIncompleteParameterMissingConfig(config);
     const common = state.common.configCommitted || {};
     const commonExtraCount = String(common.extraParams || '')
@@ -8395,12 +8601,14 @@ function buildConditionExtractWorkflowRow() {
     } else if (!parameterCount) {
       target.top.textContent = '선택 완료 · 공유파라미터 목록에서 누락 검토할 파라미터를 1개 이상 선택해 주세요.';
     } else if (hasIncomplete) {
-      target.top.textContent = '선택 완료 · 누락 예외 규칙의 미완성 항목을 확인해 주세요.';
+      target.top.textContent = '선택 완료 · 객체 필터 또는 누락 예외 규칙의 미완성 항목을 확인해 주세요.';
     } else {
-      target.top.textContent = '선택 완료 · 공통 검토대상 필터 기준으로 지정 파라미터의 누락 여부를 BQC 포맷으로 정리합니다.';
+      target.top.textContent = targetFilterCount
+        ? '선택 완료 · 공통 필터와 기능 전용 객체 필터 기준으로 지정 파라미터의 누락 여부를 BQC 포맷으로 정리합니다.'
+        : '선택 완료 · 공통 검토대상 필터 기준으로 지정 파라미터의 누락 여부를 BQC 포맷으로 정리합니다.';
     }
 
-    target.sub.textContent = `파라미터 ${parameterCount}개 · 누락 예외 ${exceptionRuleCount}개 · ${hasCommonScope ? '공통 필터 적용됨' : '공통 필터가 없습니다.'} · 추가 추출 ${commonExtraCount}개 · ${buildParameterMissingSelectionPreview(config.parameterNames, 5)}`;
+    target.sub.textContent = `파라미터 ${parameterCount}개 · 객체 필터 ${targetFilterCount ? `${targetFilterCount}개` : '없음'} · 누락 예외 ${exceptionRuleCount}개 · ${hasCommonScope ? '공통 필터 적용됨' : '공통 필터가 없습니다.'} · 추가 추출 ${commonExtraCount}개 · ${buildParameterMissingSelectionPreview(config.parameterNames, 5)}`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
       FEATURE_META.parametermissing?.label || '파라미터 누락 검토',
@@ -9234,6 +9442,7 @@ function buildConditionExtractWorkflowRow() {
       if (typeof controls.renderSharedParamStatus === 'function') controls.renderSharedParamStatus();
       if (typeof controls.renderParameterMissingSelected === 'function') controls.renderParameterMissingSelected();
       if (typeof controls.renderSharedParamList === 'function') controls.renderSharedParamList();
+      if (typeof controls.renderTargetFilterRows === 'function') controls.renderTargetFilterRows();
       if (typeof controls.renderExceptionRules === 'function') controls.renderExceptionRules();
       if (typeof controls.renderRecentOptions === 'function') controls.renderRecentOptions();
     } else if (key === 'worksetassignment') {

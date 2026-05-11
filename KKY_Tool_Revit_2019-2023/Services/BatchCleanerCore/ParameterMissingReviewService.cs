@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using Autodesk.Revit.DB;
 using KKY_Tool_Revit.Models;
 
@@ -23,6 +24,7 @@ namespace KKY_Tool_Revit.Services
         {
             public List<string> ParameterNames { get; set; } = new List<string>();
             public ElementParameterUpdateSettings TargetFilter { get; set; } = new ElementParameterUpdateSettings();
+            public bool ExcludeTargetFilterMatches { get; set; }
             public bool HasAllowedElementScope { get; set; }
             public List<int> AllowedElementIds { get; set; } = new List<int>();
             public string CommonTargetFilterText { get; set; } = string.Empty;
@@ -160,7 +162,12 @@ namespace KKY_Tool_Revit.Services
             for (int index = 0; index < candidates.Count; index++)
             {
                 Element element = candidates[index];
-                bool matchesLocalTarget = targetConditions.Count == 0 || MatchesConditions(doc, element, targetConditions, targetFilter.CombinationMode);
+                bool matchesLocalTarget = true;
+                if (targetConditions.Count > 0)
+                {
+                    bool conditionMatched = MatchesConditions(doc, element, targetConditions, targetFilter.CombinationMode);
+                    matchesLocalTarget = settings.ExcludeTargetFilterMatches ? !conditionMatched : conditionMatched;
+                }
                 bool matchesCommonScope = !hasCommonScopeFilter || (element?.Id != null && allowedElementIds.Contains(element.Id.IntegerValue));
                 if (matchesLocalTarget && matchesCommonScope)
                 {
@@ -496,10 +503,16 @@ namespace KKY_Tool_Revit.Services
         {
             if (condition == null) return true;
 
-            bool hasParameter = ModelParameterExtractionService.HasElementParameter(doc, element, condition.ParameterName);
+            string actualText;
+            bool hasVirtualValue = TryGetVirtualConditionValue(doc, element, condition.ParameterName, out actualText);
+            bool hasParameter = hasVirtualValue || ModelParameterExtractionService.HasElementParameter(doc, element, condition.ParameterName);
             if (!hasParameter) return false;
 
-            string actualText = ModelParameterExtractionService.GetElementParameterValue(doc, element, condition.ParameterName);
+            if (!hasVirtualValue)
+            {
+                actualText = ModelParameterExtractionService.GetElementParameterValue(doc, element, condition.ParameterName);
+            }
+
             if (condition.Operator == FilterRuleOperator.HasValue)
             {
                 return !string.IsNullOrWhiteSpace(actualText);
@@ -567,6 +580,47 @@ namespace KKY_Tool_Revit.Services
                 default:
                     return false;
             }
+        }
+
+        private static bool TryGetVirtualConditionValue(Document doc, Element element, string parameterName, out string value)
+        {
+            value = string.Empty;
+            string token = NormalizeConditionParameterToken(parameterName);
+            if (string.IsNullOrWhiteSpace(token)) return false;
+
+            if (IsAnyConditionToken(token, "category", "categoryname", "cat", "카테고리", "분류"))
+            {
+                value = ModelParameterExtractionService.GetElementCategoryName(element) ?? string.Empty;
+                return true;
+            }
+
+            if (IsAnyConditionToken(token, "family", "familyname", "fam", "패밀리", "패밀리명"))
+            {
+                value = ModelParameterExtractionService.GetElementFamilyName(doc, element) ?? string.Empty;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsAnyConditionToken(string token, params string[] candidates)
+        {
+            return candidates != null
+                   && candidates.Any(candidate => string.Equals(token, NormalizeConditionParameterToken(candidate), StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string NormalizeConditionParameterToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+
+            var builder = new StringBuilder(value.Length);
+            foreach (char ch in value.Trim())
+            {
+                if (char.IsWhiteSpace(ch) || ch == '_' || ch == '-') continue;
+                builder.Append(char.ToLowerInvariant(ch));
+            }
+
+            return builder.ToString();
         }
 
         private static bool ShouldIgnoreMissing(Document doc, Element element, string parameterName, IEnumerable<MissingRule> rules, out MissingRule matchedRule)

@@ -19,6 +19,7 @@ Namespace UI.Hub
             Public Property Enabled As Boolean
             Public Property ParameterNames As List(Of String) = New List(Of String)()
             Public Property TargetFilter As ElementParameterUpdateSettings = New ElementParameterUpdateSettings()
+            Public Property ExcludeTargetFilterMatches As Boolean
             Public Property ExceptionRules As List(Of ParameterMissingReviewService.MissingRule) = New List(Of ParameterMissingReviewService.MissingRule)()
         End Class
 
@@ -36,9 +37,13 @@ Namespace UI.Hub
                 .Distinct(StringComparer.OrdinalIgnoreCase) _
                 .ToList()
 
-            opt.TargetFilter = ParseDeliveryCleanerElementUpdate(GetDictValue(d, "targetFilter"))
+            Dim targetFilterObj = GetDictValue(d, "targetFilter")
+            opt.TargetFilter = ParseDeliveryCleanerElementUpdate(targetFilterObj)
             If opt.TargetFilter Is Nothing Then opt.TargetFilter = New ElementParameterUpdateSettings()
             opt.TargetFilter.Assignments = New List(Of ElementParameterAssignment)()
+            Dim targetFilterDict = ToDict(targetFilterObj)
+            Dim targetFilterMode = SafeStr(GetDictValue(targetFilterDict, "mode")).Trim().ToLowerInvariant()
+            opt.ExcludeTargetFilterMatches = String.Equals(targetFilterMode, "exclude", StringComparison.OrdinalIgnoreCase)
 
             Dim rules As New List(Of ParameterMissingReviewService.MissingRule)()
             For Each item In EnumeratePayloadItems(GetDictValue(d, "exceptionRules"))
@@ -81,10 +86,12 @@ Namespace UI.Hub
 
             Dim settings As New ParameterMissingReviewService.Settings With {
                 .ParameterNames = If(_multiRequest.ParameterMissing.ParameterNames, New List(Of String)()),
-                .TargetFilter = New ElementParameterUpdateSettings(),
+                .TargetFilter = If(_multiRequest.ParameterMissing.TargetFilter, New ElementParameterUpdateSettings()),
+                .ExcludeTargetFilterMatches = _multiRequest.ParameterMissing.ExcludeTargetFilterMatches,
                 .ExceptionRules = If(_multiRequest.ParameterMissing.ExceptionRules, New List(Of ParameterMissingReviewService.MissingRule)()),
                 .ExtraParameterNames = commonExtraParamNames
             }
+            settings.TargetFilter.Assignments = New List(Of ElementParameterAssignment)()
             ApplyParameterMissingScopeSettings(settings, hasAllowedElementScope, allowedElementIds, commonTargetFilter, commonExcludeTargetFilter)
 
             Dim result = ParameterMissingReviewService.RunOnDocument(
