@@ -621,7 +621,7 @@ Namespace Services
             If doc Is Nothing OrElse row Is Nothing Then Return False
 
             Dim refInt As Integer
-            If Not Integer.TryParse(SafeStr(row.ReferenceElementId).Trim(), refInt) Then
+            If Not Integer.TryParse(NormalizeElementIdText(row.ReferenceElementId), refInt) Then
                 row.ApplyStatus = "error"
                 row.ApplyMessage = "링크 식별자를 해석하지 못했습니다."
                 Return False
@@ -1801,7 +1801,7 @@ Namespace Services
                 If row Is Nothing Then Continue For
 
                 Dim refInt As Integer
-                If Not Integer.TryParse(SafeStr(row.ReferenceElementId).Trim(), refInt) Then
+                If Not Integer.TryParse(NormalizeElementIdText(row.ReferenceElementId), refInt) Then
                     row.ApplyStatus = "error"
                     row.ApplyMessage = "링크 식별자를 해석하지 못했습니다."
                     Continue For
@@ -1868,7 +1868,7 @@ Namespace Services
             If doc Is Nothing OrElse row Is Nothing Then Return False
 
             Dim refInt As Integer
-            If Not Integer.TryParse(SafeStr(row.ReferenceElementId).Trim(), refInt) Then
+            If Not Integer.TryParse(NormalizeElementIdText(row.ReferenceElementId), refInt) Then
                 row.ApplyStatus = "error"
                 row.ApplyMessage = "링크 식별자를 해석하지 못했습니다."
                 Return False
@@ -2159,7 +2159,7 @@ Namespace Services
             Dim existingByRefId As New Dictionary(Of String, RevitLinkPathRow)(StringComparer.OrdinalIgnoreCase)
             For Each row In targetRows
                 If row Is Nothing Then Continue For
-                Dim key As String = SafeStr(row.ReferenceElementId).Trim()
+                Dim key As String = NormalizeElementIdText(row.ReferenceElementId)
                 If String.IsNullOrWhiteSpace(key) Then Continue For
                 If Not existingByRefId.ContainsKey(key) Then
                     existingByRefId(key) = row
@@ -2169,7 +2169,7 @@ Namespace Services
             For Each docRow In documentRows
                 If docRow Is Nothing Then Continue For
 
-                Dim key As String = SafeStr(docRow.ReferenceElementId).Trim()
+                Dim key As String = NormalizeElementIdText(docRow.ReferenceElementId)
                 Dim existing As RevitLinkPathRow = Nothing
                 If Not String.IsNullOrWhiteSpace(key) AndAlso existingByRefId.TryGetValue(key, existing) Then
                     MergeExtractedRow(existing, docRow)
@@ -3095,10 +3095,37 @@ Namespace Services
 
         Private Shared Function ParseElementIdOrInvalid(value As String) As ElementId
             Dim idValue As Integer
-            If Integer.TryParse(SafeStr(value).Trim(), idValue) Then
+            If Integer.TryParse(NormalizeElementIdText(value), idValue) Then
                 Return New ElementId(idValue)
             End If
             Return ElementId.InvalidElementId
+        End Function
+
+        Private Shared Function NormalizeElementIdText(value As String) As String
+            Dim text As String = SafeStr(value).Trim()
+            If String.IsNullOrWhiteSpace(text) Then Return ""
+
+            If text.StartsWith(",", StringComparison.Ordinal) Then
+                text = text.Substring(1).Trim()
+            End If
+            If text.EndsWith(",", StringComparison.Ordinal) Then
+                text = text.Substring(0, text.Length - 1).Trim()
+            End If
+
+            If text.Contains(","c) Then
+                Dim compact As String = text.Replace(",", String.Empty).Trim()
+                Dim parsed As Long
+                If Long.TryParse(compact, NumberStyles.Integer, CultureInfo.InvariantCulture, parsed) Then
+                    Return compact
+                End If
+
+                text = text.Split(","c).
+                            Select(Function(part) SafeStr(part).Trim()).
+                            FirstOrDefault(Function(part) Not String.IsNullOrWhiteSpace(part))
+                If text Is Nothing Then Return ""
+            End If
+
+            Return text.Trim()
         End Function
 
         Private Shared Function SafeStr(value As String) As String

@@ -399,17 +399,24 @@ Namespace Services
                                         If Not info1.HasValue AndAlso Not info2.HasValue Then
                                             paramCompare = "BothEmpty"
                                         ElseIf String.Equals(If(info1.CompareKey, ""), If(info2.CompareKey, ""), StringComparison.Ordinal) Then
-                                            paramCompare = "Match"
+                                            Dim text1 As String = If(info1.Text, String.Empty).Trim()
+                                            Dim text2 As String = If(info2.Text, String.Empty).Trim()
+                                            If Not String.Equals(text1, text2, StringComparison.Ordinal) Then
+                                                paramCompare = "Mismatch"
+                                                Log($"표시값 불일치 감지: Id1={baseId}, Id2={If(found Is Nothing, 0, found.Id.IntegerValue)}, Param='{reviewParam}', Value1='{text1}', Value2='{text2}'")
+                                            Else
+                                                paramCompare = "Match"
+                                            End If
                                         Else
                                             paramCompare = "Mismatch"
                                         End If
                                     End If
 
                                     If issueStatus Is Nothing Then
-                                        If connType.IndexOf("Proximity", StringComparison.OrdinalIgnoreCase) >= 0 Then
-                                            issueStatus = "Disconnected(Proximity)"
-                                        ElseIf String.Equals(paramCompare, "Mismatch", StringComparison.OrdinalIgnoreCase) Then
+                                        If String.Equals(paramCompare, "Mismatch", StringComparison.OrdinalIgnoreCase) Then
                                             issueStatus = "Mismatch"
+                                        ElseIf connType.IndexOf("Proximity", StringComparison.OrdinalIgnoreCase) >= 0 Then
+                                            issueStatus = "연결 필요(Proximity)"
                                         Else
                                             issueStatus = "OK"
                                         End If
@@ -425,6 +432,7 @@ Namespace Services
                                     String.Equals(issueStatus, "Shared Parameter 등록 필요", StringComparison.OrdinalIgnoreCase) OrElse
                                     String.Equals(issueStatus, "연결 대상 객체 없음", StringComparison.OrdinalIgnoreCase) OrElse
                                     String.Equals(issueStatus, "연결 필요(Proximity)", StringComparison.OrdinalIgnoreCase) OrElse
+                                    String.Equals(issueStatus, "Disconnected(Proximity)", StringComparison.OrdinalIgnoreCase) OrElse
                                     (includeOkRows AndAlso String.Equals(issueStatus, "OK", StringComparison.OrdinalIgnoreCase))
 
                                 If shouldAdd Then
@@ -750,7 +758,7 @@ Namespace Services
 
             Dim p As Parameter = Nothing
             Try
-                p = el.LookupParameter(name)
+                p = FindParameterOnElementOrType(el, name)
             Catch
             End Try
 
@@ -1065,20 +1073,65 @@ Namespace Services
         Private Shared Function FindParameterByName(owner As Element, name As String) As Parameter
             If owner Is Nothing OrElse String.IsNullOrWhiteSpace(name) Then Return Nothing
 
+            Dim candidates As New List(Of Parameter)()
+
+            Try
+                For Each parameter As Parameter In owner.Parameters
+                    If IsUsableNamedParameter(parameter, name) Then candidates.Add(parameter)
+                Next
+            Catch
+            End Try
+
+            If candidates.Count > 0 Then
+                Return candidates.
+                    OrderByDescending(Function(parameter) IsLikelySharedParameter(parameter)).
+                    ThenByDescending(Function(parameter) ParameterHasComparableValue(parameter)).
+                    FirstOrDefault()
+            End If
+
             Try
                 Dim direct = owner.LookupParameter(name)
                 If IsUsableNamedParameter(direct, name) Then Return direct
             Catch
             End Try
 
+            Return Nothing
+        End Function
+
+        Private Shared Function ParameterHasComparableValue(parameter As Parameter) As Boolean
+            If parameter Is Nothing Then Return False
+
             Try
-                For Each parameter As Parameter In owner.Parameters
-                    If IsUsableNamedParameter(parameter, name) Then Return parameter
-                Next
+                If Not parameter.HasValue Then Return False
+            Catch
+                Return False
+            End Try
+
+            Return Not String.IsNullOrWhiteSpace(ResolveCompareKey(parameter))
+        End Function
+
+        Private Shared Function IsLikelySharedParameter(parameter As Parameter) As Boolean
+            If parameter Is Nothing Then Return False
+
+            Try
+                Dim prop = parameter.GetType().GetProperty("IsShared")
+                If prop IsNot Nothing Then
+                    Dim value = prop.GetValue(parameter, Nothing)
+                    If value IsNot Nothing Then Return Convert.ToBoolean(value, CultureInfo.InvariantCulture)
+                End If
             Catch
             End Try
 
-            Return Nothing
+            Try
+                Dim prop = parameter.GetType().GetProperty("GUID")
+                If prop IsNot Nothing Then
+                    Dim value = prop.GetValue(parameter, Nothing)
+                    If TypeOf value Is Guid Then Return Not DirectCast(value, Guid).Equals(Guid.Empty)
+                End If
+            Catch
+            End Try
+
+            Return False
         End Function
 
         Private Shared Function IsUsableNamedParameter(parameter As Parameter, expectedName As String) As Boolean
@@ -1308,7 +1361,7 @@ Namespace Services
             Try
                 If o Is Nothing Then Return 0
                 Dim s = o.ToString().Trim()
-                If s.StartsWith(",") Then s = s.Substring(1) ' Id2 앞 콤마 제거
+                If s.StartsWith(",") Then s = s.Substring(1)
                 If String.IsNullOrEmpty(s) Then Return 0
                 Return Convert.ToInt32(s, CultureInfo.InvariantCulture)
             Catch

@@ -1449,7 +1449,6 @@ Namespace UI.Hub
             If String.Equals(header, "비고(답변)", StringComparison.Ordinal) Then
                 Return BuildConnectorCommentTextForExport(row)
             End If
-
             If String.Equals(header, "Distance", StringComparison.OrdinalIgnoreCase) Then
                 Dim distRaw As String = SafeCellString(row, header)
                 If String.IsNullOrWhiteSpace(distRaw) Then Return String.Empty
@@ -1462,6 +1461,18 @@ Namespace UI.Hub
             End If
 
             Return SafeCellString(row, header)
+        End Function
+
+        Private Shared Function FormatConnectorIdForExcel(raw As String) As String
+            Dim text As String = If(raw, String.Empty).Trim()
+            If String.IsNullOrWhiteSpace(text) Then Return String.Empty
+
+            text = text.Trim(","c).Trim()
+            If String.IsNullOrWhiteSpace(text) OrElse String.Equals(text, "0", StringComparison.OrdinalIgnoreCase) Then
+                Return String.Empty
+            End If
+
+            Return text & ","
         End Function
 
         Private Shared Function ConvertDistanceForUi(distanceInch As Double, uiUnit As String) As String
@@ -1902,15 +1913,9 @@ Namespace UI.Hub
                         Dim cell = sr.CreateCell(c)
 
                         Dim text As String = If(v Is Nothing, "", v.ToString())
-                        If String.Equals(key, "Id2", StringComparison.OrdinalIgnoreCase) Then
-                            Dim t = text.Trim()
-                            If t = "" OrElse t = "0" Then
-                                text = ""
-                            ElseIf Not t.StartsWith(",", StringComparison.Ordinal) Then
-                                text = "," & t
-                            Else
-                                text = t
-                            End If
+                        If String.Equals(key, "Id1", StringComparison.OrdinalIgnoreCase) OrElse
+                           String.Equals(key, "Id2", StringComparison.OrdinalIgnoreCase) Then
+                            text = FormatConnectorIdForExcel(text)
                         End If
 
                         If String.Equals(key, "Distance (inch)", StringComparison.OrdinalIgnoreCase) Then
@@ -2020,11 +2025,39 @@ Namespace UI.Hub
         Private Shared Function ToIntLocal(val As String) As Integer
             Try
                 If String.IsNullOrEmpty(val) Then Return 0
-                Dim s = val.Trim()
+                Dim s = NormalizeSingleConnectorIdForParse(val)
+                If s.Contains(","c) Then
+                    s = s.Split(","c).
+                          Select(Function(part) If(part, String.Empty).Trim()).
+                          FirstOrDefault(Function(part) Not String.IsNullOrWhiteSpace(part))
+                    If s Is Nothing Then Return 0
+                End If
                 Return Convert.ToInt32(s)
             Catch
                 Return 0
             End Try
+        End Function
+
+        Private Shared Function NormalizeSingleConnectorIdForParse(val As String) As String
+            Dim s As String = If(val, String.Empty).Trim()
+            If String.IsNullOrWhiteSpace(s) Then Return String.Empty
+
+            If s.StartsWith(",", StringComparison.Ordinal) Then
+                s = s.Substring(1).Trim()
+            End If
+            If s.EndsWith(",", StringComparison.Ordinal) Then
+                s = s.Substring(0, s.Length - 1).Trim()
+            End If
+
+            If s.Contains(","c) Then
+                Dim compact As String = s.Replace(",", String.Empty).Trim()
+                Dim parsed As Long
+                If Long.TryParse(compact, Globalization.NumberStyles.Integer, Globalization.CultureInfo.InvariantCulture, parsed) Then
+                    Return compact
+                End If
+            End If
+
+            Return s
         End Function
 
 #End Region

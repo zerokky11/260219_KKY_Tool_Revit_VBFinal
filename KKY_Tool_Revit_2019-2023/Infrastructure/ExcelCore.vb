@@ -1322,7 +1322,7 @@ Namespace Infrastructure
                 End If
 
                 For c As Integer = 0 To colCount - 1
-                    WriteCell(row, c, dr(c))
+                    WriteCell(row, c, dr(c), table.Columns(c).ColumnName, exportKind)
                 Next
 
                 ' ---- 핵심: 저장하면서 행 상태를 판정해서 스타일 적용 ----
@@ -1379,11 +1379,21 @@ Namespace Infrastructure
             Next
         End Sub
 
-        Private Sub WriteCell(row As IRow, colIndex As Integer, value As Object)
+        Private Sub WriteCell(row As IRow,
+                              colIndex As Integer,
+                              value As Object,
+                              Optional columnName As String = Nothing,
+                              Optional exportKind As String = Nothing)
             Dim cell = row.CreateCell(colIndex)
 
             If value Is Nothing OrElse value Is DBNull.Value Then
                 cell.SetCellValue("")
+                Return
+            End If
+
+            Dim idText As String = Nothing
+            If TryFormatRevitIdForExcel(columnName, exportKind, value, idText) Then
+                cell.SetCellValue(idText)
                 Return
             End If
 
@@ -1412,6 +1422,141 @@ Namespace Infrastructure
 
             cell.SetCellValue(value.ToString())
         End Sub
+
+        Private Function TryFormatRevitIdForExcel(columnName As String,
+                                                  exportKind As String,
+                                                  value As Object,
+                                                  ByRef formatted As String) As Boolean
+            formatted = Nothing
+            If Not IsRevitIdExportColumn(columnName, exportKind) Then Return False
+
+            Dim text As String = If(value, String.Empty).ToString().Trim()
+            If String.IsNullOrWhiteSpace(text) Then
+                formatted = String.Empty
+                Return True
+            End If
+
+            Dim tokens As New List(Of String)()
+            Dim hasNonEmptyToken As Boolean = False
+            Dim hasInvalidToken As Boolean = False
+            For Each rawToken As String In text.Split(","c)
+                Dim cleanToken As String = If(rawToken, String.Empty).Trim().Trim(","c).Trim()
+                If String.IsNullOrWhiteSpace(cleanToken) Then Continue For
+
+                hasNonEmptyToken = True
+                Dim normalizedToken As String = Nothing
+                If TryNormalizeRevitIdToken(cleanToken, normalizedToken) Then
+                    tokens.Add(normalizedToken)
+                Else
+                    hasInvalidToken = True
+                End If
+            Next
+
+            If Not hasNonEmptyToken Then
+                formatted = String.Empty
+                Return True
+            End If
+
+            If hasInvalidToken OrElse tokens.Count = 0 Then Return False
+
+            formatted = String.Join(",", tokens) & ","
+            Return True
+        End Function
+
+        Private Function TryNormalizeRevitIdToken(rawToken As String, ByRef normalized As String) As Boolean
+            normalized = Nothing
+
+            Dim token As String = If(rawToken, String.Empty).Trim().Trim(","c).Trim()
+            If String.IsNullOrWhiteSpace(token) Then Return False
+
+            Dim longValue As Long
+            If Long.TryParse(token, longValue) Then
+                If longValue <= 0 Then Return False
+                normalized = longValue.ToString()
+                Return True
+            End If
+
+            Dim doubleValue As Double
+            If Double.TryParse(token, doubleValue) Then
+                Dim rounded As Double = Math.Round(doubleValue)
+                If rounded > 0 AndAlso Math.Abs(doubleValue - rounded) < 0.000001 Then
+                    normalized = CLng(rounded).ToString()
+                    Return True
+                End If
+            End If
+
+            Return False
+        End Function
+
+        Private Function IsRevitIdExportColumn(columnName As String, exportKind As String) As Boolean
+            Dim header As String = If(columnName, String.Empty).Trim()
+            If String.IsNullOrWhiteSpace(header) Then Return False
+
+            Dim lower As String = header.ToLowerInvariant()
+            If lower.Contains("guid") Then Return False
+            If lower.Contains("(id") Then Return False
+
+            Dim compact As String = CompactExcelHeaderName(header)
+            If String.IsNullOrWhiteSpace(compact) Then Return False
+            If compact.Contains("guid") Then Return False
+            If IsPmsSizeIdColumn(compact, exportKind) Then Return False
+
+            Select Case compact
+                Case "id", "ids", "id1", "id2",
+                     "aid", "bid",
+                     "elementid", "elementids",
+                     "objectid", "objectids",
+                     "hostid", "hostelementid", "connectedhostid", "connectedlineid",
+                     "instanceid", "nestedinstanceid",
+                     "partid", "segmentid",
+                     "viewid", "symbolid", "filterid", "worksetid"
+                    Return True
+            End Select
+
+            If compact.EndsWith("elementid") OrElse
+               compact.EndsWith("elementids") OrElse
+               compact.EndsWith("objectid") OrElse
+               compact.EndsWith("objectids") OrElse
+               compact.EndsWith("hostid") OrElse
+               compact.EndsWith("instanceid") OrElse
+               compact.EndsWith("partid") OrElse
+               compact.EndsWith("segmentid") OrElse
+               compact.EndsWith("viewid") OrElse
+               compact.EndsWith("symbolid") OrElse
+               compact.EndsWith("filterid") OrElse
+               compact.EndsWith("worksetid") Then
+                Return True
+            End If
+
+            If (lower.Contains("요소") OrElse lower.Contains("객체") OrElse lower.Contains("호스트") OrElse lower.Contains("라인")) AndAlso
+               (lower.Contains("id") OrElse lower.Contains("아이디")) Then
+                Return True
+            End If
+
+            Return False
+        End Function
+
+        Private Function IsPmsSizeIdColumn(compactHeader As String, exportKind As String) As Boolean
+            Dim kind As String = If(exportKind, String.Empty).Trim().ToLowerInvariant()
+            If kind <> "pms" AndAlso kind <> "segmentpms" Then Return False
+
+            Select Case compactHeader
+                Case "id", "pmsid", "revitid", "diffid", "mismatchid"
+                    Return True
+            End Select
+
+            Return compactHeader.EndsWith("idmm") OrElse compactHeader.EndsWith("idin")
+        End Function
+
+        Private Function CompactExcelHeaderName(header As String) As String
+            Dim sb As New StringBuilder()
+            For Each ch As Char In If(header, String.Empty)
+                If Char.IsLetterOrDigit(ch) Then
+                    sb.Append(Char.ToLowerInvariant(ch))
+                End If
+            Next
+            Return sb.ToString()
+        End Function
 
         ' Connector: 행 전체가 아니라 "이슈 내용" 셀만 스타일 적용
         Private Sub ApplyConnectorIssueCellStyles(wb As IWorkbook, row As IRow, table As DataTable, dr As DataRow, status As ExcelStyleHelper.RowStatus)
