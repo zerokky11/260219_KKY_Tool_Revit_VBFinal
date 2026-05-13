@@ -1332,7 +1332,7 @@ export function renderMulti(root, options = {}) {
       summary.style.background = 'var(--surface-help)';
       const top = document.createElement('strong');
       const sub = document.createElement('span');
-      top.textContent = '레벨 절대 Z와 기대 층정보 값을 설정하면 모델 객체를 구간별로 검토합니다.';
+      top.textContent = '레벨 모델 기준 Z와 기대 층정보 값을 설정하면 모델 객체를 구간별로 검토합니다.';
       sub.textContent = '아직 검토 파라미터와 레벨 규칙이 지정되지 않았습니다.';
       summary.append(top, sub);
       row.append(summary);
@@ -2545,7 +2545,7 @@ function buildConditionExtractWorkflowRow() {
         <tr>
           <th>영역 기준</th>
           <th>레벨명</th>
-          <th>절대 Z(mm)</th>
+          <th>모델 기준 Z(mm)</th>
           <th>기대 층정보 값</th>
         </tr>
       </thead>
@@ -2571,7 +2571,7 @@ function buildConditionExtractWorkflowRow() {
       levelInputState.clear();
       documentMeta.textContent = draft.documentTitle
         ? `활성 문서: ${draft.documentTitle}`
-        : '활성 문서 기준으로 레벨과 절대 Z를 불러옵니다.';
+        : '활성 문서 기준으로 레벨과 모델 기준 Z를 불러옵니다.';
       updateWarnings();
       tbody.innerHTML = '';
 
@@ -6686,7 +6686,7 @@ function buildConditionExtractWorkflowRow() {
       if (!String(config.parameterName || '').trim()) return '층정보 검토 파라미터명을 입력해 주세요.';
       if (!rules.length) return '활성 문서에서 레벨 목록을 불러와 층정보 검토 규칙을 설정해 주세요.';
       if (!selectedRules.length) return '층정보 영역을 구분할 레벨을 최소 1개 이상 선택해 주세요.';
-      if (!configuredCount) return '선택한 영역 기준 레벨에 기대 층정보 값을 최소 1개 이상 입력해 주세요.';
+      if (configuredCount < selectedRules.length) return '선택한 영역 기준 레벨마다 기대 층정보 값을 입력해 주세요.';
     }
     if (state.features.familysuitability.enabled) {
       const config = state.features.familysuitability.configCommitted || {};
@@ -7355,6 +7355,15 @@ function buildConditionExtractWorkflowRow() {
     if (state.ui.activeFeatureKey === 'parametermissing') {
       const committed = createParameterMissingConfigSnapshot(feature.configCommitted || {});
       if (!committed.parameterNames.length || hasIncompleteParameterMissingConfig(committed)) {
+        return { label: '설정 필요', className: 'chip--warn' };
+      }
+    }
+    if (state.ui.activeFeatureKey === 'floorinfo') {
+      const committed = feature.configCommitted || {};
+      const rules = normalizeFloorInfoRules(committed.levelRules);
+      const selectedRules = rules.filter((rule) => rule.useAsBoundary !== false);
+      const configuredCount = selectedRules.filter((rule) => String(rule.expectedValue || '').trim()).length;
+      if (!String(committed.parameterName || '').trim() || !selectedRules.length || configuredCount < selectedRules.length) {
         return { label: '설정 필요', className: 'chip--warn' };
       }
     }
@@ -8813,7 +8822,7 @@ function buildConditionExtractWorkflowRow() {
       const rules = normalizeFloorInfoRules(feature.configCommitted.levelRules);
       const selectedRules = rules.filter((rule) => rule.useAsBoundary !== false);
       const configuredCount = selectedRules.filter((rule) => String(rule.expectedValue || '').trim()).length;
-      if (!String(feature.configCommitted.parameterName || '').trim() || !selectedRules.length || !configuredCount) {
+      if (!String(feature.configCommitted.parameterName || '').trim() || !selectedRules.length || configuredCount < selectedRules.length) {
         return { label: '설정 필요', className: 'status-chip--warn' };
       }
     }

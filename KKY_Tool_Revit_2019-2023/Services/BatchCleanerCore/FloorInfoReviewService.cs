@@ -124,6 +124,7 @@ namespace KKY_Tool_Revit.Services
             }
 
             snapshot.Warnings.AddRange(BuildDuplicateLevelWarnings(snapshot.Levels));
+            snapshot.Warnings.AddRange(BuildLevelCoordinateWarnings(levels));
             return snapshot;
         }
 
@@ -145,7 +146,7 @@ namespace KKY_Tool_Revit.Services
                 throw new InvalidOperationException("층정보 검토 대상 파라미터명이 비어 있습니다.");
             }
 
-            var ruleMap = BuildRuleMap(settings.LevelRules, levels);
+            var ruleMap = BuildRuleMap(settings.LevelRules);
             List<Level> zoneLevels = BuildZoneLevels(settings.LevelRules, levels);
             if (zoneLevels.Count == 0)
             {
@@ -163,6 +164,7 @@ namespace KKY_Tool_Revit.Services
                 LevelName = level.Name ?? string.Empty,
                 AbsoluteZFt = GetAbsoluteLevelZ(level)
             }).ToList()));
+            result.Warnings.AddRange(BuildLevelCoordinateWarnings(levels));
 
             HashSet<int> allowedElementIds = new HashSet<int>((settings.AllowedElementIds ?? Enumerable.Empty<int>()).Where(id => id > 0));
             List<string> extraParameterNames = NormalizeExtraParameterNames(settings.ExtraParameterNames);
@@ -520,26 +522,19 @@ namespace KKY_Tool_Revit.Services
             return builtInCategoryNames.Any(name => string.Equals(actualName, name, StringComparison.OrdinalIgnoreCase));
         }
 
-        private static Dictionary<string, string> BuildRuleMap(IEnumerable<LevelRule> rules, IList<Level> levels)
+        private static Dictionary<string, string> BuildRuleMap(IEnumerable<LevelRule> rules)
         {
             var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (LevelRule rule in rules ?? Enumerable.Empty<LevelRule>())
             {
                 if (rule == null) continue;
+                if (!rule.UseAsBoundary) continue;
                 string levelName = (rule.LevelName ?? string.Empty).Trim();
                 if (string.IsNullOrWhiteSpace(levelName)) continue;
-                map[NormalizeKey(levelName)] = (rule.ExpectedValue ?? string.Empty).Trim();
-            }
-
-            foreach (Level level in levels ?? Enumerable.Empty<Level>())
-            {
-                if (level == null) continue;
-                string key = NormalizeKey(level.Name);
-                if (!map.ContainsKey(key))
-                {
-                    map[key] = string.Empty;
-                }
+                string expectedValue = (rule.ExpectedValue ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(expectedValue)) continue;
+                map[NormalizeKey(levelName)] = expectedValue;
             }
 
             return map;
@@ -590,6 +585,23 @@ namespace KKY_Tool_Revit.Services
                 string positions = string.Join(", ", group.Select(item => Round(item.AbsoluteZMm, 1).ToString("0.0", CultureInfo.InvariantCulture) + "mm"));
                 yield return $"동일한 레벨명 '{name}' 이 여러 높이에 존재합니다: {positions}";
             }
+        }
+
+        private static IEnumerable<string> BuildLevelCoordinateWarnings(IEnumerable<Level> levels)
+        {
+            double maxOffsetFt = 0d;
+
+            foreach (Level level in levels ?? Enumerable.Empty<Level>())
+            {
+                if (level == null) continue;
+                double modelZFt = GetAbsoluteLevelZ(level);
+                double displayedZFt = GetDisplayedLevelZ(level);
+                maxOffsetFt = Math.Max(maxOffsetFt, Math.Abs(modelZFt - displayedZFt));
+            }
+
+            if (maxOffsetFt <= BoundaryEpsilonFt) yield break;
+
+            yield return $"레벨 표시 기준과 모델 Z 기준이 다릅니다. 검토는 객체 BoundingBox/Location과 같은 모델 기준 Z(ProjectElevation)를 사용합니다. 최대 차이 {Round(ToMillimeters(maxOffsetFt), 1).ToString("0.0", CultureInfo.InvariantCulture)}mm";
         }
 
         private static double ResolveRepresentativeZ(Element element, BoundingBoxXYZ bbox, bool spansMultipleZones)
@@ -754,6 +766,19 @@ namespace KKY_Tool_Revit.Services
         }
 
         private static double GetAbsoluteLevelZ(Level level)
+        {
+            if (level == null) return 0d;
+            try
+            {
+                return level.ProjectElevation;
+            }
+            catch
+            {
+                return GetDisplayedLevelZ(level);
+            }
+        }
+
+        private static double GetDisplayedLevelZ(Level level)
         {
             if (level == null) return 0d;
             try
