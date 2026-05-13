@@ -11,6 +11,7 @@ $zipScriptPath = Join-Path $PSScriptRoot 'New-UpdateZip.ps1'
 $historyScriptPath = Join-Path $PSScriptRoot 'Update-ReleaseHistory.ps1'
 $verifyScriptPath = Join-Path $PSScriptRoot 'Verify-KKYToolRelease.ps1'
 $releaseDir = Join-Path $repoRoot 'Sever\Release'
+$installerDir = Join-Path $releaseDir 'official'
 $stageRoot = Join-Path $repoRoot 'artifacts\release-stage\single'
 $indexPath = Join-Path $releaseDir 'index.html'
 $feedPath = Join-Path $releaseDir 'latest.json'
@@ -54,11 +55,12 @@ $version = $versionMatch.Groups['value'].Value
 $exeName = "KKY_Tool_Revit(2019,21,23,25)_v$version.exe"
 $zipName = "KKY_Tool_Revit(2019,21,23,25)_v$version.zip"
 $packageUrl = "$domainRoot/$zipName"
-$installerUrl = "$domainRoot/$exeName"
+$installerUrl = "$domainRoot/official/$exeName"
 if (Test-Path -LiteralPath $stageRoot) {
     Remove-Item -LiteralPath $stageRoot -Recurse -Force
 }
 New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $installerDir -Force | Out-Null
 
 foreach ($year in '2019', '2021', '2023') {
     $outputPath = Join-Path $stageRoot "Rvt$year\net48\"
@@ -74,12 +76,12 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Build failed for Revit 2025'
 }
 
-& $isccPath "/DMyAppVersion=$version" "/DMyBuildRoot=$stageRoot" "/DMyOutputDir=$releaseDir" $issPath
+& $isccPath "/DMyAppVersion=$version" "/DMyBuildRoot=$stageRoot" "/DMyOutputDir=$installerDir" $issPath
 if ($LASTEXITCODE -ne 0) {
     throw 'Installer compile failed.'
 }
 
-$exePath = Join-Path $releaseDir $exeName
+$exePath = Join-Path $installerDir $exeName
 if (-not (Test-Path -LiteralPath $exePath)) {
     throw "Compiled installer not found: $exePath"
 }
@@ -125,7 +127,7 @@ if (Test-Path -LiteralPath $indexPath) {
     )
     $indexContent = [regex]::Replace(
         $indexContent,
-        'https://update\.zerokky\.com/KKY_Tool_Revit\(2019,21,23,25\)_v[0-9.]+\.exe',
+        'https://update\.zerokky\.com/(?:official/)?KKY_Tool_Revit\(2019,21,23,25\)_v[0-9.]+\.exe',
         [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $installerUrl },
         [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
     )

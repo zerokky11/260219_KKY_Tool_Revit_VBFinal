@@ -22,6 +22,7 @@ Namespace Infrastructure
             Register("pms", AddressOf ResolveResultLike)
             Register("worksetassignment", AddressOf ResolveResultLike)
             Register("parameterduplication", AddressOf ResolveResultLike)
+            Register("parametermissing", AddressOf ResolveResultLike)
             Register("familylink", AddressOf ResolveIssueLike)
             Register("sharedparambatch", AddressOf ResolveSharedParamBatch)
 
@@ -195,6 +196,7 @@ Namespace Infrastructure
             If s.Contains("connector") Then Return "connector"
             If s.Contains("guid") Then Return "guid"
             If s.Contains("parameterduplication") OrElse s.Contains("project parameter duplication") Then Return "parameterduplication"
+            If s.Contains("parametermissing") OrElse s.Contains("parameter missing") Then Return "parametermissing"
             If s.Contains("param") Then Return "paramprop"
             If s.Contains("point") Then Return "points"
             If s.Contains("sharedparambatch") Then Return "sharedparambatch"

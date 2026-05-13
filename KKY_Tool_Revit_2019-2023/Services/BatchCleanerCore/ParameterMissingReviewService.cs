@@ -131,6 +131,130 @@ namespace KKY_Tool_Revit.Services
             public string TypeName { get; set; } = string.Empty;
         }
 
+        private sealed class PreparedMissingRule
+        {
+            public MissingRule Rule { get; set; }
+            public string ParameterName { get; set; } = string.Empty;
+            public List<PreparedCondition> Conditions { get; set; } = new List<PreparedCondition>();
+        }
+
+        private enum ConditionValueKind
+        {
+            Parameter = 0,
+            Category = 1,
+            Family = 2
+        }
+
+        private sealed class PreparedCondition
+        {
+            public ElementParameterCondition Source { get; set; }
+            public string ParameterName { get; set; } = string.Empty;
+            public FilterRuleOperator Operator { get; set; }
+            public string ExpectedText { get; set; } = string.Empty;
+            public string ExpectedTrimmed { get; set; } = string.Empty;
+            public bool HasNumericExpected { get; set; }
+            public double NumericExpected { get; set; }
+            public ConditionValueKind ValueKind { get; set; } = ConditionValueKind.Parameter;
+        }
+
+        private sealed class ReviewValueCache
+        {
+            private readonly Document _doc;
+            private readonly Dictionary<string, ModelParameterExtractionService.ElementParameterValueInfo> _parameterValues =
+                new Dictionary<string, ModelParameterExtractionService.ElementParameterValueInfo>(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, TypeInfo> _typeInfos =
+                new Dictionary<string, TypeInfo>(StringComparer.OrdinalIgnoreCase);
+
+            public ReviewValueCache(Document doc)
+            {
+                _doc = doc;
+            }
+
+            public ModelParameterExtractionService.ElementParameterValueInfo GetParameterValueInfo(Element element, string parameterName)
+            {
+                if (_doc == null || element == null || string.IsNullOrWhiteSpace(parameterName))
+                {
+                    return new ModelParameterExtractionService.ElementParameterValueInfo();
+                }
+
+                string key = BuildCacheKey(element, "param", parameterName.Trim());
+                ModelParameterExtractionService.ElementParameterValueInfo info;
+                if (!_parameterValues.TryGetValue(key, out info))
+                {
+                    info = ModelParameterExtractionService.GetElementParameterValueInfo(_doc, element, parameterName)
+                           ?? new ModelParameterExtractionService.ElementParameterValueInfo();
+                    _parameterValues[key] = info;
+                }
+
+                return info;
+            }
+
+            public bool TryGetConditionValue(Element element, PreparedCondition condition, out string value, out bool hasParameter)
+            {
+                value = string.Empty;
+                hasParameter = false;
+
+                if (condition == null || element == null)
+                {
+                    return false;
+                }
+
+                if (condition.ValueKind == ConditionValueKind.Category)
+                {
+                    TypeInfo typeInfo = GetTypeInfo(element);
+                    value = typeInfo?.Category ?? string.Empty;
+                    hasParameter = true;
+                    return true;
+                }
+
+                if (condition.ValueKind == ConditionValueKind.Family)
+                {
+                    TypeInfo typeInfo = GetTypeInfo(element);
+                    value = typeInfo?.Family ?? string.Empty;
+                    hasParameter = true;
+                    return true;
+                }
+
+                ModelParameterExtractionService.ElementParameterValueInfo info = GetParameterValueInfo(element, condition.ParameterName);
+                hasParameter = info != null && info.HasParameter;
+                value = info?.ValueText ?? string.Empty;
+                return hasParameter;
+            }
+
+            public TypeInfo GetTypeInfo(Element element)
+            {
+                if (_doc == null || element == null)
+                {
+                    return new TypeInfo();
+                }
+
+                string key = BuildCacheKey(element, "type", string.Empty);
+                TypeInfo info;
+                if (!_typeInfos.TryGetValue(key, out info))
+                {
+                    info = new TypeInfo
+                    {
+                        Category = ModelParameterExtractionService.GetElementCategoryName(element),
+                        Family = ModelParameterExtractionService.GetElementFamilyName(_doc, element),
+                        TypeName = ModelParameterExtractionService.GetElementTypeName(_doc, element)
+                    };
+                    _typeInfos[key] = info;
+                }
+
+                return info;
+            }
+
+            private static string BuildCacheKey(Element element, string scope, string name)
+            {
+                int elementId = element?.Id?.IntegerValue ?? 0;
+                return elementId.ToString(CultureInfo.InvariantCulture)
+                       + "\u001f"
+                       + (scope ?? string.Empty)
+                       + "\u001f"
+                       + (name ?? string.Empty);
+            }
+        }
+
         public static ReviewResult RunOnDocument(Document doc, string fileLabel, Settings settings, Action<double, string> progress = null)
         {
             if (doc == null) throw new ArgumentNullException(nameof(doc));
@@ -150,7 +274,11 @@ namespace KKY_Tool_Revit.Services
             bool hasCommonScopeFilter = settings.HasAllowedElementScope;
             HashSet<int> allowedElementIds = new HashSet<int>((settings.AllowedElementIds ?? Enumerable.Empty<int>()).Where(id => id > 0));
             List<MissingRule> exceptionRules = NormalizeExceptionRules(settings.ExceptionRules, parameterNames);
+            List<PreparedMissingRule> preparedExceptionRules = PrepareExceptionRules(exceptionRules);
+            Dictionary<string, List<PreparedMissingRule>> exceptionRulesByParameter = GroupExceptionRulesByParameter(preparedExceptionRules);
+            List<PreparedCondition> preparedTargetConditions = PrepareConditions(targetConditions);
             List<string> extraParameterNames = NormalizeExtraParameterNames(settings.ExtraParameterNames);
+            ReviewValueCache valueCache = new ReviewValueCache(doc);
 
             progress?.Invoke(5d, "검토 대상 수집 중");
             List<Element> candidates = ModelParameterExtractionService.GetExtractableElements(doc)
@@ -163,9 +291,9 @@ namespace KKY_Tool_Revit.Services
             {
                 Element element = candidates[index];
                 bool matchesLocalTarget = true;
-                if (targetConditions.Count > 0)
+                if (preparedTargetConditions.Count > 0)
                 {
-                    bool conditionMatched = MatchesConditions(doc, element, targetConditions, targetFilter.CombinationMode);
+                    bool conditionMatched = MatchesConditions(doc, element, preparedTargetConditions, targetFilter.CombinationMode, valueCache);
                     matchesLocalTarget = settings.ExcludeTargetFilterMatches ? !conditionMatched : conditionMatched;
                 }
                 bool matchesCommonScope = !hasCommonScopeFilter || (element?.Id != null && allowedElementIds.Contains(element.Id.IntegerValue));
@@ -192,11 +320,11 @@ namespace KKY_Tool_Revit.Services
             for (int index = 0; index < targetElements.Count; index++)
             {
                 Element element = targetElements[index];
-                TypeInfo typeInfo = ResolveTypeInfo(doc, element);
+                TypeInfo typeInfo = null;
 
                 foreach (string parameterName in parameterNames)
                 {
-                    ParameterReviewState reviewState = GetParameterReviewState(doc, element, parameterName);
+                    ParameterReviewState reviewState = GetParameterReviewState(doc, element, parameterName, valueCache);
                     if (reviewState == ParameterReviewState.HasValue)
                     {
                         result.OkCount++;
@@ -204,13 +332,15 @@ namespace KKY_Tool_Revit.Services
                     }
 
                     MissingRule matchedRule;
-                    if (ShouldIgnoreMissing(doc, element, parameterName, exceptionRules, out matchedRule))
+                    if (exceptionRulesByParameter.Count > 0
+                        && ShouldIgnoreMissing(doc, element, parameterName, exceptionRulesByParameter, valueCache, out matchedRule))
                     {
                         result.IgnoredCount++;
                         continue;
                     }
 
                     result.ErrorCount++;
+                    typeInfo = typeInfo ?? ResolveTypeInfo(doc, element, valueCache);
                     result.Rows.Add(new ReviewRow
                     {
                         File = safeFileLabel,
@@ -223,7 +353,7 @@ namespace KKY_Tool_Revit.Services
                         Category = typeInfo.Category,
                         Family = typeInfo.Family,
                         Solutions = BuildSolutionsMessage(reviewState),
-                        ExtraParams = ReadExtraParamValues(doc, element, extraParameterNames)
+                        ExtraParams = ReadExtraParamValues(doc, element, extraParameterNames, valueCache)
                     });
                 }
 
@@ -270,10 +400,10 @@ namespace KKY_Tool_Revit.Services
                 ErrorCount = result.ErrorCount,
                 IgnoredCount = result.IgnoredCount,
                 OkCount = result.OkCount,
-                TargetConditionCount = targetConditions.Count,
-                ExceptionRuleCount = exceptionRules.Count(rule => rule != null && rule.HasConfiguredConditions()),
+                TargetConditionCount = preparedTargetConditions.Count,
+                ExceptionRuleCount = preparedExceptionRules.Count,
                 Status = "success",
-                Reason = BuildSummaryReason(result, targetConditions.Count > 0 || hasCommonScopeFilter, exceptionRules.Count(rule => rule != null && rule.HasConfiguredConditions()))
+                Reason = BuildSummaryReason(result, preparedTargetConditions.Count > 0 || hasCommonScopeFilter, preparedExceptionRules.Count)
             });
 
             return result;
@@ -394,7 +524,7 @@ namespace KKY_Tool_Revit.Services
                 .ToList();
         }
 
-        private static Dictionary<string, string> ReadExtraParamValues(Document doc, Element element, IEnumerable<string> extraParameterNames)
+        private static Dictionary<string, string> ReadExtraParamValues(Document doc, Element element, IEnumerable<string> extraParameterNames, ReviewValueCache valueCache)
         {
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (doc == null || element == null) return result;
@@ -402,7 +532,9 @@ namespace KKY_Tool_Revit.Services
             foreach (string name in extraParameterNames ?? Enumerable.Empty<string>())
             {
                 if (string.IsNullOrWhiteSpace(name)) continue;
-                result[name] = ModelParameterExtractionService.GetElementParameterValue(doc, element, name) ?? string.Empty;
+                result[name] = valueCache != null
+                    ? valueCache.GetParameterValueInfo(element, name).ValueText ?? string.Empty
+                    : ModelParameterExtractionService.GetElementParameterValue(doc, element, name) ?? string.Empty;
             }
 
             return result;
@@ -465,6 +597,76 @@ namespace KKY_Tool_Revit.Services
                 .ToList();
         }
 
+        private static List<PreparedMissingRule> PrepareExceptionRules(IEnumerable<MissingRule> rules)
+        {
+            return (rules ?? Enumerable.Empty<MissingRule>())
+                .Where(rule => rule != null)
+                .Select(rule => new PreparedMissingRule
+                {
+                    Rule = rule,
+                    ParameterName = (rule.ParameterName ?? string.Empty).Trim(),
+                    Conditions = PrepareConditions(GetEnabledConditions(rule.Conditions))
+                })
+                .Where(prepared => prepared.Conditions.Count > 0)
+                .ToList();
+        }
+
+        private static Dictionary<string, List<PreparedMissingRule>> GroupExceptionRulesByParameter(IEnumerable<PreparedMissingRule> rules)
+        {
+            var result = new Dictionary<string, List<PreparedMissingRule>>(StringComparer.OrdinalIgnoreCase);
+            foreach (PreparedMissingRule rule in rules ?? Enumerable.Empty<PreparedMissingRule>())
+            {
+                if (rule == null || string.IsNullOrWhiteSpace(rule.ParameterName) || rule.Conditions == null || rule.Conditions.Count == 0)
+                {
+                    continue;
+                }
+
+                List<PreparedMissingRule> bucket;
+                if (!result.TryGetValue(rule.ParameterName, out bucket))
+                {
+                    bucket = new List<PreparedMissingRule>();
+                    result[rule.ParameterName] = bucket;
+                }
+
+                bucket.Add(rule);
+            }
+
+            return result;
+        }
+
+        private static List<PreparedCondition> PrepareConditions(IEnumerable<ElementParameterCondition> conditions)
+        {
+            return (conditions ?? Enumerable.Empty<ElementParameterCondition>())
+                .Where(condition => condition != null && condition.IsConfigured() && (condition.Enabled || !string.IsNullOrWhiteSpace(condition.ParameterName)))
+                .Select(CreatePreparedCondition)
+                .Where(condition => condition != null)
+                .ToList();
+        }
+
+        private static PreparedCondition CreatePreparedCondition(ElementParameterCondition condition)
+        {
+            if (condition == null || !condition.IsConfigured()) return null;
+
+            string parameterName = (condition.ParameterName ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(parameterName)) return null;
+
+            string expectedText = condition.Value ?? string.Empty;
+            double numericExpected;
+            bool hasNumericExpected = TryParseNumber(expectedText, out numericExpected);
+
+            return new PreparedCondition
+            {
+                Source = condition.Clone(),
+                ParameterName = parameterName,
+                Operator = condition.Operator,
+                ExpectedText = expectedText,
+                ExpectedTrimmed = expectedText.Trim(),
+                HasNumericExpected = hasNumericExpected,
+                NumericExpected = numericExpected,
+                ValueKind = ResolveConditionValueKind(parameterName)
+            };
+        }
+
         private static List<ElementParameterCondition> GetEnabledConditions(ElementParameterUpdateSettings settings)
         {
             if (settings == null || settings.Conditions == null) return new List<ElementParameterCondition>();
@@ -482,36 +684,55 @@ namespace KKY_Tool_Revit.Services
                 .ToList();
         }
 
-        private static bool MatchesConditions(Document doc, Element element, IEnumerable<ElementParameterCondition> conditions, ParameterConditionCombination combinationMode)
+        private static bool MatchesConditions(Document doc, Element element, IList<PreparedCondition> conditions, ParameterConditionCombination combinationMode, ReviewValueCache valueCache)
         {
-            List<ElementParameterCondition> source = (conditions ?? Enumerable.Empty<ElementParameterCondition>())
-                .Where(condition => condition != null)
-                .ToList();
+            if (conditions == null || conditions.Count == 0)
+            {
+                return true;
+            }
 
-            if (source.Count == 0) return true;
+            if (combinationMode == ParameterConditionCombination.Or)
+            {
+                foreach (PreparedCondition condition in conditions)
+                {
+                    if (condition == null) continue;
+                    if (EvaluateCondition(doc, element, condition, valueCache))
+                    {
+                        return true;
+                    }
+                }
 
-            List<bool> results = source
-                .Select(condition => EvaluateCondition(doc, element, condition))
-                .ToList();
+                return false;
+            }
 
-            return combinationMode == ParameterConditionCombination.Or
-                ? results.Any(result => result)
-                : results.All(result => result);
+            foreach (PreparedCondition condition in conditions)
+            {
+                if (condition == null) continue;
+                if (!EvaluateCondition(doc, element, condition, valueCache))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
-        private static bool EvaluateCondition(Document doc, Element element, ElementParameterCondition condition)
+        private static bool EvaluateCondition(Document doc, Element element, PreparedCondition condition, ReviewValueCache valueCache)
         {
             if (condition == null) return true;
 
             string actualText;
-            bool hasVirtualValue = TryGetVirtualConditionValue(doc, element, condition.ParameterName, out actualText);
-            bool hasParameter = hasVirtualValue || ModelParameterExtractionService.HasElementParameter(doc, element, condition.ParameterName);
-            if (!hasParameter) return false;
-
-            if (!hasVirtualValue)
+            bool hasParameter;
+            if (valueCache != null)
             {
-                actualText = ModelParameterExtractionService.GetElementParameterValue(doc, element, condition.ParameterName);
+                valueCache.TryGetConditionValue(element, condition, out actualText, out hasParameter);
             }
+            else
+            {
+                hasParameter = TryReadConditionValue(doc, element, condition, out actualText);
+            }
+
+            if (!hasParameter) return false;
 
             if (condition.Operator == FilterRuleOperator.HasValue)
             {
@@ -523,33 +744,30 @@ namespace KKY_Tool_Revit.Services
                 return string.IsNullOrWhiteSpace(actualText);
             }
 
-            string expectedText = condition.Value ?? string.Empty;
-            double numericActual;
-            double numericExpected;
-            bool hasNumericActual = TryParseNumber(actualText, out numericActual);
-            bool hasNumericExpected = TryParseNumber(expectedText, out numericExpected);
+            double numericActual = 0d;
+            bool hasNumericActual = condition.HasNumericExpected && TryParseNumber(actualText, out numericActual);
 
-            if (hasNumericActual && hasNumericExpected)
+            if (hasNumericActual && condition.HasNumericExpected)
             {
                 switch (condition.Operator)
                 {
                     case FilterRuleOperator.Equals:
-                        return Math.Abs(numericActual - numericExpected) < 0.000001d;
+                        return Math.Abs(numericActual - condition.NumericExpected) < 0.000001d;
                     case FilterRuleOperator.NotEquals:
-                        return Math.Abs(numericActual - numericExpected) >= 0.000001d;
+                        return Math.Abs(numericActual - condition.NumericExpected) >= 0.000001d;
                     case FilterRuleOperator.Greater:
-                        return numericActual > numericExpected;
+                        return numericActual > condition.NumericExpected;
                     case FilterRuleOperator.GreaterOrEqual:
-                        return numericActual >= numericExpected;
+                        return numericActual >= condition.NumericExpected;
                     case FilterRuleOperator.Less:
-                        return numericActual < numericExpected;
+                        return numericActual < condition.NumericExpected;
                     case FilterRuleOperator.LessOrEqual:
-                        return numericActual <= numericExpected;
+                        return numericActual <= condition.NumericExpected;
                 }
             }
 
             string left = (actualText ?? string.Empty).Trim();
-            string right = expectedText.Trim();
+            string right = condition.ExpectedTrimmed;
 
             switch (condition.Operator)
             {
@@ -582,25 +800,46 @@ namespace KKY_Tool_Revit.Services
             }
         }
 
-        private static bool TryGetVirtualConditionValue(Document doc, Element element, string parameterName, out string value)
+        private static bool TryReadConditionValue(Document doc, Element element, PreparedCondition condition, out string value)
         {
             value = string.Empty;
-            string token = NormalizeConditionParameterToken(parameterName);
-            if (string.IsNullOrWhiteSpace(token)) return false;
+            if (condition == null || element == null) return false;
 
-            if (IsAnyConditionToken(token, "category", "categoryname", "cat", "카테고리", "분류"))
+            if (condition.ValueKind == ConditionValueKind.Category)
             {
                 value = ModelParameterExtractionService.GetElementCategoryName(element) ?? string.Empty;
                 return true;
             }
 
-            if (IsAnyConditionToken(token, "family", "familyname", "fam", "패밀리", "패밀리명"))
+            if (condition.ValueKind == ConditionValueKind.Family)
             {
                 value = ModelParameterExtractionService.GetElementFamilyName(doc, element) ?? string.Empty;
                 return true;
             }
 
-            return false;
+            ModelParameterExtractionService.ElementParameterValueInfo info =
+                ModelParameterExtractionService.GetElementParameterValueInfo(doc, element, condition.ParameterName)
+                ?? new ModelParameterExtractionService.ElementParameterValueInfo();
+            value = info.ValueText ?? string.Empty;
+            return info.HasParameter;
+        }
+
+        private static ConditionValueKind ResolveConditionValueKind(string parameterName)
+        {
+            string token = NormalizeConditionParameterToken(parameterName);
+            if (string.IsNullOrWhiteSpace(token)) return ConditionValueKind.Parameter;
+
+            if (IsAnyConditionToken(token, "category", "categoryname", "cat", "\uCE74\uD14C\uACE0\uB9AC", "\uBD84\uB958"))
+            {
+                return ConditionValueKind.Category;
+            }
+
+            if (IsAnyConditionToken(token, "family", "familyname", "fam", "\uD328\uBC00\uB9AC", "\uD328\uBC00\uB9AC\uBA85"))
+            {
+                return ConditionValueKind.Family;
+            }
+
+            return ConditionValueKind.Parameter;
         }
 
         private static bool IsAnyConditionToken(string token, params string[] candidates)
@@ -623,35 +862,55 @@ namespace KKY_Tool_Revit.Services
             return builder.ToString();
         }
 
-        private static bool ShouldIgnoreMissing(Document doc, Element element, string parameterName, IEnumerable<MissingRule> rules, out MissingRule matchedRule)
+        private static bool ShouldIgnoreMissing(Document doc,
+                                                Element element,
+                                                string parameterName,
+                                                IDictionary<string, List<PreparedMissingRule>> rulesByParameter,
+                                                ReviewValueCache valueCache,
+                                                out MissingRule matchedRule)
         {
-            foreach (MissingRule rule in rules ?? Enumerable.Empty<MissingRule>())
+            matchedRule = null;
+            if (rulesByParameter == null || string.IsNullOrWhiteSpace(parameterName))
             {
-                if (rule == null) continue;
-                if (!string.Equals(rule.ParameterName, parameterName, StringComparison.OrdinalIgnoreCase)) continue;
+                return false;
+            }
 
-                List<ElementParameterCondition> conditions = GetEnabledConditions(rule.Conditions);
+            List<PreparedMissingRule> rules;
+            if (!rulesByParameter.TryGetValue(parameterName, out rules) || rules == null || rules.Count == 0)
+            {
+                return false;
+            }
+
+            foreach (PreparedMissingRule preparedRule in rules)
+            {
+                MissingRule rule = preparedRule?.Rule;
+                if (rule == null) continue;
+
+                List<PreparedCondition> conditions = preparedRule.Conditions ?? new List<PreparedCondition>();
                 if (conditions.Count == 0) continue;
 
-                if (MatchesConditions(doc, element, conditions, rule.CombinationMode))
+                if (MatchesConditions(doc, element, conditions, rule.CombinationMode, valueCache))
                 {
                     matchedRule = rule;
                     return true;
                 }
             }
 
-            matchedRule = null;
             return false;
         }
 
-        private static ParameterReviewState GetParameterReviewState(Document doc, Element element, string parameterName)
+        private static ParameterReviewState GetParameterReviewState(Document doc, Element element, string parameterName, ReviewValueCache valueCache)
         {
-            if (!ModelParameterExtractionService.HasElementParameter(doc, element, parameterName))
+            ModelParameterExtractionService.ElementParameterValueInfo info = valueCache != null
+                ? valueCache.GetParameterValueInfo(element, parameterName)
+                : ModelParameterExtractionService.GetElementParameterValueInfo(doc, element, parameterName);
+
+            if (info == null || !info.HasParameter)
             {
                 return ParameterReviewState.ParameterNotFound;
             }
 
-            string value = ModelParameterExtractionService.GetElementParameterValue(doc, element, parameterName);
+            string value = info.ValueText ?? string.Empty;
             return string.IsNullOrWhiteSpace(value)
                 ? ParameterReviewState.EmptyValue
                 : ParameterReviewState.HasValue;
@@ -713,8 +972,13 @@ namespace KKY_Tool_Revit.Services
             return string.Join(joiner, items);
         }
 
-        private static TypeInfo ResolveTypeInfo(Document doc, Element element)
+        private static TypeInfo ResolveTypeInfo(Document doc, Element element, ReviewValueCache valueCache)
         {
+            if (valueCache != null)
+            {
+                return valueCache.GetTypeInfo(element);
+            }
+
             return new TypeInfo
             {
                 Category = ModelParameterExtractionService.GetElementCategoryName(element),

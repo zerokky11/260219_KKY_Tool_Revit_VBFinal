@@ -319,8 +319,7 @@ Namespace UI.Hub
                 "No. of Elements",
                 "Review",
                 "__ReviewEn",
-                "__ReviewKo",
-                "Status"
+                "__ReviewKo"
             }
 
             Dim removeNames As New List(Of String)()

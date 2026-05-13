@@ -12,6 +12,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $releaseDir = Join-Path $repoRoot 'Sever\Release'
+$installerDir = Join-Path $releaseDir 'official'
 $issPath = Join-Path $PSScriptRoot 'KKY_Tool_Compiler.iss'
 $latestPath = Join-Path $releaseDir 'latest.json'
 $historyPath = Join-Path $releaseDir 'release-history.json'
@@ -298,14 +299,20 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
             if ($installerFileName -and $installerFileName -ne $expectedExeName) {
                 Add-Failure "release-history.json installerUrl should point to '$expectedExeName' but points to '$installerFileName'."
             }
+            if ($installerFileName -and ([string]$first.installerUrl) -notmatch '/official/') {
+                Add-Failure "release-history.json installerUrl should use the official installer folder."
+            }
         }
     }
 
-    foreach ($artifactName in @($expectedZipName, $expectedExeName)) {
-        $artifactPath = Join-Path $releaseDir $artifactName
-        if (-not (Test-Path -LiteralPath $artifactPath)) {
-            Add-Warn "Release artifact not found locally: $artifactPath"
-        }
+    $expectedZipPath = Join-Path $releaseDir $expectedZipName
+    if (-not (Test-Path -LiteralPath $expectedZipPath)) {
+        Add-Warn "Release artifact not found locally: $expectedZipPath"
+    }
+
+    $expectedExePath = Join-Path $installerDir $expectedExeName
+    if (-not (Test-Path -LiteralPath $expectedExePath)) {
+        Add-Warn "Release artifact not found locally: $expectedExePath"
     }
 
     $topbarText = Get-RequiredText -Path $topbarPath

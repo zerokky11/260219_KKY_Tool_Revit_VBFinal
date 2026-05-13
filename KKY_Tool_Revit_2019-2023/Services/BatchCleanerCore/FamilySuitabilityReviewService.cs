@@ -299,9 +299,6 @@ namespace KKY_Tool_Revit.Services
             DataColumn reviewKoColumn = table.Columns.Add("__ReviewKo");
             reviewKoColumn.ExtendedProperties["ExcelHidden"] = true;
 
-            DataColumn statusColumn = table.Columns.Add("Status");
-            statusColumn.ExtendedProperties["ExcelHidden"] = true;
-
             List<ReviewRow> source = (rows ?? Enumerable.Empty<ReviewRow>())
                 .Where(row => row != null)
                 .OrderBy(row => row.Category ?? string.Empty, StringComparer.OrdinalIgnoreCase)
@@ -317,7 +314,6 @@ namespace KKY_Tool_Revit.Services
                     : emptyMessage.Trim();
                 empty["__ReviewEn"] = string.Empty;
                 empty["__ReviewKo"] = string.Empty;
-                empty["Status"] = "OK";
                 table.Rows.Add(empty);
                 return table;
             }
@@ -332,7 +328,6 @@ namespace KKY_Tool_Revit.Services
                 dataRow["Review"] = row.Review ?? string.Empty;
                 dataRow["__ReviewEn"] = LocalizeConfiguredReviewText(row.Review, "en");
                 dataRow["__ReviewKo"] = LocalizeConfiguredReviewText(row.Review, "ko");
-                dataRow["Status"] = row.Status ?? string.Empty;
                 table.Rows.Add(dataRow);
             }
 
@@ -463,6 +458,8 @@ namespace KKY_Tool_Revit.Services
             if (element == null) return false;
             if (element.Category == null) return false;
             if (string.IsNullOrWhiteSpace(element.Category.Name)) return false;
+            string categoryName = element.Category.Name.Trim();
+            if (categoryName.IndexOf("Runs", StringComparison.OrdinalIgnoreCase) >= 0) return false;
             if (element.Category.CategoryType == CategoryType.Internal) return false;
             if (element.Category.CategoryType == CategoryType.Annotation) return false;
             if (IsExcludedExternalReferenceElement(element)) return false;
@@ -499,6 +496,7 @@ namespace KKY_Tool_Revit.Services
             if (categoryId == (int)BuiltInCategory.OST_Rooms) return false;
             if (categoryId == (int)BuiltInCategory.OST_Areas) return false;
             if (categoryId == (int)BuiltInCategory.OST_MEPSpaces) return false;
+            if (categoryId == (int)BuiltInCategory.OST_ConduitRun) return false;
             return true;
         }
 

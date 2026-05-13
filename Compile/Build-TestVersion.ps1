@@ -10,12 +10,13 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $backupScriptPath = Join-Path $PSScriptRoot 'Backup-TestWorkingSet.ps1'
 $issPath = Join-Path $PSScriptRoot 'KKY_Tool_Compiler.iss'
 $releaseDir = Join-Path $repoRoot 'Sever\Release'
+$testInstallerDir = Join-Path $releaseDir 'test'
 $stageRoot = Join-Path $repoRoot ("artifacts\release-stage\test-{0}_{1}" -f $Version, $TestLabel)
 $proj2019To2023 = Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\KKY_Tool_Revit.vbproj'
 $proj2025 = Join-Path $repoRoot 'KKY_Tool_Revit_2025\KKY_Tool_Revit_2025.vbproj'
 $isccPath = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 $outputBaseName = "KKY_Tool_Revit(2019,21,23,25)_v{0}_{1}" -f $Version, $TestLabel
-$outputExePath = Join-Path $releaseDir ($outputBaseName + '.exe')
+$outputExePath = Join-Path $testInstallerDir ($outputBaseName + '.exe')
 
 if (-not (Test-Path -LiteralPath $backupScriptPath)) {
     throw "Backup script not found: $backupScriptPath"
@@ -41,6 +42,7 @@ if (Test-Path -LiteralPath $stageRoot) {
     Remove-Item -LiteralPath $stageRoot -Recurse -Force
 }
 New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
+New-Item -ItemType Directory -Path $testInstallerDir -Force | Out-Null
 
 foreach ($year in '2019', '2021', '2023') {
     $outputPath = Join-Path $stageRoot ("Rvt{0}\net48\" -f $year)
@@ -56,7 +58,7 @@ if ($LASTEXITCODE -ne 0) {
     throw 'Build failed for Revit 2025'
 }
 
-& $isccPath "/DMyAppVersion=$Version" "/DMyOutputBaseName=$outputBaseName" "/DMyBuildRoot=$stageRoot" "/DMyOutputDir=$releaseDir" $issPath
+& $isccPath "/DMyAppVersion=$Version" "/DMyOutputBaseName=$outputBaseName" "/DMyBuildRoot=$stageRoot" "/DMyOutputDir=$testInstallerDir" $issPath
 if ($LASTEXITCODE -ne 0) {
     throw 'Installer compile failed.'
 }

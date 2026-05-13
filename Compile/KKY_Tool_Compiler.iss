@@ -6,7 +6,7 @@
   #define MyAppName "KKY_Tool_Revit"
 #endif
 #ifndef MyAppVersion
-#define MyAppVersion "2.27"
+#define MyAppVersion "2.28"
 #endif
 #ifndef MyOutputBaseName
   #define MyOutputBaseName "KKY_Tool_Revit(2019,21,23,25)_v" + MyAppVersion
@@ -15,7 +15,7 @@
   #define MyBuildRoot "..\\KKY_Tool_Revit_2019-2023\\bin"
 #endif
 #ifndef MyOutputDir
-  #define MyOutputDir "..\\Sever\\Release"
+  #define MyOutputDir "..\\Sever\\Release\\official"
 #endif
 #define MyAppPublisher "Kyeongyeon Kim"
 #define MyAppURL "kkykiki89@nate.com"

@@ -315,7 +315,6 @@ Namespace UI.Hub
             If String.IsNullOrWhiteSpace(saved) Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 내보내기가 취소되었습니다."})
             Else
-                TryApplyExportStyles("parametermissing", saved, doAutoFit, If(excelMode, "normal"))
                 SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
             End If
         End Sub

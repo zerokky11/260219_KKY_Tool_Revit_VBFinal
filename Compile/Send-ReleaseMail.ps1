@@ -26,6 +26,8 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $releaseDir = Join-Path $repoRoot 'Sever\Release'
+$releaseInstallerDir = Join-Path $releaseDir 'official'
+$testInstallerDir = Join-Path $releaseDir 'test'
 $testRoot = Join-Path $repoRoot 'artifacts\test-package'
 
 $smtpHost = 'smtp.mail.nate.com'
@@ -64,18 +66,21 @@ function Resolve-AttachmentPaths {
     }
 
     if ($ResolvedMode -eq 'release') {
-        $baseDir = $releaseDir
+        $baseDir = $releaseInstallerDir
     } else {
-        $baseDir = Join-Path $testRoot $ResolvedVersion
+        $baseDir = $testInstallerDir
         if (-not (Test-Path -LiteralPath $baseDir)) {
-            $baseDir = Join-Path $testRoot 'test'
+            $baseDir = Join-Path $testRoot $ResolvedVersion
+            if (-not (Test-Path -LiteralPath $baseDir)) {
+                $baseDir = Join-Path $testRoot 'test'
+            }
         }
     }
 
     $exeName = "KKY_Tool_Revit($releaseYearLabel)_v$ResolvedVersion.exe"
     $zipName = "KKY_Tool_Revit($releaseYearLabel)_v$ResolvedVersion.zip"
     $exePath = Join-Path $baseDir $exeName
-    $zipPath = Join-Path $baseDir $zipName
+    $zipPath = Join-Path $releaseDir $zipName
 
     $found = @()
     foreach ($candidate in @($exePath, $zipPath)) {

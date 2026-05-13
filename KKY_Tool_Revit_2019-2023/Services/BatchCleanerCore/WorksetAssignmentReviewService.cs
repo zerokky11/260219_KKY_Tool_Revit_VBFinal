@@ -66,6 +66,119 @@ namespace KKY_Tool_Revit.Services
             public string TypeName { get; set; } = string.Empty;
         }
 
+        private sealed class ReviewCache
+        {
+            private readonly Document _doc;
+            private readonly WorksetTable _worksetTable;
+            private readonly Dictionary<int, string> _worksetNamesById = new Dictionary<int, string>();
+            private readonly Dictionary<int, bool> _categoryExclusionById = new Dictionary<int, bool>();
+            private readonly Dictionary<int, TypeInfo> _typeInfoById = new Dictionary<int, TypeInfo>();
+            private readonly Dictionary<string, string> _extraParameterValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            public ReviewCache(Document doc)
+            {
+                _doc = doc;
+                try
+                {
+                    _worksetTable = doc?.GetWorksetTable();
+                }
+                catch
+                {
+                    _worksetTable = null;
+                }
+            }
+
+            public string GetElementWorksetName(Element element)
+            {
+                if (element == null)
+                {
+                    return string.Empty;
+                }
+
+                try
+                {
+                    WorksetId worksetId = element.WorksetId;
+                    if (worksetId == null || worksetId == WorksetId.InvalidWorksetId)
+                    {
+                        return string.Empty;
+                    }
+
+                    int key = worksetId.IntegerValue;
+                    string cached;
+                    if (_worksetNamesById.TryGetValue(key, out cached))
+                    {
+                        return cached;
+                    }
+
+                    Workset workset = _worksetTable?.GetWorkset(worksetId);
+                    cached = workset?.Name ?? string.Empty;
+                    _worksetNamesById[key] = cached;
+                    return cached;
+                }
+                catch
+                {
+                    return string.Empty;
+                }
+            }
+
+            public bool IsExplicitlyExcludedCategory(Category category)
+            {
+                if (category == null)
+                {
+                    return true;
+                }
+
+                int key = category.Id.IntegerValue;
+                bool cached;
+                if (_categoryExclusionById.TryGetValue(key, out cached))
+                {
+                    return cached;
+                }
+
+                cached = WorksetAssignmentReviewService.IsExplicitlyExcludedCategory(category);
+                _categoryExclusionById[key] = cached;
+                return cached;
+            }
+
+            public TypeInfo ResolveTypeInfo(Element element)
+            {
+                int key = element?.Id?.IntegerValue ?? 0;
+                TypeInfo cached;
+                if (key > 0 && _typeInfoById.TryGetValue(key, out cached))
+                {
+                    return cached;
+                }
+
+                cached = ResolveTypeInfoCore(_doc, element);
+                if (key > 0)
+                {
+                    _typeInfoById[key] = cached;
+                }
+
+                return cached;
+            }
+
+            public string GetExtraParameterValue(Element element, string name)
+            {
+                if (_doc == null || element == null || string.IsNullOrWhiteSpace(name))
+                {
+                    return string.Empty;
+                }
+
+                string normalizedName = name.Trim();
+                string key = (element.Id?.IntegerValue ?? 0).ToString(CultureInfo.InvariantCulture) + "\u001f" + normalizedName;
+                string cached;
+                if (_extraParameterValues.TryGetValue(key, out cached))
+                {
+                    return cached;
+                }
+
+                cached = ModelParameterExtractionService.GetElementParameterValue(_doc, element, normalizedName) ?? string.Empty;
+                _extraParameterValues[key] = cached;
+                return cached;
+            }
+        }
+
         public static ReviewResult RunOnDocument(Document doc, string fileLabel, Settings settings, Action<double, string> progress = null)
         {
             if (doc == null) throw new ArgumentNullException(nameof(doc));
@@ -74,14 +187,13 @@ namespace KKY_Tool_Revit.Services
             string safeFileLabel = string.IsNullOrWhiteSpace(fileLabel) ? (doc.Title ?? string.Empty) : fileLabel.Trim();
             string expectedWorksetName = NormalizeExpectedWorksetName(settings.ExpectedWorksetName);
             string flaggedWorksetName = NormalizeOptionalWorksetName(settings.FlaggedWorksetName);
-            List<Element> elements = CollectTargetElements(doc);
-            if (settings.HasAllowedElementScope)
-            {
-                HashSet<int> allowedElementIds = new HashSet<int>((settings.AllowedElementIds ?? Enumerable.Empty<int>()).Where(id => id > 0));
-                elements = elements
-                    .Where(element => element?.Id != null && allowedElementIds.Contains(element.Id.IntegerValue))
-                    .ToList();
-            }
+            string expectedWorksetKey = NormalizeWorksetKey(expectedWorksetName);
+            string flaggedWorksetKey = NormalizeWorksetKey(flaggedWorksetName);
+            HashSet<int> allowedElementIds = settings.HasAllowedElementScope
+                ? new HashSet<int>((settings.AllowedElementIds ?? Enumerable.Empty<int>()).Where(id => id > 0))
+                : null;
+            var cache = new ReviewCache(doc);
+            List<Element> elements = CollectTargetElements(doc, allowedElementIds, cache);
             List<string> extraParameterNames = NormalizeExtraParameterNames(settings.ExtraParameterNames);
 
             var result = new ReviewResult
@@ -100,8 +212,9 @@ namespace KKY_Tool_Revit.Services
                 }
 
                 Element element = elements[index];
-                string actualWorksetName = GetElementWorksetName(doc, element);
-                if (!ShouldTreatAsError(actualWorksetName, expectedWorksetName, flaggedWorksetName))
+                string actualWorksetName = cache.GetElementWorksetName(element);
+                string actualWorksetKey = NormalizeWorksetKey(actualWorksetName);
+                if (!ShouldTreatAsErrorByKey(actualWorksetKey, expectedWorksetKey, flaggedWorksetKey))
                 {
                     result.OkCount++;
                     continue;
@@ -109,7 +222,7 @@ namespace KKY_Tool_Revit.Services
 
                 result.ErrorCount++;
 
-                TypeInfo typeInfo = ResolveTypeInfo(doc, element);
+                TypeInfo typeInfo = cache.ResolveTypeInfo(element);
                 string displayWorksetName = string.IsNullOrWhiteSpace(actualWorksetName)
                     ? UnknownWorksetName
                     : actualWorksetName.Trim();
@@ -128,7 +241,7 @@ namespace KKY_Tool_Revit.Services
                     Category = typeInfo.Category,
                     Family = typeInfo.Family,
                     Comments = $"Change the Workset to [{expectedWorksetName}], or consult with the BIM Manager if another workset must be used.",
-                    ExtraParams = ReadExtraParamValues(doc, element, extraParameterNames)
+                    ExtraParams = ReadExtraParamValues(element, extraParameterNames, cache)
                 });
             }
 
@@ -254,12 +367,20 @@ namespace KKY_Tool_Revit.Services
 
         private static bool ShouldTreatAsError(string actualWorksetName, string expectedWorksetName, string flaggedWorksetName)
         {
-            if (!string.IsNullOrWhiteSpace(flaggedWorksetName))
+            return ShouldTreatAsErrorByKey(
+                NormalizeWorksetKey(actualWorksetName),
+                NormalizeWorksetKey(expectedWorksetName),
+                NormalizeWorksetKey(flaggedWorksetName));
+        }
+
+        private static bool ShouldTreatAsErrorByKey(string actualWorksetKey, string expectedWorksetKey, string flaggedWorksetKey)
+        {
+            if (!string.IsNullOrWhiteSpace(flaggedWorksetKey))
             {
-                return IsSameWorkset(actualWorksetName, flaggedWorksetName);
+                return IsSameWorksetByKey(actualWorksetKey, flaggedWorksetKey);
             }
 
-            return !IsExpectedWorkset(actualWorksetName, expectedWorksetName);
+            return !IsSameWorksetByKey(actualWorksetKey, expectedWorksetKey);
         }
 
         private static bool IsExpectedWorkset(string actualWorksetName, string expectedWorksetName)
@@ -269,15 +390,17 @@ namespace KKY_Tool_Revit.Services
 
         private static bool IsSameWorkset(string actualWorksetName, string compareWorksetName)
         {
-            string actualKey = NormalizeWorksetKey(actualWorksetName);
-            string expectedKey = NormalizeWorksetKey(compareWorksetName);
+            return IsSameWorksetByKey(NormalizeWorksetKey(actualWorksetName), NormalizeWorksetKey(compareWorksetName));
+        }
 
-            if (string.IsNullOrWhiteSpace(actualKey) || string.IsNullOrWhiteSpace(expectedKey))
+        private static bool IsSameWorksetByKey(string actualKey, string compareKey)
+        {
+            if (string.IsNullOrWhiteSpace(actualKey) || string.IsNullOrWhiteSpace(compareKey))
             {
                 return false;
             }
 
-            return string.Equals(actualKey, expectedKey, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(actualKey, compareKey, StringComparison.OrdinalIgnoreCase);
         }
 
         private static string NormalizeWorksetKey(string worksetName)
@@ -324,7 +447,7 @@ namespace KKY_Tool_Revit.Services
             }
         }
 
-        private static TypeInfo ResolveTypeInfo(Document doc, Element element)
+        private static TypeInfo ResolveTypeInfoCore(Document doc, Element element)
         {
             var info = new TypeInfo
             {
@@ -380,16 +503,49 @@ namespace KKY_Tool_Revit.Services
             return info;
         }
 
-        private static List<Element> CollectTargetElements(Document doc)
+        private static List<Element> CollectTargetElements(Document doc, HashSet<int> allowedElementIds, ReviewCache cache)
         {
+            if (allowedElementIds != null)
+            {
+                if (allowedElementIds.Count == 0)
+                {
+                    return new List<Element>();
+                }
+
+                return allowedElementIds
+                    .OrderBy(id => id)
+                    .Select(id => TryGetElementById(doc, id))
+                    .Where(element => ShouldReviewElement(element, cache))
+                    .ToList();
+            }
+
             return new FilteredElementCollector(doc)
                 .WhereElementIsNotElementType()
                 .Cast<Element>()
-                .Where(ShouldReviewElement)
+                .Where(element => ShouldReviewElement(element, cache))
                 .ToList();
         }
 
-        private static bool ShouldReviewElement(Element element)
+        private static Element TryGetElementById(Document doc, int elementId)
+        {
+            if (doc == null || elementId <= 0)
+            {
+                return null;
+            }
+
+            try
+            {
+#pragma warning disable CS0618 // Revit 2019-2023 compatibility uses the int ElementId constructor.
+                return doc.GetElement(new ElementId(elementId));
+#pragma warning restore CS0618
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static bool ShouldReviewElement(Element element, ReviewCache cache)
         {
             if (element == null) return false;
             if (element.ViewSpecific) return false;
@@ -422,7 +578,7 @@ namespace KKY_Tool_Revit.Services
             if (categoryId == (int)BuiltInCategory.OST_Cameras) return false;
             if (categoryId == (int)BuiltInCategory.OST_SectionBox) return false;
             if (categoryId == (int)BuiltInCategory.OST_VolumeOfInterest) return false;
-            return !IsExplicitlyExcludedCategory(element.Category);
+            return !(cache?.IsExplicitlyExcludedCategory(element.Category) ?? IsExplicitlyExcludedCategory(element.Category));
         }
 
         private static bool IsExcludedExternalReferenceElement(Element element)
@@ -545,15 +701,15 @@ namespace KKY_Tool_Revit.Services
             return result;
         }
 
-        private static Dictionary<string, string> ReadExtraParamValues(Document doc, Element element, IEnumerable<string> extraParameterNames)
+        private static Dictionary<string, string> ReadExtraParamValues(Element element, IEnumerable<string> extraParameterNames, ReviewCache cache)
         {
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            if (doc == null || element == null) return result;
+            if (cache == null || element == null) return result;
 
             foreach (string name in extraParameterNames ?? Enumerable.Empty<string>())
             {
                 if (string.IsNullOrWhiteSpace(name)) continue;
-                result[name] = ModelParameterExtractionService.GetElementParameterValue(doc, element, name) ?? string.Empty;
+                result[name] = cache.GetExtraParameterValue(element, name);
             }
 
             return result;

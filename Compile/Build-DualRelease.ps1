@@ -14,6 +14,7 @@ $zipScriptPath = Join-Path $repoRoot 'Compile\New-UpdateZip.ps1'
 $historyScriptPath = Join-Path $repoRoot 'Compile\Update-ReleaseHistory.ps1'
 $verifyScriptPath = Join-Path $repoRoot 'Compile\Verify-KKYToolRelease.ps1'
 $releaseDir = Join-Path $repoRoot 'Sever\Release'
+$installerDir = Join-Path $releaseDir 'official'
 $stageRoot = Join-Path $repoRoot 'artifacts\release-stage'
 $proj2019To2023 = Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\KKY_Tool_Revit.vbproj'
 $proj2025 = Join-Path $repoRoot 'KKY_Tool_Revit_2025\KKY_Tool_Revit_2025.vbproj'
@@ -105,6 +106,7 @@ function Build-StagedOutputs {
         Remove-Item -LiteralPath $stageDir -Recurse -Force
     }
     New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $installerDir -Force | Out-Null
 
     foreach ($year in '2019', '2021', '2023') {
         $outputPath = Join-Path $stageDir "Rvt$year\net48\"
@@ -120,7 +122,7 @@ function Build-StagedOutputs {
         throw "Build failed for version $Version / Revit 2025"
     }
 
-    & $isccPath "/DMyAppVersion=$Version" "/DMyBuildRoot=$stageDir" "/DMyOutputDir=$releaseDir" $issPath
+    & $isccPath "/DMyAppVersion=$Version" "/DMyBuildRoot=$stageDir" "/DMyOutputDir=$installerDir" $issPath
     if ($LASTEXITCODE -ne 0) {
         throw "Installer compile failed for version $Version"
     }
@@ -152,19 +154,21 @@ $finalDownloadUrl = "$domainRoot/$finalZipName"
     -Notes "Release build v$SecondVersion" `
     -OutputPath (Join-Path $releaseDir 'latest.json')
 
+$finalInstallerUrl = "$domainRoot/official/$finalExeName"
+
 & $historyScriptPath `
     -Version $SecondVersion `
     -PublishedAt (Get-Date -Format 'yyyy-MM-dd') `
     -Notes "Release build v$SecondVersion" `
     -PackageUrl $finalDownloadUrl `
-    -InstallerUrl "$domainRoot/$finalExeName" `
+    -InstallerUrl $finalInstallerUrl `
     -OutputPath $historyPath
 
 if (Test-Path -LiteralPath $indexPath) {
     $indexText = Get-Content -Raw -LiteralPath $indexPath
     $indexText = [regex]::Replace($indexText, 'KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.exe', $finalExeName)
     $indexText = [regex]::Replace($indexText, 'KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.zip', $finalZipName)
-    $indexText = [regex]::Replace($indexText, 'https://update\.zerokky\.com/KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.exe', "$domainRoot/$finalExeName")
+    $indexText = [regex]::Replace($indexText, 'https://update\.zerokky\.com/(?:official/)?KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.exe', $finalInstallerUrl)
     $indexText = [regex]::Replace($indexText, 'https://update\.zerokky\.com/KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.zip', $finalDownloadUrl)
     Set-Content -LiteralPath $indexPath -Value $indexText -Encoding utf8
 }
@@ -177,8 +181,8 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ''
 Write-Host 'Dual release build completed.'
-Write-Host (Join-Path $releaseDir "KKY_Tool_Revit($releaseYearLabel)_v$FirstVersion.exe")
-Write-Host (Join-Path $releaseDir "KKY_Tool_Revit($releaseYearLabel)_v$SecondVersion.exe")
+Write-Host (Join-Path $installerDir "KKY_Tool_Revit($releaseYearLabel)_v$FirstVersion.exe")
+Write-Host (Join-Path $installerDir "KKY_Tool_Revit($releaseYearLabel)_v$SecondVersion.exe")
 Write-Host (Join-Path $releaseDir "KKY_Tool_Revit($releaseYearLabel)_v$FirstVersion.zip")
 Write-Host (Join-Path $releaseDir "KKY_Tool_Revit($releaseYearLabel)_v$SecondVersion.zip")
 Write-Host (Join-Path $releaseDir 'latest.json')
