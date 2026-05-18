@@ -5,67 +5,1031 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KKY Tool Update Server</title>
   <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef3f7;
+      --panel: #ffffff;
+      --line: #d7e1eb;
+      --text: #17212f;
+      --muted: #5a6a7d;
+      --accent: #166f52;
+      --accent-2: #1f8a66;
+      --warn: #a46600;
+      --danger: #9b231a;
+      --soft: #f6f9fb;
+    }
+
+    * { box-sizing: border-box; }
+
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f4f7fb;
-      color: #1f2937;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
     }
 
     main {
-      max-width: 760px;
-      margin: 64px auto;
-      padding: 32px;
-      background: #ffffff;
-      border: 1px solid #dbe3ee;
-      border-radius: 16px;
-      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+      max-width: 1040px;
+      margin: 44px auto;
+      padding: 0 20px;
+    }
+
+    .shell {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 18px 42px rgba(15, 23, 42, 0.10);
+      overflow: hidden;
+    }
+
+    header {
+      padding: 28px 32px 20px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
     }
 
     h1 {
-      margin-top: 0;
-      font-size: 32px;
+      margin: 0;
+      font-size: 31px;
+      letter-spacing: 0;
+    }
+
+    .sub {
+      margin: 8px 0 0;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      padding: 14px 20px 0;
+      background: #fbfdff;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .tab {
+      border: 1px solid transparent;
+      border-bottom: 0;
+      border-radius: 8px 8px 0 0;
+      padding: 12px 18px;
+      background: transparent;
+      color: var(--muted);
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 15px;
+    }
+
+    .tab.active {
+      background: var(--panel);
+      border-color: var(--line);
+      color: var(--accent);
+      margin-bottom: -1px;
+    }
+
+    section {
+      display: none;
+      padding: 26px 32px 34px;
+    }
+
+    section.active { display: block; }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 24px;
     }
 
     p, li {
       line-height: 1.6;
     }
 
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+    }
+
     code {
       padding: 2px 6px;
       border-radius: 6px;
       background: #eef2f7;
-      font-family: Consolas, monospace;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 18px;
     }
 
     .box {
-      margin-top: 24px;
-      padding: 16px 18px;
-      border-radius: 12px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
+      padding: 18px;
+      border-radius: 10px;
+      background: var(--soft);
+      border: 1px solid var(--line);
+    }
+
+    .box strong {
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .locked {
+      max-width: 520px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--soft);
+    }
+
+    label {
+      display: block;
+      margin: 16px 0 6px;
+      color: #2f3e50;
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid #c6d3df;
+      border-radius: 8px;
+      padding: 11px 12px;
+      font: 15px "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background: #ffffff;
+    }
+
+    textarea {
+      min-height: 96px;
+      resize: vertical;
+    }
+
+    .checkline {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 14px 0 0;
+      color: #2f3e50;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .checkline input {
+      width: auto;
+      margin: 0;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    button, .button {
+      border: 1px solid #b7c8d6;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #1d3448;
+      padding: 11px 15px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    button.primary, .button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    button.danger {
+      border-color: #e5b2ac;
+      background: #fff4f2;
+      color: var(--danger);
+    }
+
+    .status {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .status.warn { color: var(--warn); }
+    .status.good { color: var(--accent); }
+    .status.bad { color: var(--danger); }
+
+    pre {
+      margin: 14px 0 0;
+      padding: 16px;
+      border-radius: 10px;
+      border: 1px solid #cbd8e6;
+      background: #0f172a;
+      color: #dbeafe;
+      overflow: auto;
+      max-height: 360px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    .notice {
+      border-left: 5px solid var(--warn);
+      background: #fff8e6;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 16px 0;
+      color: #624100;
+    }
+
+    .hidden { display: none; }
+
+    @media (max-width: 760px) {
+      main { margin: 20px auto; }
+      .grid, .row { grid-template-columns: 1fr; }
+      header, section { padding-left: 20px; padding-right: 20px; }
+      .tabs { overflow-x: auto; }
     }
   </style>
 </head>
 <body>
   <main>
-    <h1>KKY Tool Update Server</h1>
-    <p>This folder is intended for GitHub Pages update hosting.</p>
+    <div class="shell">
+      <header>
+        <h1>KKY Tool Update Server</h1>
+        <p class="sub">Static update homepage for KKY Tool and Family Browser deployment settings.</p>
+      </header>
 
-    <div class="box">
-      <strong>Upload these files to the repository root:</strong>
-      <ul>
-        <li><code>index.html</code></li>
-        <li><code>.nojekyll</code></li>
-        <li><code>latest.json</code></li>
-        <li>Your installer file, for example <code>KKY_Tool_Revit_v2.03.exe</code></li>
-      </ul>
-    </div>
+      <nav class="tabs" aria-label="Homepage tabs">
+        <button class="tab active" data-tab="tool">KKY Tool Update</button>
+        <button class="tab" data-tab="family">Family Browser Path</button>
+      </nav>
 
-    <div class="box">
-      <strong>Expected update feed URL:</strong>
-      <p><code>https://your-github-username.github.io/your-repo-name/latest.json</code></p>
+      <section id="tab-tool" class="active">
+        <h2>KKY Tool Update Feed</h2>
+        <p>This folder is intended for GitHub Pages update hosting.</p>
+
+        <div class="grid">
+          <div class="box">
+            <strong>Upload these files to the repository root:</strong>
+            <ul>
+              <li><code>index.html</code></li>
+              <li><code>.nojekyll</code></li>
+              <li><code>latest.json</code></li>
+              <li>Your installer file, for example <code>KKY_Tool_Revit_v2.03.exe</code></li>
+            </ul>
+          </div>
+
+          <div class="box">
+            <strong>Expected update feed URL:</strong>
+            <p><code>https://update.zerokky.com/latest.json</code></p>
+            <strong>Family Browser bootstrap URL:</strong>
+            <p><code>https://update.zerokky.com/family-browser/bootstrap.json</code></p>
+            <strong>Family Browser profile index URL:</strong>
+            <p><code>https://update.zerokky.com/family-browser/bootstrap-index.json</code></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-family">
+        <h2>Family Browser Path</h2>
+        <p>Use this tab to prepare the <code>family-browser/bootstrap.json</code> file read by Family Browser clients.</p>
+
+        <div id="family-lock" class="locked">
+          <strong>Protected settings</strong>
+          <p class="hint">Enter the page password to view and edit the Family Browser bootstrap settings.</p>
+          <label for="password">Password</label>
+          <input id="password" type="password" autocomplete="current-password">
+          <div class="actions">
+            <button class="primary" id="unlock">Unlock</button>
+          </div>
+          <div id="lock-status" class="status"></div>
+        </div>
+
+        <div id="family-editor" class="hidden">
+          <div class="notice">
+            This is a static page. It can save through the GitHub API only when you enter a GitHub token. Without a token, download the generated file and upload it to <code>/family-browser/bootstrap.json</code>.
+          </div>
+
+          <div class="box">
+            <strong>Bootstrap profiles</strong>
+            <p class="hint">Multiple JSON profiles can live under <code>/family-browser</code>. Users follow <code>bootstrap-index.json</code> automatically.</p>
+            <div class="row">
+              <div>
+                <label for="profileSelect">Existing profile</label>
+                <select id="profileSelect"></select>
+              </div>
+              <div>
+                <label for="defaultProfileId">Homepage default profile</label>
+                <input id="defaultProfileId" placeholder="default">
+              </div>
+            </div>
+            <div class="actions">
+              <button id="loadIndex">Reload profile index</button>
+              <button id="loadProfile">Load selected profile</button>
+            </div>
+
+            <div class="row">
+              <div>
+                <label for="profileId">Profile id</label>
+                <input id="profileId" placeholder="pi">
+              </div>
+              <div>
+                <label for="profileName">Profile name</label>
+                <input id="profileName" placeholder="PI Project">
+              </div>
+            </div>
+            <label for="profileDescription">Profile description</label>
+            <input id="profileDescription" placeholder="PI request path and standard RVT settings">
+            <label class="checkline" for="makeDefaultProfile">
+              <input id="makeDefaultProfile" type="checkbox">
+              Make this the homepage default profile
+            </label>
+
+            <div class="row">
+              <div>
+                <label for="projectNameContains">Project name contains</label>
+                <input id="projectNameContains" placeholder="04.PI">
+              </div>
+              <div>
+                <label for="centralPathContains">Central/model path contains</label>
+                <input id="centralPathContains" placeholder="PI_Central">
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="version">Version label</label>
+              <input id="version" placeholder="2026.05.18">
+            </div>
+            <div>
+              <label for="refreshMinutes">Refresh minutes</label>
+              <input id="refreshMinutes" type="number" min="1" step="1" value="30">
+            </div>
+          </div>
+
+          <label for="message">Admin message</label>
+          <input id="message" placeholder="Family Browser shared settings">
+
+          <label for="managedPolicyPath">Shared policy JSON path</label>
+          <input id="managedPolicyPath" placeholder="\\\\SERVER\\KKY\\FamilyBrowser\\Config\\standard-policy.json">
+          <p class="hint">This is the central policy path every installed PC will use.</p>
+
+          <label for="managedPolicyPathCandidates">Shared policy JSON fallback paths</label>
+          <textarea id="managedPolicyPathCandidates" spellcheck="false" placeholder="Z:\\FamilyBrowser\\SiteA\\Config\\standard-policy.json&#10;\\\\SERVER\\KKY\\FamilyBrowser\\SiteA\\Config\\standard-policy.json"></textarea>
+          <p class="hint">One path per line. Family Browser uses the first path that can be reached on this PC.</p>
+
+          <label class="checkline" for="disabled">
+            <input id="disabled" type="checkbox">
+            Disable homepage bootstrap
+          </label>
+
+          <label class="checkline" for="skipPolicyWrite">
+            <input id="skipPolicyWrite" type="checkbox">
+            Only connect shared policy path, do not overwrite policy values
+          </label>
+
+          <div class="row">
+            <div>
+              <label for="requestStoreMode">Request store mode</label>
+              <select id="requestStoreMode">
+                <option value="NetworkShare">NetworkShare</option>
+                <option value="Local">Local</option>
+                <option value="CloudStorage">CloudStorage</option>
+                <option value="SharePoint">SharePoint</option>
+                <option value="Api">Api</option>
+              </select>
+            </div>
+            <div>
+              <label for="standardMode">Standard mode</label>
+              <select id="standardMode">
+                <option value="DisciplineSeparated">DisciplineSeparated</option>
+                <option value="Integrated">Integrated</option>
+              </select>
+            </div>
+          </div>
+
+          <label for="requestStorePath">Family request path</label>
+          <input id="requestStorePath" placeholder="\\\\SERVER\\KKY\\FamilyBrowser\\Requests">
+
+          <label for="requestStorePathCandidates">Family request fallback paths</label>
+          <textarea id="requestStorePathCandidates" spellcheck="false" placeholder="Z:\\FamilyBrowser\\SiteA\\Requests&#10;\\\\SERVER\\KKY\\FamilyBrowser\\SiteA\\Requests"></textarea>
+
+          <label for="requestStoreEndpoint">Family request endpoint (optional)</label>
+          <input id="requestStoreEndpoint" placeholder="https://internal.example.com/family-browser/requests">
+
+          <label for="standardLibraries">Standard libraries JSON array (optional)</label>
+          <textarea id="standardLibraries" spellcheck="false" placeholder='[
+  {
+    "discipline": "PI",
+    "displayName": "PI",
+    "standardRvtPath": "\\\\SERVER\\KKY\\Standards\\PI.rvt",
+    "standardListPath": "\\\\SERVER\\KKY\\Standards\\PI.xlsx"
+  }
+]'></textarea>
+
+          <div class="row">
+            <div>
+              <label for="adminUsers">Admin users / keywords</label>
+              <input id="adminUsers" placeholder="KKY;Admin;BIM">
+            </div>
+            <div>
+              <label for="requestApproverUsers">Request approver users / keywords</label>
+              <input id="requestApproverUsers" placeholder="Lead;Manager">
+            </div>
+          </div>
+
+          <label for="readOnlyUsers">Read-only users / keywords</label>
+          <input id="readOnlyUsers" placeholder="Viewer;Guest">
+
+          <div class="actions">
+            <button class="primary" id="build">Build JSON</button>
+            <button id="copy">Copy JSON</button>
+            <button id="download">Download bootstrap.json</button>
+            <button id="saveGithub">Save to GitHub Pages</button>
+            <button id="loadCurrent">Reload current bootstrap.json</button>
+            <button class="danger" id="clear">Clear form</button>
+          </div>
+
+          <div class="box" style="margin-top:18px">
+            <strong>GitHub Pages save target</strong>
+            <p class="hint">A token is required only when saving. It is not stored in this page.</p>
+            <div class="row">
+              <div>
+                <label for="githubOwner">Owner</label>
+                <input id="githubOwner" value="zerokky11">
+              </div>
+              <div>
+                <label for="githubRepo">Repository</label>
+                <input id="githubRepo" value="zerokky11.github.io">
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="githubBranch">Branch</label>
+                <input id="githubBranch" value="main">
+              </div>
+              <div>
+                <label for="githubPath">File path</label>
+                <input id="githubPath" value="family-browser/bootstrap.json">
+              </div>
+            </div>
+            <label for="githubToken">GitHub token</label>
+            <input id="githubToken" type="password" autocomplete="off" placeholder="Fine-grained token with Contents read/write">
+          </div>
+
+          <div id="editor-status" class="status"></div>
+          <pre id="preview" aria-label="bootstrap json preview"></pre>
+        </div>
+      </section>
     </div>
   </main>
+
+  <script>
+    (function () {
+      var PASSWORD_SHA256 = '578647f84f744607d061c4da2b27f663946e15c7f12abbe0a2d2130ad56a7626';
+      var DEFAULT_BOOTSTRAP_PATH = 'family-browser/bootstrap.json';
+      var INDEX_PATH = 'family-browser/bootstrap-index.json';
+      var currentIndex = null;
+
+      function byId(id) { return document.getElementById(id); }
+
+      function setStatus(id, text, cls) {
+        var el = byId(id);
+        if (!el) return;
+        el.textContent = text || '';
+        el.className = 'status' + (cls ? ' ' + cls : '');
+      }
+
+      function switchTab(tab) {
+        var tabs = document.querySelectorAll('.tab');
+        for (var i = 0; i < tabs.length; i++) {
+          tabs[i].classList.toggle('active', tabs[i].getAttribute('data-tab') === tab);
+        }
+        var sections = document.querySelectorAll('section');
+        for (var s = 0; s < sections.length; s++) {
+          sections[s].classList.remove('active');
+        }
+        var target = byId('tab-' + tab);
+        if (target) target.classList.add('active');
+      }
+
+      function toHex(buffer) {
+        var bytes = new Uint8Array(buffer);
+        var result = '';
+        for (var i = 0; i < bytes.length; i++) {
+          result += bytes[i].toString(16).padStart(2, '0');
+        }
+        return result;
+      }
+
+      function sha256(text) {
+        if (window.crypto && window.crypto.subtle && window.TextEncoder) {
+          return crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(toHex);
+        }
+        return Promise.reject(new Error('This browser cannot check the password securely.'));
+      }
+
+      function unlock() {
+        var value = byId('password').value || '';
+        sha256(value).then(function (hash) {
+          if (hash !== PASSWORD_SHA256) {
+            setStatus('lock-status', 'Wrong password.', 'bad');
+            return;
+          }
+          byId('family-lock').classList.add('hidden');
+          byId('family-editor').classList.remove('hidden');
+          setStatus('editor-status', 'Unlocked. Current bootstrap.json will be loaded if it exists.', 'good');
+          loadIndex().then(loadCurrent);
+        }).catch(function (err) {
+          setStatus('lock-status', err.message || String(err), 'bad');
+        });
+      }
+
+      function normalizeNumber(value, fallback) {
+        var n = parseInt(value, 10);
+        return isFinite(n) && n > 0 ? n : fallback;
+      }
+
+      function splitList(value) {
+        return (value || '')
+          .split(/[;,]/)
+          .map(function (item) { return item.trim(); })
+          .filter(function (item) { return !!item; });
+      }
+
+      function splitLines(value) {
+        return (value || '')
+          .split(/\r?\n/)
+          .map(function (item) { return item.trim(); })
+          .filter(function (item) { return !!item; });
+      }
+
+      function normalizeId(value) {
+        return (value || '')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+      }
+
+      function defaultIndex() {
+        return {
+          version: '2026.05.18',
+          defaultProfileId: 'default',
+          profiles: [
+            {
+              id: 'default',
+              name: 'Default',
+              description: 'Default Family Browser shared settings',
+              url: 'bootstrap.json'
+            }
+          ],
+          projectRules: []
+        };
+      }
+
+      function toIndexRelativePath(path) {
+        var value = (path || '').trim().replace(/\\/g, '/');
+        if (!value) return 'bootstrap.json';
+        if (/^https?:\/\//i.test(value) || /^file:/i.test(value)) return value;
+        if (value.indexOf('family-browser/') === 0) return value.substring('family-browser/'.length);
+        return value;
+      }
+
+      function toSitePath(profileUrl) {
+        var value = (profileUrl || '').trim().replace(/\\/g, '/');
+        if (!value) return DEFAULT_BOOTSTRAP_PATH;
+        if (/^https?:\/\//i.test(value) || /^file:/i.test(value)) return value;
+        if (value.indexOf('family-browser/') === 0) return value;
+        return 'family-browser/' + value;
+      }
+
+      function getProfilePath() {
+        return (byId('githubPath').value || DEFAULT_BOOTSTRAP_PATH).trim() || DEFAULT_BOOTSTRAP_PATH;
+      }
+
+      function populateProfileSelect(index) {
+        var select = byId('profileSelect');
+        select.innerHTML = '';
+        var profiles = (index && Array.isArray(index.profiles)) ? index.profiles : [];
+        profiles.forEach(function (profile) {
+          if (!profile || profile.disabled) return;
+          var option = document.createElement('option');
+          option.value = profile.id || '';
+          option.textContent = (profile.name || profile.id || 'Profile') + ' - ' + (profile.url || '');
+          select.appendChild(option);
+        });
+        byId('defaultProfileId').value = (index && index.defaultProfileId) || 'default';
+        if (index && index.defaultProfileId) {
+          select.value = index.defaultProfileId;
+        }
+      }
+
+      function loadIndex() {
+        return fetch(INDEX_PATH, { cache: 'no-store' })
+          .then(function (response) {
+            if (!response.ok) throw new Error('bootstrap-index.json was not found yet.');
+            return response.json();
+          })
+          .then(function (index) {
+            currentIndex = index || defaultIndex();
+            if (!Array.isArray(currentIndex.profiles)) currentIndex.profiles = [];
+            if (!Array.isArray(currentIndex.projectRules)) currentIndex.projectRules = [];
+            populateProfileSelect(currentIndex);
+            fillProfileMeta(selectedProfile() || currentIndex.profiles[0]);
+            setStatus('editor-status', 'Loaded ' + INDEX_PATH + '.', 'good');
+            return currentIndex;
+          })
+          .catch(function (err) {
+            currentIndex = defaultIndex();
+            populateProfileSelect(currentIndex);
+            fillProfileMeta(currentIndex.profiles[0]);
+            setStatus('editor-status', err.message + ' A new profile index will be created when saving.', 'warn');
+            return currentIndex;
+          });
+      }
+
+      function selectedProfile() {
+        var id = byId('profileSelect').value || '';
+        var profiles = currentIndex && Array.isArray(currentIndex.profiles) ? currentIndex.profiles : [];
+        for (var i = 0; i < profiles.length; i++) {
+          if ((profiles[i].id || '') === id) return profiles[i];
+        }
+        return null;
+      }
+
+      function fillProfileMeta(profile) {
+        profile = profile || {};
+        byId('profileId').value = profile.id || '';
+        byId('profileName').value = profile.name || '';
+        byId('profileDescription').value = profile.description || '';
+        byId('githubPath').value = toSitePath(profile.url || 'bootstrap.json');
+        byId('makeDefaultProfile').checked = !!(currentIndex && profile.id && currentIndex.defaultProfileId === profile.id);
+      }
+
+      function collectProfileEntry() {
+        var id = normalizeId(byId('profileId').value || byId('profileName').value || 'default');
+        if (!id) throw new Error('Profile id is required.');
+        byId('profileId').value = id;
+        var name = (byId('profileName').value || id).trim();
+        var description = (byId('profileDescription').value || '').trim();
+        return {
+          id: id,
+          name: name,
+          description: description,
+          url: toIndexRelativePath(getProfilePath())
+        };
+      }
+
+      function upsertProfileIndex(index, profile) {
+        index = index || defaultIndex();
+        if (!Array.isArray(index.profiles)) index.profiles = [];
+        if (!Array.isArray(index.projectRules)) index.projectRules = [];
+        index.version = index.version || byId('version').value.trim() || '2026.05.18';
+        index.defaultProfileId = byId('defaultProfileId').value.trim() || index.defaultProfileId || profile.id;
+        if (byId('makeDefaultProfile').checked) {
+          index.defaultProfileId = profile.id;
+          byId('defaultProfileId').value = profile.id;
+        }
+
+        var replaced = false;
+        index.profiles = index.profiles.map(function (item) {
+          if (item && item.id === profile.id) {
+            replaced = true;
+            return profile;
+          }
+          return item;
+        });
+        if (!replaced) index.profiles.push(profile);
+
+        index.projectRules = index.projectRules.filter(function (rule) {
+          return !(rule && rule.source === 'homepage' && rule.profileId === profile.id);
+        });
+
+        var projectNameContains = byId('projectNameContains').value.trim();
+        var centralPathContains = byId('centralPathContains').value.trim();
+        if (projectNameContains || centralPathContains) {
+          index.projectRules.push({
+            source: 'homepage',
+            profileId: profile.id,
+            projectNameContains: projectNameContains,
+            centralPathContains: centralPathContains,
+            modelPathContains: centralPathContains,
+            priority: 10
+          });
+        }
+
+        return index;
+      }
+
+      function collectBootstrap() {
+        var standardLibraries = [];
+        var rawLibraries = (byId('standardLibraries').value || '').trim();
+        if (rawLibraries) {
+          standardLibraries = JSON.parse(rawLibraries);
+          if (!Array.isArray(standardLibraries)) {
+            throw new Error('Standard libraries must be a JSON array.');
+          }
+        }
+
+        var bootstrap = {
+          version: byId('version').value.trim(),
+          message: byId('message').value.trim(),
+          disabled: byId('disabled').checked,
+          refreshMinutes: normalizeNumber(byId('refreshMinutes').value, 30),
+          managedPolicyPath: byId('managedPolicyPath').value.trim(),
+          managedPolicyPathCandidates: splitLines(byId('managedPolicyPathCandidates').value),
+          skipPolicyWrite: byId('skipPolicyWrite').checked,
+          requestStore: {
+            mode: byId('requestStoreMode').value,
+            path: byId('requestStorePath').value.trim(),
+            pathCandidates: splitLines(byId('requestStorePathCandidates').value),
+            endpoint: byId('requestStoreEndpoint').value.trim()
+          },
+          standardMode: byId('standardMode').value,
+          standardLibraries: standardLibraries,
+          security: {
+            adminUsers: splitList(byId('adminUsers').value),
+            requestApproverUsers: splitList(byId('requestApproverUsers').value),
+            readOnlyUsers: splitList(byId('readOnlyUsers').value)
+          }
+        };
+
+        if (!bootstrap.version) delete bootstrap.version;
+        if (!bootstrap.message) delete bootstrap.message;
+        if (!bootstrap.disabled) delete bootstrap.disabled;
+        if (!bootstrap.managedPolicyPath) delete bootstrap.managedPolicyPath;
+        if (bootstrap.managedPolicyPathCandidates.length === 0) delete bootstrap.managedPolicyPathCandidates;
+        if (!bootstrap.skipPolicyWrite) delete bootstrap.skipPolicyWrite;
+        if (!bootstrap.requestStore.path) delete bootstrap.requestStore.path;
+        if (bootstrap.requestStore.pathCandidates.length === 0) delete bootstrap.requestStore.pathCandidates;
+        if (!bootstrap.requestStore.endpoint) delete bootstrap.requestStore.endpoint;
+        if (!bootstrap.requestStore.path && !bootstrap.requestStore.endpoint && !bootstrap.requestStore.pathCandidates) delete bootstrap.requestStore;
+        if (bootstrap.standardLibraries.length === 0) delete bootstrap.standardLibraries;
+        if (bootstrap.security.adminUsers.length === 0 &&
+            bootstrap.security.requestApproverUsers.length === 0 &&
+            bootstrap.security.readOnlyUsers.length === 0) {
+          delete bootstrap.security;
+        }
+        return bootstrap;
+      }
+
+      function buildJson() {
+        try {
+          var json = JSON.stringify(collectBootstrap(), null, 2);
+          byId('preview').textContent = json;
+          setStatus('editor-status', 'JSON preview updated.', 'good');
+          return json;
+        } catch (err) {
+          setStatus('editor-status', err.message || String(err), 'bad');
+          return '';
+        }
+      }
+
+      function fillForm(data) {
+        byId('version').value = data.version || '';
+        byId('message').value = data.message || '';
+        byId('refreshMinutes').value = data.refreshMinutes || 30;
+        byId('managedPolicyPath').value = data.managedPolicyPath || '';
+        byId('managedPolicyPathCandidates').value = data.managedPolicyPathCandidates ? data.managedPolicyPathCandidates.join('\n') : '';
+        byId('disabled').checked = !!data.disabled;
+        byId('skipPolicyWrite').checked = !!data.skipPolicyWrite;
+        byId('requestStoreMode').value = (data.requestStore && data.requestStore.mode) || 'NetworkShare';
+        byId('requestStorePath').value = (data.requestStore && data.requestStore.path) || '';
+        byId('requestStorePathCandidates').value = data.requestStore && data.requestStore.pathCandidates ? data.requestStore.pathCandidates.join('\n') : '';
+        byId('requestStoreEndpoint').value = (data.requestStore && data.requestStore.endpoint) || '';
+        byId('standardMode').value = data.standardMode || 'DisciplineSeparated';
+        byId('standardLibraries').value = data.standardLibraries ? JSON.stringify(data.standardLibraries, null, 2) : '';
+        byId('adminUsers').value = data.security && data.security.adminUsers ? data.security.adminUsers.join('; ') : '';
+        byId('requestApproverUsers').value = data.security && data.security.requestApproverUsers ? data.security.requestApproverUsers.join('; ') : '';
+        byId('readOnlyUsers').value = data.security && data.security.readOnlyUsers ? data.security.readOnlyUsers.join('; ') : '';
+        buildJson();
+      }
+
+      function loadCurrent() {
+        var path = getProfilePath();
+        fetch(path, { cache: 'no-store' })
+          .then(function (response) {
+            if (!response.ok) throw new Error(path + ' was not found yet.');
+            return response.json();
+          })
+          .then(function (data) {
+            fillForm(data || {});
+            setStatus('editor-status', 'Loaded current ' + path + '.', 'good');
+          })
+          .catch(function (err) {
+            setStatus('editor-status', err.message + ' You can create one with this form.', 'warn');
+            buildJson();
+          });
+      }
+
+      function loadSelectedProfile() {
+        var profile = selectedProfile();
+        if (!profile) {
+          setStatus('editor-status', 'Select a profile first.', 'warn');
+          return;
+        }
+        fillProfileMeta(profile);
+        loadCurrent();
+      }
+
+      function copyJson() {
+        var json = buildJson();
+        if (!json) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(json).then(function () {
+            setStatus('editor-status', 'Copied JSON to clipboard.', 'good');
+          }).catch(function () {
+            setStatus('editor-status', 'Clipboard copy failed. Select the preview text manually.', 'warn');
+          });
+        } else {
+          setStatus('editor-status', 'Clipboard API is unavailable. Select the preview text manually.', 'warn');
+        }
+      }
+
+      function downloadJson() {
+        var json = buildJson();
+        if (!json) return;
+        var blob = new Blob([json + '\n'], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = (normalizeId(byId('profileId').value) || 'bootstrap') + '.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setStatus('editor-status', 'Downloaded profile JSON. Upload it to /' + getProfilePath() + ' and update bootstrap-index.json.', 'good');
+      }
+
+      function encodePath(path) {
+        return (path || '')
+          .split('/')
+          .map(function (part) { return encodeURIComponent(part); })
+          .join('/');
+      }
+
+      function base64Utf8(text) {
+        return btoa(unescape(encodeURIComponent(text)));
+      }
+
+      function githubHeaders(token) {
+        return {
+          'Accept': 'application/vnd.github+json',
+          'Authorization': 'Bearer ' + token,
+          'X-GitHub-Api-Version': '2022-11-28'
+        };
+      }
+
+      function githubTarget(pathOverride) {
+        var owner = byId('githubOwner').value.trim();
+        var repo = byId('githubRepo').value.trim();
+        var branch = byId('githubBranch').value.trim() || 'main';
+        var path = pathOverride || byId('githubPath').value.trim() || DEFAULT_BOOTSTRAP_PATH;
+        var token = byId('githubToken').value.trim();
+        if (!owner || !repo || !token) {
+          throw new Error('Owner, repository, and GitHub token are required to save.');
+        }
+
+        return {
+          owner: owner,
+          repo: repo,
+          branch: branch,
+          path: path,
+          token: token,
+          apiPath: 'https://api.github.com/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo) + '/contents/' + encodePath(path)
+        };
+      }
+
+      function saveGithubContent(target, content, message) {
+        var headers = githubHeaders(target.token);
+
+        return fetch(target.apiPath + '?ref=' + encodeURIComponent(target.branch), { headers: headers })
+          .then(function (response) {
+            if (response.status === 404) return null;
+            if (!response.ok) {
+              return response.text().then(function (body) {
+                throw new Error('GitHub read failed: ' + response.status + ' ' + body);
+              });
+            }
+            return response.json();
+          })
+          .then(function (current) {
+            var body = {
+              message: message,
+              content: base64Utf8(content.replace(/\s*$/, '') + '\n'),
+              branch: target.branch
+            };
+            if (current && current.sha) {
+              body.sha = current.sha;
+            }
+
+            return fetch(target.apiPath, {
+              method: 'PUT',
+              headers: Object.assign({ 'Content-Type': 'application/json' }, headers),
+              body: JSON.stringify(body)
+            });
+          })
+          .then(function (response) {
+            if (!response.ok) {
+              return response.text().then(function (body) {
+                throw new Error('GitHub save failed: ' + response.status + ' ' + body);
+              });
+            }
+            return response.json();
+          });
+      }
+
+      function saveToGitHub() {
+        var json = buildJson();
+        if (!json) return;
+
+        var profile;
+        try {
+          profile = collectProfileEntry();
+        } catch (err) {
+          setStatus('editor-status', err.message || String(err), 'bad');
+          return;
+        }
+
+        var profileTarget;
+        var indexTarget;
+        try {
+          profileTarget = githubTarget(getProfilePath());
+          indexTarget = githubTarget(INDEX_PATH);
+        } catch (err) {
+          setStatus('editor-status', err.message || String(err), 'bad');
+          return;
+        }
+
+        setStatus('editor-status', 'Saving profile JSON to GitHub...', '');
+
+        saveGithubContent(profileTarget, json, 'Update Family Browser profile ' + profile.id)
+          .then(function () {
+            var index = upsertProfileIndex(currentIndex || defaultIndex(), profile);
+            currentIndex = index;
+            setStatus('editor-status', 'Saving bootstrap-index.json to GitHub...', '');
+            return saveGithubContent(indexTarget, JSON.stringify(index, null, 2), 'Update Family Browser bootstrap profile index');
+          })
+          .then(function () {
+            populateProfileSelect(currentIndex);
+            byId('profileSelect').value = profile.id;
+            setStatus('editor-status', 'Saved profile and bootstrap-index.json. Users will follow the homepage default/project rules automatically.', 'good');
+          })
+          .catch(function (err) {
+            setStatus('editor-status', err.message || String(err), 'bad');
+          });
+      }
+
+      function clearForm() {
+        fillForm({
+          refreshMinutes: 30,
+          requestStore: { mode: 'NetworkShare', path: '' },
+          standardMode: 'DisciplineSeparated'
+        });
+        setStatus('editor-status', 'Form cleared.', 'warn');
+      }
+
+      var tabButtons = document.querySelectorAll('.tab');
+      for (var i = 0; i < tabButtons.length; i++) {
+        tabButtons[i].addEventListener('click', function () {
+          switchTab(this.getAttribute('data-tab'));
+        });
+      }
+
+      byId('unlock').addEventListener('click', unlock);
+      byId('password').addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') unlock();
+      });
+      byId('build').addEventListener('click', buildJson);
+      byId('copy').addEventListener('click', copyJson);
+      byId('download').addEventListener('click', downloadJson);
+      byId('saveGithub').addEventListener('click', saveToGitHub);
+      byId('loadIndex').addEventListener('click', loadIndex);
+      byId('loadProfile').addEventListener('click', loadSelectedProfile);
+      byId('profileSelect').addEventListener('change', function () {
+        fillProfileMeta(selectedProfile());
+      });
+      byId('loadCurrent').addEventListener('click', loadCurrent);
+      byId('clear').addEventListener('click', clearForm);
+      currentIndex = defaultIndex();
+      populateProfileSelect(currentIndex);
+      fillProfileMeta(currentIndex.profiles[0]);
+      buildJson();
+    })();
+  </script>
 </body>
 </html>

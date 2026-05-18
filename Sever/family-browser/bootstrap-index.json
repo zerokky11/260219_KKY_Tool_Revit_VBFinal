@@ -1,0 +1,13 @@
+{
+  "version": "2026.05.18",
+  "defaultProfileId": "default",
+  "profiles": [
+    {
+      "id": "default",
+      "name": "Default",
+      "description": "Default Family Browser shared settings",
+      "url": "bootstrap.json"
+    }
+  ],
+  "projectRules": []
+}
