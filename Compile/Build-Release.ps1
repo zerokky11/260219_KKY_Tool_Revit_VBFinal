@@ -20,6 +20,7 @@ $domainRoot = 'https://update.zerokky.com'
 $isccPath = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 $proj2019To2023 = Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\KKY_Tool_Revit.vbproj'
 $proj2025 = Join-Path $repoRoot 'KKY_Tool_Revit_2025\KKY_Tool_Revit_2025.vbproj'
+$proj2027 = Join-Path $repoRoot 'KKY_Tool_Revit_2027\KKY_Tool_Revit_2027.vbproj'
 
 if (-not (Test-Path -LiteralPath $issPath)) {
     throw "Inno Setup script not found: $issPath"
@@ -52,8 +53,8 @@ if (-not $versionMatch.Success) {
 }
 
 $version = $versionMatch.Groups['value'].Value
-$exeName = "KKY_Tool_Revit(2019,21,23,25)_v$version.exe"
-$zipName = "KKY_Tool_Revit(2019,21,23,25)_v$version.zip"
+$exeName = "KKY_Tool_Revit(2019,21,23,25,27)_v$version.exe"
+$zipName = "KKY_Tool_Revit(2019,21,23,25,27)_v$version.zip"
 $packageUrl = "$domainRoot/$zipName"
 $installerUrl = "$domainRoot/official/$exeName"
 if (Test-Path -LiteralPath $stageRoot) {
@@ -74,6 +75,12 @@ $outputPath2025 = Join-Path $stageRoot 'Rvt2025\net8.0-windows\'
 & dotnet build $proj2025 -c Release -p:SkipCreateAddin=true -p:OutputPath=$outputPath2025
 if ($LASTEXITCODE -ne 0) {
     throw 'Build failed for Revit 2025'
+}
+
+$outputPath2027 = Join-Path $stageRoot 'Rvt2027\net10.0-windows\'
+& dotnet build $proj2027 -c Release -p:SkipCreateAddin=true -p:OutputPath=$outputPath2027
+if ($LASTEXITCODE -ne 0) {
+    throw 'Build failed for Revit 2027'
 }
 
 & $isccPath "/DMyAppVersion=$version" "/DMyBuildRoot=$stageRoot" "/DMyOutputDir=$installerDir" $issPath
@@ -115,25 +122,25 @@ if (Test-Path -LiteralPath $indexPath) {
     $indexContent = Get-Content -Raw -LiteralPath $indexPath
     $indexContent = [regex]::Replace(
         $indexContent,
-        'KKY_Tool_Revit\(2019,21,23,25\)_v[0-9.]+\.exe',
+        'KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.exe',
         [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $exeName },
         [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
     )
     $indexContent = [regex]::Replace(
         $indexContent,
-        'KKY_Tool_Revit\(2019,21,23,25\)_v[0-9.]+\.zip',
+        'KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.zip',
         [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $zipName },
         [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
     )
     $indexContent = [regex]::Replace(
         $indexContent,
-        'https://update\.zerokky\.com/(?:official/)?KKY_Tool_Revit\(2019,21,23,25\)_v[0-9.]+\.exe',
+        'https://update\.zerokky\.com/(?:official/)?KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.exe',
         [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $installerUrl },
         [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
     )
     $indexContent = [regex]::Replace(
         $indexContent,
-        'https://update\.zerokky\.com/KKY_Tool_Revit\(2019,21,23,25\)_v[0-9.]+\.zip',
+        'https://update\.zerokky\.com/KKY_Tool_Revit\(2019,21,23,25(?:,27)?\)_v[0-9.]+\.zip',
         [System.Text.RegularExpressions.MatchEvaluator]{ param($m) $packageUrl },
         [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
     )

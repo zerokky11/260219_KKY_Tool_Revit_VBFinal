@@ -6,10 +6,10 @@
   #define MyAppName "KKY_Tool_Revit"
 #endif
 #ifndef MyAppVersion
-#define MyAppVersion "2.29"
+#define MyAppVersion "2.30"
 #endif
 #ifndef MyOutputBaseName
-  #define MyOutputBaseName "KKY_Tool_Revit(2019,21,23,25)_v" + MyAppVersion
+  #define MyOutputBaseName "KKY_Tool_Revit(2019,21,23,25,27)_v" + MyAppVersion
 #endif
 #ifndef MyBuildRoot
   #define MyBuildRoot "..\\KKY_Tool_Revit_2019-2023\\bin"
@@ -61,6 +61,7 @@ Name: "revit2019"; Description: "Revit 2019 설치"; GroupDescription: "설치�
 Name: "revit2021"; Description: "Revit 2021 설치"; GroupDescription: "설치할 Revit 버전 선택:"
 Name: "revit2023"; Description: "Revit 2023 설치"; GroupDescription: "설치할 Revit 버전 선택:"; Flags: unchecked
 Name: "revit2025"; Description: "Revit 2025 설치"; GroupDescription: "설치할 Revit 버전 선택:"; Flags: unchecked
+Name: "revit2027"; Description: "Revit 2027 설치"; GroupDescription: "설치할 Revit 버전 선택:"; Flags: unchecked
 
 ; --------------------------------------------------------
 ; 파일 복사
@@ -113,6 +114,17 @@ Source: "{#MyBuildRoot}\Rvt2025\net8.0-windows\*"; \
     Flags: ignoreversion recursesubdirs createallsubdirs; \
     Tasks: revit2025
 
+; ===== Revit 2027 =====
+Source: "2027addin\\KKY_Tool_Revit.addin"; \
+    DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027"; \
+    Flags: ignoreversion; \
+    Tasks: revit2027
+
+Source: "{#MyBuildRoot}\Rvt2027\net10.0-windows\*"; \
+    DestDir: "{commonappdata}\Autodesk\Revit\Addins\2027\KKY_Tool_Revit"; \
+    Flags: ignoreversion recursesubdirs createallsubdirs; \
+    Tasks: revit2027
+
 
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
@@ -125,6 +137,7 @@ Source: "{#MyBuildRoot}\Rvt2025\net8.0-windows\*"; \
 function IsRevitInstalled(Version: string): Boolean;
 var
   AddinPath, RevitPath64, RevitPath32: string;
+  RegistryPath: string;
 begin
   { Addins 폴더 기준 }
   AddinPath := ExpandConstant('{commonappdata}\Autodesk\Revit\Addins\' + Version);
@@ -132,11 +145,14 @@ begin
   { Program Files 기준 (64bit / 32bit 둘 다 확인) }
   RevitPath64 := ExpandConstant('{commonpf}\Autodesk\Revit ' + Version);
   RevitPath32 := ExpandConstant('{commonpf32}\Autodesk\Revit ' + Version);
+  RegistryPath := 'SOFTWARE\Autodesk\Revit\' + Version;
 
   Result :=
     DirExists(AddinPath) or
     DirExists(RevitPath64) or
-    DirExists(RevitPath32);
+    DirExists(RevitPath32) or
+    RegKeyExists(HKLM, RegistryPath) or
+    RegKeyExists(HKCU, RegistryPath);
 end;
 
 function MakeCaption(Year: string; Installed: Boolean): string;
@@ -144,14 +160,14 @@ begin
   if Installed then
     Result := Format('Revit %s 설치 (설치됨)', [Year])
   else
-    Result := Format('Revit %s 설치 (미설치)', [Year]);
+    Result := Format('Revit %s 설치 (수동 선택 가능)', [Year]);
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
 var
   i: Integer;
   cap: string;
-  has2019, has2021, has2023, has2025: Boolean;
+  has2019, has2021, has2023, has2025, has2027: Boolean;
 begin
   { "작업 선택" 페이지가 아닐 때는 아무 것도 하지 않음 }
   if CurPageID <> wpSelectTasks then
@@ -162,6 +178,7 @@ begin
   has2021 := IsRevitInstalled('2021');
   has2023 := IsRevitInstalled('2023');
   has2025 := IsRevitInstalled('2025');
+  has2027 := IsRevitInstalled('2027');
 
   { TasksList 돌면서 캡션/체크/활성 상태 설정 }
   for i := 0 to WizardForm.TasksList.Items.Count - 1 do
@@ -172,25 +189,31 @@ begin
     begin
       WizardForm.TasksList.ItemCaption[i] := MakeCaption('2019', has2019);
       WizardForm.TasksList.Checked[i] := has2019;
-      WizardForm.TasksList.ItemEnabled[i] := has2019;
+      WizardForm.TasksList.ItemEnabled[i] := True;
     end
     else if Pos('Revit 2021', cap) > 0 then
     begin
       WizardForm.TasksList.ItemCaption[i] := MakeCaption('2021', has2021);
       WizardForm.TasksList.Checked[i] := has2021;
-      WizardForm.TasksList.ItemEnabled[i] := has2021;
+      WizardForm.TasksList.ItemEnabled[i] := True;
     end
     else if Pos('Revit 2023', cap) > 0 then
     begin
       WizardForm.TasksList.ItemCaption[i] := MakeCaption('2023', has2023);
       WizardForm.TasksList.Checked[i] := has2023;
-      WizardForm.TasksList.ItemEnabled[i] := has2023;
+      WizardForm.TasksList.ItemEnabled[i] := True;
     end
     else if Pos('Revit 2025', cap) > 0 then
     begin
       WizardForm.TasksList.ItemCaption[i] := MakeCaption('2025', has2025);
       WizardForm.TasksList.Checked[i] := has2025;
-      WizardForm.TasksList.ItemEnabled[i] := has2025;
+      WizardForm.TasksList.ItemEnabled[i] := True;
+    end
+    else if Pos('Revit 2027', cap) > 0 then
+    begin
+      WizardForm.TasksList.ItemCaption[i] := MakeCaption('2027', has2027);
+      WizardForm.TasksList.Checked[i] := has2027;
+      WizardForm.TasksList.ItemEnabled[i] := True;
     end
   end;
 end;

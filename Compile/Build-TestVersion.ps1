@@ -14,8 +14,9 @@ $testInstallerDir = Join-Path $releaseDir 'test'
 $stageRoot = Join-Path $repoRoot ("artifacts\release-stage\test-{0}_{1}" -f $Version, $TestLabel)
 $proj2019To2023 = Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\KKY_Tool_Revit.vbproj'
 $proj2025 = Join-Path $repoRoot 'KKY_Tool_Revit_2025\KKY_Tool_Revit_2025.vbproj'
+$proj2027 = Join-Path $repoRoot 'KKY_Tool_Revit_2027\KKY_Tool_Revit_2027.vbproj'
 $isccPath = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
-$outputBaseName = "KKY_Tool_Revit(2019,21,23,25)_v{0}_{1}" -f $Version, $TestLabel
+$outputBaseName = "KKY_Tool_Revit(2019,21,23,25,27)_v{0}_{1}" -f $Version, $TestLabel
 $outputExePath = Join-Path $testInstallerDir ($outputBaseName + '.exe')
 
 if (-not (Test-Path -LiteralPath $backupScriptPath)) {
@@ -56,6 +57,12 @@ $outputPath2025 = Join-Path $stageRoot 'Rvt2025\net8.0-windows\'
 & dotnet build $proj2025 -c Release -p:SkipCreateAddin=true -p:OutputPath=$outputPath2025
 if ($LASTEXITCODE -ne 0) {
     throw 'Build failed for Revit 2025'
+}
+
+$outputPath2027 = Join-Path $stageRoot 'Rvt2027\net10.0-windows\'
+& dotnet build $proj2027 -c Release -p:SkipCreateAddin=true -p:OutputPath=$outputPath2027
+if ($LASTEXITCODE -ne 0) {
+    throw 'Build failed for Revit 2027'
 }
 
 & $isccPath "/DMyAppVersion=$Version" "/DMyOutputBaseName=$outputBaseName" "/DMyBuildRoot=$stageRoot" "/DMyOutputDir=$testInstallerDir" $issPath

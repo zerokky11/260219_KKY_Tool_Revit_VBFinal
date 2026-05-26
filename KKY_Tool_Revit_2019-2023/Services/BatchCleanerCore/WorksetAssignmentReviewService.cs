@@ -103,7 +103,7 @@ namespace KKY_Tool_Revit.Services
                         return string.Empty;
                     }
 
-                    int key = worksetId.IntegerValue;
+                    int key = worksetId.CompatIntegerValue();
                     string cached;
                     if (_worksetNamesById.TryGetValue(key, out cached))
                     {
@@ -128,7 +128,7 @@ namespace KKY_Tool_Revit.Services
                     return true;
                 }
 
-                int key = category.Id.IntegerValue;
+                int key = category.Id.CompatIntegerValue();
                 bool cached;
                 if (_categoryExclusionById.TryGetValue(key, out cached))
                 {
@@ -142,7 +142,7 @@ namespace KKY_Tool_Revit.Services
 
             public TypeInfo ResolveTypeInfo(Element element)
             {
-                int key = element?.Id?.IntegerValue ?? 0;
+                int key = element?.Id?.CompatIntegerValue() ?? 0;
                 TypeInfo cached;
                 if (key > 0 && _typeInfoById.TryGetValue(key, out cached))
                 {
@@ -166,7 +166,7 @@ namespace KKY_Tool_Revit.Services
                 }
 
                 string normalizedName = name.Trim();
-                string key = (element.Id?.IntegerValue ?? 0).ToString(CultureInfo.InvariantCulture) + "\u001f" + normalizedName;
+                string key = (element.Id?.CompatIntegerValue() ?? 0).ToString(CultureInfo.InvariantCulture) + "\u001f" + normalizedName;
                 string cached;
                 if (_extraParameterValues.TryGetValue(key, out cached))
                 {
@@ -231,7 +231,7 @@ namespace KKY_Tool_Revit.Services
                 {
                     File = safeFileLabel,
                     Item = ItemLabel,
-                    Id = (element?.Id?.IntegerValue ?? 0).ToString(CultureInfo.InvariantCulture),
+                    Id = (element?.Id?.CompatIntegerValue() ?? 0).ToString(CultureInfo.InvariantCulture),
                     Name = typeInfo.TypeName,
                     Result = "Error",
                     Content = string.IsNullOrWhiteSpace(flaggedWorksetName)
@@ -570,7 +570,7 @@ namespace KKY_Tool_Revit.Services
             if (IsExcludedExternalReferenceElement(element)) return false;
             if (string.IsNullOrWhiteSpace(categoryName)) return false;
 
-            int categoryId = element.Category.Id.IntegerValue;
+            int categoryId = element.Category.Id.CompatIntegerValue();
             if (categoryId == (int)BuiltInCategory.OST_Levels) return false;
             if (categoryId == (int)BuiltInCategory.OST_Grids) return false;
             if (categoryId == (int)BuiltInCategory.OST_PointClouds) return false;
@@ -758,7 +758,7 @@ namespace KKY_Tool_Revit.Services
             string actualName;
             try
             {
-                actualName = Enum.GetName(typeof(BuiltInCategory), category.Id.IntegerValue) ?? string.Empty;
+                actualName = Enum.GetName(typeof(BuiltInCategory), category.Id.CompatIntegerValue()) ?? string.Empty;
             }
             catch
             {

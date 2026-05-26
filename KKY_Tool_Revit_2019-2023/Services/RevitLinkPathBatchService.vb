@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -2544,7 +2544,7 @@ Namespace Services
             End Try
 
             Try
-                Return worksetId.IntegerValue.ToString(CultureInfo.InvariantCulture)
+                Return worksetId.IntValue().ToString(CultureInfo.InvariantCulture)
             Catch
                 Return ""
             End Try
@@ -2586,7 +2586,7 @@ Namespace Services
             Try
                 Dim p As Parameter = element.Parameter(BuiltInParameter.ELEM_PARTITION_PARAM)
                 If p Is Nothing OrElse p.IsReadOnly Then Return False
-                Return p.Set(worksetId.IntegerValue)
+                Return p.Set(worksetId.IntValue())
             Catch
                 Return False
             End Try
@@ -3052,7 +3052,7 @@ Namespace Services
         Private Shared Function SafeElementIdText(refId As ElementId) As String
             If refId Is Nothing Then Return ""
             Try
-                Return refId.IntegerValue.ToString(CultureInfo.InvariantCulture)
+                Return refId.IntValue().ToString(CultureInfo.InvariantCulture)
             Catch
                 Return ""
             End Try

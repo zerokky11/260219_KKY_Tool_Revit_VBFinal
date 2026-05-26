@@ -1,4 +1,4 @@
-﻿Imports Autodesk.Revit.DB
+Imports Autodesk.Revit.DB
 
 Namespace Infrastructure
 
@@ -22,6 +22,15 @@ Namespace Infrastructure
             ' Revit 2019~2023: 기존 IntegerValue
             Return id.IntegerValue
 #End If
+        End Function
+
+        ''' <summary>
+        ''' WorksetId를 Int32로 꺼내는 공용 함수
+        ''' </summary>
+        <Runtime.CompilerServices.Extension>
+        Public Function IntValue(id As WorksetId) As Integer
+            If id Is Nothing Then Return -1
+            Return id.IntegerValue
         End Function
 
         ''' <summary>

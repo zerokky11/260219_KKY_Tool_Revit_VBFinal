@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -74,7 +74,7 @@ namespace KKY_Tool_Revit.Services
                     bool hasTarget3D = target3D != null;
                     bool onlyTarget3DRemains = hasTarget3D && nonTemplateViewCount == 1 && all3dViewCount == 1;
                     bool viewTemplateCountZero = viewTemplateCount == 0;
-                    bool targetViewNoTemplate = hasTarget3D && target3D.ViewTemplateId != null && target3D.ViewTemplateId.IntegerValue == ElementId.InvalidElementId.IntegerValue;
+                    bool targetViewNoTemplate = hasTarget3D && target3D.ViewTemplateId != null && target3D.ViewTemplateId.CompatIntegerValue() == ElementId.InvalidElementId.CompatIntegerValue();
 
                     bool detailFine = hasTarget3D && target3D.DetailLevel == ViewDetailLevel.Fine;
                     bool displayShadedWithEdges = hasTarget3D && target3D.DisplayStyle == DisplayStyle.ShadingWithEdges;
@@ -95,7 +95,7 @@ namespace KKY_Tool_Revit.Services
                     try
                     {
                         StartingViewSettings startingViewSettings = StartingViewSettings.GetStartingViewSettings(doc);
-                        startingViewMatch = hasTarget3D && startingViewSettings != null && startingViewSettings.ViewId != null && startingViewSettings.ViewId.IntegerValue == target3D.Id.IntegerValue;
+                        startingViewMatch = hasTarget3D && startingViewSettings != null && startingViewSettings.ViewId != null && startingViewSettings.ViewId.CompatIntegerValue() == target3D.Id.CompatIntegerValue();
                     }
                     catch
                     {
@@ -137,7 +137,7 @@ namespace KKY_Tool_Revit.Services
                         {
                             filterExists = true;
                             ICollection<ElementId> filters = target3D.GetFilters();
-                            filterApplied = filters.Any(x => x != null && x.IntegerValue == filterElement.Id.IntegerValue);
+                            filterApplied = filters.Any(x => x != null && x.CompatIntegerValue() == filterElement.Id.CompatIntegerValue());
                             if (filterApplied)
                             {
                                 filterVisible = GetFilterVisibilitySafe(target3D, filterElement.Id, true);
@@ -393,7 +393,7 @@ namespace KKY_Tool_Revit.Services
                         return parameter.AsValueString() ?? parameter.AsDouble().ToString(System.Globalization.CultureInfo.InvariantCulture);
                     case StorageType.ElementId:
                         ElementId id = parameter.AsElementId();
-                        return id != null && id != ElementId.InvalidElementId ? id.IntegerValue.ToString() : string.Empty;
+                        return id != null && id != ElementId.InvalidElementId ? id.CompatIntegerValue().ToString() : string.Empty;
                     default:
                         return parameter.AsValueString() ?? string.Empty;
                 }
@@ -421,7 +421,7 @@ namespace KKY_Tool_Revit.Services
         private static bool IsTargetFittingCategory(Category category)
         {
             if (category == null) return false;
-            int id = category.Id.IntegerValue;
+            int id = category.Id.CompatIntegerValue();
             return id == (int)BuiltInCategory.OST_CableTrayFitting
                    || id == (int)BuiltInCategory.OST_ConduitFitting
                    || id == (int)BuiltInCategory.OST_DuctFitting
@@ -454,7 +454,7 @@ namespace KKY_Tool_Revit.Services
             foreach (Category child in category.SubCategories)
             {
                 if (child == null) continue;
-                if (!visited.Add(child.Id.IntegerValue)) continue;
+                if (!visited.Add(child.Id.CompatIntegerValue())) continue;
                 yield return child;
                 foreach (Category nested in EnumerateAllSubCategoriesRecursive(child, visited))
                 {

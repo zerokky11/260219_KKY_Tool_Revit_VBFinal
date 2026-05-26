@@ -29,6 +29,15 @@ const FEATURE_META = {
       categoryTitle: '파라미터 검토/연속성 확인 기능',
       requiresSharedParams: false
     },
+    unconnected: {
+      label: '미연결 검토',
+      cardLabel: '미연결 검토',
+      desc: '커넥터가 있는 객체의 미연결 상태와 선택 시 중심축 연결 상태를 객체별로 검토',
+      cardDesc: '배관, 덕트, 트레이, 컨듀잇과 피팅/장비류의 커넥터 미연결 상태를 객체 단위로 검토합니다.',
+      categoryLabel: 'MEP',
+      categoryTitle: 'BQC 커넥터 미연결 검토 기능',
+      requiresSharedParams: false
+    },
     floorinfo: {
       label: '레벨 영역별 파라미터 검토',
       cardLabel: '레벨 영역별 파라미터 검토',
@@ -92,6 +101,15 @@ const FEATURE_META = {
       categoryTitle: 'BQC 파라미터 누락 검토 기능',
       requiresSharedParams: true
     },
+    parameterstandard: {
+      label: '속성 모수 검토',
+      cardLabel: '속성 모수 검토',
+      desc: '기준 엑셀의 파라미터별 허용값과 모델 객체 속성값을 비교',
+      cardDesc: '시트명은 파라미터명, B2 아래 값은 허용값으로 읽어 스케줄 가능 모델 객체의 속성값을 검토합니다.',
+      categoryLabel: '파라미터',
+      categoryTitle: 'BQC 속성 기준값 검토 기능',
+      requiresSharedParams: false
+    },
     guid: {
         label: '파라미터 GUID 검토 및 정리',
         cardLabel: '파라미터 GUID 검토 및 정리',
@@ -130,9 +148,9 @@ const FEATURE_META = {
   }
 };
 const FEATURE_KEYS = Object.keys(FEATURE_META);
-const BQC_FEATURE_KEYS = ['connector', 'floorinfo', 'familysuitability', 'tapalign', 'dupclash', 'worksetassignment', 'parameterduplication', 'parametermissing'];
-const COMMON_SCOPE_DEPENDENT_FEATURE_KEYS = ['connector', 'floorinfo', 'tapalign', 'dupclash', 'worksetassignment', 'parametermissing'];
-const COMMON_EXTRA_PARAM_DEPENDENT_FEATURE_KEYS = ['connector', 'floorinfo', 'tapalign', 'dupclash', 'worksetassignment', 'parametermissing'];
+const BQC_FEATURE_KEYS = ['connector', 'unconnected', 'floorinfo', 'familysuitability', 'tapalign', 'dupclash', 'worksetassignment', 'parameterduplication', 'parametermissing', 'parameterstandard'];
+const COMMON_SCOPE_DEPENDENT_FEATURE_KEYS = ['connector', 'unconnected', 'floorinfo', 'tapalign', 'dupclash', 'worksetassignment', 'parametermissing', 'parameterstandard'];
+const COMMON_EXTRA_PARAM_DEPENDENT_FEATURE_KEYS = ['connector', 'floorinfo', 'tapalign', 'dupclash', 'worksetassignment', 'parametermissing', 'parameterstandard'];
 const COMMON_TAPALIGN_OPTION_DEPENDENT_FEATURE_KEYS = ['tapalign'];
 const UTILITY_FEATURE_KEYS = FEATURE_KEYS.filter((key) => !BQC_FEATURE_KEYS.includes(key));
 const COMMON_OPTIONS_KEY = 'kky.hub.commonOptions';
@@ -150,6 +168,7 @@ const PARAMETER_MISSING_RECENT_LIMIT = 8;
 const PARAMETER_MISSING_PRESET_KIND = 'kky.hub.parameterMissingPreset';
 const PARAMETER_MISSING_PRESET_VERSION = 1;
 const PARAMETER_MISSING_PRESET_EXTENSION = '.kkypm.json';
+const PARAMETER_STANDARD_STORAGE_KEY = 'kky.hub.parameterStandardConfig';
 const EXCEL_PHASE_WEIGHT = { EXCEL_INIT: 0.05, EXCEL_WRITE: 0.85, EXCEL_SAVE: 0.08, AUTOFIT: 0.02, DONE: 1, ERROR: 1 };
 const EXCEL_PHASE_ORDER = ['EXCEL_INIT', 'EXCEL_WRITE', 'EXCEL_SAVE', 'AUTOFIT', 'DONE'];
 const PARAMETER_MISSING_FILTER_OPERATORS = [
@@ -187,6 +206,7 @@ export function renderMulti(root, options = {}) {
   const tapAlignPersisted = loadTapAlignConfigFromStorage();
   const familySuitabilityPersisted = loadFamilySuitabilityConfigFromStorage();
   const parameterMissingPersisted = loadParameterMissingConfigFromStorage();
+  const parameterStandardPersisted = loadParameterStandardConfigFromStorage();
 
   const state = {
     rvtList: [],
@@ -210,6 +230,11 @@ export function renderMulti(root, options = {}) {
         includePointXY: false,
         includeLinearMetrics: false
       }),
+      unconnected: createFeatureState({
+        includeCenterAxisCheck: false,
+        centerAxisTol: 0.5,
+        centerAxisUnit: 'mm'
+      }),
       floorinfo: createFeatureState({ parameterName: '', levelRules: [], documentTitle: '', warnings: [] }),
       familysuitability: createFeatureState(familySuitabilityPersisted.config),
       tapalign: createFeatureState(tapAlignPersisted.config),
@@ -222,6 +247,7 @@ export function renderMulti(root, options = {}) {
         sharedParamImportCount: 0
       }),
       parametermissing: createFeatureState(parameterMissingPersisted.config),
+      parameterstandard: createFeatureState(parameterStandardPersisted.config),
       guid: createFeatureState({
         includeFamily: false,
         includeAnnotation: false,
@@ -317,6 +343,9 @@ export function renderMulti(root, options = {}) {
   if (parameterMissingPersisted.hasStored) {
     state.features.parametermissing.applied = true;
   }
+  if (parameterStandardPersisted.hasStored) {
+    state.features.parameterstandard.applied = true;
+  }
 
   const page = div('feature-shell multi-page HubShell');
   const hasLocalCommonOptions = loadCommonOptionsFromStorage();
@@ -354,6 +383,7 @@ export function renderMulti(root, options = {}) {
   }));
   group1.section.append(buildConditionExtractWorkflowRow());
   group1.section.append(buildToggleRow('connector', buildConnectorConfig()));
+  group1.section.append(buildToggleRow('unconnected', buildUnconnectedConfig()));
   group1.section.append(buildToggleRow('floorinfo', buildFloorInfoConfig()));
   group1.section.append(buildToggleRow('familysuitability', buildFamilySuitabilityConfig()));
   group1.section.append(buildToggleRow('tapalign', buildTapAlignConfig()));
@@ -361,6 +391,7 @@ export function renderMulti(root, options = {}) {
   group1.section.append(buildToggleRow('worksetassignment', buildWorksetAssignmentConfig()));
   group1.section.append(buildToggleRow('parameterduplication', buildParameterDuplicationConfig()));
   group1.section.append(buildToggleRow('parametermissing', buildParameterMissingConfig()));
+  group1.section.append(buildToggleRow('parameterstandard', buildParameterStandardConfig()));
   group1.section.append(buildDupWorkflowRow({
     chipLabel: 'BQC 보조',
     chipTitle: 'BQC 보조 검토 항목에서 중복 / 자체 간섭 검토를 바로 엽니다.'
@@ -565,6 +596,11 @@ export function renderMulti(root, options = {}) {
   onHost('familysuitability:criteria-picked', (payload) => {
     if (buildFamilySuitabilityConfig.applyCriteriaPicked) {
       refreshUiAfterHostDialog(() => buildFamilySuitabilityConfig.applyCriteriaPicked(payload));
+    }
+  });
+  onHost('parameterstandard:criteria-picked', (payload) => {
+    if (buildParameterStandardConfig.applyCriteriaPicked) {
+      refreshUiAfterHostDialog(() => buildParameterStandardConfig.applyCriteriaPicked(payload));
     }
   });
   onHost('hub:multi-error', (payload) => {
@@ -1241,11 +1277,13 @@ export function renderMulti(root, options = {}) {
       markStale(key);
       updateRunSummary();
       refreshConnectorFeatureSummary();
+      refreshUnconnectedFeatureSummary();
       refreshFloorInfoFeatureSummary();
       refreshFamilySuitabilityFeatureSummary();
       refreshTapAlignFeatureSummary();
       refreshDupClashFeatureSummary();
       refreshWorksetAssignmentFeatureSummary();
+      refreshParameterStandardFeatureSummary();
       renderSelectedFeatures();
       if (nextEnabled && !wasEnabled) {
         recordHubEntryUse(key);
@@ -1264,13 +1302,13 @@ export function renderMulti(root, options = {}) {
     });
 
     const right = div('feature-row__right');
-    if (key === 'connector') {
+    if (key === 'connector' || key === 'unconnected') {
       const badge = document.createElement('span');
       badge.className = 'chip chip--info';
       badge.textContent = 'BQC 핵심';
       badge.setAttribute('aria-label', 'BQC 핵심 검토 기능');
       right.append(badge);
-    } else if (key === 'floorinfo' || key === 'familysuitability' || key === 'tapalign' || key === 'dupclash' || key === 'worksetassignment' || key === 'parameterduplication' || key === 'parametermissing') {
+    } else if (key === 'floorinfo' || key === 'familysuitability' || key === 'tapalign' || key === 'dupclash' || key === 'worksetassignment' || key === 'parameterduplication' || key === 'parametermissing' || key === 'parameterstandard') {
       const badge = document.createElement('span');
       badge.className = 'chip chip--info';
       badge.textContent = 'BQC 보조';
@@ -1322,6 +1360,22 @@ export function renderMulti(root, options = {}) {
       row.append(summary);
       state.ui.connectorHeroSummary = { row, top, sub };
       refreshConnectorFeatureSummary();
+    } else if (key === 'unconnected') {
+      const summary = div('feature-row__summary');
+      summary.style.display = 'grid';
+      summary.style.gap = '4px';
+      summary.style.padding = '10px 12px';
+      summary.style.borderRadius = '14px';
+      summary.style.border = '1px dashed var(--border-soft)';
+      summary.style.background = 'var(--surface-help)';
+      const top = document.createElement('strong');
+      const sub = document.createElement('span');
+      top.textContent = '커넥터가 있는 객체의 미연결 상태를 객체 단위로 검토합니다.';
+      sub.textContent = '공통 검토대상/제외 필터만 적용됩니다.';
+      summary.append(top, sub);
+      row.append(summary);
+      state.ui.unconnectedSummary = { row, top, sub };
+      refreshUnconnectedFeatureSummary();
     } else if (key === 'floorinfo') {
       const summary = div('feature-row__summary');
       summary.style.display = 'grid';
@@ -1434,6 +1488,22 @@ export function renderMulti(root, options = {}) {
       row.append(summary);
       state.ui.parameterMissingSummary = { row, top, sub };
       refreshParameterMissingFeatureSummary();
+    } else if (key === 'parameterstandard') {
+      const summary = div('feature-row__summary');
+      summary.style.display = 'grid';
+      summary.style.gap = '4px';
+      summary.style.padding = '10px 12px';
+      summary.style.borderRadius = '14px';
+      summary.style.border = '1px dashed var(--border-soft)';
+      summary.style.background = 'var(--surface-help)';
+      const top = document.createElement('strong');
+      const sub = document.createElement('span');
+      top.textContent = '기준 엑셀의 파라미터별 허용값으로 속성값을 검토합니다.';
+      sub.textContent = '아직 기준 엑셀이 지정되지 않았습니다.';
+      summary.append(top, sub);
+      row.append(summary);
+      state.ui.parameterStandardSummary = { row, top, sub };
+      refreshParameterStandardFeatureSummary();
     }
 
     config.displayTitle = meta.label || key;
@@ -2095,6 +2165,180 @@ function buildConditionExtractWorkflowRow() {
         renderConnectorList,
         renderConnectorSelected
       }
+    };
+  }
+
+  function buildUnconnectedConfig() {
+    const panel = div('multi-config');
+    panel.style.display = 'grid';
+    panel.style.gridTemplateColumns = 'minmax(0, 1fr)';
+    panel.style.gap = '12px';
+    panel.style.width = '100%';
+    panel.style.boxSizing = 'border-box';
+
+    const info = div('feature-row__summary');
+    info.style.display = 'grid';
+    info.style.gap = '10px';
+    info.style.padding = '14px';
+    info.style.borderRadius = '14px';
+    info.style.border = '1px solid var(--border-accent-soft)';
+    info.style.background = 'var(--surface-help)';
+
+    const title = document.createElement('strong');
+    title.textContent = '미연결 검토 설정';
+    const body = document.createElement('span');
+    body.textContent = '객체가 가진 물리 커넥터 전체를 확인하고, 연결되지 않은 커넥터가 있으면 객체 단위로 결과 행을 만듭니다.';
+
+    const chips = div('feature-row__actions');
+    chips.style.display = 'flex';
+    chips.style.flexWrap = 'wrap';
+    chips.style.gap = '8px';
+    ['객체 단위 검토', '전체/일부 미연결 구분', '공통 필터 적용'].forEach((text) => {
+      const chip = document.createElement('span');
+      chip.className = 'chip chip--info';
+      chip.textContent = text;
+      chips.append(chip);
+    });
+
+    const centerAxis = {
+      field: document.createElement('label'),
+      input: document.createElement('input')
+    };
+    centerAxis.field.className = 'settings-control-surface settings-toggle-row';
+    centerAxis.field.style.borderRadius = '14px';
+    centerAxis.field.style.borderColor = 'var(--border-accent-soft)';
+    centerAxis.field.style.background = 'var(--surface-card)';
+    centerAxis.field.style.alignItems = 'center';
+    centerAxis.input.type = 'checkbox';
+    centerAxis.input.checked = !!state.features.unconnected.configDraft.includeCenterAxisCheck;
+
+    const centerAxisCopy = div('settings-toggle-copy');
+    const centerAxisTitle = document.createElement('strong');
+    centerAxisTitle.textContent = '중심축 연결 검토 함께 실행';
+    const centerAxisDesc = document.createElement('span');
+    centerAxisDesc.textContent = '켜면 아래 허용 범위와 단위 기준으로 중심축 오류를 미연결 결과 엑셀에 함께 출력합니다.';
+    centerAxisCopy.append(centerAxisTitle, centerAxisDesc);
+
+    const centerAxisMeta = div('settings-toggle-meta');
+    const centerAxisBadge = document.createElement('span');
+    const switchBox = document.createElement('span');
+    switchBox.className = 'settings-switch';
+    const switchTrack = document.createElement('span');
+    switchTrack.className = 'settings-switch-track';
+    const switchThumb = document.createElement('span');
+    switchThumb.className = 'settings-switch-thumb';
+    switchTrack.append(switchThumb);
+    switchBox.append(centerAxis.input, switchTrack);
+    centerAxisMeta.append(centerAxisBadge, switchBox);
+    centerAxis.field.append(centerAxisCopy, centerAxisMeta);
+
+    const axisSettings = div('feature-row__summary');
+    axisSettings.style.display = 'grid';
+    axisSettings.style.gap = '10px';
+    axisSettings.style.padding = '12px';
+    axisSettings.style.borderRadius = '14px';
+    axisSettings.style.border = '1px solid var(--border-soft)';
+    axisSettings.style.background = 'var(--surface-elevated)';
+
+    const axisSettingsTitle = document.createElement('strong');
+    axisSettingsTitle.textContent = '중심축 검토 기준';
+
+    const axisSettingsGrid = div('settings-grid');
+    axisSettingsGrid.style.display = 'grid';
+    axisSettingsGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))';
+    axisSettingsGrid.style.gap = '10px';
+
+    const centerAxisTol = makeField('허용 범위', 'unconnected_center_axis_tol', '', 'number');
+    centerAxisTol.input.value = state.features.unconnected.configDraft.centerAxisTol ?? 0.5;
+    centerAxisTol.input.min = '0';
+    centerAxisTol.input.step = '0.01';
+    centerAxisTol.input.style.fontWeight = '600';
+
+    const centerAxisUnit = makeSelectField('거리 단위', [
+      { value: 'mm', label: 'mm' },
+      { value: 'inch', label: 'inch' }
+    ]);
+    centerAxisUnit.select.value = normalizeTapAlignUnit(state.features.unconnected.configDraft.centerAxisUnit || 'mm');
+    centerAxisUnit.select.style.fontWeight = '600';
+
+    axisSettingsGrid.append(centerAxisTol.field, centerAxisUnit.field);
+    axisSettings.append(axisSettingsTitle, axisSettingsGrid);
+
+    const collectCenterAxisSettings = () => {
+      const tolValue = parseFloat(centerAxisTol.input.value || '0.5');
+      state.features.unconnected.configDraft.centerAxisTol = Number.isFinite(tolValue) && tolValue > 0 ? tolValue : 0.5;
+      state.features.unconnected.configDraft.centerAxisUnit = normalizeTapAlignUnit(centerAxisUnit.select.value);
+    };
+
+    const renderCenterAxisState = () => {
+      const enabled = !!centerAxis.input.checked;
+      centerAxisBadge.className = `chip ${enabled ? 'chip--ok' : 'chip--info'}`;
+      centerAxisBadge.textContent = enabled ? '포함' : '제외';
+      centerAxisTol.input.disabled = !enabled;
+      centerAxisUnit.select.disabled = !enabled;
+      axisSettings.classList.toggle('is-disabled', !enabled);
+    };
+    centerAxisTol.input.addEventListener('change', () => {
+      collectCenterAxisSettings();
+      markFeatureDirty('unconnected');
+      refreshUnconnectedFeatureSummary();
+    });
+    centerAxisTol.input.addEventListener('blur', () => {
+      collectCenterAxisSettings();
+      centerAxisTol.input.value = state.features.unconnected.configDraft.centerAxisTol;
+      markFeatureDirty('unconnected');
+      refreshUnconnectedFeatureSummary();
+    });
+    centerAxisUnit.select.addEventListener('change', () => {
+      collectCenterAxisSettings();
+      markFeatureDirty('unconnected');
+      refreshUnconnectedFeatureSummary();
+    });
+    centerAxis.input.addEventListener('change', () => {
+      state.features.unconnected.configDraft.includeCenterAxisCheck = !!centerAxis.input.checked;
+      collectCenterAxisSettings();
+      renderCenterAxisState();
+      markFeatureDirty('unconnected');
+      refreshUnconnectedFeatureSummary();
+    });
+    renderCenterAxisState();
+
+    const ruleGrid = div('unconnected-config-grid');
+    ruleGrid.style.display = 'grid';
+    ruleGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(240px, 1fr))';
+    ruleGrid.style.gap = '10px';
+
+    const makeRuleCard = (heading, detail) => {
+      const card = div('feature-note');
+      card.style.display = 'grid';
+      card.style.gap = '6px';
+      card.style.padding = '12px';
+      card.style.borderStyle = 'solid';
+      card.style.background = 'var(--surface-control)';
+      const strong = document.createElement('strong');
+      strong.textContent = heading;
+      const span = document.createElement('span');
+      span.textContent = detail;
+      card.append(strong, span);
+      return card;
+    };
+
+    ruleGrid.append(
+      makeRuleCard('결과 판정', '모든 커넥터가 미연결이면 “오류”, 일부만 미연결이면 “일부오류”로 출력합니다.'),
+      makeRuleCard('Family 열', '선형 객체는 시스템 타입 계열명, 피팅과 액세서리류는 실제 패밀리명을 출력합니다.'),
+      makeRuleCard('결과 분리', '미연결 오류와 중심축 오류는 요약에서 따로 집계하고, 엑셀 항목명도 별도 Check로 출력합니다.')
+    );
+
+    const common = div('feature-note');
+    common.style.padding = '12px';
+    common.textContent = '적용 범위: 공통 설정의 검토 대상 필터와 검토 제외 대상 필터를 그대로 따릅니다.';
+
+    info.append(title, body, chips);
+    panel.append(info, centerAxis.field, axisSettings, ruleGrid, common);
+
+    return {
+      panel,
+      controls: { centerAxis, centerAxisTol, centerAxisUnit, collectDraft: collectCenterAxisSettings, renderCenterAxisState }
     };
   }
 
@@ -3059,6 +3303,158 @@ function buildConditionExtractWorkflowRow() {
         renderPresetOptions,
         renderCriteriaSummary,
         renderFilterRules,
+        collectDraft
+      }
+    };
+  }
+
+  function buildParameterStandardConfig() {
+    const panel = div('multi-config');
+    panel.classList.add('familysuitability-config', 'parameterstandard-config');
+    panel.style.width = '100%';
+    panel.style.minWidth = '0';
+
+    const criteriaCard = div('feature-row__summary familysuitability-card');
+
+    const criteriaHead = document.createElement('div');
+    criteriaHead.style.display = 'flex';
+    criteriaHead.style.justifyContent = 'space-between';
+    criteriaHead.style.alignItems = 'center';
+    criteriaHead.style.gap = '10px';
+    criteriaHead.style.flexWrap = 'wrap';
+    const criteriaTitle = document.createElement('strong');
+    criteriaTitle.textContent = '기준 엑셀';
+    const criteriaActions = div('feature-row__actions');
+    criteriaActions.style.display = 'flex';
+    criteriaActions.style.gap = '8px';
+    const browseBtn = document.createElement('button');
+    browseBtn.type = 'button';
+    browseBtn.className = 'btn btn--secondary';
+    browseBtn.textContent = '엑셀 선택';
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'btn btn--ghost';
+    clearBtn.textContent = '비우기';
+    criteriaActions.append(browseBtn, clearBtn);
+    criteriaHead.append(criteriaTitle, criteriaActions);
+
+    const criteriaPath = makeField('기준 파일 경로', 'parameterstandard-criteria', '시트명은 파라미터명, B2 아래는 허용값', 'text');
+    criteriaPath.input.readOnly = true;
+    criteriaPath.input.placeholder = '속성 모수 기준 엑셀 파일을 선택해 주세요.';
+    criteriaPath.field.style.margin = '0';
+
+    const criteriaSummary = document.createElement('div');
+    criteriaSummary.className = 'feature-note';
+
+    const guide = document.createElement('ul');
+    guide.className = 'help-list';
+    guide.style.margin = '0';
+    guide.style.padding = '0';
+    guide.style.listStyle = 'none';
+    guide.style.display = 'grid';
+    guide.style.gap = '8px';
+    [
+      '엑셀 시트명은 검토할 파라미터명으로 사용합니다.',
+      '각 시트의 B1은 확인용 파라미터명, B2 아래 값들은 허용값으로 사용합니다.',
+      '기준값에 “(공란)”이 있으면 실제 빈 값도 정상으로 통과합니다.',
+      '검토 대상과 추가 추출 파라미터는 BQC 공통 설정을 그대로 따릅니다.'
+    ].forEach((text) => {
+      const item = document.createElement('li');
+      item.textContent = text;
+      item.style.padding = '10px 12px';
+      item.style.borderRadius = '8px';
+      item.style.border = '1px solid var(--border-soft)';
+      item.style.background = 'var(--surface-help)';
+      guide.append(item);
+    });
+
+    const warningList = document.createElement('div');
+    warningList.className = 'feature-note';
+
+    criteriaCard.append(criteriaHead, criteriaPath.field, criteriaSummary, warningList, guide);
+    panel.append(criteriaCard);
+
+    function renderCriteriaSummary() {
+      const draft = state.features.parameterstandard.configDraft || {};
+      const parameterCount = Number(draft.criteriaParameterCount) || 0;
+      const valueCount = Number(draft.criteriaValueCount) || 0;
+      const sheetCount = Number(draft.criteriaSheetCount) || 0;
+      const blankAllowedCount = Number(draft.blankAllowedCount) || 0;
+      const warningCount = Number(draft.warningCount) || 0;
+      const fileLabel = getParameterStandardCriteriaLabel(draft.criteriaExcelPath);
+      criteriaPath.input.value = draft.criteriaExcelPath || '';
+      if (!draft.criteriaExcelPath) {
+        criteriaSummary.textContent = '기준 엑셀을 선택하면 시트별 파라미터 기준값 수를 바로 확인합니다.';
+        warningList.textContent = '';
+        warningList.style.display = 'none';
+        return;
+      }
+      const stats = [];
+      if (sheetCount) stats.push(`시트 ${sheetCount}개`);
+      if (parameterCount) stats.push(`기준 파라미터 ${parameterCount}개`);
+      if (valueCount) stats.push(`허용값 ${valueCount}개`);
+      if (blankAllowedCount) stats.push(`공란 허용 ${blankAllowedCount}개`);
+      criteriaSummary.textContent = stats.length
+        ? `${fileLabel} · ${stats.join(' · ')}`
+        : `${fileLabel} · 기준 엑셀을 사용합니다.`;
+
+      const warnings = Array.isArray(draft.warnings) ? draft.warnings.filter(Boolean) : [];
+      if (warningCount || warnings.length) {
+        warningList.style.display = 'block';
+        warningList.textContent = warnings.length
+          ? `기준 엑셀 경고 ${warningCount || warnings.length}건 · ${warnings.slice(0, 3).join(' / ')}`
+          : `기준 엑셀 경고 ${warningCount}건`;
+      } else {
+        warningList.textContent = '';
+        warningList.style.display = 'none';
+      }
+    }
+
+    function collectDraft() {
+      const draft = state.features.parameterstandard.configDraft;
+      Object.assign(draft, createParameterStandardConfigSnapshot(draft));
+      return draft;
+    }
+
+    function applyCriteriaPicked(payload) {
+      if (payload?.ok === false) {
+        toast(payload?.message || '속성 모수 기준 엑셀을 읽지 못했습니다. 선택한 파일이 열 수 있는 엑셀 파일인지 확인해 주세요.', 'err');
+        return;
+      }
+      const draft = state.features.parameterstandard.configDraft;
+      draft.criteriaExcelPath = String(payload?.path || '').trim();
+      draft.criteriaParameterCount = Number(payload?.parameterCount) || 0;
+      draft.criteriaValueCount = Number(payload?.valueCount) || 0;
+      draft.criteriaSheetCount = Number(payload?.sheetCount) || 0;
+      draft.blankAllowedCount = Number(payload?.blankAllowedCount) || 0;
+      draft.warningCount = Number(payload?.warningCount) || 0;
+      draft.warnings = Array.isArray(payload?.warnings) ? payload.warnings.map((item) => String(item || '').trim()).filter(Boolean) : [];
+      markFeatureDirty('parameterstandard');
+      renderCriteriaSummary();
+      refreshParameterStandardFeatureSummary();
+      toast('속성 모수 기준 엑셀을 불러왔습니다.', draft.warningCount ? 'warn' : 'ok');
+    }
+
+    browseBtn.addEventListener('click', () => {
+      post('parameterstandard:pick-criteria', { source: 'multi' });
+    });
+    clearBtn.addEventListener('click', () => {
+      const draft = state.features.parameterstandard.configDraft;
+      Object.assign(draft, createParameterStandardConfigSnapshot({}));
+      markFeatureDirty('parameterstandard');
+      renderCriteriaSummary();
+      refreshParameterStandardFeatureSummary();
+    });
+
+    buildParameterStandardConfig.applyCriteriaPicked = applyCriteriaPicked;
+    renderCriteriaSummary();
+    return {
+      panel,
+      controls: {
+        criteriaPath,
+        criteriaSummary,
+        warningList,
+        renderCriteriaSummary,
         collectDraft
       }
     };
@@ -5360,6 +5756,9 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'parametermissing') {
       return createParameterMissingSerializableConfig(config);
     }
+    if (key === 'parameterstandard') {
+      return createParameterStandardConfigSnapshot(config);
+    }
     return deepCopy(config || {});
   }
 
@@ -5596,6 +5995,9 @@ function buildConditionExtractWorkflowRow() {
   function buildFavoriteFeatureDraftFromPreset(key, baseConfig, incomingConfig) {
     if (key === 'parametermissing') {
       return createParameterMissingConfigSnapshot(incomingConfig || {});
+    }
+    if (key === 'parameterstandard') {
+      return createParameterStandardConfigSnapshot(incomingConfig || {});
     }
     return mergeFavoritePresetConfig(baseConfig, incomingConfig);
   }
@@ -6365,7 +6767,13 @@ function buildConditionExtractWorkflowRow() {
         existing.issues = (Number(existing.issues) || 0) + (Number(item?.issues) || 0);
         existing.near = (Number(existing.near) || 0) + (Number(item?.near) || 0);
         existing.status = existing.status || getReviewItemStatus(item);
-        if (!existing.reason && getReviewItemReason(item)) existing.reason = getReviewItemReason(item);
+        let itemReason = getReviewItemReason(item);
+        if (key === 'unconnected' && (item?.unconnectedIssues !== undefined || item?.centerAxisIssues !== undefined)) {
+          itemReason = `미연결 ${Number(item?.unconnectedIssues) || 0}건 / 중심축 ${Number(item?.centerAxisIssues) || 0}건`;
+        }
+        if (itemReason && String(existing.reason || '').indexOf(itemReason) < 0) {
+          existing.reason = existing.reason ? `${existing.reason} / ${itemReason}` : itemReason;
+        }
         byFile.set(file, existing);
       });
     });
@@ -6387,6 +6795,7 @@ function buildConditionExtractWorkflowRow() {
 
   function getFeatureExportActionLabel(key) {
     if (key === 'connector') return '커넥터 결과 엑셀';
+    if (key === 'unconnected') return '미연결 결과 엑셀';
     if (key === 'floorinfo') return '층정보 결과 엑셀';
     if (key === 'familysuitability') return '패밀리 타입 적합성 결과 엑셀';
     if (key === 'tapalign') return '탭/분기 축 결과 엑셀';
@@ -6398,6 +6807,7 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'worksetassignment') return '웍셋 배정 결과 엑셀';
     if (key === 'parameterduplication') return '파라미터 중복 결과 엑셀';
     if (key === 'parametermissing') return '파라미터 누락 결과 엑셀';
+    if (key === 'parameterstandard') return '속성 모수 결과 엑셀';
     if (key === 'guid') return 'GUID 결과 엑셀';
     if (key === 'familylink') return '패밀리 연동 결과 엑셀';
     if (key === 'points') return '기준점/북각 결과 엑셀';
@@ -6575,6 +6985,7 @@ function buildConditionExtractWorkflowRow() {
   function syncFeatureRow(key) {
     updateSelectedFeatureRow(key);
     if (key === 'connector') refreshConnectorFeatureSummary();
+    if (key === 'unconnected') refreshUnconnectedFeatureSummary();
     if (key === 'floorinfo') refreshFloorInfoFeatureSummary();
     if (key === 'familysuitability') refreshFamilySuitabilityFeatureSummary();
     if (key === 'tapalign') refreshTapAlignFeatureSummary();
@@ -6712,6 +7123,11 @@ function buildConditionExtractWorkflowRow() {
       if (!config.parameterNames.length) return '파라미터 누락 검토 대상 파라미터를 1개 이상 선택해 주세요.';
       if (hasIncompleteParameterMissingConfig(config)) return '파라미터 누락 검토의 객체 필터 또는 누락 예외 조건을 모두 입력해 주세요.';
     }
+    if (state.features.parameterstandard.enabled) {
+      const config = createParameterStandardConfigSnapshot(state.features.parameterstandard.configCommitted || {});
+      if (!config.criteriaExcelPath) return '속성 모수 검토 기준 엑셀 파일을 선택해 주세요.';
+      if (!config.criteriaParameterCount) return '속성 모수 검토 기준 엑셀에서 사용할 기준값을 확인해 주세요.';
+    }
     if (options.requireRvt && !state.rvtList.length) return 'RVT 파일을 추가해 주세요.';
     if (options.requireRvt && !getCheckedRvtPaths().length) return '검토할 RVT를 1개 이상 선택해 주세요.';
     return '';
@@ -6727,6 +7143,7 @@ function buildConditionExtractWorkflowRow() {
       commonOptions: state.common.configCommitted,
       features: {
         connector: buildCommittedFeature('connector'),
+        unconnected: buildCommittedFeature('unconnected'),
         floorinfo: buildCommittedFeature('floorinfo'),
         familysuitability: buildCommittedFeature('familysuitability'),
         tapalign: buildCommittedFeature('tapalign'),
@@ -6734,6 +7151,7 @@ function buildConditionExtractWorkflowRow() {
         worksetassignment: buildCommittedFeature('worksetassignment'),
         parameterduplication: buildCommittedFeature('parameterduplication'),
         parametermissing: buildCommittedFeature('parametermissing'),
+        parameterstandard: buildCommittedFeature('parameterstandard'),
         guid: buildCommittedFeature('guid'),
         familylink: buildCommittedFeature('familylink'),
         points: buildCommittedFeature('points'),
@@ -7142,6 +7560,9 @@ function buildConditionExtractWorkflowRow() {
       if (key === 'familysuitability' && state.ui.controls.familysuitability?.collectDraft) {
         state.ui.controls.familysuitability.collectDraft();
       }
+      if (key === 'unconnected' && state.ui.controls.unconnected?.collectDraft) {
+        state.ui.controls.unconnected.collectDraft();
+      }
       commitConfig(state.features[key]);
       if (key === 'familysuitability') {
         persistFamilySuitabilityConfig(state.features.familysuitability.configCommitted);
@@ -7358,6 +7779,12 @@ function buildConditionExtractWorkflowRow() {
         return { label: '설정 필요', className: 'chip--warn' };
       }
     }
+    if (state.ui.activeFeatureKey === 'parameterstandard') {
+      const committed = createParameterStandardConfigSnapshot(feature.configCommitted || {});
+      if (!committed.criteriaExcelPath || !committed.criteriaParameterCount) {
+        return { label: '설정 필요', className: 'chip--warn' };
+      }
+    }
     if (state.ui.activeFeatureKey === 'floorinfo') {
       const committed = feature.configCommitted || {};
       const rules = normalizeFloorInfoRules(committed.levelRules);
@@ -7392,6 +7819,7 @@ function buildConditionExtractWorkflowRow() {
     updateSelectedFeatureRow(key);
     updateDrawerBadge(key);
     if (key === 'connector') refreshConnectorFeatureSummary();
+    if (key === 'unconnected') refreshUnconnectedFeatureSummary();
     if (key === 'floorinfo') refreshFloorInfoFeatureSummary();
     if (key === 'familysuitability') refreshFamilySuitabilityFeatureSummary();
     if (key === 'tapalign') refreshTapAlignFeatureSummary();
@@ -7399,6 +7827,7 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'worksetassignment') refreshWorksetAssignmentFeatureSummary();
     if (key === 'parameterduplication') refreshParameterDuplicationFeatureSummary();
     if (key === 'parametermissing') refreshParameterMissingFeatureSummary();
+    if (key === 'parameterstandard') refreshParameterStandardFeatureSummary();
   }
 
   function buildCommonSummary() {
@@ -7419,8 +7848,10 @@ function buildConditionExtractWorkflowRow() {
     }
     updateActionSummaryVisibility();
     updateFeatureSummary('connector');
+    updateFeatureSummary('unconnected');
     updateFeatureSummary('tapalign');
     updateFeatureSummary('dupclash');
+    updateFeatureSummary('parameterstandard');
     if (state.ui.controls.tapalign?.renderCommonSummary) state.ui.controls.tapalign.renderCommonSummary();
     if (state.ui.controls.dupclash?.renderCommonSummary) state.ui.controls.dupclash.renderCommonSummary();
   }
@@ -7479,6 +7910,13 @@ function buildConditionExtractWorkflowRow() {
         '좌표 X/Y 옵션을 켜면 결과 엑셀에 좌표 열이 자동으로 추가됩니다.',
         '선형 길이/방향 벡터 옵션을 켜면 결과 엑셀에 선형 길이(Curve Length)와 방향 벡터(Direction X/Y/Z) 열이 함께 추가됩니다.',
         '허용 범위와 단위는 기존 커넥터 검토 로직 그대로 적용됩니다.'
+      ];
+    }
+    if (key === 'unconnected') {
+      return [
+        '기본 검토는 커넥터가 있는 객체의 연결 여부만 객체 단위로 계산합니다.',
+        '중심축 연결 검토는 필요한 경우에만 켜 주세요. 미연결 설정의 허용 범위와 단위를 사용해 같은 엑셀 양식에 함께 출력됩니다.',
+        '검토 범위는 BQC 공통 설정의 검토 대상 필터와 제외 필터를 따릅니다.'
       ];
     }
     if (key === 'floorinfo') {
@@ -7549,6 +7987,15 @@ function buildConditionExtractWorkflowRow() {
         '누락 예외 필터는 선택한 파라미터마다 따로 설정하며, 조건이 맞으면 비어 있어도 누락으로 보지 않습니다.',
         '최근 적용한 설정은 자동으로 기억하며, 현재 설정은 파일로 저장하거나 다시 불러올 수 있습니다.',
         '값이 필요한 조건은 파라미터명과 값을 함께 입력하고, 값 있음 / 값 없음 조건은 값 없이 사용할 수 있습니다.'
+      ];
+    }
+    if (key === 'parameterstandard') {
+      return [
+        '기준 엑셀의 각 시트명을 파라미터명으로 사용합니다.',
+        '각 시트 B1은 확인용 이름이고, 실제 허용값은 B2부터 아래 방향으로 읽습니다.',
+        '기준값에 “(공란)”이 있으면 모델 객체의 빈 값도 정상으로 통과합니다.',
+        '검토 대상은 조건별 객체 속성 추출과 같은 스케줄 가능 모델 객체이며, BQC 공통 필터를 그대로 따릅니다.',
+        '공통 옵션의 추가 파라미터 값은 오류 결과 엑셀 열로 함께 저장합니다.'
       ];
     }
     if (key === 'familylink') {
@@ -8406,6 +8853,27 @@ function buildConditionExtractWorkflowRow() {
     return parts.length ? parts[parts.length - 1] : text;
   }
 
+  function createParameterStandardConfigSnapshot(raw = {}) {
+    return {
+      criteriaExcelPath: String(raw?.criteriaExcelPath || '').trim(),
+      criteriaParameterCount: Number(raw?.criteriaParameterCount) || 0,
+      criteriaValueCount: Number(raw?.criteriaValueCount) || 0,
+      criteriaSheetCount: Number(raw?.criteriaSheetCount) || 0,
+      blankAllowedCount: Number(raw?.blankAllowedCount) || 0,
+      warningCount: Number(raw?.warningCount) || 0,
+      warnings: Array.isArray(raw?.warnings)
+        ? raw.warnings.map((item) => String(item || '').trim()).filter(Boolean).slice(0, 20)
+        : []
+    };
+  }
+
+  function getParameterStandardCriteriaLabel(path) {
+    const text = String(path || '').trim();
+    if (!text) return '기준 엑셀이 선택되지 않았습니다.';
+    const parts = text.split(/[\\/]/).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : text;
+  }
+
   function requestFloorInfoConfig(context = 'manual') {
     post('floorinfo:config-load', { source: 'multi', context });
   }
@@ -8445,6 +8913,41 @@ function buildConditionExtractWorkflowRow() {
     ], {
       title: FEATURE_META.connector?.label || '파라미터 값 연속성 검토',
       desc: `${FEATURE_META.connector?.desc || ''} ${target.sub.textContent}`.trim()
+    });
+  }
+
+  function refreshUnconnectedFeatureSummary() {
+    const target = state.ui.unconnectedSummary;
+    if (!target) return;
+    const feature = state.features.unconnected;
+    const common = state.common.configCommitted || {};
+    const includeFilter = String(common.targetFilter || '').trim();
+    const excludeFilter = String(common.excludeTargetFilter || '').trim();
+    const hasCommonScope = !!includeFilter || !!excludeFilter;
+    const scopeText = hasCommonScope
+      ? `포함 ${includeFilter || '없음'} · 제외 ${excludeFilter || '없음'}`
+      : '공통 필터가 없습니다.';
+    const centerAxisEnabled = !!(feature.configDraft?.includeCenterAxisCheck ?? feature.configCommitted?.includeCenterAxisCheck);
+    const centerAxisTolRaw = feature.configDraft?.centerAxisTol ?? feature.configCommitted?.centerAxisTol ?? 0.5;
+    const centerAxisTol = Number.isFinite(Number(centerAxisTolRaw)) && Number(centerAxisTolRaw) > 0 ? Number(centerAxisTolRaw) : 0.5;
+    const centerAxisUnit = normalizeTapAlignUnit(feature.configDraft?.centerAxisUnit || feature.configCommitted?.centerAxisUnit || 'mm');
+    const centerAxisText = centerAxisEnabled
+      ? `중심축 연결 검토 포함 · 허용 ${centerAxisTol} ${centerAxisUnit}`
+      : '중심축 연결 검토 제외';
+
+    target.top.textContent = feature.enabled
+      ? '선택 완료 · 커넥터가 있는 객체의 미연결 상태를 객체 단위로 검토합니다.'
+      : '필요할 때만 켜서 배관, 덕트, 트레이, 컨듀잇과 피팅류의 미연결 상태를 확인해 주세요.';
+    target.sub.textContent = `${scopeText} · ${centerAxisText} · 결과는 객체별 전체/일부 미연결로 구분됩니다.`;
+    target.row.classList.toggle('is-active', !!feature.enabled);
+    applyFeatureRowTooltip(target.row, [
+      FEATURE_META.unconnected?.label || '미연결 검토',
+      FEATURE_META.unconnected?.desc || '',
+      target.top.textContent,
+      target.sub.textContent
+    ], {
+      title: FEATURE_META.unconnected?.label || '미연결 검토',
+      desc: `${FEATURE_META.unconnected?.desc || ''} ${target.sub.textContent}`.trim()
     });
   }
 
@@ -8727,6 +9230,50 @@ function buildConditionExtractWorkflowRow() {
     });
   }
 
+  function refreshParameterStandardFeatureSummary() {
+    const target = state.ui.parameterStandardSummary;
+    if (!target) return;
+    const feature = state.features.parameterstandard;
+    const draft = createParameterStandardConfigSnapshot(feature.configDraft || {});
+    const committed = createParameterStandardConfigSnapshot(feature.configCommitted || {});
+    const config = feature.dirty ? draft : (draft.criteriaExcelPath || committed.criteriaExcelPath ? draft : committed);
+    const criteriaPath = String(config.criteriaExcelPath || '').trim();
+    const parameterCount = Number(config.criteriaParameterCount) || 0;
+    const valueCount = Number(config.criteriaValueCount) || 0;
+    const sheetCount = Number(config.criteriaSheetCount) || 0;
+    const blankAllowedCount = Number(config.blankAllowedCount) || 0;
+    const warningCount = Number(config.warningCount) || 0;
+    const common = state.common.configCommitted || {};
+    const commonExtraCount = String(common.extraParams || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .length;
+    const hasCommonScope = !!String(common.targetFilter || '').trim() || !!String(common.excludeTargetFilter || '').trim();
+
+    if (!feature.enabled) {
+      target.top.textContent = '보조 기능입니다. 필요할 때만 켜서 기준 엑셀의 허용값과 모델 속성값을 비교해 주세요.';
+    } else if (!criteriaPath || !parameterCount) {
+      target.top.textContent = '선택 완료 · 기준 엑셀을 선택하면 바로 실행할 수 있습니다.';
+    } else {
+      target.top.textContent = '선택 완료 · 스케줄 가능 모델 객체의 속성값을 기준 엑셀 허용값과 비교합니다.';
+    }
+
+    const fileLabel = getParameterStandardCriteriaLabel(criteriaPath);
+    const warningText = warningCount ? ` · 경고 ${warningCount}건` : '';
+    target.sub.textContent = `${fileLabel} · 시트 ${sheetCount}개 · 기준 파라미터 ${parameterCount}개 · 허용값 ${valueCount}개 · 공란 허용 ${blankAllowedCount}개 · ${hasCommonScope ? '공통 필터 적용됨' : '공통 필터가 없습니다.'} · 추가 추출 ${commonExtraCount}개${warningText}`;
+    target.row.classList.toggle('is-active', !!feature.enabled);
+    applyFeatureRowTooltip(target.row, [
+      FEATURE_META.parameterstandard?.label || '속성 모수 검토',
+      FEATURE_META.parameterstandard?.desc || '',
+      target.top.textContent,
+      target.sub.textContent
+    ], {
+      title: FEATURE_META.parameterstandard?.label || '속성 모수 검토',
+      desc: `${FEATURE_META.parameterstandard?.desc || ''} ${target.sub.textContent}`.trim()
+    });
+  }
+
   function renderSelectedFeatures() {
     if (!state.ui.selectedTableBody) return;
     const enabledKeys = FEATURE_KEYS.filter((key) => state.features[key].enabled);
@@ -8852,6 +9399,12 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'parametermissing') {
       const config = createParameterMissingConfigSnapshot(feature.configCommitted || {});
       if (!config.parameterNames.length || hasIncompleteParameterMissingConfig(config)) {
+        return { label: '설정 필요', className: 'status-chip--warn' };
+      }
+    }
+    if (key === 'parameterstandard') {
+      const config = createParameterStandardConfigSnapshot(feature.configCommitted || {});
+      if (!config.criteriaExcelPath || !config.criteriaParameterCount) {
         return { label: '설정 필요', className: 'status-chip--warn' };
       }
     }
@@ -9135,6 +9688,32 @@ function buildConditionExtractWorkflowRow() {
     }
   }
 
+  function loadParameterStandardConfigFromStorage() {
+    let stored = null;
+    try {
+      const raw = localStorage.getItem(PARAMETER_STANDARD_STORAGE_KEY);
+      if (raw) stored = JSON.parse(raw);
+    } catch {
+      stored = null;
+    }
+
+    const config = createParameterStandardConfigSnapshot(stored || {});
+    return {
+      config,
+      hasStored: !!stored && !!config.criteriaExcelPath
+    };
+  }
+
+  function persistParameterStandardConfig(committed) {
+    try {
+      localStorage.setItem(
+        PARAMETER_STANDARD_STORAGE_KEY,
+        JSON.stringify(createParameterStandardConfigSnapshot(committed))
+      );
+    } catch {
+    }
+  }
+
   function loadParameterMissingConfigFromStorage() {
     let stored = null;
     try {
@@ -9261,6 +9840,12 @@ function buildConditionExtractWorkflowRow() {
         ...createParameterMissingConfigSnapshot(feature.configCommitted || {})
       };
     }
+    if (key === 'parameterstandard') {
+      return {
+        enabled: feature.enabled,
+        ...createParameterStandardConfigSnapshot(feature.configCommitted || {})
+      };
+    }
     if (key === 'connector') {
       const committed = deepCopy(feature.configCommitted || {});
       committed.paramItems = normalizeConnectorParamNames(committed.paramItems && committed.paramItems.length ? committed.paramItems : committed.param);
@@ -9268,6 +9853,16 @@ function buildConditionExtractWorkflowRow() {
       return {
         enabled: feature.enabled,
         ...committed
+      };
+    }
+    if (key === 'unconnected') {
+      const committed = deepCopy(feature.configCommitted || {});
+      const centerAxisTol = parseFloat(committed.centerAxisTol);
+      return {
+        enabled: feature.enabled,
+        includeCenterAxisCheck: !!committed.includeCenterAxisCheck,
+        centerAxisTol: Number.isFinite(centerAxisTol) && centerAxisTol > 0 ? centerAxisTol : 0.5,
+        centerAxisUnit: normalizeTapAlignUnit(committed.centerAxisUnit || 'mm')
       };
     }
     if (key === 'tapalign') {
@@ -9325,6 +9920,12 @@ function buildConditionExtractWorkflowRow() {
       target.configDraft.paramItems = normalizeConnectorParamNames(target.configDraft.paramItems && target.configDraft.paramItems.length ? target.configDraft.paramItems : target.configDraft.param);
       target.configDraft.param = target.configDraft.paramItems.join(',') || 'Comments';
     }
+    if (state.ui.activeFeatureKey === 'unconnected') {
+      target.configDraft.includeCenterAxisCheck = !!target.configDraft.includeCenterAxisCheck;
+      const centerAxisTol = parseFloat(target.configDraft.centerAxisTol);
+      target.configDraft.centerAxisTol = Number.isFinite(centerAxisTol) && centerAxisTol > 0 ? centerAxisTol : 0.5;
+      target.configDraft.centerAxisUnit = normalizeTapAlignUnit(target.configDraft.centerAxisUnit || 'mm');
+    }
     if (state.ui.activeFeatureKey === 'tapalign') {
       target.configDraft.tol = Math.max(0, parseFloat(target.configDraft.tol) || 0.5);
       target.configDraft.unit = normalizeTapAlignUnit(target.configDraft.unit);
@@ -9357,6 +9958,12 @@ function buildConditionExtractWorkflowRow() {
       }
       Object.assign(target.configDraft, createParameterMissingConfigSnapshot(target.configDraft));
     }
+    if (state.ui.activeFeatureKey === 'parameterstandard') {
+      if (state.ui.modalOpen && typeof state.ui.controls.parameterstandard?.collectDraft === 'function') {
+        state.ui.controls.parameterstandard.collectDraft();
+      }
+      Object.assign(target.configDraft, createParameterStandardConfigSnapshot(target.configDraft));
+    }
     if (state.ui.activeFeatureKey === 'worksetassignment') {
       target.configDraft.expectedWorksetName = String(target.configDraft.expectedWorksetName || 'Workset1').trim() || 'Workset1';
       target.configDraft.flaggedWorksetName = String(target.configDraft.flaggedWorksetName || '').trim();
@@ -9372,6 +9979,9 @@ function buildConditionExtractWorkflowRow() {
     if (state.ui.activeFeatureKey === 'parametermissing') {
       persistParameterMissingConfig(target.configCommitted);
       rememberParameterMissingRecent(target.configCommitted);
+    }
+    if (state.ui.activeFeatureKey === 'parameterstandard') {
+      persistParameterStandardConfig(target.configCommitted);
     }
     target.applied = true;
     target.dirty = false;
@@ -9420,6 +10030,9 @@ function buildConditionExtractWorkflowRow() {
     }
     if (key === 'parametermissing') {
       Object.assign(feature.configDraft, createParameterMissingConfigSnapshot(feature.configDraft));
+    }
+    if (key === 'parameterstandard') {
+      Object.assign(feature.configDraft, createParameterStandardConfigSnapshot(feature.configDraft));
     }
     if (key === 'worksetassignment') {
       feature.configDraft.expectedWorksetName = String(feature.configDraft.expectedWorksetName || 'Workset1').trim() || 'Workset1';
@@ -9502,6 +10115,12 @@ function buildConditionExtractWorkflowRow() {
       if (controls.searchInput) controls.searchInput.value = '';
       if (controls.renderConnectorList) controls.renderConnectorList();
       if (controls.renderConnectorSelected) controls.renderConnectorSelected();
+    } else if (key === 'unconnected') {
+      const draft = state.features.unconnected.configDraft || {};
+      if (controls.centerAxis?.input) controls.centerAxis.input.checked = !!draft.includeCenterAxisCheck;
+      if (controls.centerAxisTol?.input) controls.centerAxisTol.input.value = draft.centerAxisTol ?? 0.5;
+      if (controls.centerAxisUnit?.select) controls.centerAxisUnit.select.value = normalizeTapAlignUnit(draft.centerAxisUnit || 'mm');
+      if (typeof controls.renderCenterAxisState === 'function') controls.renderCenterAxisState();
     } else if (key === 'tapalign') {
       const draft = state.features.tapalign.configDraft;
       controls.tol.input.value = draft.tol;
@@ -9554,6 +10173,11 @@ function buildConditionExtractWorkflowRow() {
       if (typeof controls.renderTargetFilterRows === 'function') controls.renderTargetFilterRows();
       if (typeof controls.renderExceptionRules === 'function') controls.renderExceptionRules();
       if (typeof controls.renderRecentOptions === 'function') controls.renderRecentOptions();
+    } else if (key === 'parameterstandard') {
+      const draft = state.features.parameterstandard.configDraft || {};
+      Object.assign(draft, createParameterStandardConfigSnapshot(draft));
+      if (controls.criteriaPath?.input) controls.criteriaPath.input.value = draft.criteriaExcelPath || '';
+      if (typeof controls.renderCriteriaSummary === 'function') controls.renderCriteriaSummary();
     } else if (key === 'worksetassignment') {
       const draft = state.features.worksetassignment.configDraft || {};
       if (controls.flaggedWorkset?.input) controls.flaggedWorkset.input.value = String(draft.flaggedWorksetName || '').trim();

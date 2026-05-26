@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -223,7 +223,7 @@ namespace KKY_Tool_Revit.Services
 
             ElementFilter filter = CreateElementFilter(doc, profile, log);
             HashSet<int> candidateIdSet = candidateIds != null
-                ? new HashSet<int>(candidateIds.Where(x => x != null && x != ElementId.InvalidElementId).Select(x => x.IntegerValue))
+                ? new HashSet<int>(candidateIds.Where(x => x != null && x != ElementId.InvalidElementId).Select(x => x.CompatIntegerValue()))
                 : null;
 
             ICollection<ElementId> categoryIds = ResolveCategories(doc, profile.GetCategoryTokens(), log);
@@ -239,7 +239,7 @@ namespace KKY_Tool_Revit.Services
                 foreach (Element element in collector)
                 {
                     if (element == null) continue;
-                    if (candidateIdSet != null && !candidateIdSet.Contains(element.Id.IntegerValue)) continue;
+                    if (candidateIdSet != null && !candidateIdSet.Contains(element.Id.CompatIntegerValue())) continue;
                     results.Add(element.Id);
                 }
             }
@@ -255,7 +255,7 @@ namespace KKY_Tool_Revit.Services
             if (filterId == null || filterId == ElementId.InvalidElementId) return;
 
             ICollection<ElementId> filters = view.GetFilters();
-            bool alreadyApplied = filters.Any(x => x.IntegerValue == filterId.IntegerValue);
+            bool alreadyApplied = filters.Any(x => x.CompatIntegerValue() == filterId.CompatIntegerValue());
 
             if (!alreadyApplied)
             {
@@ -374,10 +374,10 @@ namespace KKY_Tool_Revit.Services
                 return false;
             }
 
-            HashSet<int> matched = new HashSet<int>(matchedElementIds.Select(x => x.IntegerValue));
+            HashSet<int> matched = new HashSet<int>(matchedElementIds.Select(x => x.CompatIntegerValue()));
             foreach (ElementId id in visibleModelElementIds)
             {
-                if (!matched.Contains(id.IntegerValue))
+                if (!matched.Contains(id.CompatIntegerValue()))
                 {
                     return false;
                 }
@@ -981,15 +981,15 @@ namespace KKY_Tool_Revit.Services
         {
             if (categoryId == null || categoryId == ElementId.InvalidElementId) return string.Empty;
 
-            if (categoryId.IntegerValue < 0 && Enum.IsDefined(typeof(BuiltInCategory), categoryId.IntegerValue))
+            if (categoryId.CompatIntegerValue() < 0 && Enum.IsDefined(typeof(BuiltInCategory), categoryId.CompatIntegerValue()))
             {
-                return ((BuiltInCategory)categoryId.IntegerValue).ToString();
+                return ((BuiltInCategory)categoryId.CompatIntegerValue()).ToString();
             }
 
             Category category = doc.Settings.Categories.Cast<Category>()
-                .FirstOrDefault(x => x != null && x.Id.IntegerValue == categoryId.IntegerValue);
+                .FirstOrDefault(x => x != null && x.Id.CompatIntegerValue() == categoryId.CompatIntegerValue());
 
-            return category?.Name ?? categoryId.IntegerValue.ToString(CultureInfo.InvariantCulture);
+            return category?.Name ?? categoryId.CompatIntegerValue().ToString(CultureInfo.InvariantCulture);
         }
 
         private static string ToParameterToken(Document doc, ElementId parameterId)
@@ -1004,9 +1004,9 @@ namespace KKY_Tool_Revit.Services
                 throw new InvalidOperationException("필터 규칙의 파라미터를 확인할 수 없습니다.");
             }
 
-            if (parameterId.IntegerValue < 0 && Enum.IsDefined(typeof(BuiltInParameter), parameterId.IntegerValue))
+            if (parameterId.CompatIntegerValue() < 0 && Enum.IsDefined(typeof(BuiltInParameter), parameterId.CompatIntegerValue()))
             {
-                string bipName = ((BuiltInParameter)parameterId.IntegerValue).ToString();
+                string bipName = ((BuiltInParameter)parameterId.CompatIntegerValue()).ToString();
                 return new ParameterDescriptor
                 {
                     ParameterToken = "BIP:" + bipName,
@@ -1036,7 +1036,7 @@ namespace KKY_Tool_Revit.Services
                 string parameterName = GetParameterElementName(parameterElementBase);
                 return new ParameterDescriptor
                 {
-                    ParameterToken = !string.IsNullOrWhiteSpace(parameterName) ? parameterName : parameterElementBase.Id.IntegerValue.ToString(CultureInfo.InvariantCulture),
+                    ParameterToken = !string.IsNullOrWhiteSpace(parameterName) ? parameterName : parameterElementBase.Id.CompatIntegerValue().ToString(CultureInfo.InvariantCulture),
                     ParameterName = parameterName ?? string.Empty,
                     ParameterGuid = string.Empty,
                     ParameterKind = "ParameterElement"
@@ -1046,7 +1046,7 @@ namespace KKY_Tool_Revit.Services
             string definitionName = TryGetParameterDefinitionName(parameterElement);
             return new ParameterDescriptor
             {
-                ParameterToken = !string.IsNullOrWhiteSpace(definitionName) ? definitionName : parameterId.IntegerValue.ToString(CultureInfo.InvariantCulture),
+                ParameterToken = !string.IsNullOrWhiteSpace(definitionName) ? definitionName : parameterId.CompatIntegerValue().ToString(CultureInfo.InvariantCulture),
                 ParameterName = definitionName ?? string.Empty,
                 ParameterGuid = string.Empty,
                 ParameterKind = parameterElement != null ? parameterElement.GetType().Name : "Unknown"
@@ -1126,7 +1126,7 @@ namespace KKY_Tool_Revit.Services
             if (value == null) return string.Empty;
             if (value is ElementId elementId)
             {
-                return elementId.IntegerValue.ToString(CultureInfo.InvariantCulture);
+                return elementId.CompatIntegerValue().ToString(CultureInfo.InvariantCulture);
             }
 
             return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
@@ -1349,7 +1349,7 @@ namespace KKY_Tool_Revit.Services
             foreach (Parameter parameter in sampleElement.Parameters)
             {
                 if (parameter == null) continue;
-                if (parameter.Id.IntegerValue == parameterId.IntegerValue) return parameter.StorageType;
+                if (parameter.Id.CompatIntegerValue() == parameterId.CompatIntegerValue()) return parameter.StorageType;
             }
 
             return StorageType.String;
@@ -1363,7 +1363,7 @@ namespace KKY_Tool_Revit.Services
             foreach (Parameter parameter in sampleElement.Parameters)
             {
                 if (parameter?.Definition == null) continue;
-                if (parameter.Id.IntegerValue == parameterId.IntegerValue) return parameter.StorageType;
+                if (parameter.Id.CompatIntegerValue() == parameterId.CompatIntegerValue()) return parameter.StorageType;
                 if (string.Equals(parameter.Definition.Name, parameterToken, StringComparison.OrdinalIgnoreCase)) return parameter.StorageType;
             }
 
@@ -1432,15 +1432,15 @@ namespace KKY_Tool_Revit.Services
                     switch (op)
                     {
                         case FilterRuleOperator.Contains:
-                            return ParameterFilterRuleFactory.CreateContainsRule(parameterId, rawValue ?? string.Empty, false);
+                            return InvokeRuleFactoryRequired(new[] { "CreateContainsRule" }, parameterId, rawValue, false, 0.0001);
                         case FilterRuleOperator.NotContains:
                             return InvokeRuleFactoryRequired(new[] { "CreateNotContainsRule" }, parameterId, rawValue, false, 0.0001);
                         case FilterRuleOperator.BeginsWith:
-                            return ParameterFilterRuleFactory.CreateBeginsWithRule(parameterId, rawValue ?? string.Empty, false);
+                            return InvokeRuleFactoryRequired(new[] { "CreateBeginsWithRule" }, parameterId, rawValue, false, 0.0001);
                         case FilterRuleOperator.NotBeginsWith:
                             return InvokeRuleFactoryRequired(new[] { "CreateNotBeginsWithRule" }, parameterId, rawValue, false, 0.0001);
                         case FilterRuleOperator.EndsWith:
-                            return ParameterFilterRuleFactory.CreateEndsWithRule(parameterId, rawValue ?? string.Empty, false);
+                            return InvokeRuleFactoryRequired(new[] { "CreateEndsWithRule" }, parameterId, rawValue, false, 0.0001);
                         case FilterRuleOperator.NotEndsWith:
                             return InvokeRuleFactoryRequired(new[] { "CreateNotEndsWithRule" }, parameterId, rawValue, false, 0.0001);
                         case FilterRuleOperator.NotEquals:
@@ -1458,7 +1458,7 @@ namespace KKY_Tool_Revit.Services
                         case FilterRuleOperator.HasNoValue:
                             return InvokeRuleFactoryRequired(new[] { "CreateHasNoValueParameterRule" }, parameterId, rawValue, false, 0.0001);
                         default:
-                            return ParameterFilterRuleFactory.CreateEqualsRule(parameterId, rawValue ?? string.Empty, false);
+                            return InvokeRuleFactoryRequired(new[] { "CreateEqualsRule" }, parameterId, rawValue, false, 0.0001);
                     }
             }
         }
@@ -1469,12 +1469,12 @@ namespace KKY_Tool_Revit.Services
             {
                 if (ReferenceEquals(x, y)) return true;
                 if (ReferenceEquals(x, null) || ReferenceEquals(y, null)) return false;
-                return x.IntegerValue == y.IntegerValue;
+                return x.CompatIntegerValue() == y.CompatIntegerValue();
             }
 
             public int GetHashCode(ElementId obj)
             {
-                return obj?.IntegerValue ?? 0;
+                return obj?.CompatIntegerValue() ?? 0;
             }
         }
 

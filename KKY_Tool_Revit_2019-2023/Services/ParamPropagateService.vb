@@ -1,4 +1,4 @@
-﻿Imports System
+Imports System
 Imports System.Collections
 Imports System.Collections.Generic
 Imports System.Data
@@ -130,7 +130,7 @@ Namespace Services
         Public Function IsFamilyShared(ownerDocCanEdit As Document, fam As Family) As Boolean
             If fam Is Nothing Then Return False
 
-            Dim key As Integer = fam.Id.IntegerValue
+            Dim key As Integer = fam.Id.IntValue()
             Dim cached As Boolean
             If _cache.TryGetValue(key, cached) Then Return cached
 
@@ -1895,11 +1895,11 @@ Namespace Services
                     childF = sym.Family
                 Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
                     failCnt += 1
-                    fails.Add($"{fi.Id.IntegerValue}:(verify-exception: {ex.Message})")
+                    fails.Add($"{fi.Id.IntValue()}:(verify-exception: {ex.Message})")
                     Continue For
                 Catch ex As Exception
                     failCnt += 1
-                    fails.Add($"{fi.Id.IntegerValue}:(verify-exception: {ex.Message})")
+                    fails.Add($"{fi.Id.IntValue()}:(verify-exception: {ex.Message})")
                     Continue For
                 End Try
 
@@ -1918,7 +1918,7 @@ Namespace Services
                         Dim hostParam As FamilyParameter = Nothing
                         If Not hostParams.TryGetValue(name, hostParam) OrElse hostParam Is Nothing Then
                             failCnt += 1
-                            fails.Add($"{fi.Id.IntegerValue}:{name} (host-missing)")
+                            fails.Add($"{fi.Id.IntValue()}:{name} (host-missing)")
                             Continue For
                         End If
 
@@ -1927,17 +1927,17 @@ Namespace Services
                             p = TryGetElementParameterByName(fi, name)
                         Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
                             failCnt += 1
-                            fails.Add($"{fi.Id.IntegerValue}:{name} (verify-exception: {ex.Message})")
+                            fails.Add($"{fi.Id.IntValue()}:{name} (verify-exception: {ex.Message})")
                             Continue For
                         Catch ex As Exception
                             failCnt += 1
-                            fails.Add($"{fi.Id.IntegerValue}:{name} (verify-exception: {ex.Message})")
+                            fails.Add($"{fi.Id.IntValue()}:{name} (verify-exception: {ex.Message})")
                             Continue For
                         End Try
 
                         If p Is Nothing Then
                             skipCnt += 1
-                            skipItems.Add($"{fi.Id.IntegerValue}:{name} (child-inst-missing)")
+                            skipItems.Add($"{fi.Id.IntValue()}:{name} (child-inst-missing)")
                             Continue For
                         End If
 
@@ -1946,11 +1946,11 @@ Namespace Services
                             associated = fm.GetAssociatedFamilyParameter(p)
                         Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
                             failCnt += 1
-                            fails.Add($"{fi.Id.IntegerValue}:{name} (verify-exception: {ex.Message})")
+                            fails.Add($"{fi.Id.IntValue()}:{name} (verify-exception: {ex.Message})")
                             Continue For
                         Catch ex As Exception
                             failCnt += 1
-                            fails.Add($"{fi.Id.IntegerValue}:{name} (verify-exception: {ex.Message})")
+                            fails.Add($"{fi.Id.IntValue()}:{name} (verify-exception: {ex.Message})")
                             Continue For
                         End Try
 
@@ -1958,16 +1958,16 @@ Namespace Services
                             okCnt += 1
                         Else
                             failCnt += 1
-                            fails.Add($"{fi.Id.IntegerValue}:{name} (not-associated)")
+                            fails.Add($"{fi.Id.IntValue()}:{name} (not-associated)")
                         End If
 
                     Catch ex As Autodesk.Revit.Exceptions.InvalidObjectException
                         failCnt += 1
-                        fails.Add($"{fi.Id.IntegerValue}:{name} (verify-exception: {ex.Message})")
+                        fails.Add($"{fi.Id.IntValue()}:{name} (verify-exception: {ex.Message})")
                         Continue For
                     Catch ex As Exception
                         failCnt += 1
-                        fails.Add($"{fi.Id.IntegerValue}:{name} (verify-exception: {ex.Message})")
+                        fails.Add($"{fi.Id.IntValue()}:{name} (verify-exception: {ex.Message})")
                         Continue For
                     End Try
                 Next
@@ -2153,7 +2153,7 @@ Namespace Services
 
                     Dim key As String = Nothing
                     Try
-                        key = associated.Id.IntegerValue.ToString()
+                        key = associated.Id.IntValue().ToString()
                     Catch
                         key = Nothing
                     End Try
@@ -2432,7 +2432,7 @@ Namespace Services
 
                 UI.Hub.UiBridgeExternalEvent.HostLog(
                     "debug",
-                    $"[paramprop][associate-skip-debug] host={hostFamilyName}; child={childFamilyName}; instanceId={If(fi Is Nothing, -1, fi.Id.IntegerValue)}; param={paramName}; reason={reason}; childParamFound={childParamFound}; childParamReadOnly={childParamReadOnly}; childParamAssociable={childParamAssociable}; childParamStorage={childParamStorage}; labelDriven={labelDriven}; hostParamFound={hostParam IsNot Nothing}")
+                    $"[paramprop][associate-skip-debug] host={hostFamilyName}; child={childFamilyName}; instanceId={If(fi Is Nothing, -1, fi.Id.IntValue())}; param={paramName}; reason={reason}; childParamFound={childParamFound}; childParamReadOnly={childParamReadOnly}; childParamAssociable={childParamAssociable}; childParamStorage={childParamStorage}; labelDriven={labelDriven}; hostParamFound={hostParam IsNot Nothing}")
             Catch
             End Try
         End Sub

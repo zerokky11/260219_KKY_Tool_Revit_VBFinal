@@ -86,7 +86,7 @@ namespace KKY_Tool_Revit.Services
             List<ProjectParameterInfo> reviewedParameters = allParameters
                 .Where(info => ShouldReview(info, scope, selectedNames))
                 .OrderBy(info => info.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(info => info.Id != null ? info.Id.IntegerValue : int.MaxValue)
+                .ThenBy(info => info.Id != null ? info.Id.CompatIntegerValue() : int.MaxValue)
                 .ToList();
 
             var duplicateCounts = reviewedParameters
@@ -452,7 +452,7 @@ namespace KKY_Tool_Revit.Services
         private static string ToParameterIdText(ElementId id)
         {
             if (id == null || id == ElementId.InvalidElementId) return string.Empty;
-            return id.IntegerValue.ToString(CultureInfo.InvariantCulture);
+            return id.CompatIntegerValue().ToString(CultureInfo.InvariantCulture);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -331,13 +331,13 @@ Namespace Services
                     If inst Is Nothing Then Continue For
 
                     Dim typeId = inst.GetTypeId()
-                    If typeId Is Nothing OrElse typeId.IntegerValue <= 0 Then Continue For
-                    If loadedDocsByTypeId.ContainsKey(typeId.IntegerValue) Then Continue For
+                    If typeId Is Nothing OrElse typeId.IntValue() <= 0 Then Continue For
+                    If loadedDocsByTypeId.ContainsKey(typeId.IntValue()) Then Continue For
 
                     Try
                         Dim linkDoc = inst.GetLinkDocument()
                         If linkDoc IsNot Nothing Then
-                            loadedDocsByTypeId(typeId.IntegerValue) = linkDoc
+                            loadedDocsByTypeId(typeId.IntValue()) = linkDoc
                         End If
                     Catch
                     End Try
@@ -356,7 +356,7 @@ Namespace Services
                 If linkType Is Nothing Then Continue For
 
                 Dim loadedDoc As Document = Nothing
-                loadedDocsByTypeId.TryGetValue(linkType.Id.IntegerValue, loadedDoc)
+                loadedDocsByTypeId.TryGetValue(linkType.Id.IntValue(), loadedDoc)
 
                 Dim requestedPath = GetLinkedDocumentPath(hostDoc, linkType)
                 Dim linkName = GetLinkedDocumentName(linkType, loadedDoc, requestedPath)
@@ -366,7 +366,7 @@ Namespace Services
                 seenKeys.Add(key)
 
                 targets.Add(New LinkedDocumentTarget With {
-                    .LinkTypeId = linkType.Id.IntegerValue,
+                    .LinkTypeId = linkType.Id.IntValue(),
                     .LinkName = linkName,
                     .RequestedPath = requestedPath,
                     .LoadedDocument = loadedDoc
@@ -470,7 +470,7 @@ Namespace Services
                 Dim row As New DetailRow() With {
                     .FilePath = filePath,
                     .FileName = fileName,
-                    .ElementId = element.Id.IntegerValue,
+                    .ElementId = element.Id.IntValue(),
                     .Category = ModelParameterExtractionService.GetElementCategoryName(element),
                     .FamilyName = ModelParameterExtractionService.GetElementFamilyName(doc, element),
                     .TypeName = ModelParameterExtractionService.GetElementTypeName(doc, element)
@@ -502,6 +502,13 @@ Namespace Services
                 End If
 
                 For Each parameterName In parameterNames
+                    Dim detailFieldValue As Object = Nothing
+                    If TryGetDetailFieldValue(row, parameterName, detailFieldValue) Then
+                        row.ParameterTypeTokens(parameterName) = String.Empty
+                        row.ParameterValues(parameterName) = If(detailFieldValue, String.Empty).ToString()
+                        Continue For
+                    End If
+
                     Dim info = ModelParameterExtractionService.GetElementParameterValueInfo(doc, element, parameterName)
                     row.ParameterTypeTokens(parameterName) = If(info?.DataTypeToken, String.Empty)
                     row.ParameterValues(parameterName) = FormatExtractedParameterValue(info, settings)
@@ -752,8 +759,15 @@ Namespace Services
             Dim distinctParamNames = If(parameterNames, Enumerable.Empty(Of String)()).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
             Dim parameterColumnMap As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
             For Each name In distinctParamNames
+                Dim detailColumnName As String = Nothing
+                If TryGetDetailFieldColumnName(name, detailColumnName) Then
+                    parameterColumnMap(name) = detailColumnName
+                    Continue For
+                End If
+
                 Dim token = ResolveParameterDataTypeToken(detailRows, name)
                 Dim columnName = BuildParameterColumnName(name, token, lengthUnitLabel, areaUnitLabel, volumeUnitLabel)
+                columnName = EnsureUniqueColumnName(table, columnName)
                 table.Columns.Add(columnName, GetType(String))
                 parameterColumnMap(name) = columnName
             Next
@@ -778,13 +792,97 @@ Namespace Services
 
                 For Each name In distinctParamNames
                     Dim columnName = parameterColumnMap(name)
-                    row(columnName) = If(rowItem.ParameterValues IsNot Nothing AndAlso rowItem.ParameterValues.ContainsKey(name), rowItem.ParameterValues(name), String.Empty)
+                    Dim detailFieldValue As Object = Nothing
+                    If TryGetDetailFieldValue(rowItem, name, detailFieldValue) Then
+                        row(columnName) = If(detailFieldValue, DBNull.Value)
+                    Else
+                        row(columnName) = If(rowItem.ParameterValues IsNot Nothing AndAlso rowItem.ParameterValues.ContainsKey(name), rowItem.ParameterValues(name), String.Empty)
+                    End If
                 Next
 
                 table.Rows.Add(row)
             Next
 
             Return table
+        End Function
+
+        Private Shared Function TryGetDetailFieldColumnName(parameterName As String,
+                                                            ByRef columnName As String) As Boolean
+            columnName = String.Empty
+
+            Select Case NormalizeDetailFieldToken(parameterName)
+                Case "filename", "file"
+                    columnName = "FileName"
+                Case "elementid", "id"
+                    columnName = "ElementId"
+                Case "category", "categoryname"
+                    columnName = "Category"
+                Case "family", "familyname"
+                    columnName = "FamilyName"
+                Case "type", "typename"
+                    columnName = "TypeName"
+                Case "note", "notes"
+                    columnName = "Note"
+                Case Else
+                    Return False
+            End Select
+
+            Return True
+        End Function
+
+        Private Shared Function TryGetDetailFieldValue(rowItem As DetailRow,
+                                                       parameterName As String,
+                                                       ByRef value As Object) As Boolean
+            value = Nothing
+            If rowItem Is Nothing Then Return False
+
+            Dim columnName As String = Nothing
+            If Not TryGetDetailFieldColumnName(parameterName, columnName) Then Return False
+
+            Select Case columnName
+                Case "FileName"
+                    value = If(rowItem.FileName, String.Empty)
+                Case "ElementId"
+                    value = rowItem.ElementId
+                Case "Category"
+                    value = If(rowItem.Category, String.Empty)
+                Case "FamilyName"
+                    value = If(rowItem.FamilyName, String.Empty)
+                Case "TypeName"
+                    value = If(rowItem.TypeName, String.Empty)
+                Case "Note"
+                    value = If(rowItem.Note, String.Empty)
+                Case Else
+                    Return False
+            End Select
+
+            Return True
+        End Function
+
+        Private Shared Function NormalizeDetailFieldToken(value As String) As String
+            If String.IsNullOrWhiteSpace(value) Then Return String.Empty
+
+            Dim buffer As New StringBuilder(value.Length)
+            For Each ch In value.Trim()
+                If Char.IsLetterOrDigit(ch) Then
+                    buffer.Append(Char.ToLowerInvariant(ch))
+                End If
+            Next
+
+            Return buffer.ToString()
+        End Function
+
+        Private Shared Function EnsureUniqueColumnName(table As DataTable, preferredName As String) As String
+            Dim baseName = If(preferredName, String.Empty).Trim()
+            If String.IsNullOrWhiteSpace(baseName) Then baseName = "Value"
+            If table Is Nothing OrElse Not table.Columns.Contains(baseName) Then Return baseName
+
+            Dim index = 2
+            Do
+                Dim candidate = baseName & "_" & index.ToString(CultureInfo.InvariantCulture)
+                If Not table.Columns.Contains(candidate) Then Return candidate
+                index += 1
+            Loop
         End Function
 
         Private Shared Function BuildLogTable(logs As IEnumerable(Of LogEntry)) As DataTable
@@ -1197,7 +1295,7 @@ Namespace Services
                 Return requestedPath.Trim()
             End If
 
-            Return "linktype:" & linkType.Id.IntegerValue.ToString(CultureInfo.InvariantCulture) & ":" & If(linkName, String.Empty)
+            Return "linktype:" & linkType.Id.IntValue().ToString(CultureInfo.InvariantCulture) & ":" & If(linkName, String.Empty)
         End Function
 
         Private Shared Function TryGetAbsoluteModelPath(linkType As RevitLinkType) As ModelPath

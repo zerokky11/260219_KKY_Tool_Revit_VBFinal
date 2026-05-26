@@ -18,11 +18,12 @@ $installerDir = Join-Path $releaseDir 'official'
 $stageRoot = Join-Path $repoRoot 'artifacts\release-stage'
 $proj2019To2023 = Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\KKY_Tool_Revit.vbproj'
 $proj2025 = Join-Path $repoRoot 'KKY_Tool_Revit_2025\KKY_Tool_Revit_2025.vbproj'
+$proj2027 = Join-Path $repoRoot 'KKY_Tool_Revit_2027\KKY_Tool_Revit_2027.vbproj'
 $indexPath = Join-Path $releaseDir 'index.html'
 $historyPath = Join-Path $releaseDir 'release-history.json'
 $domainRoot = 'https://update.zerokky.com'
 $isccPath = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
-$releaseYearLabel = '2019,21,23,25'
+$releaseYearLabel = '2019,21,23,25,27'
 
 foreach ($requiredPath in @($issPath, $feedScriptPath, $zipScriptPath, $historyScriptPath, $verifyScriptPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
@@ -120,6 +121,12 @@ function Build-StagedOutputs {
     & dotnet build $proj2025 -c Release -p:SkipCreateAddin=true -p:OutputPath=$outputPath2025
     if ($LASTEXITCODE -ne 0) {
         throw "Build failed for version $Version / Revit 2025"
+    }
+
+    $outputPath2027 = Join-Path $stageDir 'Rvt2027\net10.0-windows\'
+    & dotnet build $proj2027 -c Release -p:SkipCreateAddin=true -p:OutputPath=$outputPath2027
+    if ($LASTEXITCODE -ne 0) {
+        throw "Build failed for version $Version / Revit 2027"
     }
 
     & $isccPath "/DMyAppVersion=$Version" "/DMyBuildRoot=$stageDir" "/DMyOutputDir=$installerDir" $issPath

@@ -1,4 +1,4 @@
-﻿Imports System
+Imports System
 Imports System.Collections.Generic
 Imports System.Data
 Imports System.Diagnostics
@@ -132,6 +132,7 @@ Namespace UI.Hub
         Private Class MultiRunRequest
             Public Property Common As MultiCommonOptions = New MultiCommonOptions()
             Public Property Connector As MultiConnectorOptions = New MultiConnectorOptions()
+            Public Property Unconnected As MultiUnconnectedOptions = New MultiUnconnectedOptions()
             Public Property FloorInfo As MultiFloorInfoOptions = New MultiFloorInfoOptions()
             Public Property FamilySuitability As MultiFamilySuitabilityOptions = New MultiFamilySuitabilityOptions()
             Public Property TapAlign As MultiTapAlignOptions = New MultiTapAlignOptions()
@@ -139,6 +140,7 @@ Namespace UI.Hub
             Public Property WorksetAssignment As MultiWorksetAssignmentOptions = New MultiWorksetAssignmentOptions()
             Public Property ProjectParameterDuplication As MultiProjectParameterDuplicationOptions = New MultiProjectParameterDuplicationOptions()
             Public Property ParameterMissing As MultiParameterMissingOptions = New MultiParameterMissingOptions()
+            Public Property ParameterStandard As MultiParameterStandardOptions = New MultiParameterStandardOptions()
             Public Property Pms As MultiPmsOptions = New MultiPmsOptions()
             Public Property Guid As MultiGuidOptions = New MultiGuidOptions()
             Public Property FamilyLink As MultiFamilyLinkOptions = New MultiFamilyLinkOptions()
@@ -220,6 +222,8 @@ Namespace UI.Hub
                 Case "connector"
                     _multiConnectorRows = Nothing
                     _multiConnectorExtras = Nothing
+                Case "unconnected"
+                    ClearMultiUnconnectedCache()
                 Case "tapalign"
                     _multiTapAlignRows = Nothing
                     _multiTapAlignExtras = Nothing
@@ -238,6 +242,10 @@ Namespace UI.Hub
                     ClearMultiFloorInfoCache()
                 Case "familysuitability"
                     ClearMultiFamilySuitabilityCache()
+                Case "parametermissing"
+                    ClearMultiParameterMissingCache()
+                Case "parameterstandard"
+                    ClearMultiParameterStandardCache()
                 Case "pms"
                     _multiPmsClassRows = Nothing
                     _multiPmsSizeRows = Nothing
@@ -275,6 +283,7 @@ Namespace UI.Hub
 
             Try
                 PrepareFamilySuitabilityCriteria(req)
+                PrepareParameterStandardCriteria(req)
             Catch ex As Exception
                 SendToWeb("hub:multi-error", New With {.message = ex.Message})
                 Return
@@ -843,6 +852,13 @@ NextItem:
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "커넥터 진단 완료", safeName)
             End If
 
+            If _multiRequest.Unconnected.Enabled Then
+                stepIndex += 1
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "미연결 검토 실행 중", safeName)
+                RunUnconnectedMultiForDocument(doc, safeName, basePct)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "미연결 검토 완료", safeName)
+            End If
+
             If _multiRequest.FloorInfo.Enabled Then
                 stepIndex += 1
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "층정보 검토 실행 중", safeName)
@@ -933,6 +949,13 @@ NextItem:
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "파라미터 누락 검토 실행 중", safeName)
                 RunParameterMissingMultiForDocument(doc, safeName, basePct)
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "파라미터 누락 검토 완료", safeName)
+            End If
+
+            If _multiRequest.ParameterStandard.Enabled Then
+                stepIndex += 1
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "속성 모수 검토 실행 중", safeName)
+                RunParameterStandardMultiForDocument(doc, safeName, basePct)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "속성 모수 검토 완료", safeName)
             End If
 
             If _multiRequest.Pms.Enabled Then
@@ -1118,7 +1141,7 @@ NextItem:
                 End Try
 
                 If ok Then
-                    allowed.Add(e.Id.IntegerValue)
+                    allowed.Add(e.Id.IntValue())
                 End If
             Next
 
@@ -1882,6 +1905,9 @@ NextItem:
             If _multiRequest IsNot Nothing AndAlso _multiRequest.Connector IsNot Nothing AndAlso _multiRequest.Connector.Enabled Then
                 summary("connector") = New With {.rows = If(_multiConnectorRows, New List(Of Dictionary(Of String, Object))()).Count}
             End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.Unconnected IsNot Nothing AndAlso _multiRequest.Unconnected.Enabled Then
+                summary("unconnected") = New With {.rows = GetMultiUnconnectedRowCount()}
+            End If
             If _multiRequest IsNot Nothing AndAlso _multiRequest.FloorInfo IsNot Nothing AndAlso _multiRequest.FloorInfo.Enabled Then
                 summary("floorinfo") = New With {.rows = GetMultiFloorInfoRowCount()}
             End If
@@ -1906,6 +1932,9 @@ NextItem:
             End If
             If _multiRequest IsNot Nothing AndAlso _multiRequest.ParameterMissing IsNot Nothing AndAlso _multiRequest.ParameterMissing.Enabled Then
                 summary("parametermissing") = New With {.rows = If(_multiParameterMissingRows, New List(Of ParameterMissingReviewService.ReviewRow)()).Count}
+            End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.ParameterStandard IsNot Nothing AndAlso _multiRequest.ParameterStandard.Enabled Then
+                summary("parameterstandard") = New With {.rows = If(_multiParameterStandardRows, New List(Of ParameterStandardReviewService.ReviewRow)()).Count}
             End If
             If _multiRequest IsNot Nothing AndAlso _multiRequest.Pms IsNot Nothing AndAlso _multiRequest.Pms.Enabled Then
                 summary("pms") = New With {.rows = If(_multiPmsSizeRows, New List(Of Dictionary(Of String, Object))()).Count}
@@ -1953,6 +1982,8 @@ NextItem:
                 Select Case If(key, "").ToLowerInvariant()
                     Case "connector"
                         ExportConnector(doAutoFit, excelMode, exportLocale, outputFolder)
+                    Case "unconnected"
+                        ExportUnconnected(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "floorinfo"
                         ExportFloorInfo(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "familysuitability"
@@ -1967,6 +1998,8 @@ NextItem:
                         ExportProjectParameterDuplication(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "parametermissing"
                         ExportParameterMissing(doAutoFit, excelMode, exportLocale, outputFolder)
+                    Case "parameterstandard"
+                        ExportParameterStandard(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "pms"
                         ExportSegmentPms(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "guid"
@@ -2087,15 +2120,20 @@ NextItem:
         Private Shared Function ResolveSplitExportFeatureFileLabel(featureKey As String,
                                                                   exportLocale As String,
                                                                   Optional fallbackLabel As String = Nothing,
-                                                                  Optional featureMode As String = Nothing) As String
+                                                                  Optional featureMode As String = Nothing,
+                                                                  Optional featureLabelOverride As String = Nothing) As String
             Dim locale As String = NormalizeSplitExportLocale(exportLocale)
             Dim key As String = SafeStr(featureKey).Trim().ToLowerInvariant()
             Dim mode As String = SafeStr(featureMode).Trim().ToLowerInvariant()
+            Dim overrideLabel As String = SafeStr(featureLabelOverride).Trim()
 
             If String.Equals(locale, "en", StringComparison.OrdinalIgnoreCase) Then
                 Select Case key
                     Case "connector"
-                        Return "S5_UTILITY Continuity Error (Location-based)"
+                        If Not String.IsNullOrWhiteSpace(overrideLabel) Then Return overrideLabel
+                        Return "Parameter Continuity Error (Location-based)"
+                    Case "unconnected"
+                        Return "Unconnected Connector Review"
                     Case "tapalign"
                         Return "Tap Branch Axis Misalignment Review"
                     Case "dupclash"
@@ -2107,11 +2145,15 @@ NextItem:
                         Return "Parameter Duplication"
                     Case "parametermissing"
                         Return "Parameter Value Omission"
+                    Case "parameterstandard"
+                        Return "Parameter Standard Review"
                     Case "familysuitability"
                         Return "Not Approved Family Review"
                 End Select
             Else
                 Select Case key
+                    Case "unconnected"
+                        Return "미연결 검토"
                     Case "connector"
                         Return "파라미터 연속성 검토"
                     Case "tapalign"
@@ -2125,6 +2167,8 @@ NextItem:
                         Return "Parameter 중복검토"
                     Case "parametermissing"
                         Return "속성누락검토"
+                    Case "parameterstandard"
+                        Return "속성모수검토"
                     Case "familysuitability"
                         Return "패밀리 적합성검토"
                 End Select
@@ -2140,6 +2184,42 @@ NextItem:
         Private Shared Function FormatSplitExportIssueCount(issueCount As Integer) As String
             Dim safeCount As Integer = Math.Max(0, issueCount)
             Return safeCount.ToString("00", Globalization.CultureInfo.InvariantCulture) & "EA"
+        End Function
+
+        Private Shared Function BuildConnectorContinuityFileLabel(reviewParams As IList(Of String)) As String
+            Dim paramLabel As String = BuildConnectorContinuityParamLabel(reviewParams)
+            If String.IsNullOrWhiteSpace(paramLabel) Then paramLabel = "Parameter"
+            Return paramLabel & " Continuity Error (Location-based)"
+        End Function
+
+        Private Shared Function BuildConnectorContinuityParamLabel(reviewParams As IList(Of String)) As String
+            If reviewParams Is Nothing OrElse reviewParams.Count = 0 Then Return String.Empty
+
+            Dim names As New List(Of String)()
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            For Each raw In reviewParams
+                Dim name As String = SafeStr(raw).Trim()
+                If String.IsNullOrWhiteSpace(name) Then Continue For
+                name = name.Replace(":"c, "-"c).
+                            Replace("\"c, "-"c).
+                            Replace("/"c, "-"c).
+                            Replace("*"c, "-"c).
+                            Replace("?"c, "-"c).
+                            Replace(""""c, "'"c).
+                            Replace("<"c, "("c).
+                            Replace(">"c, ")"c).
+                            Replace("|"c, "-"c)
+                name = System.Text.RegularExpressions.Regex.Replace(name, "\s+", " ").Trim()
+                If String.IsNullOrWhiteSpace(name) Then Continue For
+                If seen.Add(name) Then names.Add(name)
+            Next
+
+            If names.Count = 0 Then Return String.Empty
+            If names.Count = 1 Then Return names(0)
+
+            Dim firstName As String = names(0)
+            If firstName.Length > 48 Then firstName = firstName.Substring(0, 48).Trim()
+            Return firstName & "+" & (names.Count - 1).ToString(Globalization.CultureInfo.InvariantCulture) & "Params"
         End Function
 
         Private Shared Function IsSplitExportMessageText(value As String) As Boolean
@@ -2212,14 +2292,15 @@ NextItem:
                                                          exportLocale As String,
                                                          issueCount As Integer,
                                                          Optional fallbackLabel As String = Nothing,
-                                                         Optional featureMode As String = Nothing) As String
+                                                         Optional featureMode As String = Nothing,
+                                                         Optional featureLabelOverride As String = Nothing) As String
             Dim safeFolder As String = SafeStr(outputFolder).Trim()
             If String.IsNullOrWhiteSpace(safeFolder) Then Throw New InvalidOperationException("저장 폴더가 선택되지 않았습니다.")
 
             Dim baseName As String = GetSafeMultiFileName(fileName)
             If String.IsNullOrWhiteSpace(baseName) Then baseName = "Export"
 
-            Dim featureLabel As String = ResolveSplitExportFeatureFileLabel(featureKey, exportLocale, fallbackLabel, featureMode)
+            Dim featureLabel As String = ResolveSplitExportFeatureFileLabel(featureKey, exportLocale, fallbackLabel, featureMode, featureLabelOverride)
             Dim safeSuffix As String = SanitizeFileName(SafeStr(featureLabel).Trim())
             If String.IsNullOrWhiteSpace(safeSuffix) Then safeSuffix = "검토결과"
 
@@ -2259,7 +2340,8 @@ NextItem:
                                                     exportLocale As String,
                                                     Optional progressKey As String = "hub:multi-progress",
                                                     Optional fileIssueCounts As IDictionary(Of String, Integer) = Nothing,
-                                                    Optional featureMode As String = Nothing) As Integer
+                                                    Optional featureMode As String = Nothing,
+                                                    Optional featureLabelOverride As String = Nothing) As Integer
             If fileTables Is Nothing OrElse fileTables.Count = 0 Then Return 0
 
             Dim savedCount As Integer = 0
@@ -2281,7 +2363,7 @@ NextItem:
                                              batchEndPercent:=CDbl(i + 1) / total)
 
                 Dim issueCount As Integer = ResolveSplitExportIssueCount(fileTable.Key, fileIssueCounts, InferSplitExportIssueCount(fileTable.Value))
-                Dim savedPath As String = BuildSplitExportFilePath(outputFolder, fileTable.Key, featureKey, exportLocale, issueCount, featureSuffix, featureMode)
+                Dim savedPath As String = BuildSplitExportFilePath(outputFolder, fileTable.Key, featureKey, exportLocale, issueCount, featureSuffix, featureMode, featureLabelOverride)
                 ExcelCore.SaveXlsx(savedPath, sheetName, fileTable.Value, doAutoFit, sheetKey:=featureKey, progressKey:=progressKey, exportKind:=featureKey, exportLocale:=exportLocale)
                 savedCount += 1
             Next
@@ -2511,7 +2593,8 @@ NextItem:
                 Next
 
                 If splitByFile Then
-                    Dim savedCount = SaveSplitSingleSheetTables(outputFolder, "connector", "파라미터연속성검토", "Connector Diagnostics", sheetList, doAutoFit, excelMode, exportLocale, fileIssueCounts:=fileIssueCounts)
+                    Dim connectorFileLabel As String = BuildConnectorContinuityFileLabel(reviewParams)
+                    Dim savedCount = SaveSplitSingleSheetTables(outputFolder, "connector", "파라미터연속성검토", "Connector Diagnostics", sheetList, doAutoFit, excelMode, exportLocale, fileIssueCounts:=fileIssueCounts, featureLabelOverride:=connectorFileLabel)
                     If savedCount <= 0 Then
                         SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
                     Else
@@ -3135,6 +3218,8 @@ NextItem:
         Private Shared Sub ResetMultiCaches()
             _multiConnectorRows = Nothing
             _multiConnectorExtras = Nothing
+            _multiUnconnectedRows = Nothing
+            _multiUnconnectedFileSummaries = Nothing
             _multiTapAlignRows = Nothing
             _multiTapAlignExtras = Nothing
             _multiTapAlignUnit = "mm"
@@ -3155,6 +3240,9 @@ NextItem:
             _multiParameterDuplicationFileSummaries = Nothing
             _multiParameterMissingRows = Nothing
             _multiParameterMissingFileSummaries = Nothing
+            _multiParameterStandardRows = Nothing
+            _multiParameterStandardFileSummaries = Nothing
+            _multiParameterStandardWarnings = Nothing
             _multiPmsClassRows = Nothing
             _multiPmsSizeRows = Nothing
             _multiPmsRoutingRows = Nothing
@@ -3199,6 +3287,7 @@ NextItem:
             If pd.TryGetValue("features", featuresObj) Then
                 Dim fd = ToDict(featuresObj)
                 req.Connector = ParseConnector(fd)
+                req.Unconnected = ParseUnconnected(fd)
                 req.FloorInfo = ParseFloorInfo(fd)
                 req.FamilySuitability = ParseFamilySuitability(fd)
                 req.TapAlign = ParseTapAlign(fd)
@@ -3206,6 +3295,7 @@ NextItem:
                 req.WorksetAssignment = ParseWorksetAssignment(fd)
                 req.ProjectParameterDuplication = ParseProjectParameterDuplication(fd)
                 req.ParameterMissing = ParseParameterMissing(fd)
+                req.ParameterStandard = ParseParameterStandard(fd)
                 req.Pms = ParsePms(fd)
                 req.Guid = ParseGuid(fd)
                 req.FamilyLink = ParseFamilyLink(fd)
@@ -3323,13 +3413,14 @@ NextItem:
 
         Private Shared Function AnyFeatureEnabled(req As MultiRunRequest) As Boolean
             If req Is Nothing Then Return False
-            Return req.Connector.Enabled OrElse req.FloorInfo.Enabled OrElse req.FamilySuitability.Enabled OrElse req.TapAlign.Enabled OrElse req.DupClash.Enabled OrElse req.WorksetAssignment.Enabled OrElse req.ProjectParameterDuplication.Enabled OrElse req.ParameterMissing.Enabled OrElse req.Pms.Enabled OrElse req.Guid.Enabled OrElse req.FamilyLink.Enabled OrElse req.Points.Enabled OrElse req.LinkWorkset.Enabled
+            Return req.Connector.Enabled OrElse req.Unconnected.Enabled OrElse req.FloorInfo.Enabled OrElse req.FamilySuitability.Enabled OrElse req.TapAlign.Enabled OrElse req.DupClash.Enabled OrElse req.WorksetAssignment.Enabled OrElse req.ProjectParameterDuplication.Enabled OrElse req.ParameterMissing.Enabled OrElse req.ParameterStandard.Enabled OrElse req.Pms.Enabled OrElse req.Guid.Enabled OrElse req.FamilyLink.Enabled OrElse req.Points.Enabled OrElse req.LinkWorkset.Enabled
         End Function
 
         Private Shared Function CountEnabledFeatures(req As MultiRunRequest) As Integer
             If req Is Nothing Then Return 0
             Dim count As Integer = 0
             If req.Connector.Enabled Then count += 1
+            If req.Unconnected.Enabled Then count += 1
             If req.FloorInfo.Enabled Then count += 1
             If req.FamilySuitability.Enabled Then count += 1
             If req.TapAlign.Enabled Then count += 1
@@ -3337,6 +3428,7 @@ NextItem:
             If req.WorksetAssignment.Enabled Then count += 1
             If req.ProjectParameterDuplication.Enabled Then count += 1
             If req.ParameterMissing.Enabled Then count += 1
+            If req.ParameterStandard.Enabled Then count += 1
             If req.Pms.Enabled Then count += 1
             If req.Guid.Enabled Then count += 1
             If req.FamilyLink.Enabled Then count += 1
@@ -3403,6 +3495,10 @@ NextItem:
                 summaries("connector") = BuildConnectorMultiSummary()
             End If
 
+            If _multiRequest.Unconnected IsNot Nothing AndAlso _multiRequest.Unconnected.Enabled Then
+                summaries("unconnected") = BuildUnconnectedMultiSummary()
+            End If
+
             If _multiRequest.FloorInfo IsNot Nothing AndAlso _multiRequest.FloorInfo.Enabled Then
                 summaries("floorinfo") = BuildFloorInfoMultiSummary()
             End If
@@ -3429,6 +3525,10 @@ NextItem:
 
             If _multiRequest.ParameterMissing IsNot Nothing AndAlso _multiRequest.ParameterMissing.Enabled Then
                 summaries("parametermissing") = BuildParameterMissingMultiSummary()
+            End If
+
+            If _multiRequest.ParameterStandard IsNot Nothing AndAlso _multiRequest.ParameterStandard.Enabled Then
+                summaries("parameterstandard") = BuildParameterStandardMultiSummary()
             End If
 
             If _multiRequest.Guid IsNot Nothing AndAlso _multiRequest.Guid.Enabled Then

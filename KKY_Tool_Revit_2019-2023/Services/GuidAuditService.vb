@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -1105,7 +1105,7 @@ Namespace Services
             Try : isSharedFlag = fp.IsShared : Catch : isSharedFlag = False : End Try
             If isSharedFlag Then Return "Shared"
             Dim idVal As Integer = 0
-            Try : idVal = fp.Id.IntegerValue : Catch : idVal = 0 : End Try
+            Try : idVal = fp.Id.IntValue() : Catch : idVal = 0 : End Try
             If idVal < 0 Then Return "BuiltIn"
             Return "Family"
         End Function
@@ -2219,7 +2219,7 @@ Namespace Services
                 Try : isSharedFlag = fp.IsShared : Catch : isSharedFlag = False : End Try
                 If isSharedFlag Then Return "Shared"
                 Dim idVal As Integer = 0
-                Try : idVal = fp.Id.IntegerValue : Catch : idVal = 0 : End Try
+                Try : idVal = fp.Id.IntValue() : Catch : idVal = 0 : End Try
                 If idVal < 0 Then Return "BuiltIn"
                 Return "Family"
             End Function

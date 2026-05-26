@@ -25,6 +25,7 @@ $yearMap = [ordered]@{
     '2021' = 'net48'
     '2023' = 'net48'
     '2025' = 'net8.0-windows'
+    '2027' = 'net10.0-windows'
 }
 
 foreach ($entry in $yearMap.GetEnumerator()) {
@@ -54,7 +55,7 @@ $manifest = [ordered]@{
     version = $Version
     createdAt = (Get-Date -Format 'yyyy-MM-ddTHH:mm:ssK')
     packageType = 'zip'
-    years = @('2019', '2021', '2023', '2025')
+    years = @('2019', '2021', '2023', '2025', '2027')
 }
 $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $stagingRoot 'package.json') -Encoding utf8
 

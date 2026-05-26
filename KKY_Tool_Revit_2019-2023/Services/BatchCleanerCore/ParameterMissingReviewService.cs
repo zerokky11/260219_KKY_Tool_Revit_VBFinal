@@ -246,7 +246,7 @@ namespace KKY_Tool_Revit.Services
 
             private static string BuildCacheKey(Element element, string scope, string name)
             {
-                int elementId = element?.Id?.IntegerValue ?? 0;
+                int elementId = element?.Id?.CompatIntegerValue() ?? 0;
                 return elementId.ToString(CultureInfo.InvariantCulture)
                        + "\u001f"
                        + (scope ?? string.Empty)
@@ -296,7 +296,7 @@ namespace KKY_Tool_Revit.Services
                     bool conditionMatched = MatchesConditions(doc, element, preparedTargetConditions, targetFilter.CombinationMode, valueCache);
                     matchesLocalTarget = settings.ExcludeTargetFilterMatches ? !conditionMatched : conditionMatched;
                 }
-                bool matchesCommonScope = !hasCommonScopeFilter || (element?.Id != null && allowedElementIds.Contains(element.Id.IntegerValue));
+                bool matchesCommonScope = !hasCommonScopeFilter || (element?.Id != null && allowedElementIds.Contains(element.Id.CompatIntegerValue()));
                 if (matchesLocalTarget && matchesCommonScope)
                 {
                     targetElements.Add(element);
@@ -345,7 +345,7 @@ namespace KKY_Tool_Revit.Services
                     {
                         File = safeFileLabel,
                         Item = ItemLabel,
-                        Id = (element?.Id?.IntegerValue ?? 0).ToString(CultureInfo.InvariantCulture),
+                        Id = (element?.Id?.CompatIntegerValue() ?? 0).ToString(CultureInfo.InvariantCulture),
                         Name = typeInfo.TypeName ?? string.Empty,
                         Result = "Error",
                         Content = BuildContentMessage(parameterName, reviewState),

@@ -61,6 +61,7 @@ Namespace UI
         Private Shared _enabled As Boolean = True
         Private Shared _settingsLoaded As Boolean
         Private Shared _legendWindowSuppressed As Boolean
+        Private Shared _navigatorHidden As Boolean
         Private Shared _lastEntries As List(Of DocumentColorEntry) = New List(Of DocumentColorEntry)()
         Private Shared _lastNavigator As DocumentViewNavigatorSnapshot
 
@@ -79,6 +80,24 @@ Namespace UI
                 .enabled = IsEnabled
             }
         End Function
+
+        Friend Shared Function IsNavigatorHidden() As Boolean
+            RefreshVisibilitySettingsFromDisk()
+
+            SyncLock SyncRoot
+                Return _navigatorHidden
+            End SyncLock
+        End Function
+
+        Friend Shared Sub SetNavigatorHidden(hidden As Boolean)
+            EnsureSettingsLoaded()
+
+            SyncLock SyncRoot
+                _navigatorHidden = hidden
+            End SyncLock
+
+            SaveCurrentSettings()
+        End Sub
 
         Public Shared Sub Start()
             EnsureSettingsLoaded()
@@ -283,9 +302,7 @@ Namespace UI
         End Sub
 
         Friend Shared Sub HideLegendWindowPreservingTabs()
-            SyncLock SyncRoot
-                _legendWindowSuppressed = True
-            End SyncLock
+            SuppressLegendWindow()
 
             Dim dispatcher = ResolveDispatcher()
             If dispatcher Is Nothing Then
@@ -302,10 +319,22 @@ Namespace UI
                                            If _legendWindow IsNot Nothing AndAlso _legendWindow.IsVisible Then
                                                _legendWindow.Hide()
                                            End If
-                                       End Sub))
+                                   End Sub))
+        End Sub
+
+        Friend Shared Sub SuppressLegendWindow()
+            EnsureSettingsLoaded()
+
+            SyncLock SyncRoot
+                _legendWindowSuppressed = True
+            End SyncLock
+
+            SaveCurrentSettings()
         End Sub
 
         Private Shared Function IsLegendWindowSuppressed() As Boolean
+            RefreshVisibilitySettingsFromDisk()
+
             SyncLock SyncRoot
                 Return _legendWindowSuppressed
             End SyncLock
@@ -444,42 +473,130 @@ Namespace UI
 
             If Not shouldLoad Then Return
 
-            Dim enabled = LoadEnabledSetting()
+            Dim settings = LoadSettings()
             SyncLock SyncRoot
-                _enabled = enabled
+                ApplySettings(settings)
             End SyncLock
         End Sub
 
-        Private Shared Function LoadEnabledSetting() As Boolean
+        Private Shared Sub RefreshVisibilitySettingsFromDisk()
+            EnsureSettingsLoaded()
+
             Try
                 If Not File.Exists(SettingsFilePath) Then
-                    Return True
+                    Return
+                End If
+
+                Dim settings = LoadSettings()
+                SyncLock SyncRoot
+                    _navigatorHidden = settings.NavigatorHidden
+                    _legendWindowSuppressed = settings.WindowSuppressed
+                End SyncLock
+            Catch
+            End Try
+        End Sub
+
+        Private Shared Sub ApplySettings(settings As DocumentVisualAidSettings)
+            If settings Is Nothing Then settings = New DocumentVisualAidSettings()
+
+            _enabled = settings.Enabled
+            _navigatorHidden = settings.NavigatorHidden
+            _legendWindowSuppressed = settings.WindowSuppressed
+        End Sub
+
+        Private Shared Function LoadSettings() As DocumentVisualAidSettings
+            Dim settings As New DocumentVisualAidSettings()
+
+            Try
+                If Not File.Exists(SettingsFilePath) Then
+                    Return settings
                 End If
 
                 Dim raw = File.ReadAllText(SettingsFilePath).Trim()
                 If String.IsNullOrWhiteSpace(raw) Then
-                    Return True
+                    Return settings
                 End If
 
                 Select Case raw.ToLowerInvariant()
                     Case "0", "false", "off", "disabled"
-                        Return False
+                        settings.Enabled = False
+                        Return settings
                     Case "1", "true", "on", "enabled"
-                        Return True
+                        settings.Enabled = True
+                        Return settings
                 End Select
+
+                For Each line In raw.Split(New Char() {ControlChars.Cr, ControlChars.Lf},
+                                           StringSplitOptions.RemoveEmptyEntries)
+                    Dim separatorIndex = line.IndexOf("="c)
+                    If separatorIndex <= 0 Then Continue For
+
+                    Dim key = line.Substring(0, separatorIndex).Trim().ToLowerInvariant()
+                    Dim value = line.Substring(separatorIndex + 1).Trim()
+
+                    Select Case key
+                        Case "enabled"
+                            settings.Enabled = ParseBooleanSetting(value, settings.Enabled)
+                        Case "navigatorhidden", "hideviewnavigator", "hidenavigator"
+                            settings.NavigatorHidden = ParseBooleanSetting(value, settings.NavigatorHidden)
+                        Case "windowsuppressed", "legendwindowsuppressed", "hidewindow"
+                            settings.WindowSuppressed = ParseBooleanSetting(value, settings.WindowSuppressed)
+                    End Select
+                Next
             Catch
             End Try
 
-            Return True
+            Return settings
+        End Function
+
+        Private Shared Function ParseBooleanSetting(value As String, fallback As Boolean) As Boolean
+            If String.IsNullOrWhiteSpace(value) Then Return fallback
+
+            Select Case value.Trim().ToLowerInvariant()
+                Case "0", "false", "off", "disabled", "no"
+                    Return False
+                Case "1", "true", "on", "enabled", "yes"
+                    Return True
+            End Select
+
+            Return fallback
         End Function
 
         Private Shared Sub SaveEnabledSetting(enabled As Boolean)
+            SyncLock SyncRoot
+                _enabled = enabled
+            End SyncLock
+
+            SaveCurrentSettings()
+        End Sub
+
+        Private Shared Sub SaveCurrentSettings()
+            Dim settings As DocumentVisualAidSettings
+            SyncLock SyncRoot
+                settings = New DocumentVisualAidSettings With {
+                    .Enabled = _enabled,
+                    .NavigatorHidden = _navigatorHidden,
+                    .WindowSuppressed = _legendWindowSuppressed
+                }
+            End SyncLock
+
             Try
                 Directory.CreateDirectory(SettingsDirectoryPath)
-                File.WriteAllText(SettingsFilePath, If(enabled, "true", "false"))
+                File.WriteAllLines(SettingsFilePath,
+                                   New String() {
+                                       $"enabled={If(settings.Enabled, "true", "false")}",
+                                       $"navigatorHidden={If(settings.NavigatorHidden, "true", "false")}",
+                                       $"windowSuppressed={If(settings.WindowSuppressed, "true", "false")}"
+                                   })
             Catch
             End Try
         End Sub
+
+        Private NotInheritable Class DocumentVisualAidSettings
+            Friend Property Enabled As Boolean = True
+            Friend Property NavigatorHidden As Boolean
+            Friend Property WindowSuppressed As Boolean
+        End Class
 
         Private Shared Function BuildEntriesSnapshot() As List(Of DocumentColorEntry)
             Dim results As New List(Of DocumentColorEntry)()
@@ -578,7 +695,7 @@ Namespace UI
 
             Try
                 If doc.ActiveView IsNot Nothing Then
-                    activeViewId = doc.ActiveView.Id.IntegerValue
+                    activeViewId = doc.ActiveView.Id.IntValue()
                     activeCategoryKey = ClassifyViewCategory(doc.ActiveView)
                 End If
             Catch
@@ -591,7 +708,7 @@ Namespace UI
 
                     views.Add(New DocumentViewOption With {
                         .DocumentKey = documentKey,
-                        .ViewId = view.Id.IntegerValue,
+                        .ViewId = view.Id.IntValue(),
                         .CategoryKey = ClassifyViewCategory(view),
                         .DisplayName = BuildViewDisplayName(view)
                     })
@@ -1818,6 +1935,7 @@ Namespace UI
         End Sub
 
         Friend Sub UpdateContents(aggregate As DocumentVisualAidAggregateState)
+            ApplyStoredNavigatorVisibility()
             UpdateSessions(aggregate)
             RefreshSelectedSessionContents()
         End Sub
@@ -1830,11 +1948,23 @@ Namespace UI
         Protected Overrides Sub OnClosing(e As CancelEventArgs)
             If Not _forceClosing Then
                 e.Cancel = True
+                DocumentVisualAidService.SuppressLegendWindow()
                 Hide()
                 Return
             End If
 
             MyBase.OnClosing(e)
+        End Sub
+
+        Private Sub ApplyStoredNavigatorVisibility()
+            Dim previousUpdating = _isUpdatingNavigatorControls
+            _isUpdatingNavigatorControls = True
+            Try
+                _hideNavigatorCheck.IsChecked = DocumentVisualAidService.IsNavigatorHidden()
+                UpdateNavigatorBodyVisibility()
+            Finally
+                _isUpdatingNavigatorControls = previousUpdating
+            End Try
         End Sub
 
         Private Function CreateVersionTabsCard() As UIElement
@@ -2171,6 +2301,7 @@ Namespace UI
             _hideNavigatorCheck.FontWeight = FontWeights.Medium
             _hideNavigatorCheck.Foreground = New SolidColorBrush(WpfColor.FromRgb(82, 94, 112))
             _hideNavigatorCheck.Margin = New Thickness(0, 6, 0, 0)
+            _hideNavigatorCheck.IsChecked = DocumentVisualAidService.IsNavigatorHidden()
             AddHandler _hideNavigatorCheck.Checked, AddressOf OnHideNavigatorChanged
             AddHandler _hideNavigatorCheck.Unchecked, AddressOf OnHideNavigatorChanged
 
@@ -2279,6 +2410,10 @@ Namespace UI
         End Sub
 
         Private Sub OnHideNavigatorChanged(sender As Object, e As RoutedEventArgs)
+            If Not _isUpdatingNavigatorControls Then
+                DocumentVisualAidService.SetNavigatorHidden(_hideNavigatorCheck.IsChecked.GetValueOrDefault(False))
+            End If
+
             UpdateNavigatorBodyVisibility()
         End Sub
 

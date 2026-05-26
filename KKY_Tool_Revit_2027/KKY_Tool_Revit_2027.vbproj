@@ -1,0 +1,225 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<UseWPF>true</UseWPF>
+		<UseWindowsForms>true</UseWindowsForms>
+
+		<RootNamespace>KKY_Tool_Revit</RootNamespace>
+		<AssemblyName>KKY_Tool_Revit</AssemblyName>
+
+		<OutputPath>..\KKY_Tool_Revit_2019-2023\bin\Rvt2027\net10.0-windows\</OutputPath>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<OptionStrict>Off</OptionStrict>
+		<OptionInfer>On</OptionInfer>
+		<ImplicitUsings>disable</ImplicitUsings>
+		<Deterministic>false</Deterministic>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+
+		<Platforms>AnyCPU;x64</Platforms>
+		<PlatformTarget>x64</PlatformTarget>
+		<Prefer32Bit>false</Prefer32Bit>
+
+		<DefineConstants>REVIT2027=1,REVIT2025=1</DefineConstants>
+		<SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
+		<NoWarn>$(NoWarn);CA1416;BC40000</NoWarn>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Import Include="KKY_Tool_Revit.Infrastructure" />
+	</ItemGroup>
+
+	<PropertyGroup>
+		<ProgramDataPath>$([System.Environment]::GetFolderPath(SpecialFolder.CommonApplicationData))</ProgramDataPath>
+		<AddinRoot>$(ProgramDataPath)\Autodesk\Revit\Addins</AddinRoot>
+		<UserAddinRoot>$([System.Environment]::GetFolderPath(SpecialFolder.ApplicationData))\Autodesk\Revit\Addins</UserAddinRoot>
+		<AddinYear>2027</AddinYear>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<HubUISourceDir Condition="Exists('$(MSBuildProjectDirectory)\Resources\HubUI\index.html')">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\Resources\HubUI\'))</HubUISourceDir>
+		<HubUISourceDir Condition="'$(HubUISourceDir)'=='' and Exists('$(MSBuildProjectDirectory)\..\KKY_Tool_Revit_2019-2023\Resources\HubUI\index.html')">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\KKY_Tool_Revit_2019-2023\Resources\HubUI\'))</HubUISourceDir>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<RevitApiDirCandidate0>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\Compile\2027addin'))</RevitApiDirCandidate0>
+		<RevitApiDirCandidate1>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\Compile\2027addin'))</RevitApiDirCandidate1>
+		<RevitApiDirCandidate2>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\Compile\2027addin'))</RevitApiDirCandidate2>
+
+		<RevitApiDir Condition="Exists('$(RevitApiDirCandidate0)\RevitAPI.dll')">$(RevitApiDirCandidate0)</RevitApiDir>
+		<RevitApiDir Condition="'$(RevitApiDir)'=='' and Exists('$(RevitApiDirCandidate1)\RevitAPI.dll')">$(RevitApiDirCandidate1)</RevitApiDir>
+		<RevitApiDir Condition="'$(RevitApiDir)'=='' and Exists('$(RevitApiDirCandidate2)\RevitAPI.dll')">$(RevitApiDirCandidate2)</RevitApiDir>
+	</PropertyGroup>
+
+	<Target Name="CheckRevitApiDir" BeforeTargets="ResolveReferences">
+		<Message Text="RevitApiDir=$(RevitApiDir)" Importance="high" />
+		<Error Condition="'$(RevitApiDir)'==''"
+			   Text="Local Revit API folder not found. Put RevitAPI.dll &amp; RevitAPIUI.dll under (one of) Compile\2027addin relative to this project folder." />
+		<Error Condition="!Exists('$(RevitApiDir)\RevitAPI.dll')"
+			   Text="RevitAPI.dll not found: $(RevitApiDir)\RevitAPI.dll (local Compile\2027addin)" />
+		<Error Condition="!Exists('$(RevitApiDir)\RevitAPIUI.dll')"
+			   Text="RevitAPIUI.dll not found: $(RevitApiDir)\RevitAPIUI.dll (local Compile\2027addin)" />
+	</Target>
+
+	<ItemGroup>
+		<Compile Remove="**\*.vb" />
+		<Page Remove="**\*.xaml" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2592.51" />
+		<PackageReference Include="NPOI" Version="2.6.1" />
+		<PackageReference Include="System.Numerics.Vectors" Version="4.5.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\KKY_Tool_Revit_2019-2023\Services\BatchCleanerCore\CoreProject\KKY_RvtBatchCleaner_Core.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Reference Include="RevitAPI">
+			<HintPath>$(RevitApiDir)\RevitAPI.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="RevitAPIUI">
+			<HintPath>$(RevitApiDir)\RevitAPIUI.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Compile Include="..\KKY_Tool_Revit_2025\Compat\JavaScriptSerializer.vb" Link="Compat\JavaScriptSerializer.vb" />
+		<Compile Include="..\KKY_Tool_Revit_2025\Compat\BuiltInParameterGroupCompat.vb" Link="Compat\BuiltInParameterGroupCompat.vb" />
+
+		<Compile Include="..\KKY_Tool_Revit_2019-2023\**\*.vb"
+				 Exclude="..\KKY_Tool_Revit_2019-2023\bin\**\*;..\KKY_Tool_Revit_2019-2023\obj\**\*;..\KKY_Tool_Revit_2019-2023\.vs\**\*">
+			<Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+		</Compile>
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="..\KKY_Tool_Revit_2019-2023\Resources\icons\hub_16.png" Link="Resources\icons\hub_16.png" Condition="Exists('..\KKY_Tool_Revit_2019-2023\Resources\icons\hub_16.png')">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</EmbeddedResource>
+		<EmbeddedResource Include="..\KKY_Tool_Revit_2019-2023\Resources\icons\hub_32.png" Link="Resources\icons\hub_32.png" Condition="Exists('..\KKY_Tool_Revit_2019-2023\Resources\icons\hub_32.png')">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</EmbeddedResource>
+		<EmbeddedResource Include="..\KKY_Tool_Revit_2019-2023\Resources\icons\KKY_TOOL_64_source.png" Link="Resources\icons\KKY_TOOL_64_source.png" Condition="Exists('..\KKY_Tool_Revit_2019-2023\Resources\icons\KKY_TOOL_64_source.png')">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+		</EmbeddedResource>
+
+		<Content Include="Resources\HubUI\**\*" Condition="Exists('Resources\HubUI\index.html')"
+				 Link="Resources\HubUI\%(RecursiveDir)%(Filename)%(Extension)">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<TargetPath>Resources\HubUI\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+		</Content>
+
+		<Content Include="..\KKY_Tool_Revit_2019-2023\Resources\HubUI\**\*"
+				 Condition="!Exists('Resources\HubUI\index.html')"
+				 Link="Resources\HubUI\%(RecursiveDir)%(Filename)%(Extension)">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<TargetPath>Resources\HubUI\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+		</Content>
+
+		<Content Include="Resources\update-config.json"
+				 Condition="Exists('Resources\update-config.json')"
+				 Link="Resources\update-config.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<TargetPath>Resources\update-config.json</TargetPath>
+		</Content>
+
+		<Content Include="..\KKY_Tool_Revit_2019-2023\Resources\update-config.json"
+				 Condition="!Exists('Resources\update-config.json') and Exists('..\KKY_Tool_Revit_2019-2023\Resources\update-config.json')"
+				 Link="Resources\update-config.json">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<TargetPath>Resources\update-config.json</TargetPath>
+		</Content>
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="..\KKY_Tool_Revit_2025\My Project\Application.myapp" Link="My Project\Application.myapp" />
+	</ItemGroup>
+
+	<Target Name="CopyHubUIToOutput" AfterTargets="CoreCompile">
+		<Error Condition="'$(HubUISourceDir)'==''" Text="HubUI source folder not found for 2027 build." />
+
+		<ItemGroup>
+			<_HubUIFiles Include="$(HubUISourceDir)**\*" />
+		</ItemGroup>
+
+		<MakeDir Directories="$(OutputPath)Resources\HubUI" />
+		<MakeDir Directories="@(_HubUIFiles->'$(OutputPath)Resources\HubUI\%(RecursiveDir)')" />
+		<Copy SourceFiles="@(_HubUIFiles)"
+			  DestinationFiles="@(_HubUIFiles->'$(OutputPath)Resources\HubUI\%(RecursiveDir)%(Filename)%(Extension)')"
+			  SkipUnchangedFiles="true" />
+	</Target>
+
+	<Target Name="CreateAddin" AfterTargets="Build" Condition="'$(SkipCreateAddin)'!='true'">
+		<PropertyGroup>
+			<BuiltDll>$(TargetPath)</BuiltDll>
+			<AddinOutDir>$(UserAddinRoot)\$(AddinYear)\</AddinOutDir>
+			<AddinFile>$(AddinOutDir)KKY_Tool_Revit.addin</AddinFile>
+		</PropertyGroup>
+
+		<MakeDir Directories="$(AddinOutDir)" />
+
+		<Error Condition="!Exists('$(OutputPath)Resources\HubUI\index.html')"
+			   Text="HubUI not found in output: $(OutputPath)Resources\HubUI\index.html (check Resources\HubUI content include)" />
+
+		<ItemGroup>
+			<AddinXml Include="&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot; standalone=&quot;no&quot;?&gt;" />
+			<AddinXml Include="&lt;RevitAddIns&gt;" />
+			<AddinXml Include="  &lt;AddIn Type=&quot;Application&quot;&gt;" />
+			<AddinXml Include="    &lt;Name&gt;KKY_Tool_Revit&lt;/Name&gt;" />
+			<AddinXml Include="    &lt;Assembly&gt;$(BuiltDll)&lt;/Assembly&gt;" />
+			<AddinXml Include="    &lt;AddInId&gt;8D83DB0A-B739-4ACD-A9DB-7B57A229D2A4&lt;/AddInId&gt;" />
+			<AddinXml Include="    &lt;FullClassName&gt;KKY_Tool_Revit.KKY_Tool_Revit.App&lt;/FullClassName&gt;" />
+			<AddinXml Include="    &lt;VendorId&gt;KKY&lt;/VendorId&gt;" />
+			<AddinXml Include="    &lt;VendorDescription&gt;KKY Tools Hub&lt;/VendorDescription&gt;" />
+			<AddinXml Include="  &lt;/AddIn&gt;" />
+			<AddinXml Include="&lt;/RevitAddIns&gt;" />
+		</ItemGroup>
+
+		<WriteLinesToFile File="$(AddinFile)" Lines="@(AddinXml)" Overwrite="true" Encoding="UTF-8" />
+		<Message Text="Created: $(AddinFile) -> $(BuiltDll)" Importance="high" />
+	</Target>
+
+	<Target Name="DisableLegacyProgramDataAddin" AfterTargets="CreateAddin" Condition="'$(SkipCreateAddin)'!='true'">
+		<PropertyGroup>
+			<LegacyProgramDataAddinRoot>$([System.Environment]::GetFolderPath(SpecialFolder.CommonApplicationData))\Autodesk\Revit\Addins\2027\</LegacyProgramDataAddinRoot>
+			<LegacyProgramDataAddinFile>$(LegacyProgramDataAddinRoot)KKY_Tool_Revit.addin</LegacyProgramDataAddinFile>
+			<LegacyProgramDataDisabledAddinFile>$(LegacyProgramDataAddinRoot)KKY_Tool_Revit.addin.disabled</LegacyProgramDataDisabledAddinFile>
+		</PropertyGroup>
+
+		<Delete Files="$(LegacyProgramDataDisabledAddinFile)" Condition="Exists('$(LegacyProgramDataDisabledAddinFile)')" ContinueOnError="WarnAndContinue" />
+		<Move SourceFiles="$(LegacyProgramDataAddinFile)"
+			  DestinationFiles="$(LegacyProgramDataDisabledAddinFile)"
+			  Condition="Exists('$(LegacyProgramDataAddinFile)')"
+			  ContinueOnError="WarnAndContinue" />
+		<Message Text="Disabled legacy ProgramData addin: $(LegacyProgramDataAddinFile)" Importance="high" Condition="Exists('$(LegacyProgramDataDisabledAddinFile)')" />
+	</Target>
+
+	<Target Name="BuildAndCopyUpdater" AfterTargets="Build" Condition="'$(SkipUpdaterBuild)'!='true'">
+		<PropertyGroup>
+			<UpdaterProjectPath>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\KKY_Tool_Revit_Updater\KKY_Tool_Revit_Updater.csproj'))</UpdaterProjectPath>
+			<UpdaterProjectDir>$([System.IO.Path]::GetDirectoryName('$(UpdaterProjectPath)'))</UpdaterProjectDir>
+			<UpdaterBuildDir>$([System.IO.Path]::GetFullPath('$(UpdaterProjectDir)\bin\Generated\$(Configuration)\2027\'))</UpdaterBuildDir>
+			<UpdaterExePath>$(UpdaterBuildDir)KKY_Tool_Revit_Updater.exe</UpdaterExePath>
+			<UpdaterDestDir>$([System.IO.Path]::GetFullPath('$(OutputPath)'))</UpdaterDestDir>
+			<UpdaterDestPath>$([System.IO.Path]::Combine('$(UpdaterDestDir)', 'KKY_Tool_Revit_Updater.exe'))</UpdaterDestPath>
+		</PropertyGroup>
+
+		<MSBuild Projects="$(UpdaterProjectPath)"
+				 Targets="Restore;Build"
+				 Properties="Configuration=$(Configuration);Platform=AnyCPU;OutputPath=$(UpdaterBuildDir);AppendTargetFrameworkToOutputPath=false"
+				 BuildInParallel="false" />
+
+		<Message Importance="high" Text="Copying updater: $(UpdaterExePath) -> $(UpdaterDestPath)" />
+		<Copy SourceFiles="$(UpdaterExePath)"
+			  DestinationFiles="$(UpdaterDestPath)"
+			  SkipUnchangedFiles="true" />
+	</Target>
+</Project>

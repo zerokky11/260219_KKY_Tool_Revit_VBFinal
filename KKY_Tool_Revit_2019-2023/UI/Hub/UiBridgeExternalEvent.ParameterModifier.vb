@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -93,7 +93,7 @@ Namespace UI.Hub
                 .OfClass(GetType(ParameterFilterElement)) _
                 .Cast(Of ParameterFilterElement)() _
                 .OrderBy(Function(x) x.Name) _
-                .Select(Function(x) New With {.id = x.Id.IntegerValue, .name = x.Name}) _
+                .Select(Function(x) New With {.id = x.Id.IntValue(), .name = x.Name}) _
                 .ToList()
 
             SendToWeb("parammodifier:filter-doc-list", New With {.ok = True, .items = items, .docTitle = doc.Title})

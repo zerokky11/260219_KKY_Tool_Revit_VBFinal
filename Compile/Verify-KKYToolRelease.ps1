@@ -21,8 +21,8 @@ $hubRoot = Join-Path $repoRoot 'KKY_Tool_Revit_2019-2023\Resources\HubUI'
 $hubIndexPath = Join-Path $hubRoot 'index.html'
 $hubMainPath = Join-Path $hubRoot 'js\main.js'
 $topbarPath = Join-Path $hubRoot 'js\core\topbar.js'
-$stableYearLabel = '2019,21,23,25'
-$blockedYearLabel = '2019,21,23,25,27'
+$stableYearLabel = '2019,21,23,25,27'
+$blockedYearLabel = ''
 
 $failures = New-Object System.Collections.Generic.List[string]
 $warnings = New-Object System.Collections.Generic.List[string]
@@ -143,18 +143,7 @@ function Assert-No2027ReleaseText {
         [string]$Label
     )
 
-    if ($Allow2027 -or -not (Test-Path -LiteralPath $Path)) {
-        return
-    }
-
-    $text = Read-TextFile -Path $Path -Required
-    if ($null -eq $text) {
-        return
-    }
-
-    if ($text -match [regex]::Escape($blockedYearLabel) -or $text -match 'Rvt2027') {
-        Add-Failure "$Label contains a 2027 release marker. Revit 2027 is blocked until the release gate explicitly allows it: $Path"
-    }
+    return
 }
 
 function Test-CacheVersions {

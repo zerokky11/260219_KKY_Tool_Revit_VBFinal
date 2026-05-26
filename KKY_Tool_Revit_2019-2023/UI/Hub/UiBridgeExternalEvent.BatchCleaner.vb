@@ -1,4 +1,4 @@
-﻿Imports System
+Imports System
 Imports System.Collections
 Imports System.Collections.Generic
 Imports System.Data
@@ -345,7 +345,7 @@ Namespace UI.Hub
                 .OfClass(GetType(ParameterFilterElement)) _
                 .Cast(Of ParameterFilterElement)() _
                 .OrderBy(Function(x) x.Name) _
-                .Select(Function(x) New With {.id = x.Id.IntegerValue, .name = x.Name}) _
+                .Select(Function(x) New With {.id = x.Id.IntValue(), .name = x.Name}) _
                 .ToList()
 
             SendToWeb("deliverycleaner:filter-doc-list", New With {.ok = True, .items = items, .docTitle = doc.Title})

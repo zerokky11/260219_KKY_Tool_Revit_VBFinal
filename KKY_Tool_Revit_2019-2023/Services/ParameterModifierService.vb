@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -342,8 +342,8 @@ Namespace Services
             If settings.FilterProfile IsNot Nothing AndAlso settings.FilterProfile.IsConfigured() Then
                 Dim candidateIds = filteredElements.Select(Function(x) x.Id).ToList()
                 Dim matchedIds = RevitViewFilterProfileService.GetMatchingElementIds(doc, settings.FilterProfile, candidateIds, Nothing)
-                Dim matchedSet As New HashSet(Of Integer)(matchedIds.Select(Function(x) x.IntegerValue))
-                filteredElements = filteredElements.Where(Function(x) matchedSet.Contains(x.Id.IntegerValue)).ToList()
+                Dim matchedSet As New HashSet(Of Integer)(matchedIds.Select(Function(x) x.IntValue()))
+                filteredElements = filteredElements.Where(Function(x) matchedSet.Contains(x.Id.IntValue())).ToList()
             End If
             result.FilteredCount = filteredElements.Count
 
@@ -366,7 +366,7 @@ Namespace Services
                     Dim row As New DetailRow() With {
                         .FilePath = filePath,
                         .FileName = fileName,
-                        .ElementId = element.Id.IntegerValue,
+                        .ElementId = element.Id.IntValue(),
                         .Category = ModelParameterExtractionService.GetElementCategoryName(element),
                         .FamilyName = ModelParameterExtractionService.GetElementFamilyName(doc, element),
                         .TypeName = ModelParameterExtractionService.GetElementTypeName(doc, element)
@@ -580,7 +580,7 @@ Namespace Services
                             Return False
                         End If
                         Dim beforeId = parameter.AsElementId()
-                        If beforeId IsNot Nothing AndAlso beforeId.IntegerValue = intValue Then
+                        If beforeId IsNot Nothing AndAlso beforeId.IntValue() = intValue Then
                             message = "이미 같은 값"
                             Return False
                         End If
@@ -659,7 +659,7 @@ Namespace Services
                         If refElement IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(refElement.Name) Then
                             Return refElement.Name
                         End If
-                        Return elementId.IntegerValue.ToString(CultureInfo.InvariantCulture)
+                        Return elementId.IntValue().ToString(CultureInfo.InvariantCulture)
                     Case Else
                         Return String.Empty
                 End Select

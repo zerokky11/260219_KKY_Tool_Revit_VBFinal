@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -2050,7 +2050,7 @@ Namespace Services
                         .File = filePath,
                         .PipeTypeName = pt.Name,
                         .RuleIndex = idx,
-                        .SegmentId = segId.IntegerValue,
+                        .SegmentId = segId.IntValue(),
                         .SegmentName = segName,
                         .SegmentKey = segName
                     })
@@ -2148,7 +2148,7 @@ Namespace Services
                             .RuleGroup = group.ToString(),
                             .RuleIndex = i,
                             .RuleType = rule.GetType().Name,
-                            .PartId = partId.IntegerValue,
+                            .PartId = partId.IntValue(),
                             .PartName = partName,
                             .TypeName = typeName
                         })
@@ -2220,7 +2220,7 @@ Namespace Services
             Try
                 Dim el As RvtDB.Element = doc.GetElement(segId)
                 If el Is Nothing Then
-                    Return segId.IntegerValue.ToString(CultureInfo.InvariantCulture)
+                    Return segId.IntValue().ToString(CultureInfo.InvariantCulture)
                 End If
                 Dim fam As String = String.Empty
                 Dim typ As String = String.Empty
@@ -2259,11 +2259,11 @@ Namespace Services
                 End If
                 Dim joined = String.Join(" | ", parts)
                 If String.IsNullOrWhiteSpace(joined) Then
-                    joined = segId.IntegerValue.ToString(CultureInfo.InvariantCulture)
+                    joined = segId.IntValue().ToString(CultureInfo.InvariantCulture)
                 End If
                 Return joined
             Catch
-                Return segId.IntegerValue.ToString(CultureInfo.InvariantCulture)
+                Return segId.IntValue().ToString(CultureInfo.InvariantCulture)
             End Try
         End Function
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
@@ -116,7 +116,7 @@ namespace KKY_Tool_Revit.Services
                 double zFt = GetAbsoluteLevelZ(level);
                 snapshot.Levels.Add(new LevelOption
                 {
-                    LevelId = level.Id.IntegerValue,
+                    LevelId = level.Id.CompatIntegerValue(),
                     LevelName = level.Name ?? string.Empty,
                     AbsoluteZFt = Round(zFt, 6),
                     AbsoluteZMm = Round(ToMillimeters(zFt), 1)
@@ -160,7 +160,7 @@ namespace KKY_Tool_Revit.Services
 
             result.Warnings.AddRange(BuildDuplicateLevelWarnings(levels.Select(level => new LevelOption
             {
-                LevelId = level.Id.IntegerValue,
+                LevelId = level.Id.CompatIntegerValue(),
                 LevelName = level.Name ?? string.Empty,
                 AbsoluteZFt = GetAbsoluteLevelZ(level)
             }).ToList()));
@@ -172,7 +172,7 @@ namespace KKY_Tool_Revit.Services
             if (settings.HasAllowedElementScope)
             {
                 elements = elements
-                    .Where(element => element?.Id != null && allowedElementIds.Contains(element.Id.IntegerValue))
+                    .Where(element => element?.Id != null && allowedElementIds.Contains(element.Id.CompatIntegerValue()))
                     .ToList();
             }
             result.TotalElements = elements.Count;
@@ -405,7 +405,7 @@ namespace KKY_Tool_Revit.Services
             if (element is MEPSystem) return false;
             if (string.IsNullOrWhiteSpace(categoryName)) return false;
 
-            int categoryId = element.Category.Id.IntegerValue;
+            int categoryId = element.Category.Id.CompatIntegerValue();
             if (categoryId == (int)BuiltInCategory.OST_Levels) return false;
             if (categoryId == (int)BuiltInCategory.OST_Grids) return false;
             if (categoryId == (int)BuiltInCategory.OST_RvtLinks) return false;
@@ -507,7 +507,7 @@ namespace KKY_Tool_Revit.Services
             string actualName;
             try
             {
-                actualName = Enum.GetName(typeof(BuiltInCategory), category.Id.IntegerValue) ?? string.Empty;
+                actualName = Enum.GetName(typeof(BuiltInCategory), category.Id.CompatIntegerValue()) ?? string.Empty;
             }
             catch
             {
@@ -714,7 +714,7 @@ namespace KKY_Tool_Revit.Services
                         return parameter.AsValueString() ?? parameter.AsDouble().ToString(CultureInfo.InvariantCulture);
                     case StorageType.ElementId:
                         ElementId id = parameter.AsElementId();
-                        return id == null ? string.Empty : id.IntegerValue.ToString(CultureInfo.InvariantCulture);
+                        return id == null ? string.Empty : id.CompatIntegerValue().ToString(CultureInfo.InvariantCulture);
                     default:
                         return parameter.AsValueString() ?? string.Empty;
                 }
@@ -849,7 +849,7 @@ namespace KKY_Tool_Revit.Services
             return new ReviewRow
             {
                 File = file ?? string.Empty,
-                ElementId = element?.Id?.IntegerValue ?? 0,
+                ElementId = element?.Id?.CompatIntegerValue() ?? 0,
                 Category = element?.Category?.Name ?? string.Empty,
                 Family = familyName,
                 TypeName = typeName,

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -175,7 +175,7 @@ namespace KKY_Tool_Revit.Services
                     {
                         var row = new List<string>();
                         row.Add(fileName);
-                        row.Add(element.Id.IntegerValue.ToString());
+                        row.Add(element.Id.CompatIntegerValue().ToString());
                         row.Add(GetCategoryName(element));
                         row.Add(GetFamilyName(doc, element));
                         row.Add(GetTypeName(doc, element));
@@ -217,7 +217,7 @@ namespace KKY_Tool_Revit.Services
                 .Cast<Element>()
                 .Where(x => x != null)
                 .Where(x => IsEligibleModelElement(x, schedulableCategoryIds))
-                .OrderBy(x => x.Id.IntegerValue)
+                .OrderBy(x => x.Id.CompatIntegerValue())
                 .ToList();
         }
 
@@ -271,7 +271,7 @@ namespace KKY_Tool_Revit.Services
             int categoryId;
             try
             {
-                categoryId = element.Category.Id != null ? element.Category.Id.IntegerValue : 0;
+                categoryId = element.Category.Id != null ? element.Category.Id.CompatIntegerValue() : 0;
             }
             catch
             {
@@ -285,8 +285,43 @@ namespace KKY_Tool_Revit.Services
             if (categoryId == (int)BuiltInCategory.OST_SectionBox) return false;
             if (categoryId == (int)BuiltInCategory.OST_VolumeOfInterest) return false;
 
-            if (schedulableCategoryIds == null || !schedulableCategoryIds.Contains(categoryId)) return false;
+            if (!IsElementCategorySchedulable(element.Category, schedulableCategoryIds)) return false;
             return !IsExplicitlyExcludedCategory(element.Category);
+        }
+
+        private static bool IsElementCategorySchedulable(Category category, ISet<int> schedulableCategoryIds)
+        {
+            if (category == null || schedulableCategoryIds == null || schedulableCategoryIds.Count == 0) return false;
+
+            var visited = new HashSet<int>();
+            Category current = category;
+
+            while (current != null && current.Id != null)
+            {
+                int categoryId;
+                try
+                {
+                    categoryId = current.Id.CompatIntegerValue();
+                }
+                catch
+                {
+                    return false;
+                }
+
+                if (categoryId == 0 || !visited.Add(categoryId)) return false;
+                if (schedulableCategoryIds.Contains(categoryId)) return true;
+
+                try
+                {
+                    current = current.Parent;
+                }
+                catch
+                {
+                    current = null;
+                }
+            }
+
+            return false;
         }
 
         private static HashSet<int> GetSchedulableCategoryIds(Document doc)
@@ -303,7 +338,7 @@ namespace KKY_Tool_Revit.Services
                 if (category == null || category.Id == null) continue;
 
                 int categoryId;
-                try { categoryId = category.Id.IntegerValue; }
+                try { categoryId = category.Id.CompatIntegerValue(); }
                 catch { continue; }
 
                 if (categoryId == 0) continue;
@@ -329,7 +364,7 @@ namespace KKY_Tool_Revit.Services
             HashSet<int> validIds = TryGetValidCategoriesForSchedule(doc);
             if (validIds != null && validIds.Count > 0)
             {
-                return validIds.Contains(category.Id.IntegerValue);
+                return validIds.Contains(category.Id.CompatIntegerValue());
             }
 
             return true;
@@ -435,7 +470,7 @@ namespace KKY_Tool_Revit.Services
             int categoryId;
             try
             {
-                categoryId = category.Id.IntegerValue;
+                categoryId = category.Id.CompatIntegerValue();
             }
             catch
             {
@@ -543,13 +578,13 @@ namespace KKY_Tool_Revit.Services
 
                 if (item is ElementId elementId)
                 {
-                    result.Add(elementId.IntegerValue);
+                    result.Add(elementId.CompatIntegerValue());
                     continue;
                 }
 
                 if (item is Category category && category.Id != null)
                 {
-                    result.Add(category.Id.IntegerValue);
+                    result.Add(category.Id.CompatIntegerValue());
                     continue;
                 }
 
@@ -561,11 +596,11 @@ namespace KKY_Tool_Revit.Services
 
                 if (idValue is ElementId reflectedId)
                 {
-                    result.Add(reflectedId.IntegerValue);
+                    result.Add(reflectedId.CompatIntegerValue());
                 }
                 else if (idValue is Category reflectedCategory && reflectedCategory.Id != null)
                 {
-                    result.Add(reflectedCategory.Id.IntegerValue);
+                    result.Add(reflectedCategory.Id.CompatIntegerValue());
                 }
             }
 
@@ -709,7 +744,7 @@ namespace KKY_Tool_Revit.Services
                             break;
                         }
                         Element refElement = doc.GetElement(id);
-                        info.ValueText = refElement != null ? (refElement.Name ?? id.IntegerValue.ToString()) : id.IntegerValue.ToString();
+                        info.ValueText = refElement != null ? (refElement.Name ?? id.CompatIntegerValue().ToString()) : id.CompatIntegerValue().ToString();
                         break;
                     default:
                         info.ValueText = string.Empty;

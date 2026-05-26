@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -67,8 +67,8 @@ namespace KKY_Tool_Revit.Services
             object result = method.Invoke(doc, new object[] { exclusions });
             List<ElementId> ids = ToElementIdList(result)
                 .Where(x => x != null && x != ElementId.InvalidElementId)
-                .Where(x => context.KeepViewId == null || x.IntegerValue != context.KeepViewId.IntegerValue)
-                .Where(x => context.KeepFilterId == null || x.IntegerValue != context.KeepFilterId.IntegerValue)
+                .Where(x => context.KeepViewId == null || x.CompatIntegerValue() != context.KeepViewId.CompatIntegerValue())
+                .Where(x => context.KeepFilterId == null || x.CompatIntegerValue() != context.KeepFilterId.CompatIntegerValue())
                 .Distinct(new ElementIdComparer())
                 .ToList();
 
@@ -143,8 +143,8 @@ namespace KKY_Tool_Revit.Services
                 .WhereElementIsElementType()
                 .Cast<ElementType>()
                 .Where(x => x != null)
-                .Where(x => keepViewTypeId == null || keepViewTypeId == ElementId.InvalidElementId || x.Id.IntegerValue != keepViewTypeId.IntegerValue)
-                .Where(x => !usedTypeIds.Contains(x.Id.IntegerValue))
+                .Where(x => keepViewTypeId == null || keepViewTypeId == ElementId.InvalidElementId || x.Id.CompatIntegerValue() != keepViewTypeId.CompatIntegerValue())
+                .Where(x => !usedTypeIds.Contains(x.Id.CompatIntegerValue()))
                 .Where(IsPurgeableElementTypeCandidate)
                 .Select(x => x.Id)
                 .Distinct(new ElementIdComparer())
@@ -164,7 +164,7 @@ namespace KKY_Tool_Revit.Services
                     ElementId typeId = element.GetTypeId();
                     if (typeId != null && typeId != ElementId.InvalidElementId)
                     {
-                        usedTypeIds.Add(typeId.IntegerValue);
+                        usedTypeIds.Add(typeId.CompatIntegerValue());
                     }
                 }
                 catch
@@ -189,7 +189,7 @@ namespace KKY_Tool_Revit.Services
                     {
                         if (filterId != null && filterId != ElementId.InvalidElementId)
                         {
-                            usedFilterIds.Add(filterId.IntegerValue);
+                            usedFilterIds.Add(filterId.CompatIntegerValue());
                         }
                     }
                 }
@@ -223,7 +223,7 @@ namespace KKY_Tool_Revit.Services
                 .OfClass(typeof(TextNoteType))
                 .Cast<TextNoteType>()
                 .Where(x => x != null)
-                .Where(x => !usedTypeIds.Contains(x.Id.IntegerValue))
+                .Where(x => !usedTypeIds.Contains(x.Id.CompatIntegerValue()))
                 .Select(x => x.Id)
                 .Distinct(new ElementIdComparer())
                 .ToList();
@@ -246,8 +246,8 @@ namespace KKY_Tool_Revit.Services
                 .OfClass(typeof(FilterElement))
                 .Cast<FilterElement>()
                 .Where(x => x != null)
-                .Where(x => keepFilterId == null || x.Id.IntegerValue != keepFilterId.IntegerValue)
-                .Where(x => !usedFilterIds.Contains(x.Id.IntegerValue))
+                .Where(x => keepFilterId == null || x.Id.CompatIntegerValue() != keepFilterId.CompatIntegerValue())
+                .Where(x => !usedFilterIds.Contains(x.Id.CompatIntegerValue()))
                 .Select(x => x.Id)
                 .Distinct(new ElementIdComparer())
                 .ToList();
@@ -315,34 +315,34 @@ namespace KKY_Tool_Revit.Services
 
             foreach (ElementType type in new FilteredElementCollector(doc).WhereElementIsElementType().Cast<ElementType>())
             {
-                if (type != null) set.Add(type.Id.IntegerValue);
+                if (type != null) set.Add(type.Id.CompatIntegerValue());
             }
 
             foreach (Element material in new FilteredElementCollector(doc).OfClass(typeof(Material)).ToElements())
             {
-                if (material != null) set.Add(material.Id.IntegerValue);
+                if (material != null) set.Add(material.Id.CompatIntegerValue());
             }
 
             foreach (Element linePattern in new FilteredElementCollector(doc).OfClass(typeof(LinePatternElement)).ToElements())
             {
-                if (linePattern != null) set.Add(linePattern.Id.IntegerValue);
+                if (linePattern != null) set.Add(linePattern.Id.CompatIntegerValue());
             }
 
             foreach (Element fillPattern in new FilteredElementCollector(doc).OfClass(typeof(FillPatternElement)).ToElements())
             {
-                if (fillPattern != null) set.Add(fillPattern.Id.IntegerValue);
+                if (fillPattern != null) set.Add(fillPattern.Id.CompatIntegerValue());
             }
 
             foreach (FilterElement filter in new FilteredElementCollector(doc).OfClass(typeof(FilterElement)).Cast<FilterElement>())
             {
                 if (filter == null) continue;
-                if (keepFilterId != null && keepFilterId != ElementId.InvalidElementId && filter.Id.IntegerValue == keepFilterId.IntegerValue) continue;
-                set.Add(filter.Id.IntegerValue);
+                if (keepFilterId != null && keepFilterId != ElementId.InvalidElementId && filter.Id.CompatIntegerValue() == keepFilterId.CompatIntegerValue()) continue;
+                set.Add(filter.Id.CompatIntegerValue());
             }
 
             foreach (ParameterElement parameterElement in new FilteredElementCollector(doc).OfClass(typeof(ParameterElement)).Cast<ParameterElement>())
             {
-                if (parameterElement != null) set.Add(parameterElement.Id.IntegerValue);
+                if (parameterElement != null) set.Add(parameterElement.Id.CompatIntegerValue());
             }
 
             Type appearanceType = typeof(Document).Assembly.GetType("Autodesk.Revit.DB.AppearanceAssetElement", false);
@@ -350,7 +350,7 @@ namespace KKY_Tool_Revit.Services
             {
                 foreach (Element element in new FilteredElementCollector(doc).OfClass(appearanceType).ToElements())
                 {
-                    if (element != null) set.Add(element.Id.IntegerValue);
+                    if (element != null) set.Add(element.Id.CompatIntegerValue());
                 }
             }
 
@@ -365,10 +365,10 @@ namespace KKY_Tool_Revit.Services
             foreach (ElementId deletedId in deletedIds)
             {
                 if (deletedId == null || deletedId == ElementId.InvalidElementId) return false;
-                if (keepViewId != null && keepViewId != ElementId.InvalidElementId && deletedId.IntegerValue == keepViewId.IntegerValue) return false;
-                if (keepFilterId != null && keepFilterId != ElementId.InvalidElementId && deletedId.IntegerValue == keepFilterId.IntegerValue) return false;
-                if (deletedId.IntegerValue == candidateId.IntegerValue) continue;
-                if (safeDeletedIdSet != null && !safeDeletedIdSet.Contains(deletedId.IntegerValue)) return false;
+                if (keepViewId != null && keepViewId != ElementId.InvalidElementId && deletedId.CompatIntegerValue() == keepViewId.CompatIntegerValue()) return false;
+                if (keepFilterId != null && keepFilterId != ElementId.InvalidElementId && deletedId.CompatIntegerValue() == keepFilterId.CompatIntegerValue()) return false;
+                if (deletedId.CompatIntegerValue() == candidateId.CompatIntegerValue()) continue;
+                if (safeDeletedIdSet != null && !safeDeletedIdSet.Contains(deletedId.CompatIntegerValue())) return false;
             }
 
             return true;
@@ -450,14 +450,14 @@ namespace KKY_Tool_Revit.Services
             if (candidateIds == null || candidateIds.Count == 0) return false;
             if (deletedIds == null || deletedIds.Count == 0) return false;
 
-            HashSet<int> candidateSet = new HashSet<int>(candidateIds.Where(x => x != null && x != ElementId.InvalidElementId).Select(x => x.IntegerValue));
+            HashSet<int> candidateSet = new HashSet<int>(candidateIds.Where(x => x != null && x != ElementId.InvalidElementId).Select(x => x.CompatIntegerValue()));
             foreach (ElementId deletedId in deletedIds)
             {
                 if (deletedId == null || deletedId == ElementId.InvalidElementId) return false;
-                if (keepViewId != null && keepViewId != ElementId.InvalidElementId && deletedId.IntegerValue == keepViewId.IntegerValue) return false;
-                if (keepFilterId != null && keepFilterId != ElementId.InvalidElementId && deletedId.IntegerValue == keepFilterId.IntegerValue) return false;
-                if (candidateSet.Contains(deletedId.IntegerValue)) continue;
-                if (safeDeletedIdSet != null && !safeDeletedIdSet.Contains(deletedId.IntegerValue)) return false;
+                if (keepViewId != null && keepViewId != ElementId.InvalidElementId && deletedId.CompatIntegerValue() == keepViewId.CompatIntegerValue()) return false;
+                if (keepFilterId != null && keepFilterId != ElementId.InvalidElementId && deletedId.CompatIntegerValue() == keepFilterId.CompatIntegerValue()) return false;
+                if (candidateSet.Contains(deletedId.CompatIntegerValue())) continue;
+                if (safeDeletedIdSet != null && !safeDeletedIdSet.Contains(deletedId.CompatIntegerValue())) return false;
             }
 
             return true;
@@ -479,7 +479,7 @@ namespace KKY_Tool_Revit.Services
                 Element snapshotElement = doc.GetElement(id);
                 if (snapshotElement == null) continue;
 
-                int candidateIdInt = id.IntegerValue;
+                int candidateIdInt = id.CompatIntegerValue();
                 string candidateClassName = GetPurgeLogClassName(snapshotElement);
                 bool shouldDelete = !probeFirst;
                 int modelDeletionRiskCount = 0;
@@ -600,7 +600,7 @@ namespace KKY_Tool_Revit.Services
                 {
                     if (category.CategoryType == CategoryType.Model)
                     {
-                        set.Add(element.Id.IntegerValue);
+                        set.Add(element.Id.CompatIntegerValue());
                     }
                 }
                 catch
@@ -620,8 +620,8 @@ namespace KKY_Tool_Revit.Services
             foreach (ElementId deletedId in deletedIds)
             {
                 if (deletedId == null || deletedId == ElementId.InvalidElementId) continue;
-                if (keepViewId != null && keepViewId != ElementId.InvalidElementId && deletedId.IntegerValue == keepViewId.IntegerValue) continue;
-                if (modelElementIdSet.Contains(deletedId.IntegerValue))
+                if (keepViewId != null && keepViewId != ElementId.InvalidElementId && deletedId.CompatIntegerValue() == keepViewId.CompatIntegerValue()) continue;
+                if (modelElementIdSet.Contains(deletedId.CompatIntegerValue()))
                 {
                     count++;
                 }
@@ -662,12 +662,12 @@ namespace KKY_Tool_Revit.Services
             {
                 if (ReferenceEquals(x, y)) return true;
                 if (ReferenceEquals(x, null) || ReferenceEquals(y, null)) return false;
-                return x.IntegerValue == y.IntegerValue;
+                return x.CompatIntegerValue() == y.CompatIntegerValue();
             }
 
             public int GetHashCode(ElementId obj)
             {
-                return obj?.IntegerValue ?? 0;
+                return obj?.CompatIntegerValue() ?? 0;
             }
         }
     }

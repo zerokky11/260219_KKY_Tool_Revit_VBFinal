@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -245,7 +245,7 @@ Namespace Services
                                    Not f.IsInPlace AndAlso
                                    IsModelFamily(f)).
                 Select(Function(f) f.Id).
-                Where(Function(id) id IsNot Nothing AndAlso id.IntegerValue > 0).
+                Where(Function(id) id IsNot Nothing AndAlso id.IntValue() > 0).
                 ToList()
         End Function
 
@@ -785,8 +785,8 @@ Namespace Services
 
             Dim elementId As String = ""
             Try
-                If fam.Id IsNot Nothing AndAlso fam.Id.IntegerValue <> Integer.MinValue Then
-                    elementId = fam.Id.IntegerValue.ToString()
+                If fam.Id IsNot Nothing AndAlso fam.Id.IntValue() <> Integer.MinValue Then
+                    elementId = fam.Id.IntValue().ToString()
                 End If
             Catch
             End Try
@@ -959,7 +959,7 @@ Namespace Services
             If fi Is Nothing Then Return ""
             Try
                 If fi.Id Is Nothing Then Return ""
-                Return fi.Id.IntegerValue.ToString()
+                Return fi.Id.IntValue().ToString()
             Catch
                 Return ""
             End Try

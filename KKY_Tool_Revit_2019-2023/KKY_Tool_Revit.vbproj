@@ -36,6 +36,10 @@
 		<AddinFileName>KKY_Tool_Revit.addin</AddinFileName>
 	</PropertyGroup>
 
+	<ItemGroup>
+		<Import Include="KKY_Tool_Revit.Infrastructure" />
+	</ItemGroup>
+
 	<!-- Revit API DLL 탐색: (1)환경변수 (2)로컬 Compile (3)설치폴더 -->
 	<PropertyGroup>
 		<ProgramFilesPath>$([System.Environment]::GetEnvironmentVariable('ProgramFiles'))</ProgramFilesPath>
@@ -193,7 +197,7 @@
 		</PropertyGroup>
 
 		<MSBuild Projects="$(UpdaterProjectPath)"
-				 Targets="Build"
+				 Targets="Restore;Build"
 				 Properties="Configuration=$(Configuration);Platform=AnyCPU;OutputPath=$(UpdaterBuildDir);AppendTargetFrameworkToOutputPath=false"
 				 BuildInParallel="false" />
 

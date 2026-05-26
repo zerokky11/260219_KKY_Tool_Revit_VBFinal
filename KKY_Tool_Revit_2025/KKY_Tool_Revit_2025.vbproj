@@ -43,6 +43,10 @@
 		<AddinYear>2025</AddinYear>
 	</PropertyGroup>
 
+	<ItemGroup>
+		<Import Include="KKY_Tool_Revit.Infrastructure" />
+	</ItemGroup>
+
 	<PropertyGroup>
 		<HubUISourceDir Condition="Exists('$(MSBuildProjectDirectory)\Resources\HubUI\index.html')">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\Resources\HubUI\'))</HubUISourceDir>
 		<HubUISourceDir Condition="'$(HubUISourceDir)'=='' and Exists('$(MSBuildProjectDirectory)\..\KKY_Tool_Revit_2019-2023\Resources\HubUI\index.html')">$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\KKY_Tool_Revit_2019-2023\Resources\HubUI\'))</HubUISourceDir>
@@ -239,7 +243,7 @@
 		</PropertyGroup>
 
 		<MSBuild Projects="$(UpdaterProjectPath)"
-				 Targets="Build"
+				 Targets="Restore;Build"
 				 Properties="Configuration=$(Configuration);Platform=AnyCPU;OutputPath=$(UpdaterBuildDir);AppendTargetFrameworkToOutputPath=false"
 				 BuildInParallel="false" />
 

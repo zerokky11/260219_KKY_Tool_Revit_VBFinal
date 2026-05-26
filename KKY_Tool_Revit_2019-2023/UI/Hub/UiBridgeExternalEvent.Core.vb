@@ -139,6 +139,7 @@ Namespace UI.Hub
             map.Add("tapalign:save-excel", "HandleTapAlignSaveExcel")
             map.Add("floorinfo:config-load", "HandleFloorInfoConfigLoad")
             map.Add("familysuitability:pick-criteria", "HandleFamilySuitabilityPickCriteria")
+            map.Add("parameterstandard:pick-criteria", "HandleParameterStandardPickCriteria")
             map.Add("parameterduplication:pick-sharedparams", "HandleProjectParameterDuplicationPickSharedParams")
             ' Export Points with Angle
             map.Add("export:browse-folder", "HandleExportBrowse")

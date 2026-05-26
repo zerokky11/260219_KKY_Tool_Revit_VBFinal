@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -453,7 +453,7 @@ Namespace Services
 
             For Each worksetId In worksetIds
                 If worksetId Is Nothing OrElse worksetId = WorksetId.InvalidWorksetId Then Continue For
-                Dim name As String = worksetId.IntegerValue.ToString()
+                Dim name As String = worksetId.IntValue().ToString()
                 Try
                     If table IsNot Nothing Then
                         Dim ws = table.GetWorkset(worksetId)
@@ -501,7 +501,7 @@ Namespace Services
             If worksetId Is Nothing Then Return "null"
             If worksetId = WorksetId.InvalidWorksetId Then Return "invalid"
             Try
-                Return worksetId.IntegerValue.ToString()
+                Return worksetId.IntValue().ToString()
             Catch
                 Return "unknown"
             End Try

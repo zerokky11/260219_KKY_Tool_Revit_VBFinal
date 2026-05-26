@@ -64,15 +64,18 @@
     <Compile Include="..\Models\ViewParameterAssignment.cs" Link="Models\ViewParameterAssignment.cs" />
 
     <Compile Include="..\BatchCleanService.cs" Link="Services\BatchCleanService.cs" />
+    <Compile Include="..\ElementIdCompatExtensions.cs" Link="Services\ElementIdCompatExtensions.cs" />
     <Compile Include="..\FamilySuitabilityReviewService.cs" Link="Services\FamilySuitabilityReviewService.cs" />
     <Compile Include="..\FloorInfoReviewService.cs" Link="Services\FloorInfoReviewService.cs" />
     <Compile Include="..\LegacyPurgeService.cs" Link="Services\LegacyPurgeService.cs" />
     <Compile Include="..\LinkWorksetUiPrimeService.cs" Link="Services\LinkWorksetUiPrimeService.cs" />
     <Compile Include="..\ModelParameterExtractionService.cs" Link="Services\ModelParameterExtractionService.cs" />
     <Compile Include="..\ParameterMissingReviewService.cs" Link="Services\ParameterMissingReviewService.cs" />
+    <Compile Include="..\ParameterStandardReviewService.cs" Link="Services\ParameterStandardReviewService.cs" />
     <Compile Include="..\PurgeUiBatchService.cs" Link="Services\PurgeUiBatchService.cs" />
     <Compile Include="..\ProjectParameterDuplicationReviewService.cs" Link="Services\ProjectParameterDuplicationReviewService.cs" />
     <Compile Include="..\RevitViewFilterProfileService.cs" Link="Services\RevitViewFilterProfileService.cs" />
+    <Compile Include="..\UnconnectedConnectorReviewService.cs" Link="Services\UnconnectedConnectorReviewService.cs" />
     <Compile Include="..\VisibilitySubCategoryRuleProfileService.cs" Link="Services\VisibilitySubCategoryRuleProfileService.cs" />
     <Compile Include="..\TransactionFailureSwallower.cs" Link="Services\TransactionFailureSwallower.cs" />
     <Compile Include="..\VerificationService.cs" Link="Services\VerificationService.cs" />

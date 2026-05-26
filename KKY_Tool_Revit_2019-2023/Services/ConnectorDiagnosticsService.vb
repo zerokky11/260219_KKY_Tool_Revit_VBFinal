@@ -1,4 +1,4 @@
-﻿Imports System
+Imports System
 Imports System.Collections.Generic
 Imports System.Diagnostics
 Imports System.Globalization
@@ -257,11 +257,11 @@ Namespace Services
                     Return rows
                 End If
 
-                Dim allowedIds As HashSet(Of Integer) = New HashSet(Of Integer)(allElems.Select(Function(e) e.Id.IntegerValue))
+                Dim allowedIds As HashSet(Of Integer) = New HashSet(Of Integer)(allElems.Select(Function(e) e.Id.IntValue()))
 
                 Dim elemConns As New Dictionary(Of Integer, List(Of Connector))()
                 For Each el In allElems
-                    elemConns(el.Id.IntegerValue) = GetConnectors(el)
+                    elemConns(el.Id.IntValue()) = GetConnectors(el)
                 Next
 
                 Dim totalElem As Integer = Math.Max(1, seedElems.Count)
@@ -289,7 +289,7 @@ Namespace Services
 
                 For i As Integer = 0 To seedElems.Count - 1
                     Dim el = seedElems(i)
-                    Dim baseId = el.Id.IntegerValue
+                    Dim baseId = el.Id.IntValue()
                     Dim conns = elemConns(baseId)
 
                     Dim connTotal As Integer = 1
@@ -315,7 +315,7 @@ Namespace Services
 
                                 For Each r As Connector In c.AllRefs.Cast(Of Connector)()
                                     If r Is Nothing OrElse r.Owner Is Nothing Then Continue For
-                                    If r.Owner.Id.IntegerValue = baseId Then Continue For
+                                    If r.Owner.Id.IntValue() = baseId Then Continue For
                                     If TypeOf r.Owner Is MEPSystem Then Continue For
 
                                     ' 기존 코드의 allowedIds 필터는 제거(실제 연결인데도 제외되는 케이스 방지)
@@ -403,7 +403,7 @@ Namespace Services
                                             Dim text2 As String = If(info2.Text, String.Empty).Trim()
                                             If Not String.Equals(text1, text2, StringComparison.Ordinal) Then
                                                 paramCompare = "Mismatch"
-                                                Log($"표시값 불일치 감지: Id1={baseId}, Id2={If(found Is Nothing, 0, found.Id.IntegerValue)}, Param='{reviewParam}', Value1='{text1}', Value2='{text2}'")
+                                                Log($"표시값 불일치 감지: Id1={baseId}, Id2={If(found Is Nothing, 0, found.Id.IntValue())}, Param='{reviewParam}', Value1='{text1}', Value2='{text2}'")
                                             Else
                                                 paramCompare = "Match"
                                             End If
@@ -447,7 +447,7 @@ Namespace Services
                                     Dim pairKey As String
                                     If found IsNot Nothing Then
                                         Dim rawId1 = baseId
-                                        Dim rawId2 = found.Id.IntegerValue
+                                        Dim rawId2 = found.Id.IntValue()
 
                                         Dim minId = Math.Min(rawId1, rawId2)
                                         Dim maxId = Math.Max(rawId1, rawId2)
@@ -613,8 +613,8 @@ Namespace Services
 
             Dim row As New Dictionary(Of String, Object)(StringComparer.Ordinal) From {
                 {"File", fileLabel},
-                {"Id1", If(e1 IsNot Nothing, e1.Id.IntegerValue.ToString(), "0")},
-                {"Id2", If(e2 IsNot Nothing, "," & e2.Id.IntegerValue.ToString(), "")},' Id2 앞에 콤마 추가(복사용). Id1에는 절대 콤마 없음.
+                {"Id1", If(e1 IsNot Nothing, e1.Id.IntValue().ToString(), "0")},
+                {"Id2", If(e2 IsNot Nothing, "," & e2.Id.IntValue().ToString(), "")},' Id2 앞에 콤마 추가(복사용). Id1에는 절대 콤마 없음.
                 {"Category1", cat1},
                 {"Category2", cat2},
                 {"Family1", fam1},
@@ -681,7 +681,7 @@ Namespace Services
             Next
 
             Return elems.
-                GroupBy(Function(e) e.Id.IntegerValue).
+                GroupBy(Function(e) e.Id.IntValue()).
                 Select(Function(g) g.First()).
                 ToList()
         End Function
@@ -813,7 +813,7 @@ Namespace Services
                     Case StorageType.ElementId
                         Dim id = p.AsElementId()
                         If id Is Nothing Then Return ""
-                        Return id.IntegerValue.ToString(CultureInfo.InvariantCulture)
+                        Return id.IntValue().ToString(CultureInfo.InvariantCulture)
 
                     Case Else
                         ' 기타는 표시값 기준
@@ -872,7 +872,7 @@ Namespace Services
                 Return result
             End If
 
-            Dim id = el.Id.IntegerValue
+            Dim id = el.Id.IntValue()
             Dim perElem As Dictionary(Of String, String) = Nothing
             If Not cache.TryGetValue(id, perElem) Then
                 perElem = New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
@@ -1312,9 +1312,9 @@ Namespace Services
             End If
 
             Dim byName As Dictionary(Of String, ParamInfo) = Nothing
-            If Not cache.TryGetValue(el.Id.IntegerValue, byName) Then
+            If Not cache.TryGetValue(el.Id.IntValue(), byName) Then
                 byName = New Dictionary(Of String, ParamInfo)(StringComparer.OrdinalIgnoreCase)
-                cache(el.Id.IntegerValue) = byName
+                cache(el.Id.IntValue()) = byName
             End If
 
             Dim info As ParamInfo = Nothing

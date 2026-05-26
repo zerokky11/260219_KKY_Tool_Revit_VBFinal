@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Globalization;
@@ -452,7 +452,7 @@ namespace KKY_Tool_Revit.Services
                     localFailedCount++;
                     if (detailedFailureLogCount < 3)
                     {
-                        log?.Invoke(label + " 삭제 실패: Id " + id.IntegerValue + " / " + ex.Message);
+                        log?.Invoke(label + " 삭제 실패: Id " + id.CompatIntegerValue() + " / " + ex.Message);
                         detailedFailureLogCount++;
                     }
                 }
@@ -980,7 +980,7 @@ namespace KKY_Tool_Revit.Services
 
         private static bool ShouldHideTopLevelCategory(Category category)
         {
-            int id = category.Id.IntegerValue;
+            int id = category.Id.CompatIntegerValue();
             return id == (int)BuiltInCategory.OST_Mass
                    || id == (int)BuiltInCategory.OST_Parts
                    || id == (int)BuiltInCategory.OST_Site
@@ -1012,7 +1012,7 @@ namespace KKY_Tool_Revit.Services
 
         private static bool IsLineCategory(Category category)
         {
-            int id = category.Id.IntegerValue;
+            int id = category.Id.CompatIntegerValue();
             return id == (int)BuiltInCategory.OST_Lines
                    || EqualsNormalizedCategoryName(category, "Lines")
                    || EqualsNormalizedCategoryName(category, "선");
@@ -1020,7 +1020,7 @@ namespace KKY_Tool_Revit.Services
 
         private static bool IsTargetFittingCategory(Category category)
         {
-            int id = category.Id.IntegerValue;
+            int id = category.Id.CompatIntegerValue();
             return id == (int)BuiltInCategory.OST_CableTrayFitting
                    || id == (int)BuiltInCategory.OST_ConduitFitting
                    || id == (int)BuiltInCategory.OST_DuctFitting
@@ -1130,7 +1130,7 @@ namespace KKY_Tool_Revit.Services
             foreach (Category child in category.SubCategories)
             {
                 if (child == null) continue;
-                if (!visited.Add(child.Id.IntegerValue)) continue;
+                if (!visited.Add(child.Id.CompatIntegerValue())) continue;
 
                 yield return child;
 
@@ -1266,7 +1266,7 @@ namespace KKY_Tool_Revit.Services
                 .OfClass(typeof(View))
                 .Cast<View>()
                 .Where(x => x != null)
-                .Where(x => targetViewId == null || x.Id.IntegerValue != targetViewId.IntegerValue)
+                .Where(x => targetViewId == null || x.Id.CompatIntegerValue() != targetViewId.CompatIntegerValue())
                 .Select(x => x.Id)
                 .Distinct(new ElementIdComparer())
                 .ToList();
@@ -1287,7 +1287,7 @@ namespace KKY_Tool_Revit.Services
 
                     try
                     {
-                        if (targetViewId != null && viewId.IntegerValue == targetViewId.IntegerValue)
+                        if (targetViewId != null && viewId.CompatIntegerValue() == targetViewId.CompatIntegerValue())
                         {
                             continue;
                         }
@@ -1298,7 +1298,7 @@ namespace KKY_Tool_Revit.Services
                         }
 
                         ICollection<ElementId> removed = doc.Delete(viewId);
-                        if (removed != null && targetViewId != null && removed.Any(x => x != null && x.IntegerValue == targetViewId.IntegerValue))
+                        if (removed != null && targetViewId != null && removed.Any(x => x != null && x.CompatIntegerValue() == targetViewId.CompatIntegerValue()))
                         {
                             throw new InvalidOperationException("대상 3D 뷰가 삭제 대상에 포함되었습니다.");
                         }
@@ -1365,7 +1365,7 @@ namespace KKY_Tool_Revit.Services
                         {
                             if (filterId != null)
                             {
-                                usedFilterIds.Add(filterId.IntegerValue);
+                                usedFilterIds.Add(filterId.CompatIntegerValue());
                             }
                         }
                     }
@@ -1379,8 +1379,8 @@ namespace KKY_Tool_Revit.Services
                     .OfClass(typeof(FilterElement))
                     .Cast<FilterElement>()
                     .Where(x => x != null)
-                    .Where(x => keepFilterId == null || x.Id.IntegerValue != keepFilterId.IntegerValue)
-                    .Where(x => !usedFilterIds.Contains(x.Id.IntegerValue))
+                    .Where(x => keepFilterId == null || x.Id.CompatIntegerValue() != keepFilterId.CompatIntegerValue())
+                    .Where(x => !usedFilterIds.Contains(x.Id.CompatIntegerValue()))
                     .Select(x => x.Id)
                     .ToList();
 
@@ -1540,7 +1540,7 @@ namespace KKY_Tool_Revit.Services
                     SourcePath = sourcePath,
                     FileName = Path.GetFileName(sourcePath),
                     HasDesignOptions = "Yes",
-                    OptionId = option.Id.IntegerValue.ToString(),
+                    OptionId = option.Id.CompatIntegerValue().ToString(),
                     OptionName = option.Name ?? string.Empty,
                     IsPrimary = option.IsPrimary ? "Yes" : "No",
                     MemberElementCount = memberCount.ToString()
@@ -1697,7 +1697,7 @@ namespace KKY_Tool_Revit.Services
 
                                 if (target.IsTypeParameter)
                                 {
-                                    string typeKey = target.Owner.Id.IntegerValue.ToString(CultureInfo.InvariantCulture)
+                                    string typeKey = target.Owner.Id.CompatIntegerValue().ToString(CultureInfo.InvariantCulture)
                                         + "|" + (assignment.ParameterName ?? string.Empty)
                                         + "|" + (assignment.Value ?? string.Empty)
                                         + "|" + target.MatchIndex.ToString(CultureInfo.InvariantCulture);
@@ -2066,7 +2066,7 @@ namespace KKY_Tool_Revit.Services
             }
             catch (Exception ex)
             {
-                log?.Invoke("파라미터 값 입력 실패: " + owner?.Id?.IntegerValue + " / " + parameter.Definition?.Name + " / " + ex.Message);
+                log?.Invoke("파라미터 값 입력 실패: " + owner?.Id?.CompatIntegerValue() + " / " + parameter.Definition?.Name + " / " + ex.Message);
                 return false;
             }
         }
@@ -2088,7 +2088,7 @@ namespace KKY_Tool_Revit.Services
                     case StorageType.ElementId:
                         ElementId id = parameter.AsElementId();
                         if (id == null || id == ElementId.InvalidElementId) return string.Empty;
-                        return id.IntegerValue.ToString(CultureInfo.InvariantCulture);
+                        return id.CompatIntegerValue().ToString(CultureInfo.InvariantCulture);
                     default:
                         return parameter.AsValueString() ?? string.Empty;
                 }
@@ -2200,12 +2200,12 @@ namespace KKY_Tool_Revit.Services
             {
                 if (ReferenceEquals(x, y)) return true;
                 if (ReferenceEquals(x, null) || ReferenceEquals(y, null)) return false;
-                return x.IntegerValue == y.IntegerValue;
+                return x.CompatIntegerValue() == y.CompatIntegerValue();
             }
 
             public int GetHashCode(ElementId obj)
             {
-                return obj?.IntegerValue ?? 0;
+                return obj?.CompatIntegerValue() ?? 0;
             }
         }
     }

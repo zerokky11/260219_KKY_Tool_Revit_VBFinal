@@ -1,4 +1,4 @@
-﻿Option Explicit On
+Option Explicit On
 Option Strict On
 
 Imports System
@@ -111,7 +111,7 @@ Private Shared Sub PrepareNestedSharedIds(doc As Document)
                 Dim subs = fi.GetSubComponentIds()
                 If subs IsNot Nothing Then
                     For Each sid As ElementId In subs
-                        _nestedSharedIds.Add(sid.IntegerValue)
+                        _nestedSharedIds.Add(sid.IntValue())
                     Next
                 End If
             Catch
@@ -119,7 +119,7 @@ Private Shared Sub PrepareNestedSharedIds(doc As Document)
 
             Try
                 If fi.SuperComponent IsNot Nothing Then
-                    _nestedSharedIds.Add(fi.Id.IntegerValue)
+                    _nestedSharedIds.Add(fi.Id.IntValue())
                 End If
             Catch
             End Try
@@ -366,7 +366,7 @@ Dim selectedIds As HashSet(Of Integer) = Nothing
 Try
     Dim sel = uiDoc.Selection.GetElementIds()
     If sel IsNot Nothing AndAlso sel.Count > 0 Then
-        selectedIds = New HashSet(Of Integer)(sel.Select(Function(x) x.IntegerValue))
+        selectedIds = New HashSet(Of Integer)(sel.Select(Function(x) x.IntValue()))
     End If
 Catch
 End Try
@@ -454,7 +454,7 @@ End Try
 
             If scopeIds IsNot Nothing AndAlso scopeIds.Count > 0 Then
                 Try
-                    If e Is Nothing OrElse Not scopeIds.Contains(e.Id.IntegerValue) Then Continue For
+                    If e Is Nothing OrElse Not scopeIds.Contains(e.Id.IntValue()) Then Continue For
                 Catch
                     Continue For
                 End Try
@@ -462,7 +462,7 @@ End Try
 
             If excludeIds IsNot Nothing AndAlso excludeIds.Count > 0 Then
                 Try
-                    If e IsNot Nothing AndAlso excludeIds.Contains(e.Id.IntegerValue) Then Continue For
+                    If e IsNot Nothing AndAlso excludeIds.Contains(e.Id.IntValue()) Then Continue For
                 Catch
                 End Try
             End If
@@ -486,7 +486,7 @@ End Try
 
             If maxX < minX OrElse maxY < minY OrElse maxZ < minZ Then Continue For
 
-            Dim id As Integer = e.Id.IntegerValue
+            Dim id As Integer = e.Id.IntValue()
 
             Dim ci As New ClashInfo With {
                 .Id = id,
@@ -782,7 +782,7 @@ End Try
             ' scope/exclude/keyword 필터
             If scopeIds IsNot Nothing AndAlso scopeIds.Count > 0 Then
     Try
-        If e Is Nothing OrElse Not scopeIds.Contains(e.Id.IntegerValue) Then Continue For
+        If e Is Nothing OrElse Not scopeIds.Contains(e.Id.IntValue()) Then Continue For
     Catch
         Continue For
     End Try
@@ -790,7 +790,7 @@ End Try
 
             If excludeIds IsNot Nothing AndAlso excludeIds.Count > 0 Then
     Try
-        If e IsNot Nothing AndAlso excludeIds.Contains(e.Id.IntegerValue) Then Continue For
+        If e IsNot Nothing AndAlso excludeIds.Contains(e.Id.IntValue()) Then Continue For
     Catch
     End Try
             End If
@@ -801,7 +801,7 @@ End Try
 
             If scopeIds IsNot Nothing AndAlso scopeIds.Count > 0 Then
                 Try
-                    If e Is Nothing OrElse Not scopeIds.Contains(e.Id.IntegerValue) Then Continue For
+                    If e Is Nothing OrElse Not scopeIds.Contains(e.Id.IntValue()) Then Continue For
                 Catch
                     Continue For
                 End Try
@@ -823,7 +823,7 @@ End Try
 
             If maxX < minX OrElse maxY < minY OrElse maxZ < minZ Then Continue For
 
-            Dim id As Integer = e.Id.IntegerValue
+            Dim id As Integer = e.Id.IntValue()
 
             Dim ci As New ClashInfo With {
                 .Id = id,
@@ -1291,7 +1291,7 @@ End Try
         Try
             If hasBox Then
                 Dim views = uiDoc.GetOpenUIViews()
-                Dim target = views.FirstOrDefault(Function(v) v.ViewId.IntegerValue = uiDoc.ActiveView.Id.IntegerValue)
+                Dim target = views.FirstOrDefault(Function(v) v.ViewId.IntValue() = uiDoc.ActiveView.Id.IntValue())
                 If target IsNot Nothing Then
                     target.ZoomAndCenterRectangle(New XYZ(minX, minY, minZ), New XYZ(maxX, maxY, maxZ))
                     Return
@@ -1478,11 +1478,11 @@ End Try
 
         For Each eid In eidList
             If doc.GetElement(eid) Is Nothing Then
-                actuallyDeleted.Add(eid.IntegerValue)
-                Dim row = _lastRows.FirstOrDefault(Function(r) r.ElementId = eid.IntegerValue)
+                actuallyDeleted.Add(eid.IntValue())
+                Dim row = _lastRows.FirstOrDefault(Function(r) r.ElementId = eid.IntValue())
                 If row IsNot Nothing Then
                     row.Deleted = True
-                    SendToWeb("dup:deleted", New With {.id = eid.IntegerValue})
+                    SendToWeb("dup:deleted", New With {.id = eid.IntValue()})
                 End If
             End If
         Next
@@ -1893,7 +1893,7 @@ Private Shared Function IsMepFittingElement(e As Element) As Boolean
     If e Is Nothing OrElse e.Category Is Nothing Then Return False
 
     Try
-        Select Case e.Category.Id.IntegerValue
+        Select Case e.Category.Id.IntValue()
             Case CInt(BuiltInCategory.OST_DuctFitting),
                  CInt(BuiltInCategory.OST_PipeFitting),
                  CInt(BuiltInCategory.OST_CableTrayFitting),
@@ -1910,7 +1910,7 @@ Private Shared Function IsMepAccessoryElement(e As Element) As Boolean
     If e Is Nothing OrElse e.Category Is Nothing Then Return False
 
     Try
-        Select Case e.Category.Id.IntegerValue
+        Select Case e.Category.Id.IntValue()
             Case CInt(BuiltInCategory.OST_PipeAccessory),
                  CInt(BuiltInCategory.OST_DuctAccessory)
                 Return True
@@ -2039,7 +2039,7 @@ Private Shared Function TryGetTypeIdInt(e As Element) As Integer
     Try
         Dim tid As ElementId = e.GetTypeId()
         If tid IsNot Nothing AndAlso tid <> ElementId.InvalidElementId Then
-            Return tid.IntegerValue
+            Return tid.IntValue()
         End If
     Catch
     End Try
@@ -2596,13 +2596,13 @@ Return False
 
 ' ✅ 복합(중첩) 패밀리: 하위 요소는 결과에서 제외 (최상위만)
 Try
-    If _nestedSharedIds IsNot Nothing AndAlso _nestedSharedIds.Contains(e.Id.IntegerValue) Then Return True
+    If _nestedSharedIds IsNot Nothing AndAlso _nestedSharedIds.Contains(e.Id.IntValue()) Then Return True
 Catch
 End Try
 
 ' ✅ Insulation/Lining 계열은 중복/간섭에서 제외
 Try
-    Dim bic As BuiltInCategory = CType(cat.Id.IntegerValue, BuiltInCategory)
+    Dim bic As BuiltInCategory = CType(cat.Id.IntValue(), BuiltInCategory)
     Select Case bic
         Case BuiltInCategory.OST_PipeInsulations,
              BuiltInCategory.OST_DuctInsulations,
@@ -2619,7 +2619,7 @@ Catch
 End Try
         ' 카메라/래스터 이미지 등 비물리 요소 제외
         Try
-            Dim cid As Integer = cat.Id.IntegerValue
+            Dim cid As Integer = cat.Id.IntValue()
             If cid = CInt(BuiltInCategory.OST_Cameras) Then Return True
             If cid = CInt(BuiltInCategory.OST_RasterImages) Then Return True
         Catch
@@ -2651,7 +2651,7 @@ End Try
         If fi IsNot Nothing Then
             Try
                 If fi.SuperComponent IsNot Nothing Then Return True
-                If _nestedSharedIds IsNot Nothing AndAlso _nestedSharedIds.Contains(fi.Id.IntegerValue) Then Return True
+                If _nestedSharedIds IsNot Nothing AndAlso _nestedSharedIds.Contains(fi.Id.IntValue()) Then Return True
             Catch
             End Try
         End If
@@ -2824,7 +2824,7 @@ Private Shared Function IsJoinInfoCandidate(e As Element) As Boolean
 
     Dim catId As Integer = Integer.MinValue
     Try
-        catId = e.Category.Id.IntegerValue
+        catId = e.Category.Id.IntValue()
     Catch
         Return False
     End Try
@@ -2864,11 +2864,11 @@ Private Shared Function IsIntentionallyConnectedOrJoined(doc As Document,
         Dim fa As FamilyInstance = TryCast(ea, FamilyInstance)
         If fa IsNot Nothing Then
             Try
-                If fa.Host IsNot Nothing AndAlso fa.Host.Id.IntegerValue = bId Then Return True
+                If fa.Host IsNot Nothing AndAlso fa.Host.Id.IntValue() = bId Then Return True
             Catch
             End Try
             Try
-                If fa.SuperComponent IsNot Nothing AndAlso fa.SuperComponent.Id.IntegerValue = bId Then Return True
+                If fa.SuperComponent IsNot Nothing AndAlso fa.SuperComponent.Id.IntValue() = bId Then Return True
             Catch
             End Try
         End If
@@ -2879,11 +2879,11 @@ Private Shared Function IsIntentionallyConnectedOrJoined(doc As Document,
         Dim fb As FamilyInstance = TryCast(eb, FamilyInstance)
         If fb IsNot Nothing Then
             Try
-                If fb.Host IsNot Nothing AndAlso fb.Host.Id.IntegerValue = aId Then Return True
+                If fb.Host IsNot Nothing AndAlso fb.Host.Id.IntValue() = aId Then Return True
             Catch
             End Try
             Try
-                If fb.SuperComponent IsNot Nothing AndAlso fb.SuperComponent.Id.IntegerValue = aId Then Return True
+                If fb.SuperComponent IsNot Nothing AndAlso fb.SuperComponent.Id.IntValue() = aId Then Return True
             Catch
             End Try
         End If
@@ -2982,7 +2982,7 @@ Private Shared Function GetOrBuildConnOwnerSet(doc As Document,
                                 Try
                                     Dim o As Element = rc.Owner
                                     If o Is Nothing Then Continue For
-                                    s.Add(o.Id.IntegerValue)
+                                    s.Add(o.Id.IntValue())
                                 Catch
                                 End Try
                             Next
@@ -3030,7 +3030,7 @@ End Function
 
 Private Shared Function SafeCategoryName(e As Element, cache As Dictionary(Of Integer, String)) As String
         If e Is Nothing OrElse e.Category Is Nothing Then Return ""
-        Dim id As Integer = e.Category.Id.IntegerValue
+        Dim id As Integer = e.Category.Id.IntValue()
         Dim s As String = Nothing
         If cache.TryGetValue(id, s) Then Return s
         s = e.Category.Name
@@ -3043,7 +3043,7 @@ Private Shared Function SafeCategoryName(e As Element, cache As Dictionary(Of In
 
         Dim fi = TryCast(e, FamilyInstance)
         If fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing AndAlso fi.Symbol.Family IsNot Nothing Then
-            Dim familyId As Integer = fi.Symbol.Family.Id.IntegerValue
+            Dim familyId As Integer = fi.Symbol.Family.Id.IntValue()
             Dim familyName As String = Nothing
             If cache.TryGetValue(familyId, familyName) Then Return familyName
             familyName = fi.Symbol.Family.Name
@@ -3055,11 +3055,11 @@ Private Shared Function SafeCategoryName(e As Element, cache As Dictionary(Of In
         Try
             Dim typeId As ElementId = e.GetTypeId()
             If typeId IsNot Nothing AndAlso typeId <> ElementId.InvalidElementId Then
-                id = typeId.IntegerValue
+                id = typeId.IntValue()
             End If
         Catch
         End Try
-        If id < 0 Then id = e.Id.IntegerValue
+        If id < 0 Then id = e.Id.IntValue()
 
         Dim s As String = Nothing
         If cache.TryGetValue(id, s) Then Return s
@@ -3145,7 +3145,7 @@ Private Shared Function SafeCategoryName(e As Element, cache As Dictionary(Of In
     Private Shared Function SafeTypeName(e As Element, cache As Dictionary(Of Integer, String)) As String
         Dim fi = TryCast(e, FamilyInstance)
         If fi IsNot Nothing AndAlso fi.Symbol IsNot Nothing Then
-            Dim id As Integer = fi.Symbol.Id.IntegerValue
+            Dim id As Integer = fi.Symbol.Id.IntValue()
             Dim s As String = Nothing
             If cache.TryGetValue(id, s) Then Return s
             s = fi.Symbol.Name
@@ -3161,7 +3161,7 @@ Private Shared Function SafeCategoryName(e As Element, cache As Dictionary(Of In
             If p IsNot Nothing Then
                 Dim lvid As ElementId = p.AsElementId()
                 If lvid IsNot Nothing AndAlso lvid <> ElementId.InvalidElementId Then
-                    Return lvid.IntegerValue
+                    Return lvid.IntValue()
                 End If
             End If
         Catch
@@ -3172,7 +3172,7 @@ Private Shared Function SafeCategoryName(e As Element, cache As Dictionary(Of In
             If pi IsNot Nothing Then
                 Dim id = TryCast(pi.GetValue(e, Nothing), ElementId)
                 If id IsNot Nothing AndAlso id <> ElementId.InvalidElementId Then
-                    Return id.IntegerValue
+                    Return id.IntValue()
                 End If
             End If
         Catch
@@ -3379,7 +3379,7 @@ Private Shared Function SafeCategoryName(e As Element, cache As Dictionary(Of In
                         Catch
                         End Try
                     End If
-                    Return refId.IntegerValue.ToString()
+                    Return refId.IntValue().ToString()
             End Select
         Catch
         End Try

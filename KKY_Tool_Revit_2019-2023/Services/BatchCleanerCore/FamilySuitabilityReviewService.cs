@@ -484,7 +484,7 @@ namespace KKY_Tool_Revit.Services
             if (element is Space) return false;
             if (element is MEPSystem) return false;
 
-            int categoryId = element.Category.Id.IntegerValue;
+            int categoryId = element.Category.Id.CompatIntegerValue();
             if (categoryId == (int)BuiltInCategory.OST_Levels) return false;
             if (categoryId == (int)BuiltInCategory.OST_Grids) return false;
             if (categoryId == (int)BuiltInCategory.OST_DetailComponents) return false;

@@ -1,4 +1,4 @@
-﻿Imports System
+Imports System
 Imports System.Collections.Generic
 Imports System.Data
 Imports System.Linq
@@ -86,7 +86,7 @@ Namespace Services
 
                     Dim d As New Dictionary(Of String, Object)(StringComparer.OrdinalIgnoreCase) From {
                         {"groupId", gno},
-                        {"id", e.Id.IntegerValue.ToString()},
+                        {"id", e.Id.IntValue().ToString()},
                         {"category", cat},
                         {"family", fam},
                         {"type", typ},
@@ -215,8 +215,8 @@ Namespace Services
                     For Each ro In refs
                         Dim rc As Connector = TryCast(ro, Connector)
                         If rc Is Nothing OrElse rc.Owner Is Nothing Then Continue For
-                        Dim oid As Integer = rc.Owner.Id.IntegerValue
-                        If oid <> e.Id.IntegerValue Then setIds.Add(oid)
+                        Dim oid As Integer = rc.Owner.Id.IntValue()
+                        If oid <> e.Id.IntValue() Then setIds.Add(oid)
                     Next
                 Next
             Catch

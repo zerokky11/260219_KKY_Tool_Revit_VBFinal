@@ -34,7 +34,7 @@ $smtpHost = 'smtp.mail.nate.com'
 $smtpPort = 465
 $sender = 'kkykiki89@nate.com'
 $recipient = 'kcim03@samoo.co.kr'
-$releaseYearLabel = '2019,21,23,25'
+$releaseYearLabel = '2019,21,23,25,27'
 
 function Resolve-AttachmentPaths {
     param(

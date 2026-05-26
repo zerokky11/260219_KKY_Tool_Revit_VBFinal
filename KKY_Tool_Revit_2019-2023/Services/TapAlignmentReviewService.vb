@@ -17,6 +17,10 @@ Namespace Services
         Private Const UnresolvedHostMessage As String = "연결 중심축을 확인할 수 없습니다."
         Private Const BranchAngleThresholdDeg As Double = 5.0R
         Private Const MidCurveEndpointToleranceFt As Double = 1.0R / 304.8R
+        Private Const NearbyHostSearchMarginFt As Double = 3.0R
+        Private Const NearbyHostBaseToleranceFt As Double = 150.0R / 304.8R
+        Private Const NearbyHostMaxToleranceFt As Double = 12.0R
+        Private Const ConnectedHostTraversalDepth As Integer = 2
 
         Private Sub New()
         End Sub
@@ -441,7 +445,7 @@ Namespace Services
 
             Return CollectCandidates(doc, domain).
                 Where(Function(el) IsElementAllowed(el, includeFilter, excludeFilter, excludeEndDummy)).
-                GroupBy(Function(el) el.Id.IntegerValue).
+                GroupBy(Function(el) el.Id.IntValue()).
                 Count()
         End Function
 
@@ -460,7 +464,7 @@ Namespace Services
             Dim candidates = CollectCandidates(doc, domain)
             candidates = candidates.
                 Where(Function(el) IsElementAllowed(el, includeFilter, excludeFilter, excludeEndDummy)).
-                GroupBy(Function(el) el.Id.IntegerValue).
+                GroupBy(Function(el) el.Id.IntValue()).
                 Select(Function(g) g.First()).
                 ToList()
 
@@ -497,19 +501,17 @@ Namespace Services
                                                      domain As String,
                                                      tolFt As Double) As ReviewHit
             Dim connectors = GetConnectors(candidate)
-            Dim candidateHosts = GetCandidateHostCurves(candidate, domain)
             Dim compared As Boolean = False
-            Dim best As ReviewHit = Nothing
 
-            For Each host In candidateHosts
-                Dim hit As ReviewHit = Nothing
-                If Not TryEvaluateHostBranch(connectors, host, hit) Then Continue For
+            Dim best = FindBestHostHit(connectors,
+                                       GetCandidateHostCurves(candidate, domain, includeNearbyFallback:=False),
+                                       compared)
 
-                compared = True
-                If best Is Nothing OrElse hit.HostPointDistanceFt < best.HostPointDistanceFt Then
-                    best = hit
-                End If
-            Next
+            If best Is Nothing AndAlso Not compared Then
+                best = FindBestHostHit(connectors,
+                                       GetCandidateHostCurves(candidate, domain, includeNearbyFallback:=True),
+                                       compared)
+            End If
 
             If best Is Nothing AndAlso connectors.Count > 0 AndAlso Not compared Then
                 Return New ReviewHit With {
@@ -528,18 +530,40 @@ Namespace Services
             Return best
         End Function
 
-        Private Shared Function GetCandidateHostCurves(candidate As Element, domain As String) As List(Of MEPCurve)
+        Private Shared Function FindBestHostHit(connectors As IList(Of Connector),
+                                                candidateHosts As IList(Of MEPCurve),
+                                                ByRef compared As Boolean) As ReviewHit
+            Dim best As ReviewHit = Nothing
+            If connectors Is Nothing OrElse candidateHosts Is Nothing OrElse candidateHosts.Count = 0 Then Return best
+
+            For Each host In candidateHosts
+                Dim hit As ReviewHit = Nothing
+                If Not TryEvaluateHostBranch(connectors, host, hit) Then Continue For
+
+                compared = True
+                If best Is Nothing OrElse hit.HostPointDistanceFt < best.HostPointDistanceFt Then
+                    best = hit
+                End If
+            Next
+
+            Return best
+        End Function
+
+        Private Shared Function GetCandidateHostCurves(candidate As Element,
+                                                       domain As String,
+                                                       includeNearbyFallback As Boolean) As List(Of MEPCurve)
             Dim results As New List(Of MEPCurve)()
             Dim seen As New HashSet(Of Integer)()
 
             Dim connectors = GetConnectors(candidate)
             Dim midCurveHosts = GetMidCurveConnectedHostCurves(connectors, domain)
-            If midCurveHosts.Count > 0 Then Return midCurveHosts
+            For Each curve In midCurveHosts
+                AddUniqueHostCurve(results, seen, curve, domain)
+            Next
 
             Dim hostedCurve = TryGetHostedCurve(candidate)
             If hostedCurve IsNot Nothing Then
                 AddUniqueHostCurve(results, seen, hostedCurve, domain)
-                If results.Count > 0 Then Return results
             End If
 
             Dim branchAxis As XYZ = Nothing
@@ -561,7 +585,136 @@ Namespace Services
                 Next
             Next
 
+            If includeNearbyFallback Then
+                AddNearbyMidCurveHostCurves(candidate, connectors, branchAxis, domain, results, seen)
+            End If
+
             Return results
+        End Function
+
+        Private Shared Sub AddNearbyMidCurveHostCurves(candidate As Element,
+                                                       connectors As IList(Of Connector),
+                                                       branchAxis As XYZ,
+                                                       domain As String,
+                                                       results As IList(Of MEPCurve),
+                                                       seen As HashSet(Of Integer))
+            If candidate Is Nothing OrElse connectors Is Nothing OrElse connectors.Count = 0 OrElse branchAxis Is Nothing Then Return
+            If results Is Nothing OrElse seen Is Nothing Then Return
+
+            Dim hostCurves = CollectNearbyHostCurves(candidate, domain)
+            If hostCurves.Count = 0 Then Return
+
+            For Each connector In connectors
+                Dim origin As XYZ = Nothing
+                If Not TryGetConnectorOrigin(connector, origin) Then Continue For
+
+                For Each curve In hostCurves
+                    If curve Is Nothing OrElse curve.Id Is Nothing Then Continue For
+                    If curve.Id.IntValue() = candidate.Id.IntValue() Then Continue For
+                    If seen.Contains(curve.Id.IntValue()) Then Continue For
+
+                    Dim centerLine As Line = Nothing
+                    If Not TryGetCenterLine(curve, centerLine) Then Continue For
+
+                    Dim hostDirection = NormalizeVector(centerLine.Direction)
+                    If hostDirection Is Nothing Then Continue For
+
+                    Dim angleToBranch = AngleBetweenAxesDeg(branchAxis, hostDirection)
+                    If Double.IsNaN(angleToBranch) OrElse Double.IsInfinity(angleToBranch) Then Continue For
+                    If angleToBranch <= BranchAngleThresholdDeg Then Continue For
+
+                    If Not IsPointInsideCurveSpan(origin, centerLine) Then Continue For
+
+                    Dim distanceFt = DistanceFromPointToInfiniteLine(origin, centerLine.GetEndPoint(0), hostDirection)
+                    If Double.IsNaN(distanceFt) OrElse Double.IsInfinity(distanceFt) Then Continue For
+                    If distanceFt > ResolveNearbyHostDistanceToleranceFt(curve) Then Continue For
+
+                    AddUniqueHostCurve(results, seen, curve, domain)
+                Next
+            Next
+        End Sub
+
+        Private Shared Function CollectNearbyHostCurves(candidate As Element, domain As String) As List(Of MEPCurve)
+            Dim results As New List(Of MEPCurve)()
+            If candidate Is Nothing OrElse candidate.Document Is Nothing Then Return results
+
+            Try
+                Dim collector As FilteredElementCollector = New FilteredElementCollector(candidate.Document).OfClass(GetType(MEPCurve)).WhereElementIsNotElementType()
+                Dim outline = BuildExpandedOutline(candidate, NearbyHostSearchMarginFt)
+                If outline IsNot Nothing Then
+                    collector = collector.WherePasses(New BoundingBoxIntersectsFilter(outline))
+                End If
+
+                For Each el As Element In collector
+                    Dim curve = TryCast(el, MEPCurve)
+                    If curve Is Nothing Then Continue For
+                    If Not MatchesCurveDomain(curve, domain) Then Continue For
+                    results.Add(curve)
+                Next
+            Catch
+            End Try
+
+            Return results
+        End Function
+
+        Private Shared Function BuildExpandedOutline(el As Element, marginFt As Double) As Outline
+            If el Is Nothing Then Return Nothing
+
+            Try
+                Dim bbox = el.BoundingBox(Nothing)
+                If bbox Is Nothing OrElse bbox.Min Is Nothing OrElse bbox.Max Is Nothing Then Return Nothing
+
+                Dim minPoint = New XYZ(bbox.Min.X - marginFt, bbox.Min.Y - marginFt, bbox.Min.Z - marginFt)
+                Dim maxPoint = New XYZ(bbox.Max.X + marginFt, bbox.Max.Y + marginFt, bbox.Max.Z + marginFt)
+                Return New Outline(minPoint, maxPoint)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function ResolveNearbyHostDistanceToleranceFt(curve As MEPCurve) As Double
+            Dim halfSize = ResolveMepCurveHalfSizeFt(curve)
+            Dim tolerance = Math.Max(NearbyHostBaseToleranceFt, halfSize + NearbyHostBaseToleranceFt)
+            Return Math.Min(NearbyHostMaxToleranceFt, tolerance)
+        End Function
+
+        Private Shared Function ResolveMepCurveHalfSizeFt(curve As MEPCurve) As Double
+            If curve Is Nothing Then Return 0.0R
+
+            Try
+                If TypeOf curve Is Autodesk.Revit.DB.Plumbing.Pipe Then
+                    Dim diameter = ReadDoubleParameter(curve, BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)
+                    If diameter > 0.0R Then Return diameter / 2.0R
+                End If
+
+                If TypeOf curve Is Autodesk.Revit.DB.Mechanical.Duct Then
+                    Dim diameter = ReadDoubleParameter(curve, BuiltInParameter.RBS_CURVE_DIAMETER_PARAM)
+                    If diameter > 0.0R Then Return diameter / 2.0R
+
+                    Dim width = ReadDoubleParameter(curve, BuiltInParameter.RBS_CURVE_WIDTH_PARAM)
+                    Dim height = ReadDoubleParameter(curve, BuiltInParameter.RBS_CURVE_HEIGHT_PARAM)
+                    If width > 0.0R AndAlso height > 0.0R Then
+                        Return Math.Sqrt((width * width) + (height * height)) / 2.0R
+                    End If
+                    If width > 0.0R Then Return width / 2.0R
+                    If height > 0.0R Then Return height / 2.0R
+                End If
+            Catch
+            End Try
+
+            Return 0.0R
+        End Function
+
+        Private Shared Function ReadDoubleParameter(el As Element, bip As BuiltInParameter) As Double
+            If el Is Nothing Then Return 0.0R
+
+            Try
+                Dim param = el.Parameter(bip)
+                If param Is Nothing OrElse param.StorageType <> StorageType.Double Then Return 0.0R
+                Return param.AsDouble()
+            Catch
+                Return 0.0R
+            End Try
         End Function
 
         Private Shared Function TryEvaluateHostBranch(connectors As IList(Of Connector),
@@ -871,7 +1024,7 @@ Namespace Services
 
             Try
                 Dim typeId = el.GetTypeId()
-                If typeId IsNot Nothing AndAlso typeId.IntegerValue > 0 Then
+                If typeId IsNot Nothing AndAlso typeId.IntValue() > 0 Then
                     Dim typeEl = el.Document.GetElement(typeId)
                     If typeEl IsNot Nothing Then
                         param = typeEl.Parameter(bip)
@@ -942,14 +1095,14 @@ Namespace Services
         Private Shared Function IsPipeInlineBranchCategory(el As Element) As Boolean
             If el Is Nothing OrElse el.Category Is Nothing Then Return False
 
-            Dim catId = CType(el.Category.Id.IntegerValue, BuiltInCategory)
+            Dim catId = CType(el.Category.Id.IntValue(), BuiltInCategory)
             Return catId = BuiltInCategory.OST_PipeFitting OrElse catId = BuiltInCategory.OST_PipeAccessory
         End Function
 
         Private Shared Function IsDuctInlineBranchCategory(el As Element) As Boolean
             If el Is Nothing OrElse el.Category Is Nothing Then Return False
 
-            Dim catId = CType(el.Category.Id.IntegerValue, BuiltInCategory)
+            Dim catId = CType(el.Category.Id.IntValue(), BuiltInCategory)
             Return catId = BuiltInCategory.OST_DuctFitting OrElse catId = BuiltInCategory.OST_DuctAccessory
         End Function
 
@@ -957,20 +1110,117 @@ Namespace Services
             Dim results As New List(Of MEPCurve)()
             If connector Is Nothing Then Return results
 
+            Dim seen As New HashSet(Of Integer)()
             Try
                 For Each ref As Connector In connector.AllRefs.Cast(Of Connector)()
                     If ref Is Nothing OrElse ref.Owner Is Nothing Then Continue For
                     Dim curve = TryCast(ref.Owner, MEPCurve)
                     If curve Is Nothing Then Continue For
-                    If MatchesCurveDomain(curve, domain) Then results.Add(curve)
+                    AddUniqueHostCurve(results, seen, curve, domain)
                 Next
             Catch
             End Try
 
-            Return results.
-                GroupBy(Function(item) item.Id.IntegerValue).
-                Select(Function(group) group.First()).
-                ToList()
+            AddConnectedHostCurvesFromConnector(connector,
+                                                domain,
+                                                results,
+                                                seen,
+                                                New HashSet(Of String)(StringComparer.Ordinal),
+                                                0)
+
+            Return results.ToList()
+        End Function
+
+        Private Shared Sub AddConnectedHostCurvesFromConnector(connector As Connector,
+                                                               domain As String,
+                                                               results As IList(Of MEPCurve),
+                                                               seen As HashSet(Of Integer),
+                                                               visited As HashSet(Of String),
+                                                               depth As Integer)
+            If connector Is Nothing OrElse results Is Nothing OrElse seen Is Nothing OrElse visited Is Nothing Then Return
+            If depth > ConnectedHostTraversalDepth Then Return
+
+            Dim visitKey = BuildConnectorVisitKey(connector)
+            If visitKey <> String.Empty AndAlso Not visited.Add(visitKey) Then Return
+
+            Dim ownerCurve = TryCast(connector.Owner, MEPCurve)
+            If ownerCurve IsNot Nothing Then
+                AddUniqueHostCurve(results, seen, ownerCurve, domain)
+            End If
+
+            If depth >= ConnectedHostTraversalDepth Then Return
+            If Not IsConnectorConnected(connector) Then Return
+
+            Dim refs = GetConnectorReferences(connector)
+            If refs.Count = 0 Then Return
+
+            For Each ref In refs
+                If ref Is Nothing OrElse ref.Owner Is Nothing Then Continue For
+
+                Dim curve = TryCast(ref.Owner, MEPCurve)
+                If curve IsNot Nothing Then
+                    AddUniqueHostCurve(results, seen, curve, domain)
+                    Continue For
+                End If
+
+                For Each nextConnector In GetConnectors(ref.Owner)
+                    AddConnectedHostCurvesFromConnector(nextConnector, domain, results, seen, visited, depth + 1)
+                Next
+            Next
+        End Sub
+
+        Private Shared Function GetConnectorReferences(connector As Connector) As List(Of Connector)
+            Dim results As New List(Of Connector)()
+            If connector Is Nothing Then Return results
+
+            Try
+                For Each ref As Connector In connector.AllRefs.Cast(Of Connector)()
+                    If ref Is Nothing Then Continue For
+                    results.Add(ref)
+                Next
+            Catch
+            End Try
+
+            Return results
+        End Function
+
+        Private Shared Function IsConnectorConnected(connector As Connector) As Boolean
+            If connector Is Nothing Then Return False
+
+            Try
+                Return connector.IsConnected
+            Catch
+                Return False
+            End Try
+        End Function
+
+        Private Shared Function BuildConnectorVisitKey(connector As Connector) As String
+            If connector Is Nothing Then Return String.Empty
+
+            Dim ownerId = String.Empty
+            Try
+                If connector.Owner IsNot Nothing AndAlso connector.Owner.Id IsNot Nothing Then
+                    ownerId = connector.Owner.Id.IntValue().ToString(CultureInfo.InvariantCulture)
+                End If
+            Catch
+                ownerId = String.Empty
+            End Try
+
+            Dim originText = String.Empty
+            Try
+                Dim origin = connector.Origin
+                If origin IsNot Nothing Then
+                    originText = String.Format(CultureInfo.InvariantCulture,
+                                               "{0:0.######},{1:0.######},{2:0.######}",
+                                               origin.X,
+                                               origin.Y,
+                                               origin.Z)
+                End If
+            Catch
+                originText = String.Empty
+            End Try
+
+            Return ownerId & "|" & originText & "|" & connector.GetHashCode().ToString(CultureInfo.InvariantCulture)
         End Function
 
         Private Shared Function TryGetHostedCurve(candidate As Element) As MEPCurve
@@ -992,13 +1242,13 @@ Namespace Services
             If results Is Nothing OrElse seen Is Nothing OrElse curve Is Nothing Then Return
             If Not MatchesCurveDomain(curve, domain) Then Return
 
-            Dim id = curve.Id.IntegerValue
+            Dim id = curve.Id.IntValue()
             If seen.Add(id) Then results.Add(curve)
         End Sub
 
         Private Shared Function MatchesCurveDomain(curve As MEPCurve, domain As String) As Boolean
             If curve Is Nothing OrElse curve.Category Is Nothing Then Return False
-            Dim catId = CType(curve.Category.Id.IntegerValue, BuiltInCategory)
+            Dim catId = CType(curve.Category.Id.IntValue(), BuiltInCategory)
             If domain = "pipe" Then Return catId = BuiltInCategory.OST_PipeCurves
             If domain = "duct" Then Return catId = BuiltInCategory.OST_DuctCurves
             Return catId = BuiltInCategory.OST_PipeCurves OrElse catId = BuiltInCategory.OST_DuctCurves
@@ -1516,7 +1766,7 @@ Namespace Services
 
             Try
                 Dim typeId = el.GetTypeId()
-                If typeId IsNot Nothing AndAlso typeId.IntegerValue > 0 Then
+                If typeId IsNot Nothing AndAlso typeId.IntValue() > 0 Then
                     Dim elementType = el.Document.GetElement(typeId)
                     If elementType IsNot Nothing Then
                         Dim typeParams = elementType.GetParameters(name)
@@ -1601,7 +1851,7 @@ Namespace Services
 
         Private Shared Function ResolveDomainLabel(el As Element) As String
             If el Is Nothing OrElse el.Category Is Nothing Then Return String.Empty
-            Dim catId = CType(el.Category.Id.IntegerValue, BuiltInCategory)
+            Dim catId = CType(el.Category.Id.IntValue(), BuiltInCategory)
             If catId = BuiltInCategory.OST_PipeCurves Then Return "Pipe"
             If catId = BuiltInCategory.OST_DuctCurves Then Return "Duct"
             Return el.Category.Name
@@ -1645,7 +1895,7 @@ Namespace Services
 
         Private Shared Function SafeElementId(el As Element) As String
             If el Is Nothing OrElse el.Id Is Nothing Then Return String.Empty
-            Return el.Id.IntegerValue.ToString(CultureInfo.InvariantCulture)
+            Return el.Id.IntValue().ToString(CultureInfo.InvariantCulture)
         End Function
 
         Private Shared Function SafeCategoryName(el As Element) As String
