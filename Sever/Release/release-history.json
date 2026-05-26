@@ -1,12 +1,12 @@
 ﻿{
-    "version":  "2.31",
+    "version":  "2.32",
     "publishedAt":  "2026-05-26",
-    "title":  "버전 2.31",
+    "title":  "버전 2.32",
     "notes":  [
-                  "BQC 미연결 검토와 함께 실행되는 중심축 연결 검토에서도 공통 추가 추출 파라미터가 엑셀에 함께 출력되도록 수정했습니다.",
-                  "BQC 공통 설정 변경 시 미연결, 층정보, 웍셋, 파라미터 누락 등 관련 검토 요약이 모두 갱신되도록 보강했습니다.",
-                  "최근 검토 결과 창에서 검토한 파일명을 바로 확인할 수 있게 표시를 개선했습니다."
+                  "BQC 공통 검토 제외 필터에서 Category 조건이 실제 카테고리명 기준으로 적용되도록 보강했습니다.",
+                  "미연결 검토와 중심축 연결 검토를 함께 실행할 때 엑셀 결과의 항목 열을 오름차순으로 정렬해 오류 유형이 섞이지 않도록 개선했습니다.",
+                  "도큐먼트 네비게이터 Hide window 후 설정을 다시 켰을 때 로컬 Revit 세션이 창 소유권을 회복하고 즉시 표시되도록 개선했습니다."
               ],
-    "packageUrl":  "https://update.zerokky.com/KKY_Tool_Revit(2019,21,23,25,27)_v2.31.zip",
-    "installerUrl":  "https://update.zerokky.com/official/KKY_Tool_Revit(2019,21,23,25,27)_v2.31.exe"
+    "packageUrl":  "https://update.zerokky.com/KKY_Tool_Revit(2019,21,23,25,27)_v2.32.zip",
+    "installerUrl":  "https://update.zerokky.com/official/KKY_Tool_Revit(2019,21,23,25,27)_v2.32.exe"
 }

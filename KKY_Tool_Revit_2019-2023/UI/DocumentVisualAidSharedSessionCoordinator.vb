@@ -115,6 +115,16 @@ Namespace UI
             End If
         End Sub
 
+        Friend Shared Sub ClaimOwnerForLocal()
+            EnsureDirectories()
+
+            Dim newOwner As New DocumentVisualAidOwnerFileModel With {
+                .ProcessId = LocalProcessId,
+                .StartedUtcTicks = LocalStartedUtcTicks
+            }
+            WriteJson(OwnerFilePath, newOwner)
+        End Sub
+
         Friend Shared Function BuildAggregateState(localState As DocumentVisualAidSessionState) As DocumentVisualAidAggregateState
             EnsureDirectories()
 

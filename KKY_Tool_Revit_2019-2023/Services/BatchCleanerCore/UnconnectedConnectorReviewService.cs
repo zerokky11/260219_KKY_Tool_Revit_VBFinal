@@ -174,7 +174,12 @@ namespace KKY_Tool_Revit.Services
 
         public static DataTable BuildExportTable(IEnumerable<ReviewRow> rows, IEnumerable<string> extraParameterNames = null)
         {
-            List<ReviewRow> exportRows = (rows ?? Enumerable.Empty<ReviewRow>()).Where(ShouldExportRow).ToList();
+            List<ReviewRow> exportRows = (rows ?? Enumerable.Empty<ReviewRow>())
+                .Where(ShouldExportRow)
+                .OrderBy(row => row?.Item ?? string.Empty, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(row => row?.Category ?? string.Empty, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(row => GetExportSortId(row))
+                .ToList();
             List<string> extraHeaders = ResolveExportExtraHeaders(exportRows, extraParameterNames);
 
             var table = new DataTable("UnconnectedConnectorReview");
@@ -232,6 +237,15 @@ namespace KKY_Tool_Revit.Services
                    string.Equals(value, "\uBE44\uACE0", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(value, "Category", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(value, "Family", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int GetExportSortId(ReviewRow row)
+        {
+            string value = (row?.Id ?? string.Empty).Trim().TrimEnd(',');
+            int parsed;
+            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed)
+                ? parsed
+                : int.MaxValue;
         }
 
         public static string BuildEmptyExportMessage(FileSummary summary)

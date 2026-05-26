@@ -834,6 +834,18 @@ Namespace Services
             Return ResolveParamText(p)
         End Function
 
+        Private Shared Function ResolveFilterText(el As Element, name As String) As String
+            If el Is Nothing OrElse String.IsNullOrWhiteSpace(name) Then Return ""
+
+            Dim normalized = NormalizeSyntheticName(name)
+            Select Case normalized
+                Case "category", "categoryname", "cat", "카테고리", "분류"
+                    Return SafeCategoryName(el)
+            End Select
+
+            Return ResolveParamText(el, name)
+        End Function
+
         Private Shared Function ResolveParamText(p As Parameter) As String
             If p Is Nothing Then Return ""
             Dim hasVal As Boolean = False
@@ -1514,7 +1526,7 @@ Namespace Services
                 Dim paramName As String = left.Text
 
                 Return Function(el As Element)
-                           Dim actual As String = ResolveParamText(el, paramName)
+                           Dim actual As String = ResolveFilterText(el, paramName)
                            Return String.Equals(actual.Trim(), expected.Trim(), StringComparison.OrdinalIgnoreCase)
                        End Function
             End Function

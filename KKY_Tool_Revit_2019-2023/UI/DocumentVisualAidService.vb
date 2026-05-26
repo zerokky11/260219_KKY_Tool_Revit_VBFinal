@@ -67,7 +67,7 @@ Namespace UI
 
         Friend Shared ReadOnly Property IsEnabled As Boolean
             Get
-                EnsureSettingsLoaded()
+                RefreshSettingsFromDisk()
 
                 SyncLock SyncRoot
                     Return _enabled
@@ -189,6 +189,10 @@ Namespace UI
                 End If
             End SyncLock
 
+            If enabled Then
+                DocumentVisualAidSharedSessionCoordinator.ClaimOwnerForLocal()
+            End If
+
             SaveEnabledSetting(enabled)
 
             Dim dispatcher = ResolveDispatcher()
@@ -197,11 +201,15 @@ Namespace UI
                 Return
             End If
 
-            dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,
-                                   New Action(
-                                       Sub()
-                                           ApplyEnabledVisualState(enabled)
-                                       End Sub))
+            If dispatcher.CheckAccess() Then
+                ApplyEnabledVisualState(enabled)
+            Else
+                dispatcher.BeginInvoke(DispatcherPriority.Normal,
+                                       New Action(
+                                           Sub()
+                                               ApplyEnabledVisualState(enabled)
+                                           End Sub))
+            End If
         End Sub
 
         Private Shared Sub QueueRefresh(activeDoc As Document)
@@ -298,6 +306,9 @@ Namespace UI
 
             EnsureSharedSyncTimer()
             _sharedSyncTimer.Start()
+            If ResolveDispatcher() IsNot Nothing Then
+                SyncSharedSessions()
+            End If
             TriggerRefresh()
         End Sub
 
@@ -480,6 +491,10 @@ Namespace UI
         End Sub
 
         Private Shared Sub RefreshVisibilitySettingsFromDisk()
+            RefreshSettingsFromDisk(False)
+        End Sub
+
+        Private Shared Sub RefreshSettingsFromDisk(Optional includeEnabled As Boolean = True)
             EnsureSettingsLoaded()
 
             Try
@@ -489,6 +504,10 @@ Namespace UI
 
                 Dim settings = LoadSettings()
                 SyncLock SyncRoot
+                    If includeEnabled Then
+                        _enabled = settings.Enabled
+                    End If
+
                     _navigatorHidden = settings.NavigatorHidden
                     _legendWindowSuppressed = settings.WindowSuppressed
                 End SyncLock
