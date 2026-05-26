@@ -6,7 +6,7 @@
   #define MyAppName "KKY_Tool_Revit"
 #endif
 #ifndef MyAppVersion
-#define MyAppVersion "2.30"
+#define MyAppVersion "2.31"
 #endif
 #ifndef MyOutputBaseName
   #define MyOutputBaseName "KKY_Tool_Revit(2019,21,23,25,27)_v" + MyAppVersion

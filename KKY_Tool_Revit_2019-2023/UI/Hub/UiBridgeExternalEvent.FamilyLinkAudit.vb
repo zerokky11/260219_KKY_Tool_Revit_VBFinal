@@ -107,6 +107,7 @@ Namespace UI.Hub
 
             Dim rvtPaths As List(Of String) = ExtractStringList(payload, "rvtPaths")
             Dim targets As List(Of FamilyLinkTargetParam) = ExtractTargets(payload)
+            Dim includeSingleFamilyCheck As Boolean = ExtractBool(payload, "includeSingleFamilyCheck", False)
 
             If rvtPaths.Count = 0 Then
                 SendToWeb("familylink:error", New With {
@@ -125,7 +126,7 @@ Namespace UI.Hub
             End If
 
             Try
-                Dim rows As List(Of FamilyLinkAuditRow) = FamilyLinkAuditService.Run(app, rvtPaths, targets, AddressOf ReportFamilyLinkProgress)
+                Dim rows As List(Of FamilyLinkAuditRow) = FamilyLinkAuditService.Run(app, rvtPaths, targets, AddressOf ReportFamilyLinkProgress, includeSingleFamilyCheck)
                 Dim filteredRows As List(Of FamilyLinkAuditRow) = FilterFamilyLinkIssueRows(rows)
                 _familyLinkLastRows = filteredRows
 

@@ -36,6 +36,41 @@
   word-break: break-all;
 }
 
+.familylink-settings-inline {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.familylink-check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.familylink-check-row input[type="checkbox"] {
+  margin-top: 3px;
+}
+
+.familylink-check-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.familylink-check-copy strong {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.familylink-check-copy span {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .familylink-rvt-actions {
   display: flex;
   flex-wrap: wrap;

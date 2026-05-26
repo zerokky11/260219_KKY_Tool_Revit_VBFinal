@@ -255,7 +255,7 @@ export function renderMulti(root, options = {}) {
         useSyncComment: false,
         syncComment: 'KKY Tools - 파라미터 GUID 정리'
       }),
-      familylink: createFeatureState({ targetsText: '', selectedTargets: [], targets: [] }),
+      familylink: createFeatureState({ targetsText: '', selectedTargets: [], targets: [], includeSingleFamilyCheck: false }),
       points: createFeatureState({ unit: 'ft' }),
       linkworkset: createFeatureState({
         applyDefaultWorksetOnly: true,
@@ -5471,7 +5471,14 @@ function buildConditionExtractWorkflowRow() {
       renderFamilyLinkList();
     });
 
-    panel.append(searchWrap, listWrap, selectedWrap, advanced.field);
+    const singleFamily = makeCheckboxField('단일 패밀리 파라미터 추가 여부도 검토');
+    singleFamily.input.checked = !!state.features.familylink.configDraft.includeSingleFamilyCheck;
+    singleFamily.input.addEventListener('change', () => {
+      state.features.familylink.configDraft.includeSingleFamilyCheck = !!singleFamily.input.checked;
+      markFeatureDirty('familylink');
+    });
+
+    panel.append(searchWrap, listWrap, selectedWrap, singleFamily.field, advanced.field);
 
     function renderFamilyLinkList(payload) {
       const ok = payload?.ok !== false;
@@ -5539,7 +5546,7 @@ function buildConditionExtractWorkflowRow() {
 
     buildFamilyLinkConfig.renderList = renderFamilyLinkList;
     renderFamilyLinkList();
-    return { panel, controls: { searchInput, listWrap, selectedWrap, advanced } };
+    return { panel, controls: { searchInput, listWrap, selectedWrap, advanced, singleFamily } };
   }
 
   function buildRvtSection() {
@@ -8001,6 +8008,7 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'familylink') {
       return [
         '공유 파라미터 목록에서 검토 대상 파라미터를 선택합니다.',
+        '단일 패밀리 검토를 켜면 중첩 인스턴스가 없는 패밀리에 선택한 공유파라미터가 추가되어 있는지도 확인합니다.',
         '고급 입력으로 “이름|GUID” 형식을 직접 입력할 수 있습니다.'
       ];
     }
@@ -9794,7 +9802,8 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'familylink') {
       return {
         enabled: feature.enabled,
-        targets: feature.configCommitted.selectedTargets || []
+        targets: feature.configCommitted.selectedTargets || [],
+        includeSingleFamilyCheck: !!feature.configCommitted.includeSingleFamilyCheck
       };
     }
     if (key === 'floorinfo') {
@@ -10192,6 +10201,7 @@ function buildConditionExtractWorkflowRow() {
     } else if (key === 'familylink') {
       const draft = state.features.familylink.configDraft;
       controls.advanced.input.value = draft.targetsText;
+      if (controls.singleFamily?.input) controls.singleFamily.input.checked = !!draft.includeSingleFamilyCheck;
       if (buildFamilyLinkConfig.renderList) buildFamilyLinkConfig.renderList();
     } else if (key === 'points') {
       const draft = state.features.points.configDraft;

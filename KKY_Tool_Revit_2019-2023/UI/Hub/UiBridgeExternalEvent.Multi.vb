@@ -115,6 +115,7 @@ Namespace UI.Hub
         Private Class MultiFamilyLinkOptions
             Public Property Enabled As Boolean
             Public Property Targets As List(Of FamilyLinkTargetParam) = New List(Of FamilyLinkTargetParam)()
+            Public Property IncludeSingleFamilyCheck As Boolean
         End Class
 
         Private Class MultiPointsOptions
@@ -999,7 +1000,8 @@ NextItem:
                                                                     Dim overallPct As Double = CalcStepProgressPercent(basePct, stepIndex, steps, CDbl(pct) / 100.0R)
                                                                     Dim detail As String = BuildMultiFamilyLinkProgressDetail(safeName, msg)
                                                                     ReportMultiProgress(overallPct, "패밀리 연동 검토 실행 중", detail)
-                                                                End Sub)
+                                                                End Sub,
+                                                                _multiRequest.FamilyLink.IncludeSingleFamilyCheck)
                 If rows IsNot Nothing Then
                     If _multiFamilyLinkRows Is Nothing Then _multiFamilyLinkRows = New List(Of FamilyLinkAuditRow)()
                     _multiFamilyLinkRows.AddRange(FilterFamilyLinkIssueRows(rows))
@@ -3375,6 +3377,7 @@ NextItem:
             Dim obj = GetDictValue(fd, "familylink")
             Dim d = ToDict(obj)
             opt.Enabled = ToBool(GetDictValue(d, "enabled"))
+            opt.IncludeSingleFamilyCheck = ToBool(GetDictValue(d, "includeSingleFamilyCheck"), False)
             Dim rawTargets = GetDictValue(d, "targets")
             Dim targets As New List(Of FamilyLinkTargetParam)()
             For Each o In EnumeratePayloadItems(rawTargets)

@@ -643,6 +643,7 @@ Namespace Services
             Public Property TargetGroupKey As String
             Public Property IsInstance As Boolean
             Public Property ExcludeDummy As Boolean
+            Public Property IncludeStandaloneFamilies As Boolean
             Public Property SaveModifiedFamilies As Boolean
             Public Property ModifiedFamilyOutputFolder As String
 
@@ -654,6 +655,7 @@ Namespace Services
                     .TargetGroupKey = String.Empty,
                     .IsInstance = True,
                     .ExcludeDummy = True,
+                    .IncludeStandaloneFamilies = False,
                     .SaveModifiedFamilies = False,
                     .ModifiedFamilyOutputFolder = String.Empty
                 }
@@ -697,6 +699,9 @@ Namespace Services
 
                     Dim dummyObj = ReadProp(payload, "excludeDummy")
                     If dummyObj IsNot Nothing Then req.ExcludeDummy = Convert.ToBoolean(dummyObj)
+
+                    Dim standaloneObj = ReadProp(payload, "includeStandaloneFamilies")
+                    If standaloneObj IsNot Nothing Then req.IncludeStandaloneFamilies = Convert.ToBoolean(standaloneObj)
 
                     Dim saveObj = ReadProp(payload, "saveModifiedFamilies")
                     If saveObj IsNot Nothing Then req.SaveModifiedFamilies = Convert.ToBoolean(saveObj)
@@ -880,7 +885,7 @@ Namespace Services
             End If
 
             Dim status As RunStatus =
-                ExecuteCore(doc, extDefs, request.ParamNames, request.ExcludeDummy, chosenPG, request.IsInstance, result, progress)
+                ExecuteCore(doc, extDefs, request.ParamNames, request.ExcludeDummy, request.IncludeStandaloneFamilies, chosenPG, request.IsInstance, result, progress)
 
             result.Status = status
             If String.IsNullOrEmpty(result.Message) Then
@@ -948,6 +953,7 @@ Namespace Services
                                             extDefs As List(Of ExternalDefinition),
                                             paramNames As List(Of String),
                                             excludeDummy As Boolean,
+                                            includeStandaloneFamilies As Boolean,
                                             chosenPG As BuiltInParameterGroup,
                                             chosenIsInstance As Boolean,
                                             result As SharedParamRunResult,
@@ -1071,6 +1077,21 @@ Namespace Services
                 End If
             Next
 
+            Dim standaloneFamilyNames As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            If includeStandaloneFamilies Then
+                For Each f In allEditable
+                    If f Is Nothing OrElse f.FamilyCategory Is Nothing Then Continue For
+                    If IsAnnotationFamily(f) Then Continue For
+
+                    Dim famName As String = If(f.Name, String.Empty)
+                    If String.IsNullOrWhiteSpace(famName) Then Continue For
+                    If allTargetNames.Contains(famName) Then Continue For
+
+                    standaloneFamilyNames.Add(famName)
+                    allTargetNames.Add(famName)
+                Next
+            End If
+
             '----- 2. 그래프를 하위 → 상위 순으로 정렬 (DFS, 이름 기준) -----
             Dim order As New List(Of String)()
             Dim mark As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase) ' 0:미방문,1:방문중,2:완료
@@ -1105,12 +1126,14 @@ Namespace Services
             Dim fatalEx As Exception = Nothing
             Dim addedChild As Integer = 0
             Dim addedHost As Integer = 0
+            Dim addedStandalone As Integer = 0
             Dim linkCnt As Integer = 0
             Dim verifyOk As Integer = 0
             Dim verifyFail As Integer = 0
             Dim skipTotal As Integer = 0
             Dim parentFails As New List(Of String)()
             Dim childFails As New List(Of String)()
+            Dim standaloneFails As New List(Of String)()
             Dim skips As New List(Of String)()
             Dim compositeSuccessCount As Integer = 0
 
@@ -1130,6 +1153,7 @@ Namespace Services
 
                         Dim isParent As Boolean = parentToChildren.ContainsKey(famName)
                         Dim isChild As Boolean = childNames.Contains(famName)
+                        Dim isStandalone As Boolean = standaloneFamilyNames.Contains(famName)
 
                         ProcessFamilyBottomUp(doc,
                                              fam,
@@ -1141,14 +1165,17 @@ Namespace Services
                                              chosenPG,
                                              isParent,
                                              isChild,
+                                             isStandalone,
                                              addedHost,
                                              addedChild,
+                                             addedStandalone,
                                               linkCnt,
                                               verifyOk,
                                               verifyFail,
                                               skipTotal,
                                               parentFails,
                                               childFails,
+                                              standaloneFails,
                                               skips,
                                               compositeSuccessCount)
                     Next
@@ -1170,14 +1197,17 @@ Namespace Services
             header.AppendLine($"패밀리 스캔: {totalEditableCount}개 / 복합 패밀리: {compositeFamilies.Count}개 / 성공: {compositeSuccessCount}개")
             header.AppendLine($"하위 패밀리 파라미터 추가: {addedChild}")
             header.AppendLine($"복합 패밀리 파라미터 추가/교정: {addedHost}")
+            header.AppendLine($"단일 패밀리 파라미터 추가: {addedStandalone} / 대상: {standaloneFamilyNames.Count}")
             header.AppendLine($"파라미터 연동 성공 카운트: {linkCnt}")
             header.AppendLine($"연동 검증 OK: {verifyOk} / 미연동: {verifyFail}")
             header.AppendLine($"스킵(연동 불가) 건수: {skipTotal}")
             header.AppendLine($"선택 모드: {(If(chosenIsInstance, "인스턴스", "타입"))}")
+            header.AppendLine($"단일 패밀리 추가 옵션: {(If(includeStandaloneFamilies, "사용", "미사용"))}")
             header.AppendLine($"Dummy 제외된 하위 패밀리 수: {dummyExcludedCount}")
 
             Dim skipLines = skips.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
             Dim failLines = parentFails.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+            failLines.AddRange(standaloneFails.Distinct(StringComparer.OrdinalIgnoreCase))
             Dim scanLines = scanFails.Distinct(StringComparer.OrdinalIgnoreCase).ToList()
 
             Dim hasDetail As Boolean = (scanLines.Count + skipLines.Count + failLines.Count + childFails.Count > 0)
@@ -1219,14 +1249,17 @@ Namespace Services
                                                  chosenPG As BuiltInParameterGroup,
                                                  isParent As Boolean,
                                                  isChild As Boolean,
+                                                 isStandalone As Boolean,
                                                  ByRef addedHost As Integer,
                                                  ByRef addedChild As Integer,
+                                                 ByRef addedStandalone As Integer,
                                                  ByRef linkCnt As Integer,
                                                  ByRef verifyOk As Integer,
                                                  ByRef verifyFail As Integer,
                                                  ByRef skipTotal As Integer,
                                                  parentFails As List(Of String),
                                                  childFails As List(Of String),
+                                                 standaloneFails As List(Of String),
                                                  skips As List(Of String),
                                                  ByRef compositeSuccessCount As Integer)
 
@@ -1255,6 +1288,8 @@ Namespace Services
                             parentFails.Add(famName & ": " & res.ErrorMessage)
                         ElseIf isChild Then
                             childFails.Add(famName & ": " & res.ErrorMessage)
+                        ElseIf isStandalone Then
+                            standaloneFails.Add(famName & ": " & res.ErrorMessage)
                         End If
                     End If
                     Try : famDoc.Regenerate() : Catch : End Try
@@ -1263,6 +1298,7 @@ Namespace Services
                 If localAdded > 0 Then
                     If isChild Then addedChild += localAdded
                     If isParent Then addedHost += localAdded
+                    If isStandalone Then addedStandalone += localAdded
                 End If
 
                 ' 2) 자식이 있는 패밀리라면 하위 인스턴스와 연동
@@ -1402,6 +1438,8 @@ Namespace Services
                         parentFails.Add(famName)
                     ElseIf isChild Then
                         childFails.Add(famName)
+                    ElseIf isStandalone Then
+                        standaloneFails.Add(famName)
                     End If
                 End If
             Finally
@@ -1772,6 +1810,11 @@ Namespace Services
                 Return result
             End If
 
+            If IsExactSharedFamilyParameter(anyByName, extDef, isInstance, groupPG, fm) Then
+                result.FinalOk = True
+                Return result
+            End If
+
             Dim replaceFailed As Boolean = False
             Try
                 TxnUtil.WithTxn(famDoc, $"Replace to shared: {extDef.Name}",
@@ -1854,6 +1897,63 @@ Namespace Services
             result.FinalOk = (corrected IsNot Nothing AndAlso groupOk2)
 #End If
             Return result
+        End Function
+
+        Private Shared Function IsExactSharedFamilyParameter(fp As FamilyParameter,
+                                                            extDef As ExternalDefinition,
+                                                            isInstance As Boolean,
+                                                            groupPG As BuiltInParameterGroup,
+                                                            fm As FamilyManager) As Boolean
+            If fp Is Nothing OrElse extDef Is Nothing OrElse fp.Definition Is Nothing Then Return False
+            If Not String.Equals(fp.Definition.Name, extDef.Name, StringComparison.OrdinalIgnoreCase) Then Return False
+
+            Dim isShared As Boolean = False
+            Try : isShared = fp.IsShared : Catch : isShared = False : End Try
+            If Not isShared Then Return False
+
+            Dim scopeOk As Boolean = False
+            Try : scopeOk = (fp.IsInstance = isInstance) : Catch : scopeOk = False : End Try
+            If Not scopeOk Then Return False
+
+            Dim existingGuid As Guid = Guid.Empty
+            If Not TryGetFamilyParameterGuid(fp, existingGuid) Then Return False
+            If existingGuid <> extDef.GUID Then Return False
+
+#If REVIT2019 Or REVIT2021 Or REVIT2023 Then
+            Try
+                Return fp.Definition.ParameterGroup = groupPG
+            Catch
+                Return False
+            End Try
+#ElseIf REVIT2025 Then
+            Try
+                Dim requestedGroupTypeId As ForgeTypeId = ResolveUserAssignableGroupTypeId(fm, groupPG, extDef)
+                Return fp.Definition.GetGroupTypeId().Equals(requestedGroupTypeId)
+            Catch
+                Return True
+            End Try
+#End If
+        End Function
+
+        Private Shared Function TryGetFamilyParameterGuid(fp As FamilyParameter, ByRef guid As Guid) As Boolean
+            guid = Guid.Empty
+            If fp Is Nothing Then Return False
+
+            Try
+                Dim prop = fp.GetType().GetProperty("GUID",
+                                                    System.Reflection.BindingFlags.Public Or
+                                                    System.Reflection.BindingFlags.Instance)
+                If prop Is Nothing Then Return False
+
+                Dim value = prop.GetValue(fp, Nothing)
+                If TypeOf value Is Guid Then
+                    guid = DirectCast(value, Guid)
+                    Return guid <> Guid.Empty
+                End If
+            Catch
+            End Try
+
+            Return False
         End Function
 
         Private Structure VerifyResult

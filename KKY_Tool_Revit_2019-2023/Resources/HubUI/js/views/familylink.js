@@ -42,6 +42,7 @@ export function renderFamilyLink(root) {
     rows: [],
     rvtPaths: [],
     rvtChecked: new Set(),
+    includeSingleFamilyCheck: false,
     busy: false
   };
   let lastExcelPct = 0;
@@ -124,6 +125,25 @@ export function renderFamilyLink(root) {
   tableWrap.append(table);
   tableBox.append(tableHead, tableWrap);
   selectGrid.append(tableBox);
+
+  const settingsBox = div('familylink-settings-inline');
+  const singleFamilyLabel = document.createElement('label');
+  singleFamilyLabel.className = 'familylink-check-row';
+  const singleFamilyChk = document.createElement('input');
+  singleFamilyChk.type = 'checkbox';
+  singleFamilyChk.checked = state.includeSingleFamilyCheck;
+  singleFamilyChk.addEventListener('change', () => {
+    state.includeSingleFamilyCheck = !!singleFamilyChk.checked;
+  });
+  const singleFamilyCopy = div('familylink-check-copy');
+  const singleFamilyTitle = document.createElement('strong');
+  singleFamilyTitle.textContent = '단일 패밀리 파라미터 추가 여부 검토';
+  const singleFamilyDesc = document.createElement('span');
+  singleFamilyDesc.textContent = '중첩 인스턴스가 없는 단일 패밀리에 선택한 공유파라미터가 추가되어 있는지 함께 확인합니다.';
+  singleFamilyCopy.append(singleFamilyTitle, singleFamilyDesc);
+  singleFamilyLabel.append(singleFamilyChk, singleFamilyCopy);
+  settingsBox.append(singleFamilyLabel);
+  paramCard.append(settingsBox);
 
   // ----- RVT 목록 -----
   const rvtCard = div('paramprop-card section familylink-card');
@@ -369,7 +389,8 @@ export function renderFamilyLink(root) {
 
     post('familylink:run', {
       rvtPaths: selectedRvts,
-      targets
+      targets,
+      includeSingleFamilyCheck: !!state.includeSingleFamilyCheck
     });
   }
 

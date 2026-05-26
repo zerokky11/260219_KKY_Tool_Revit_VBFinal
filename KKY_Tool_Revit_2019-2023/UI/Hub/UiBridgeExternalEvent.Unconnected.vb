@@ -66,12 +66,17 @@ Namespace UI.Hub
                     ReportMultiProgress(overallPct, "미연결 검토 실행 중", $"{safeName} · {msg}")
                 End Sub)
 
+            Dim resultRows As IEnumerable(Of UnconnectedConnectorReviewService.ReviewRow) = Nothing
+            If result IsNot Nothing Then resultRows = result.Rows
+            Dim fullyUnconnectedElementIds As HashSet(Of String) = BuildFullyUnconnectedElementIdSet(resultRows)
+
             Dim centerAxisTargetCount As Integer = 0
             Dim centerAxisRows = BuildUnconnectedCenterAxisRows(doc,
                                                                 safeName,
                                                                 commonTargetFilter,
                                                                 commonExcludeTargetFilter,
                                                                 basePct,
+                                                                fullyUnconnectedElementIds,
                                                                 centerAxisTargetCount)
 
             Dim documentRows As New List(Of UnconnectedConnectorReviewService.ReviewRow)()
@@ -116,6 +121,7 @@ Namespace UI.Hub
                                                         commonTargetFilter As String,
                                                         commonExcludeTargetFilter As String,
                                                         basePct As Double,
+                                                        fullyUnconnectedElementIds As ISet(Of String),
                                                         ByRef targetCount As Integer) As List(Of UnconnectedConnectorReviewService.ReviewRow)
             targetCount = 0
             Dim rows As New List(Of UnconnectedConnectorReviewService.ReviewRow)()
@@ -144,8 +150,15 @@ Namespace UI.Hub
 
             If tapRows Is Nothing Then Return rows
 
+            Dim skippedFullyUnconnected As Integer = 0
             For Each tapRow In tapRows
                 If tapRow Is Nothing OrElse Not IsTapAlignIssueRow(tapRow) Then Continue For
+
+                Dim elementId As String = NormalizeElementIdText(ReadField(tapRow, "ElementId"))
+                If IsFullyUnconnectedElementId(elementId, fullyUnconnectedElementIds) Then
+                    skippedFullyUnconnected += 1
+                    Continue For
+                End If
 
                 Dim categoryName As String = ReadField(tapRow, "Category")
                 Dim typeName As String = ReadField(tapRow, "Type")
@@ -154,7 +167,7 @@ Namespace UI.Hub
                 rows.Add(New UnconnectedConnectorReviewService.ReviewRow With {
                     .File = safeName,
                     .ItemBase = ResolveUnconnectedCenterAxisItemBase(tapRow),
-                    .Id = ReadField(tapRow, "ElementId"),
+                    .Id = elementId,
                     .Name = typeName,
                     .Result = "오류",
                     .Content = BuildUnconnectedCenterAxisContent(tapRow, unit),
@@ -167,7 +180,40 @@ Namespace UI.Hub
                 })
             Next
 
+            If skippedFullyUnconnected > 0 Then
+                targetCount = Math.Max(0, targetCount - skippedFullyUnconnected)
+            End If
+
             Return rows
+        End Function
+
+        Private Shared Function BuildFullyUnconnectedElementIdSet(rows As IEnumerable(Of UnconnectedConnectorReviewService.ReviewRow)) As HashSet(Of String)
+            Dim ids As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            If rows Is Nothing Then Return ids
+
+            For Each row In rows
+                If row Is Nothing Then Continue For
+                If row.ConnectorCount <= 0 Then Continue For
+                If row.UnconnectedCount < row.ConnectorCount Then Continue For
+
+                Dim id As String = NormalizeElementIdText(row.Id)
+                If Not String.IsNullOrWhiteSpace(id) Then ids.Add(id)
+            Next
+
+            Return ids
+        End Function
+
+        Private Shared Function IsFullyUnconnectedElementId(elementId As String, fullyUnconnectedElementIds As ISet(Of String)) As Boolean
+            If fullyUnconnectedElementIds Is Nothing OrElse fullyUnconnectedElementIds.Count = 0 Then Return False
+
+            Dim id As String = NormalizeElementIdText(elementId)
+            If String.IsNullOrWhiteSpace(id) Then Return False
+            Return fullyUnconnectedElementIds.Contains(id)
+        End Function
+
+        Private Shared Function NormalizeElementIdText(value As String) As String
+            If String.IsNullOrWhiteSpace(value) Then Return String.Empty
+            Return value.Trim().TrimEnd(","c)
         End Function
 
         Private Sub ApplyCenterAxisSummary(summary As UnconnectedConnectorReviewService.FileSummary,

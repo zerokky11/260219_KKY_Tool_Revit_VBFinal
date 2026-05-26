@@ -61,6 +61,7 @@ export function renderParamProp(root) {
         targetGroupId: null,
         isInstance: true,
         excludeDummy: true,
+        includeStandaloneFamilies: false,
         saveModifiedFamilies: false,
         modifiedFamilyOutputFolder: '',
         acceptProgress: false,
@@ -150,6 +151,17 @@ export function renderParamProp(root) {
     dummyLbl.textContent = "하위 패밀리 'Dummy' 포함 요소 제외";
     dummyWrap.append(dummyChk, dummyLbl);
 
+    const standaloneWrap = div('paramprop-opt');
+    const standaloneChk = document.createElement('input');
+    standaloneChk.type = 'checkbox';
+    standaloneChk.checked = false;
+    standaloneChk.id = 'optStandaloneFamilies';
+    standaloneChk.addEventListener('change', () => { state.includeStandaloneFamilies = !!standaloneChk.checked; });
+    const standaloneLbl = document.createElement('label');
+    standaloneLbl.setAttribute('for', 'optStandaloneFamilies');
+    standaloneLbl.textContent = '단일 패밀리에도 파라미터 추가';
+    standaloneWrap.append(standaloneChk, standaloneLbl);
+
     const instWrap = div('paramprop-opt radios');
     instWrap.innerHTML = '<span class="opt-label">모드</span>';
     const rbInst = radio('param-scope', '인스턴스', true, () => { state.isInstance = true; });
@@ -163,7 +175,7 @@ export function renderParamProp(root) {
     groupSel.addEventListener('change', () => { state.targetGroupId = Number(groupSel.value); });
     targetGroupWrap.append(groupLbl, groupSel);
 
-    optionRow.append(dummyWrap, instWrap, targetGroupWrap);
+    optionRow.append(dummyWrap, standaloneWrap, instWrap, targetGroupWrap);
     pickerCard.append(optionRow);
 
     const saveRow = div('paramprop-row paramprop-save-row');
@@ -419,6 +431,7 @@ export function renderParamProp(root) {
             groupKey: state.targetGroups.find((item) => item?.id === state.targetGroupId)?.key || '',
             isInstance: !!state.isInstance,
             excludeDummy: !!state.excludeDummy,
+            includeStandaloneFamilies: !!state.includeStandaloneFamilies,
             saveModifiedFamilies: !!state.saveModifiedFamilies,
             modifiedFamilyOutputFolder: String(state.modifiedFamilyOutputFolder || '').trim()
         };
