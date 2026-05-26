@@ -19,6 +19,7 @@ namespace KKY_Tool_Revit.Services
             public List<int> AllowedElementIds { get; set; } = new List<int>();
             public string CommonTargetFilterText { get; set; } = string.Empty;
             public string CommonExcludeTargetFilterText { get; set; } = string.Empty;
+            public List<string> ExtraParameterNames { get; set; } = new List<string>();
         }
 
         public sealed class ReviewRow
@@ -37,6 +38,7 @@ namespace KKY_Tool_Revit.Services
             public bool IsInformational { get; set; }
             public int ConnectorCount { get; set; }
             public int UnconnectedCount { get; set; }
+            public Dictionary<string, string> ExtraParameterValues { get; set; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         }
 
         public sealed class FileSummary
@@ -82,6 +84,7 @@ namespace KKY_Tool_Revit.Services
             string safeFileLabel = string.IsNullOrWhiteSpace(fileLabel) ? (doc.Title ?? string.Empty) : fileLabel.Trim();
             var allowedElementIds = new HashSet<int>((settings.AllowedElementIds ?? Enumerable.Empty<int>()).Where(id => id > 0));
             bool hasCommonScopeFilter = settings.HasAllowedElementScope;
+            List<string> extraParameterNames = NormalizeExtraParameterNames(settings.ExtraParameterNames);
 
             progress?.Invoke(5d, "\uCEE4\uB125\uD130 \uC18C\uC720 \uAC1D\uCCB4 \uC218\uC9D1 \uC911");
             List<ConnectorOwner> owners = CollectConnectorOwners(doc)
@@ -139,7 +142,8 @@ namespace KKY_Tool_Revit.Services
                         Category = category,
                         Family = ResolveFamilyName(doc, element),
                         ConnectorCount = totalConnectors,
-                        UnconnectedCount = unconnected
+                        UnconnectedCount = unconnected,
+                        ExtraParameterValues = ReadExtraParameterValues(doc, element, extraParameterNames)
                     });
                 }
 
@@ -168,8 +172,11 @@ namespace KKY_Tool_Revit.Services
             return result;
         }
 
-        public static DataTable BuildExportTable(IEnumerable<ReviewRow> rows)
+        public static DataTable BuildExportTable(IEnumerable<ReviewRow> rows, IEnumerable<string> extraParameterNames = null)
         {
+            List<ReviewRow> exportRows = (rows ?? Enumerable.Empty<ReviewRow>()).Where(ShouldExportRow).ToList();
+            List<string> extraHeaders = ResolveExportExtraHeaders(exportRows, extraParameterNames);
+
             var table = new DataTable("UnconnectedConnectorReview");
             table.Columns.Add("\uD56D\uBAA9");
             table.Columns.Add("ID");
@@ -179,8 +186,15 @@ namespace KKY_Tool_Revit.Services
             table.Columns.Add("\uBE44\uACE0");
             table.Columns.Add("Category");
             table.Columns.Add("Family");
+            foreach (string name in extraHeaders)
+            {
+                if (!IsBaseExportColumn(name) && !table.Columns.Contains(name))
+                {
+                    table.Columns.Add(name);
+                }
+            }
 
-            foreach (ReviewRow row in (rows ?? Enumerable.Empty<ReviewRow>()).Where(ShouldExportRow))
+            foreach (ReviewRow row in exportRows)
             {
                 DataRow dataRow = table.NewRow();
                 dataRow["\uD56D\uBAA9"] = row.Item ?? string.Empty;
@@ -191,10 +205,33 @@ namespace KKY_Tool_Revit.Services
                 dataRow["\uBE44\uACE0"] = string.Empty;
                 dataRow["Category"] = row.Category ?? string.Empty;
                 dataRow["Family"] = row.Family ?? string.Empty;
+                foreach (string name in extraHeaders)
+                {
+                    if (IsBaseExportColumn(name)) continue;
+                    string value = string.Empty;
+                    if (row.ExtraParameterValues != null)
+                    {
+                        row.ExtraParameterValues.TryGetValue(name, out value);
+                    }
+                    dataRow[name] = value ?? string.Empty;
+                }
                 table.Rows.Add(dataRow);
             }
 
             return table;
+        }
+
+        private static bool IsBaseExportColumn(string name)
+        {
+            string value = (name ?? string.Empty).Trim();
+            return string.Equals(value, "\uD56D\uBAA9", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(value, "ID", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(value, "Name", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(value, "\uACB0\uACFC", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(value, "\uB0B4\uC6A9", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(value, "\uBE44\uACE0", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(value, "Category", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(value, "Family", StringComparison.OrdinalIgnoreCase);
         }
 
         public static string BuildEmptyExportMessage(FileSummary summary)
@@ -466,6 +503,74 @@ namespace KKY_Tool_Revit.Services
             if (MatchesCategory(category, "OST_Conduit")) return "Conduit With Fittings";
 
             return ModelParameterExtractionService.GetElementFamilyName(doc, element);
+        }
+
+        private static List<string> NormalizeExtraParameterNames(IEnumerable<string> parameterNames)
+        {
+            var result = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (parameterNames == null) return result;
+
+            foreach (string raw in parameterNames)
+            {
+                string name = (raw ?? string.Empty).Trim();
+                if (name.Length == 0) continue;
+                if (seen.Add(name)) result.Add(name);
+            }
+
+            return result;
+        }
+
+        private static List<string> ResolveExportExtraHeaders(IEnumerable<ReviewRow> rows, IEnumerable<string> extraParameterNames)
+        {
+            var result = NormalizeExtraParameterNames(extraParameterNames);
+            var seen = new HashSet<string>(result, StringComparer.OrdinalIgnoreCase);
+
+            foreach (ReviewRow row in rows ?? Enumerable.Empty<ReviewRow>())
+            {
+                if (row == null || row.ExtraParameterValues == null) continue;
+                foreach (string key in row.ExtraParameterValues.Keys)
+                {
+                    string name = (key ?? string.Empty).Trim();
+                    if (name.Length == 0) continue;
+                    if (seen.Add(name)) result.Add(name);
+                }
+            }
+
+            return result;
+        }
+
+        private static Dictionary<string, string> ReadExtraParameterValues(Document doc, Element element, IEnumerable<string> parameterNames)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string name in NormalizeExtraParameterNames(parameterNames))
+            {
+                result[name] = ResolveExtraParameterValue(doc, element, name);
+            }
+            return result;
+        }
+
+        private static string ResolveExtraParameterValue(Document doc, Element element, string parameterName)
+        {
+            if (element == null || string.IsNullOrWhiteSpace(parameterName)) return string.Empty;
+            string token = NormalizeSyntheticParameterName(parameterName);
+            if (token == "category") return ModelParameterExtractionService.GetElementCategoryName(element);
+            if (token == "family" || token == "familyname") return ResolveFamilyName(doc, element);
+            if (token == "type" || token == "typename" || token == "name") return ModelParameterExtractionService.GetElementTypeName(doc, element);
+            if (token == "id" || token == "elementid") return GetElementIdValue(element).ToString(CultureInfo.InvariantCulture);
+
+            return ModelParameterExtractionService.GetElementParameterValue(doc, element, parameterName);
+        }
+
+        private static string NormalizeSyntheticParameterName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+            var chars = value
+                .Trim()
+                .Where(ch => char.IsLetterOrDigit(ch))
+                .Select(ch => char.ToLowerInvariant(ch))
+                .ToArray();
+            return new string(chars);
         }
 
         private static string BuildItemText(string itemBase, int errorCount, string issueKind)

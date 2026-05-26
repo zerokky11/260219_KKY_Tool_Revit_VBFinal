@@ -23,6 +23,7 @@ Namespace UI.Hub
 
         Private Shared _multiUnconnectedRows As List(Of UnconnectedConnectorReviewService.ReviewRow)
         Private Shared _multiUnconnectedFileSummaries As List(Of UnconnectedConnectorReviewService.FileSummary)
+        Private Shared _multiUnconnectedExtraHeaders As List(Of String)
 
         Private Function ParseUnconnected(fd As Dictionary(Of String, Object)) As MultiUnconnectedOptions
             Dim opt As New MultiUnconnectedOptions()
@@ -42,19 +43,23 @@ Namespace UI.Hub
 
             Dim commonTargetFilter As String = String.Empty
             Dim commonExcludeTargetFilter As String = String.Empty
+            Dim commonExtraParamNames As New List(Of String)()
             Dim allowedElementIds As New List(Of Integer)()
             Dim hasAllowedElementScope As Boolean = False
             If _multiRequest.Common IsNot Nothing Then
                 commonTargetFilter = SafeStr(_multiRequest.Common.TargetFilter)
                 commonExcludeTargetFilter = SafeStr(_multiRequest.Common.ExcludeTargetFilter)
+                commonExtraParamNames = ParseExtraParams(SafeStr(_multiRequest.Common.ExtraParams))
                 hasAllowedElementScope = TryBuildCommonScopeIds(doc, commonTargetFilter, commonExcludeTargetFilter, allowedElementIds)
             End If
+            _multiUnconnectedExtraHeaders = commonExtraParamNames
 
             Dim settings As New UnconnectedConnectorReviewService.Settings With {
                 .HasAllowedElementScope = hasAllowedElementScope,
                 .AllowedElementIds = If(allowedElementIds, New List(Of Integer)()),
                 .CommonTargetFilterText = commonTargetFilter,
-                .CommonExcludeTargetFilterText = commonExcludeTargetFilter
+                .CommonExcludeTargetFilterText = commonExcludeTargetFilter,
+                .ExtraParameterNames = commonExtraParamNames
             }
 
             Dim result = UnconnectedConnectorReviewService.RunOnDocument(
@@ -77,6 +82,7 @@ Namespace UI.Hub
                                                                 commonExcludeTargetFilter,
                                                                 basePct,
                                                                 fullyUnconnectedElementIds,
+                                                                commonExtraParamNames,
                                                                 centerAxisTargetCount)
 
             Dim documentRows As New List(Of UnconnectedConnectorReviewService.ReviewRow)()
@@ -122,6 +128,7 @@ Namespace UI.Hub
                                                         commonExcludeTargetFilter As String,
                                                         basePct As Double,
                                                         fullyUnconnectedElementIds As ISet(Of String),
+                                                        commonExtraParamNames As IList(Of String),
                                                         ByRef targetCount As Integer) As List(Of UnconnectedConnectorReviewService.ReviewRow)
             targetCount = 0
             Dim rows As New List(Of UnconnectedConnectorReviewService.ReviewRow)()
@@ -139,7 +146,7 @@ Namespace UI.Hub
                                                                   tol,
                                                                   unit,
                                                                   domain,
-                                                                  New List(Of String)(),
+                                                                  If(commonExtraParamNames, New List(Of String)()),
                                                                   combinedTargetFilter,
                                                                   commonExcludeTargetFilter,
                                                                   Sub(pct, msg)
@@ -176,7 +183,8 @@ Namespace UI.Hub
                     .Family = familyName,
                     .IssueKind = "centeraxis",
                     .ConnectorCount = 0,
-                    .UnconnectedCount = 0
+                    .UnconnectedCount = 0,
+                    .ExtraParameterValues = BuildUnconnectedCenterAxisExtraValues(tapRow, commonExtraParamNames)
                 })
             Next
 
@@ -185,6 +193,21 @@ Namespace UI.Hub
             End If
 
             Return rows
+        End Function
+
+        Private Shared Function BuildUnconnectedCenterAxisExtraValues(row As Dictionary(Of String, Object),
+                                                                      extraParamNames As IEnumerable(Of String)) As Dictionary(Of String, String)
+            Dim result As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase)
+            If row Is Nothing OrElse extraParamNames Is Nothing Then Return result
+
+            For Each rawName In extraParamNames
+                Dim name As String = SafeStr(rawName).Trim()
+                If String.IsNullOrWhiteSpace(name) Then Continue For
+                If result.ContainsKey(name) Then Continue For
+                result.Add(name, ReadField(row, "BranchParam::" & name))
+            Next
+
+            Return result
         End Function
 
         Private Shared Function BuildFullyUnconnectedElementIdSet(rows As IEnumerable(Of UnconnectedConnectorReviewService.ReviewRow)) As HashSet(Of String)
@@ -290,6 +313,7 @@ Namespace UI.Hub
         Private Sub ClearMultiUnconnectedCache()
             _multiUnconnectedRows = Nothing
             _multiUnconnectedFileSummaries = Nothing
+            _multiUnconnectedExtraHeaders = Nothing
         End Sub
 
         Private Function GetMultiUnconnectedRowCount() As Integer
@@ -404,6 +428,7 @@ Namespace UI.Hub
         Private Sub ExportUnconnected(doAutoFit As Boolean, excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
             Dim rows = If(_multiUnconnectedRows, New List(Of UnconnectedConnectorReviewService.ReviewRow)())
             Dim summaries = If(_multiUnconnectedFileSummaries, New List(Of UnconnectedConnectorReviewService.FileSummary)())
+            Dim extraHeaders = If(_multiUnconnectedExtraHeaders, New List(Of String)())
             If rows.Count = 0 AndAlso summaries.Count = 0 Then
                 SendToWeb("hub:multi-exported", New With {.ok = False, .message = "미연결 검토 결과가 없습니다."})
                 Return
@@ -418,7 +443,7 @@ Namespace UI.Hub
             For Each fileName In orderedNames
                 Dim fileRows = rows.Where(Function(item) item IsNot Nothing AndAlso String.Equals(GetSafeMultiFileName(item.File), fileName, StringComparison.OrdinalIgnoreCase)).ToList()
                 Dim summary = summaries.FirstOrDefault(Function(item) item IsNot Nothing AndAlso String.Equals(GetSafeMultiFileName(item.File), fileName, StringComparison.OrdinalIgnoreCase))
-                Dim table = UnconnectedConnectorReviewService.BuildExportTable(fileRows)
+                Dim table = UnconnectedConnectorReviewService.BuildExportTable(fileRows, extraHeaders)
                 ExcelCore.EnsureNoDataRow(table, UnconnectedConnectorReviewService.BuildEmptyExportMessage(summary))
 
                 Dim sheetName As String = BuildUnconnectedSheetName(fileName)
@@ -428,7 +453,7 @@ Namespace UI.Hub
             Next
 
             If sheets.Count = 0 Then
-                Dim table = UnconnectedConnectorReviewService.BuildExportTable(rows)
+                Dim table = UnconnectedConnectorReviewService.BuildExportTable(rows, extraHeaders)
                 Dim summary = summaries.FirstOrDefault()
                 ExcelCore.EnsureNoDataRow(table, UnconnectedConnectorReviewService.BuildEmptyExportMessage(summary))
                 sheets.Add(New KeyValuePair(Of String, DataTable)("Review", table))

@@ -150,7 +150,7 @@ const FEATURE_META = {
 const FEATURE_KEYS = Object.keys(FEATURE_META);
 const BQC_FEATURE_KEYS = ['connector', 'unconnected', 'floorinfo', 'familysuitability', 'tapalign', 'dupclash', 'worksetassignment', 'parameterduplication', 'parametermissing', 'parameterstandard'];
 const COMMON_SCOPE_DEPENDENT_FEATURE_KEYS = ['connector', 'unconnected', 'floorinfo', 'tapalign', 'dupclash', 'worksetassignment', 'parametermissing', 'parameterstandard'];
-const COMMON_EXTRA_PARAM_DEPENDENT_FEATURE_KEYS = ['connector', 'floorinfo', 'tapalign', 'dupclash', 'worksetassignment', 'parametermissing', 'parameterstandard'];
+const COMMON_EXTRA_PARAM_DEPENDENT_FEATURE_KEYS = ['connector', 'unconnected', 'floorinfo', 'tapalign', 'dupclash', 'worksetassignment', 'parametermissing', 'parameterstandard'];
 const COMMON_TAPALIGN_OPTION_DEPENDENT_FEATURE_KEYS = ['tapalign'];
 const UTILITY_FEATURE_KEYS = FEATURE_KEYS.filter((key) => !BQC_FEATURE_KEYS.includes(key));
 const COMMON_OPTIONS_KEY = 'kky.hub.commonOptions';
@@ -6297,6 +6297,7 @@ function buildConditionExtractWorkflowRow() {
 
     const body = div('review-summary-body');
     const stats = div('review-summary-stats');
+    const fileOverview = div('review-summary-files');
 
     const caption = document.createElement('div');
     caption.className = 'review-summary-caption';
@@ -6324,7 +6325,7 @@ function buildConditionExtractWorkflowRow() {
 
     const featureList = div('review-feature-list');
 
-    body.append(stats, caption, tableWrap, exportGuide, featureList);
+    body.append(stats, fileOverview, caption, tableWrap, exportGuide, featureList);
 
     const footer = div('review-summary-footer');
     const resetBtn = document.createElement('button');
@@ -6354,6 +6355,7 @@ function buildConditionExtractWorkflowRow() {
     buildReviewSummaryModal.body = body;
     buildReviewSummaryModal.titleEl = title;
     buildReviewSummaryModal.stats = stats;
+    buildReviewSummaryModal.fileOverview = fileOverview;
     buildReviewSummaryModal.tbody = tbody;
     buildReviewSummaryModal.featureList = featureList;
     buildReviewSummaryModal.resetBtn = resetBtn;
@@ -6387,6 +6389,7 @@ function buildConditionExtractWorkflowRow() {
       state.ui.lastRunAtByMode[mode] = state.ui.lastRunAt;
     }
     const stats = buildReviewSummaryModal.stats;
+    const fileOverview = buildReviewSummaryModal.fileOverview;
     const tbody = buildReviewSummaryModal.tbody;
     const featureList = buildReviewSummaryModal.featureList;
     if (!stats || !tbody || !featureList) return;
@@ -6396,6 +6399,7 @@ function buildConditionExtractWorkflowRow() {
     const skipped = Number(payload?.skipped) || 0;
     const failed = Number(payload?.failed) || 0;
     const rows = getReviewTableRows(payload);
+    renderReviewSummaryFiles(fileOverview, rows, payload);
     if (buildReviewSummaryModal.titleEl) {
       buildReviewSummaryModal.titleEl.textContent = '최근 결과 보기';
     }
@@ -6510,6 +6514,69 @@ function buildConditionExtractWorkflowRow() {
     chip.className = className;
     chip.textContent = `${label}: ${value}`;
     return chip;
+  }
+
+  function renderReviewSummaryFiles(target, rows, payload) {
+    if (!target) return;
+    target.innerHTML = '';
+    const names = collectReviewSummaryFileNames(rows, payload);
+    const title = document.createElement('div');
+    title.className = 'review-summary-files__title';
+    title.textContent = names.length ? `검토 파일 ${names.length}개` : '검토 파일';
+    const list = div('review-summary-files__list');
+    if (!names.length) {
+      const empty = document.createElement('span');
+      empty.className = 'review-summary-files__empty';
+      empty.textContent = '검토한 파일 정보를 찾지 못했습니다.';
+      list.append(empty);
+    } else {
+      const limit = 8;
+      names.slice(0, limit).forEach((name) => {
+        const chip = document.createElement('span');
+        chip.className = 'review-summary-files__chip';
+        chip.textContent = name;
+        chip.title = name;
+        list.append(chip);
+      });
+      if (names.length > limit) {
+        const more = document.createElement('span');
+        more.className = 'review-summary-files__more';
+        more.textContent = `외 ${names.length - limit}개`;
+        list.append(more);
+      }
+    }
+    target.append(title, list);
+  }
+
+  function collectReviewSummaryFileNames(rows, payload) {
+    const names = [];
+    const seen = new Set();
+    const add = (value) => {
+      const name = String(value || '').trim();
+      if (!name) return;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      names.push(name);
+    };
+    (Array.isArray(rows) ? rows : []).forEach((row) => add(row?.file));
+    (Array.isArray(payload?.items) ? payload.items : []).forEach((item) => add(getReviewItemFile(item)));
+    const summaries = payload?.featureSummaries && typeof payload.featureSummaries === 'object'
+      ? payload.featureSummaries
+      : {};
+    Object.values(summaries).forEach((summary) => {
+      (Array.isArray(summary?.fileSummaries) ? summary.fileSummaries : [])
+        .forEach((item) => add(getReviewItemFile(item)));
+    });
+    if (!names.length) {
+      (getCheckedRvtPaths() || []).forEach((path) => add(getReviewFileLabelFromPath(path)));
+    }
+    return names;
+  }
+
+  function getReviewFileLabelFromPath(path) {
+    const leaf = getPathLeafLabel(path, '');
+    return String(leaf || '').replace(/\.rvt$/i, '');
   }
 
   function openRecentResultView() {
@@ -7854,11 +7921,11 @@ function buildConditionExtractWorkflowRow() {
       state.ui.actionCommonSummaryEl.textContent = `공통 설정: ${buildCommonSummary()}`;
     }
     updateActionSummaryVisibility();
-    updateFeatureSummary('connector');
-    updateFeatureSummary('unconnected');
-    updateFeatureSummary('tapalign');
-    updateFeatureSummary('dupclash');
-    updateFeatureSummary('parameterstandard');
+    Array.from(new Set([
+      ...COMMON_SCOPE_DEPENDENT_FEATURE_KEYS,
+      ...COMMON_EXTRA_PARAM_DEPENDENT_FEATURE_KEYS,
+      ...COMMON_TAPALIGN_OPTION_DEPENDENT_FEATURE_KEYS
+    ])).forEach(updateFeatureSummary);
     if (state.ui.controls.tapalign?.renderCommonSummary) state.ui.controls.tapalign.renderCommonSummary();
     if (state.ui.controls.dupclash?.renderCommonSummary) state.ui.controls.dupclash.renderCommonSummary();
   }
@@ -8942,11 +9009,16 @@ function buildConditionExtractWorkflowRow() {
     const centerAxisText = centerAxisEnabled
       ? `중심축 연결 검토 포함 · 허용 ${centerAxisTol} ${centerAxisUnit}`
       : '중심축 연결 검토 제외';
+    const commonExtraCount = String(common.extraParams || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .length;
 
     target.top.textContent = feature.enabled
       ? '선택 완료 · 커넥터가 있는 객체의 미연결 상태를 객체 단위로 검토합니다.'
       : '필요할 때만 켜서 배관, 덕트, 트레이, 컨듀잇과 피팅류의 미연결 상태를 확인해 주세요.';
-    target.sub.textContent = `${scopeText} · ${centerAxisText} · 결과는 객체별 전체/일부 미연결로 구분됩니다.`;
+    target.sub.textContent = `${scopeText} · ${centerAxisText} · 추가 추출 ${commonExtraCount}개 · 결과는 객체별 전체/일부 미연결로 구분됩니다.`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
       FEATURE_META.unconnected?.label || '미연결 검토',

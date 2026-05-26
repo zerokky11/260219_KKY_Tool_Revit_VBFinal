@@ -1791,6 +1791,48 @@
     gap: 8px;
 }
 
+.review-summary-files {
+    display: grid;
+    gap: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    background: var(--surface-help);
+}
+
+.review-summary-files__title {
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.review-summary-files__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+
+.review-summary-files__chip,
+.review-summary-files__more {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    padding: 5px 8px;
+    border: 1px solid var(--border-soft);
+    border-radius: 8px;
+    background: var(--surface-card);
+    color: var(--text-main);
+    font-size: .82rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.review-summary-files__more,
+.review-summary-files__empty {
+    color: var(--text-soft);
+}
+
 .review-summary-caption {
     font-size: .84rem;
     font-weight: 700;
