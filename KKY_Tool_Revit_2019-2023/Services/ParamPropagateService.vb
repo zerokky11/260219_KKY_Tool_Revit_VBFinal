@@ -1139,6 +1139,7 @@ Namespace Services
 
             Dim applyIdx As Integer = 0
             Dim applyTotal As Integer = order.Count
+            Dim skipNestedAssociation As Boolean = includeStandaloneFamilies
             report("apply", 0.0R, 0, applyTotal, "파라미터 적용 준비", "")
 
             Using tgAll As New TransactionGroup(doc, "KKY Shared Param Propagate")
@@ -1166,6 +1167,7 @@ Namespace Services
                                              isParent,
                                              isChild,
                                              isStandalone,
+                                             skipNestedAssociation,
                                              addedHost,
                                              addedChild,
                                              addedStandalone,
@@ -1250,6 +1252,7 @@ Namespace Services
                                                  isParent As Boolean,
                                                  isChild As Boolean,
                                                  isStandalone As Boolean,
+                                                 skipNestedAssociation As Boolean,
                                                  ByRef addedHost As Integer,
                                                  ByRef addedChild As Integer,
                                                  ByRef addedStandalone As Integer,
@@ -1302,7 +1305,7 @@ Namespace Services
                 End If
 
                 ' 2) 자식이 있는 패밀리라면 하위 인스턴스와 연동
-                If hasChildren Then
+                If hasChildren AndAlso Not skipNestedAssociation Then
                     Dim childrenOfHost As HashSet(Of String) = Nothing
                     parentToChildren.TryGetValue(famName, childrenOfHost)
 

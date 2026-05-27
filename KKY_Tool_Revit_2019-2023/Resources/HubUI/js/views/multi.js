@@ -4586,7 +4586,7 @@ function buildConditionExtractWorkflowRow() {
   function buildParameterMissingConfig() {
     const panel = div('multi-config');
     panel.style.display = 'grid';
-    panel.style.gridTemplateColumns = 'repeat(auto-fit, minmax(320px, 1fr))';
+    panel.style.gridTemplateColumns = 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))';
     panel.style.gap = '12px';
     panel.style.alignItems = 'start';
     panel.style.width = '100%';
@@ -4602,6 +4602,10 @@ function buildConditionExtractWorkflowRow() {
       card.style.display = 'grid';
       card.style.gap = '10px';
       card.style.padding = '12px';
+      card.style.width = '100%';
+      card.style.maxWidth = '100%';
+      card.style.minWidth = '0';
+      card.style.boxSizing = 'border-box';
       card.style.borderRadius = '16px';
       card.style.border = '1px solid var(--border-accent-soft)';
       card.style.background = 'var(--surface-elevated)';
@@ -4698,18 +4702,34 @@ function buildConditionExtractWorkflowRow() {
     selectedBadge.className = 'chip chip--info';
     selectedHead.append(selectedCard.title, selectedBadge);
     selectedCard.card.innerHTML = '';
+    selectedCard.card.style.minHeight = '0';
+    selectedCard.card.style.overflow = 'hidden';
     selectedCard.card.append(selectedHead);
     const selectedChips = div('familylink-selected-chips');
     selectedChips.style.display = 'flex';
     selectedChips.style.flexWrap = 'wrap';
     selectedChips.style.gap = '8px';
+    selectedChips.style.width = '100%';
+    selectedChips.style.maxWidth = '100%';
+    selectedChips.style.minWidth = '0';
     selectedChips.style.alignItems = 'flex-start';
     selectedChips.style.alignContent = 'flex-start';
-    selectedChips.style.minHeight = '40px';
-    selectedChips.style.maxHeight = '88px';
-    selectedChips.style.overflow = 'auto';
+    selectedChips.style.height = '112px';
+    selectedChips.style.maxHeight = '112px';
+    selectedChips.style.padding = '8px';
+    selectedChips.style.boxSizing = 'border-box';
+    selectedChips.style.border = '1px solid var(--border-soft)';
+    selectedChips.style.borderRadius = '12px';
+    selectedChips.style.background = 'var(--surface-control)';
+    selectedChips.style.overflowY = 'auto';
+    selectedChips.style.overflowX = 'hidden';
     const selectedSummary = div('feature-note');
     selectedSummary.style.margin = '0';
+    selectedSummary.style.display = '-webkit-box';
+    selectedSummary.style.webkitLineClamp = '2';
+    selectedSummary.style.webkitBoxOrient = 'vertical';
+    selectedSummary.style.overflow = 'hidden';
+    selectedSummary.style.overflowWrap = 'anywhere';
     const recentSelect = makeSelectField('최근 설정', [
       { value: '', label: '최근 설정이 없습니다.' }
     ]);
@@ -4744,7 +4764,7 @@ function buildConditionExtractWorkflowRow() {
     exceptionDesc.style.margin = '0';
     const exceptionWrap = div('multi-config');
     exceptionWrap.style.display = 'grid';
-    exceptionWrap.style.gridTemplateColumns = 'repeat(auto-fit, minmax(320px, 1fr))';
+    exceptionWrap.style.gridTemplateColumns = 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))';
     exceptionWrap.style.gap = '12px';
 
     const targetFilterCard = makeCard('검토 대상 필터링', { fullWidth: true });
@@ -4767,7 +4787,7 @@ function buildConditionExtractWorkflowRow() {
 
     const targetFilterBody = div('multi-config');
     targetFilterBody.style.display = 'none';
-    targetFilterBody.style.gridTemplateColumns = 'repeat(auto-fit, minmax(280px, 1fr))';
+    targetFilterBody.style.gridTemplateColumns = 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))';
     targetFilterBody.style.gap = '12px';
     targetFilterBody.style.alignItems = 'start';
     const targetFilterMode = makeSelectField('검토 방식', PARAMETER_MISSING_TARGET_FILTER_MODES);
@@ -4944,7 +4964,20 @@ function buildConditionExtractWorkflowRow() {
           const chip = document.createElement('button');
           chip.type = 'button';
           chip.className = 'chip chip--ok';
-          chip.textContent = `${name} ×`;
+          chip.title = name;
+          chip.style.maxWidth = '100%';
+          chip.style.minWidth = '0';
+          chip.style.boxSizing = 'border-box';
+          chip.style.justifyContent = 'flex-start';
+          chip.style.overflow = 'hidden';
+          const chipLabel = document.createElement('span');
+          chipLabel.textContent = `${name} ×`;
+          chipLabel.style.minWidth = '0';
+          chipLabel.style.maxWidth = '100%';
+          chipLabel.style.overflow = 'hidden';
+          chipLabel.style.textOverflow = 'ellipsis';
+          chipLabel.style.whiteSpace = 'nowrap';
+          chip.append(chipLabel);
           chip.addEventListener('click', () => {
             const current = getDraft();
             current.parameterNames = current.parameterNames.filter((item) => String(item || '').toLowerCase() !== String(name || '').toLowerCase());

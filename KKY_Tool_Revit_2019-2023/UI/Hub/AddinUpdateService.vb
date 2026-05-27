@@ -365,6 +365,7 @@ Namespace UI.Hub
             If IsHttpUrl(candidate) Then
                 Using wc As New WebClient()
                     wc.Headers(HttpRequestHeader.UserAgent) = "KKY_Tool_Revit/" & GetCurrentVersionDisplay()
+                    wc.Encoding = Encoding.UTF8
                     Return wc.DownloadString(candidate)
                 End Using
             End If

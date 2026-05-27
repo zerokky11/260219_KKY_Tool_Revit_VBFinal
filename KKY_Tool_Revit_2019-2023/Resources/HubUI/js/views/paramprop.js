@@ -159,7 +159,7 @@ export function renderParamProp(root) {
     standaloneChk.addEventListener('change', () => { state.includeStandaloneFamilies = !!standaloneChk.checked; });
     const standaloneLbl = document.createElement('label');
     standaloneLbl.setAttribute('for', 'optStandaloneFamilies');
-    standaloneLbl.textContent = '단일 패밀리에도 파라미터 추가';
+    standaloneLbl.textContent = '단일 패밀리까지 파라미터 추가 (연동 제외)';
     standaloneWrap.append(standaloneChk, standaloneLbl);
 
     const instWrap = div('paramprop-opt radios');
@@ -420,9 +420,17 @@ export function renderParamProp(root) {
         }
         lastProgressPct = 0;
         state.acceptProgress = true;
-        setBusy(true, '공유파라미터를 연동하는 중입니다.');
-        ProgressDialog.show('공유파라미터 추가 및 연동', '연동 구성을 확인하는 중입니다.');
-        ProgressDialog.update(0, '연동 구성을 확인하는 중입니다.', '선택한 파라미터와 저장 옵션을 정리하는 중입니다.');
+        const standaloneMode = !!state.includeStandaloneFamilies;
+        setBusy(true, standaloneMode ? '공유파라미터를 추가하는 중입니다.' : '공유파라미터를 연동하는 중입니다.');
+        ProgressDialog.show(
+            standaloneMode ? '공유파라미터 추가' : '공유파라미터 추가 및 연동',
+            standaloneMode ? '파라미터 추가 구성을 확인하는 중입니다.' : '연동 구성을 확인하는 중입니다.'
+        );
+        ProgressDialog.update(
+            0,
+            standaloneMode ? '파라미터 추가 구성을 확인하는 중입니다.' : '연동 구성을 확인하는 중입니다.',
+            '선택한 파라미터와 저장 옵션을 정리하는 중입니다.'
+        );
         exportBtn.disabled = true;
         const payload = {
             paramNames: selected,
@@ -431,7 +439,7 @@ export function renderParamProp(root) {
             groupKey: state.targetGroups.find((item) => item?.id === state.targetGroupId)?.key || '',
             isInstance: !!state.isInstance,
             excludeDummy: !!state.excludeDummy,
-            includeStandaloneFamilies: !!state.includeStandaloneFamilies,
+            includeStandaloneFamilies: standaloneMode,
             saveModifiedFamilies: !!state.saveModifiedFamilies,
             modifiedFamilyOutputFolder: String(state.modifiedFamilyOutputFolder || '').trim()
         };
