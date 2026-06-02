@@ -266,6 +266,13 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
         if ([string]::IsNullOrWhiteSpace([string]$latest.publishedAt)) {
             Add-Failure 'latest.json publishedAt is empty.'
         }
+        $latestInstallerFileName = Get-UrlFileName -Url ([string]$latest.installerUrl)
+        if ($latestInstallerFileName -and $latestInstallerFileName -ne $expectedExeName) {
+            Add-Failure "latest.json installerUrl should point to '$expectedExeName' but points to '$latestInstallerFileName'."
+        }
+        if ($latestInstallerFileName -and ([string]$latest.installerUrl) -notmatch '/official/') {
+            Add-Failure "latest.json installerUrl should use the official installer folder."
+        }
     }
 
     $history = Read-JsonFile -Path $historyPath

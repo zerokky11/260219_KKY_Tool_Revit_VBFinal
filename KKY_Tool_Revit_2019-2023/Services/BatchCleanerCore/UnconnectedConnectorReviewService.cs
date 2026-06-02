@@ -53,6 +53,9 @@ namespace KKY_Tool_Revit.Services
             public bool CenterAxisEnabled { get; set; }
             public int CenterAxisTargetCount { get; set; }
             public int CenterAxisErrorCount { get; set; }
+            public bool TapDepthEnabled { get; set; }
+            public int TapDepthTargetCount { get; set; }
+            public int TapDepthErrorCount { get; set; }
             public string Status { get; set; } = "pending";
             public string Reason { get; set; } = string.Empty;
         }
@@ -260,6 +263,19 @@ namespace KKY_Tool_Revit.Services
                 if (summary.CenterAxisErrorCount <= 0)
                 {
                     return "\uC911\uC2EC\uCD95 \uC624\uB958\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.";
+                }
+            }
+
+            if (summary != null && summary.TapDepthEnabled)
+            {
+                if (summary.TapDepthTargetCount <= 0)
+                {
+                    return "\uAC80\uD1A0 \uB300\uC0C1 \uC694\uC18C\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.";
+                }
+
+                if (summary.TapDepthErrorCount <= 0)
+                {
+                    return "Tap/Saddle \uBB3B\uD798 \uC624\uB958\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.";
                 }
             }
 
@@ -594,6 +610,11 @@ namespace KKY_Tool_Revit.Services
                 return $"{(string.IsNullOrWhiteSpace(itemBase) ? "\uC911\uC2EC\uCD95 \uC5F0\uACB0" : itemBase)} Check({Math.Max(errorCount, 0).ToString(CultureInfo.InvariantCulture)}\uAC74)";
             }
 
+            if (IsTapDepthKind(issueKind))
+            {
+                return $"{(string.IsNullOrWhiteSpace(itemBase) ? "Tap, Saddle \uBAA8\uB378\uB9C1 \uAC80\uD1A0 (\uBB3B\uD798)" : itemBase)} Check({Math.Max(errorCount, 0).ToString(CultureInfo.InvariantCulture)}\uAC74)";
+            }
+
             return $"{(string.IsNullOrWhiteSpace(itemBase) ? "Connector" : itemBase)} \uBBF8\uC5F0\uACB0 Check({Math.Max(errorCount, 0).ToString(CultureInfo.InvariantCulture)}\uAC74)";
         }
 
@@ -605,12 +626,17 @@ namespace KKY_Tool_Revit.Services
         private static bool IsIssueRow(ReviewRow row)
         {
             if (row == null || row.IsInformational) return false;
-            return row.UnconnectedCount > 0 || IsCenterAxisKind(row.IssueKind);
+            return row.UnconnectedCount > 0 || IsCenterAxisKind(row.IssueKind) || IsTapDepthKind(row.IssueKind);
         }
 
         private static bool IsCenterAxisKind(string issueKind)
         {
             return string.Equals(issueKind, "centeraxis", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsTapDepthKind(string issueKind)
+        {
+            return string.Equals(issueKind, "tapdepth", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string BuildGroupKey(ReviewRow row)

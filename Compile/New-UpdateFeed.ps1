@@ -7,6 +7,7 @@ param(
 
     [string]$PublishedAt = (Get-Date -Format 'yyyy-MM-dd'),
     [string]$Notes = '',
+    [string]$InstallerUrl = '',
     [string]$OutputPath = 'latest.json'
 )
 
@@ -15,6 +16,10 @@ $payload = [ordered]@{
     url         = $DownloadUrl
     publishedAt = $PublishedAt
     notes       = $Notes
+}
+
+if (-not [string]::IsNullOrWhiteSpace($InstallerUrl)) {
+    $payload.installerUrl = $InstallerUrl
 }
 
 $json = $payload | ConvertTo-Json -Depth 3

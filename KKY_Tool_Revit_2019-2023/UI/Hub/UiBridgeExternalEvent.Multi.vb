@@ -93,6 +93,15 @@ Namespace UI.Hub
             Public Property ExportLocale As String = "ko"
         End Class
 
+        Private Class MultiTapDepthOptions
+            Public Property Enabled As Boolean
+            Public Property Tol As Double = 5.0R
+            Public Property Unit As String = "mm"
+            Public Property Domain As String = "all"
+            Public Property FeatureTargetFilter As String = String.Empty
+            Public Property ExportLocale As String = "ko"
+        End Class
+
         Private Class MultiDupClashOptions
             Public Property Enabled As Boolean
             Public Property Mode As String = "duplicate"
@@ -137,6 +146,7 @@ Namespace UI.Hub
             Public Property FloorInfo As MultiFloorInfoOptions = New MultiFloorInfoOptions()
             Public Property FamilySuitability As MultiFamilySuitabilityOptions = New MultiFamilySuitabilityOptions()
             Public Property TapAlign As MultiTapAlignOptions = New MultiTapAlignOptions()
+            Public Property TapDepth As MultiTapDepthOptions = New MultiTapDepthOptions()
             Public Property DupClash As MultiDupClashOptions = New MultiDupClashOptions()
             Public Property WorksetAssignment As MultiWorksetAssignmentOptions = New MultiWorksetAssignmentOptions()
             Public Property ProjectParameterDuplication As MultiProjectParameterDuplicationOptions = New MultiProjectParameterDuplicationOptions()
@@ -180,6 +190,10 @@ Namespace UI.Hub
         Private Shared _multiTapAlignExtras As List(Of String)
         Private Shared _multiTapAlignUnit As String = "mm"
         Private Shared _multiTapAlignLocale As String = "ko"
+        Private Shared _multiTapDepthRows As List(Of Dictionary(Of String, Object))
+        Private Shared _multiTapDepthExtras As List(Of String)
+        Private Shared _multiTapDepthUnit As String = "mm"
+        Private Shared _multiTapDepthLocale As String = "ko"
         Private Shared _multiLastExportFolder As String = String.Empty
         Private Shared _multiDupRows As List(Of Exports.DupRowDto)
         Private Shared _multiDupTargetCounts As Dictionary(Of String, Integer)
@@ -230,6 +244,11 @@ Namespace UI.Hub
                     _multiTapAlignExtras = Nothing
                     _multiTapAlignUnit = "mm"
                     _multiTapAlignLocale = "ko"
+                Case "tapdepth"
+                    _multiTapDepthRows = Nothing
+                    _multiTapDepthExtras = Nothing
+                    _multiTapDepthUnit = "mm"
+                    _multiTapDepthLocale = "ko"
                 Case "dupclash"
                     _multiDupRows = Nothing
                     _multiDupTargetCounts = Nothing
@@ -920,6 +939,60 @@ NextItem:
                 _multiTapAlignUnit = NormalizeTapAlignUnit(_multiRequest.TapAlign.Unit)
                 _multiTapAlignLocale = NormalizeTapAlignExportLocale(_multiRequest.TapAlign.ExportLocale)
                 ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "탭/분기 축 틀어짐 검토 완료", safeName)
+            End If
+
+            If _multiRequest.TapDepth.Enabled Then
+                stepIndex += 1
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "Tap, Saddle 모델링 검토(묻힘) 실행 중", safeName)
+                Dim extras = BuildConnectorExtraParams(_multiRequest.Common.ExtraParams,
+                                                       _multiRequest.Common.IncludePointXY,
+                                                       _multiRequest.Common.IncludeLinearMetrics)
+                Dim combinedTargetFilter = TapAlignmentReviewService.CombineTargetFilterText(_multiRequest.Common.TargetFilter,
+                                                                                            _multiRequest.TapDepth.FeatureTargetFilter)
+                Dim targetCount = TapAlignmentReviewService.CountTargetsOnDocument(doc,
+                                                                                   _multiRequest.TapDepth.Domain,
+                                                                                   combinedTargetFilter,
+                                                                                   _multiRequest.Common.ExcludeTargetFilter)
+                Dim rows = TapAlignmentReviewService.RunProjectionDepthOnDocument(doc,
+                                                                                  _multiRequest.TapDepth.Tol,
+                                                                                  _multiRequest.TapDepth.Unit,
+                                                                                  _multiRequest.TapDepth.Domain,
+                                                                                  extras,
+                                                                                  combinedTargetFilter,
+                                                                                  _multiRequest.Common.ExcludeTargetFilter,
+                                                                                  Sub(pct, msg)
+                                                                                      Dim fraction As Double = Math.Max(0.0R, Math.Min(CDbl(pct), 1.0R))
+                                                                                      Dim overallPct = ((basePct + fraction / Math.Max(_multiTotal, 1)) * 100.0R)
+                                                                                      ReportMultiProgress(overallPct, "Tap, Saddle 모델링 검토(묻힘) 실행 중", $"{safeName} · {msg}")
+                                                                                  End Sub)
+                If rows IsNot Nothing AndAlso rows.Count > 0 Then
+                    For Each row In rows
+                        If row IsNot Nothing Then row("File") = safeName
+                    Next
+                    If _multiTapDepthRows Is Nothing Then _multiTapDepthRows = New List(Of Dictionary(Of String, Object))()
+                    _multiTapDepthRows.AddRange(rows)
+                Else
+                    If _multiTapDepthRows Is Nothing Then _multiTapDepthRows = New List(Of Dictionary(Of String, Object))()
+                    _multiTapDepthRows.Add(New Dictionary(Of String, Object) From {
+                        {"File", safeName},
+                        {"Status", If(targetCount > 0, "OK", "NO_TARGET")},
+                        {"TargetCount", targetCount.ToString(Globalization.CultureInfo.InvariantCulture)},
+                        {"Message", ""},
+                        {"ProjectionLength", ""},
+                        {"TakeoffLength", ""},
+                        {"StandardName", ""},
+                        {"StandardLength", ""},
+                        {"ActualBuriedLength", ""},
+                        {"Difference", ""},
+                        {"ProjectionDifference", ""},
+                        {"TakeoffDifference", ""},
+                        {"Domain", ""}
+                    })
+                End If
+                _multiTapDepthExtras = extras
+                _multiTapDepthUnit = NormalizeTapAlignUnit(_multiRequest.TapDepth.Unit)
+                _multiTapDepthLocale = NormalizeTapAlignExportLocale(_multiRequest.TapDepth.ExportLocale)
+                ReportMultiProgress(CalcStepPercent(basePct, stepIndex, steps), "Tap, Saddle 모델링 검토(묻힘) 완료", safeName)
             End If
 
             If _multiRequest.DupClash.Enabled Then
@@ -1919,6 +1992,9 @@ NextItem:
             If _multiRequest IsNot Nothing AndAlso _multiRequest.TapAlign IsNot Nothing AndAlso _multiRequest.TapAlign.Enabled Then
                 summary("tapalign") = New With {.rows = If(_multiTapAlignRows, New List(Of Dictionary(Of String, Object))()).Count}
             End If
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.TapDepth IsNot Nothing AndAlso _multiRequest.TapDepth.Enabled Then
+                summary("tapdepth") = New With {.rows = If(_multiTapDepthRows, New List(Of Dictionary(Of String, Object))()).Count}
+            End If
             If _multiRequest IsNot Nothing AndAlso _multiRequest.DupClash IsNot Nothing AndAlso _multiRequest.DupClash.Enabled Then
                 Dim mode As String = NormalizeMultiDupClashMode(_multiRequest.DupClash.Mode)
                 Dim dupCount As Integer = If(_multiDupRows, New List(Of Exports.DupRowDto)()).Count
@@ -1992,6 +2068,8 @@ NextItem:
                         ExportFamilySuitability(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "tapalign"
                         ExportTapAlign(doAutoFit, excelMode, exportLocale, outputFolder)
+                    Case "tapdepth"
+                        ExportTapDepth(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "dupclash"
                         ExportDupClash(doAutoFit, excelMode, exportLocale, outputFolder)
                     Case "worksetassignment"
@@ -2138,6 +2216,8 @@ NextItem:
                         Return "Unconnected Connector Review"
                     Case "tapalign"
                         Return "Tap Branch Axis Misalignment Review"
+                    Case "tapdepth"
+                        Return "Tap Saddle Embed Review"
                     Case "dupclash"
                         If String.Equals(mode, "clash", StringComparison.OrdinalIgnoreCase) Then Return "Self Clash Review"
                         Return "Modeling Duplication"
@@ -2160,6 +2240,8 @@ NextItem:
                         Return "파라미터 연속성 검토"
                     Case "tapalign"
                         Return "탭분기 축 틀어짐 검토"
+                    Case "tapdepth"
+                        Return "Tap Saddle 묻힘 검토"
                     Case "dupclash"
                         If String.Equals(mode, "clash", StringComparison.OrdinalIgnoreCase) Then Return "자체간섭검토"
                         Return "중복검토"
@@ -2776,6 +2858,136 @@ NextItem:
             End If
         End Sub
 
+        Private Sub ExportTapDepth(doAutoFit As Boolean, excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
+            Dim rows = If(_multiTapDepthRows, New List(Of Dictionary(Of String, Object))())
+            If rows.Count = 0 Then
+                SendToWeb("hub:multi-exported", New With {.ok = False, .message = "Tap, Saddle 모델링 검토(묻힘) 결과가 없습니다."})
+                Return
+            End If
+
+            Dim fileList As New List(Of String)()
+            Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.RvtPaths IsNot Nothing Then
+                For Each p In _multiRequest.RvtPaths
+                    Dim path As String = TryCast(p, String)
+                    Dim name As String = ""
+                    Try
+                        name = System.IO.Path.GetFileName(path)
+                    Catch
+                        name = ""
+                    End Try
+                    If String.IsNullOrWhiteSpace(name) Then Continue For
+                    If seen.Add(name) Then fileList.Add(name)
+                Next
+            End If
+
+            If fileList.Count = 0 Then
+                For Each r In rows
+                    Dim fileName As String = ""
+                    Try
+                        If r IsNot Nothing AndAlso r.ContainsKey("File") AndAlso r("File") IsNot Nothing Then
+                            fileName = r("File").ToString()
+                        End If
+                    Catch
+                        fileName = ""
+                    End Try
+                    If String.IsNullOrWhiteSpace(fileName) Then Continue For
+                    If seen.Add(fileName) Then fileList.Add(fileName)
+                Next
+            End If
+
+            Dim extras = If(_multiTapDepthExtras, New List(Of String)())
+            Dim unit = NormalizeTapAlignUnit(If(_multiTapDepthUnit, "mm"))
+            Dim locale = NormalizeTapAlignExportLocale(exportLocale)
+
+            Dim requestedCount As Integer = GetRequestedMultiFileCount()
+            Dim defaultFileName As String
+            If requestedCount >= 2 Then
+                defaultFileName = $"TapDepth_Selected {requestedCount} Files.xlsx"
+            Else
+                defaultFileName = $"TapDepth_{Date.Now:yyyyMMdd_HHmm}.xlsx"
+            End If
+
+            Dim saved As String = ""
+            Dim splitByFile As Boolean = Not String.IsNullOrWhiteSpace(outputFolder)
+            If splitByFile OrElse fileList.Count >= 2 Then
+                Dim sheetList As New List(Of KeyValuePair(Of String, DataTable))()
+                Dim fileIssueCounts As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
+
+                For Each fileName In fileList
+                    Dim baseName As String = ""
+                    Try
+                        baseName = System.IO.Path.GetFileNameWithoutExtension(fileName)
+                    Catch
+                        baseName = fileName
+                    End Try
+                    If String.IsNullOrWhiteSpace(baseName) Then baseName = fileName
+
+                    Dim rowsForFile As List(Of Dictionary(Of String, Object)) =
+                        rows.Where(Function(r)
+                                       If r Is Nothing Then Return False
+
+                                       Dim rowFile As String = ""
+                                       Try
+                                           If r.ContainsKey("File") AndAlso r("File") IsNot Nothing Then rowFile = r("File").ToString()
+                                       Catch
+                                           rowFile = ""
+                                       End Try
+
+                                       If String.IsNullOrWhiteSpace(rowFile) Then Return False
+
+                                       Dim rowBase As String = rowFile
+                                       Try
+                                           rowBase = System.IO.Path.GetFileNameWithoutExtension(rowFile)
+                                       Catch
+                                           rowBase = rowFile
+                                       End Try
+
+                                       Return String.Equals(rowFile, fileName, StringComparison.OrdinalIgnoreCase) _
+                                           OrElse String.Equals(rowFile, baseName, StringComparison.OrdinalIgnoreCase) _
+                                           OrElse String.Equals(rowBase, baseName, StringComparison.OrdinalIgnoreCase)
+                                   End Function).ToList()
+                    Dim issueCount As Integer = rowsForFile.Where(Function(item) IsTapDepthIssueRow(item)).Count()
+
+                    Dim table = BuildTapDepthDataTable(rowsForFile, unit, extras, locale)
+                    Dim headers = table.Columns.Cast(Of DataColumn)().Select(Function(col) col.ColumnName).ToList()
+                    If table.Rows.Count > 0 AndAlso Not ValidateSchema(table, headers) Then
+                        Throw New InvalidOperationException("스키마 검증 실패: TapDepth")
+                    End If
+
+                    sheetList.Add(New KeyValuePair(Of String, DataTable)(baseName, table))
+                    SetSplitExportIssueCount(fileIssueCounts, baseName, issueCount)
+                Next
+
+                If splitByFile Then
+                    Dim savedCount = SaveSplitSingleSheetTables(outputFolder, "tapdepth", "TapSaddle묻힘검토", "Tap Saddle Embed", sheetList, doAutoFit, excelMode, locale, fileIssueCounts:=fileIssueCounts)
+                    If savedCount <= 0 Then
+                        SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+                    Else
+                        SendSplitExportCompleted(outputFolder, savedCount)
+                    End If
+                    Return
+                End If
+
+                saved = ExcelCore.PickAndSaveXlsxMulti(sheetList, defaultFileName, doAutoFit, "hub:multi-progress", sheetKeyOverride:="tapdepth", exportKind:="tapdepth", exportLocale:=locale)
+            Else
+                Dim table = BuildTapDepthDataTable(rows, unit, extras, locale)
+                Dim headers = table.Columns.Cast(Of DataColumn)().Select(Function(col) col.ColumnName).ToList()
+                If table.Rows.Count > 0 AndAlso Not ValidateSchema(table, headers) Then
+                    Throw New InvalidOperationException("스키마 검증 실패: TapDepth")
+                End If
+
+                saved = ExcelCore.PickAndSaveXlsx("Tap Saddle Embed", table, defaultFileName, doAutoFit, "hub:multi-progress", "tapdepth", exportLocale:=locale)
+            End If
+
+            If String.IsNullOrWhiteSpace(saved) Then
+                SendToWeb("hub:multi-exported", New With {.ok = False, .message = "엑셀 저장이 취소되었습니다."})
+            Else
+                SendToWeb("hub:multi-exported", New With {.ok = True, .path = saved})
+            End If
+        End Sub
+
         Private Sub ExportDupClash(doAutoFit As Boolean, excelMode As String, Optional exportLocale As String = "ko", Optional outputFolder As String = Nothing)
             Dim dupRows = If(_multiDupRows, New List(Of Exports.DupRowDto)())
             Dim clashRows = If(_multiClashRows, New List(Of Exports.DupRowDto)())
@@ -3226,6 +3438,10 @@ NextItem:
             _multiTapAlignExtras = Nothing
             _multiTapAlignUnit = "mm"
             _multiTapAlignLocale = "ko"
+            _multiTapDepthRows = Nothing
+            _multiTapDepthExtras = Nothing
+            _multiTapDepthUnit = "mm"
+            _multiTapDepthLocale = "ko"
             _multiDupRows = Nothing
             _multiDupTargetCounts = Nothing
             _multiClashRows = Nothing
@@ -3293,6 +3509,7 @@ NextItem:
                 req.FloorInfo = ParseFloorInfo(fd)
                 req.FamilySuitability = ParseFamilySuitability(fd)
                 req.TapAlign = ParseTapAlign(fd)
+                req.TapDepth = ParseTapDepth(fd)
                 req.DupClash = ParseDupClash(fd)
                 req.WorksetAssignment = ParseWorksetAssignment(fd)
                 req.ProjectParameterDuplication = ParseProjectParameterDuplication(fd)
@@ -3332,6 +3549,24 @@ NextItem:
             opt.Unit = NormalizeTapAlignUnit(SafeStr(GetDictValue(d, "unit")))
             opt.Domain = NormalizeTapAlignDomain(SafeStr(GetDictValue(d, "domain")))
             opt.FeatureTargetFilter = SafeStr(GetDictValue(d, "featureTargetFilter"))
+            opt.ExportLocale = NormalizeTapAlignExportLocale(SafeStr(GetDictValue(d, "exportLocale")))
+            If String.IsNullOrWhiteSpace(opt.Unit) Then opt.Unit = "mm"
+            If String.IsNullOrWhiteSpace(opt.Domain) Then opt.Domain = "all"
+            If opt.FeatureTargetFilter Is Nothing Then opt.FeatureTargetFilter = String.Empty
+            If String.IsNullOrWhiteSpace(opt.ExportLocale) Then opt.ExportLocale = "ko"
+            Return opt
+        End Function
+
+        Private Function ParseTapDepth(fd As Dictionary(Of String, Object)) As MultiTapDepthOptions
+            Dim opt As New MultiTapDepthOptions()
+            Dim obj = GetDictValue(fd, "tapdepth")
+            Dim d = ToDict(obj)
+            opt.Enabled = ToBool(GetDictValue(d, "enabled"))
+            opt.Tol = ToDouble(GetDictValue(d, "tol"), 5.0R)
+            If opt.Tol <= 0 Then opt.Tol = 5.0R
+            opt.Unit = NormalizeTapAlignUnit(SafeStr(GetDictValue(d, "unit")))
+            opt.Domain = NormalizeTapAlignDomain(SafeStr(GetDictValue(d, "domain")))
+            opt.FeatureTargetFilter = SafeStr(GetDictValue(d, "featureTargetFilter")).Trim()
             opt.ExportLocale = NormalizeTapAlignExportLocale(SafeStr(GetDictValue(d, "exportLocale")))
             If String.IsNullOrWhiteSpace(opt.Unit) Then opt.Unit = "mm"
             If String.IsNullOrWhiteSpace(opt.Domain) Then opt.Domain = "all"
@@ -3416,7 +3651,7 @@ NextItem:
 
         Private Shared Function AnyFeatureEnabled(req As MultiRunRequest) As Boolean
             If req Is Nothing Then Return False
-            Return req.Connector.Enabled OrElse req.Unconnected.Enabled OrElse req.FloorInfo.Enabled OrElse req.FamilySuitability.Enabled OrElse req.TapAlign.Enabled OrElse req.DupClash.Enabled OrElse req.WorksetAssignment.Enabled OrElse req.ProjectParameterDuplication.Enabled OrElse req.ParameterMissing.Enabled OrElse req.ParameterStandard.Enabled OrElse req.Pms.Enabled OrElse req.Guid.Enabled OrElse req.FamilyLink.Enabled OrElse req.Points.Enabled OrElse req.LinkWorkset.Enabled
+            Return req.Connector.Enabled OrElse req.Unconnected.Enabled OrElse req.FloorInfo.Enabled OrElse req.FamilySuitability.Enabled OrElse req.TapAlign.Enabled OrElse req.TapDepth.Enabled OrElse req.DupClash.Enabled OrElse req.WorksetAssignment.Enabled OrElse req.ProjectParameterDuplication.Enabled OrElse req.ParameterMissing.Enabled OrElse req.ParameterStandard.Enabled OrElse req.Pms.Enabled OrElse req.Guid.Enabled OrElse req.FamilyLink.Enabled OrElse req.Points.Enabled OrElse req.LinkWorkset.Enabled
         End Function
 
         Private Shared Function CountEnabledFeatures(req As MultiRunRequest) As Integer
@@ -3427,6 +3662,7 @@ NextItem:
             If req.FloorInfo.Enabled Then count += 1
             If req.FamilySuitability.Enabled Then count += 1
             If req.TapAlign.Enabled Then count += 1
+            If req.TapDepth.Enabled Then count += 1
             If req.DupClash.Enabled Then count += 1
             If req.WorksetAssignment.Enabled Then count += 1
             If req.ProjectParameterDuplication.Enabled Then count += 1
@@ -3512,6 +3748,10 @@ NextItem:
 
             If _multiRequest.TapAlign IsNot Nothing AndAlso _multiRequest.TapAlign.Enabled Then
                 summaries("tapalign") = BuildTapAlignMultiSummary()
+            End If
+
+            If _multiRequest.TapDepth IsNot Nothing AndAlso _multiRequest.TapDepth.Enabled Then
+                summaries("tapdepth") = BuildTapDepthMultiSummary()
             End If
 
             If _multiRequest.DupClash IsNot Nothing AndAlso _multiRequest.DupClash.Enabled Then
@@ -3673,6 +3913,40 @@ NextItem:
             }
         End Function
 
+        Private Function BuildTapDepthMultiSummary() As Object
+            Dim rows = If(_multiTapDepthRows, New List(Of Dictionary(Of String, Object))())
+            Dim issueCount As Integer = rows.Where(Function(r) IsTapDepthIssueRow(r)).Count()
+            Dim issueFiles As Integer = rows.
+                Where(Function(r) IsTapDepthIssueRow(r)).
+                Select(Function(r) GetSafeMultiFileName(ReadField(r, "File"))).
+                Where(Function(name) Not String.IsNullOrWhiteSpace(name)).
+                Distinct(StringComparer.OrdinalIgnoreCase).
+                Count()
+            Dim extraCount As Integer = If(_multiTapDepthExtras, New List(Of String)()).Count
+            Dim tolText As String = "5"
+            Dim unitText As String = NormalizeTapAlignUnit(_multiTapDepthUnit)
+            Dim scopeText As String = "배관 + 덕트"
+            If _multiRequest IsNot Nothing AndAlso _multiRequest.TapDepth IsNot Nothing Then
+                tolText = _multiRequest.TapDepth.Tol.ToString()
+                unitText = NormalizeTapAlignUnit(_multiRequest.TapDepth.Unit)
+                scopeText = ResolveTapAlignDomainLabel(_multiRequest.TapDepth.Domain)
+            End If
+
+            Return New With {
+                .key = "tapdepth",
+                .label = "Tap, Saddle 모델링 검토 (묻힘)",
+                .lines = New String() {
+                    $"선택 파일 수: {GetRequestedMultiFileCount()}개",
+                    $"오류 행 수: {issueCount}행",
+                    $"오류 파일 수: {issueFiles}개",
+                    $"허용범위: {tolText} {unitText}",
+                    $"검토 범위: {scopeText}",
+                    $"추가 추출 컬럼 수: {extraCount}개"
+                },
+                .fileSummaries = BuildTapDepthFileSummaries(rows)
+            }
+        End Function
+
         Private Function BuildConnectorFileSummaries(rows As IList(Of Dictionary(Of String, Object))) As List(Of Object)
             Dim sourceRows = If(rows, New List(Of Dictionary(Of String, Object))())
             Dim orderedNames As New List(Of String)()
@@ -3762,6 +4036,45 @@ NextItem:
                 If String.IsNullOrWhiteSpace(reason) Then
                     reason = If(issueRows.Count > 0,
                                 $"최대 이탈거리 {Math.Round(maxDistance, 3)} {_multiTapAlignUnit}",
+                                "오류 없음")
+                End If
+
+                result.Add(New With {
+                    .file = fileName,
+                    .total = perFileRows.Count,
+                    .issues = issueRows.Count,
+                    .near = 0,
+                    .status = statusText,
+                    .reason = reason
+                })
+            Next
+
+            Return result
+        End Function
+
+        Private Function BuildTapDepthFileSummaries(rows As IList(Of Dictionary(Of String, Object))) As List(Of Object)
+            Dim sourceRows = If(rows, New List(Of Dictionary(Of String, Object))())
+            Dim orderedNames = BuildOrderedMultiFileNames(sourceRows.Select(Function(r) ReadField(r, "File")))
+            Dim result As New List(Of Object)()
+
+            For Each fileName In orderedNames
+                Dim perFileRows = sourceRows.
+                    Where(Function(r) String.Equals(GetSafeMultiFileName(ReadField(r, "File")), fileName, StringComparison.OrdinalIgnoreCase)).
+                    ToList()
+                Dim issueRows = perFileRows.Where(Function(r) IsTapDepthIssueRow(r)).ToList()
+                Dim runReason As String = ""
+                Dim statusText As String = GetMultiRunItemStatus(fileName, runReason)
+                Dim maxDifference As Double = 0.0R
+                If issueRows.Count > 0 Then
+                    maxDifference = issueRows.
+                        Select(Function(r) Math.Abs(ToDouble(ReadField(r, "Difference"), 0.0R))).
+                        DefaultIfEmpty(0.0R).
+                        Max()
+                End If
+                Dim reason As String = runReason
+                If String.IsNullOrWhiteSpace(reason) Then
+                    reason = If(issueRows.Count > 0,
+                                $"최대 묻힘 차이 {Math.Round(maxDifference, 3)} {_multiTapDepthUnit}",
                                 "오류 없음")
                 End If
 
@@ -4092,6 +4405,13 @@ NextItem:
         End Function
 
         Private Shared Function IsTapAlignIssueRow(row As Dictionary(Of String, Object)) As Boolean
+            If row Is Nothing Then Return False
+            If Not String.IsNullOrWhiteSpace(ReadField(row, "ElementId")) Then Return True
+            Dim message = ReadField(row, "Message")
+            Return Not String.IsNullOrWhiteSpace(message)
+        End Function
+
+        Private Shared Function IsTapDepthIssueRow(row As Dictionary(Of String, Object)) As Boolean
             If row Is Nothing Then Return False
             If Not String.IsNullOrWhiteSpace(ReadField(row, "ElementId")) Then Return True
             Dim message = ReadField(row, "Message")

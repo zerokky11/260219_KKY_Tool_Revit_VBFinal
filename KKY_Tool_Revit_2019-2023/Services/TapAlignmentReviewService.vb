@@ -1,4 +1,4 @@
-Option Explicit On
+﻿Option Explicit On
 Option Strict On
 
 Imports System
@@ -33,6 +33,31 @@ Namespace Services
             Public Property HostPointDistanceFt As Double
             Public Property Status As String
             Public Property Message As String
+        End Class
+
+        Private Class ProjectionDepthHit
+            Public Property Host As Element
+            Public Property HasProjectionLength As Boolean
+            Public Property ProjectionLengthFt As Double
+            Public Property HasTakeoffLength As Boolean
+            Public Property TakeoffLengthFt As Double
+            Public Property StandardName As String
+            Public Property StandardFt As Double
+            Public Property ActualBuriedFt As Double
+            Public Property DifferenceFt As Double
+            Public Property ProjectionDifferenceFt As Double
+            Public Property TakeoffDifferenceFt As Double
+            Public Property RadialDistanceFt As Double
+            Public Property HostHalfSizeFt As Double
+            Public Property HostPointDistanceFt As Double
+            Public Property HostConnectionMissing As Boolean
+            Public Property Status As String
+            Public Property Message As String
+        End Class
+
+        Private Class ProjectionDepthStandard
+            Public Property Name As String
+            Public Property ValueFt As Double
         End Class
 
         Private Class TargetFilter
@@ -436,6 +461,27 @@ Namespace Services
                                           False)
         End Function
 
+        Public Shared Function RunProjectionDepthOnDocument(doc As Document,
+                                                            tol As Double,
+                                                            unit As String,
+                                                            domain As String,
+                                                            extraParams As IEnumerable(Of String),
+                                                            targetFilter As String,
+                                                            excludeTargetFilter As String,
+                                                            Optional progress As Action(Of Double, String) = Nothing) As List(Of Dictionary(Of String, Object))
+            If doc Is Nothing Then Return New List(Of Dictionary(Of String, Object))()
+
+            Dim tolFt = ConnectorDiagnosticsService.ToTolFt(tol, unit)
+            Return RunProjectionDepthOnDocument(doc,
+                                                tolFt,
+                                                NormalizeUnit(unit),
+                                                NormalizeDomain(domain),
+                                                NormalizeExtraParams(extraParams),
+                                                ParseTargetFilter(targetFilter),
+                                                ParseTargetFilter(excludeTargetFilter),
+                                                progress)
+        End Function
+
         Private Shared Function CountTargetsOnDocument(doc As Document,
                                                        domain As String,
                                                        includeFilter As TargetFilter,
@@ -495,6 +541,114 @@ Namespace Services
                 OrderByDescending(Function(row) ParseNumber(ReadField(row, "DistanceFromCenter"))).
                 ThenBy(Function(row) ParseInteger(ReadField(row, "ElementId"))).
                 ToList()
+        End Function
+
+        Private Shared Function RunProjectionDepthOnDocument(doc As Document,
+                                                             tolFt As Double,
+                                                             unit As String,
+                                                             domain As String,
+                                                             extraParams As IList(Of String),
+                                                             includeFilter As TargetFilter,
+                                                             excludeFilter As TargetFilter,
+                                                             progress As Action(Of Double, String)) As List(Of Dictionary(Of String, Object))
+            Dim rows As New List(Of Dictionary(Of String, Object))()
+            If doc Is Nothing Then Return rows
+
+            Dim candidates = CollectCandidates(doc, domain)
+            candidates = candidates.
+                Where(Function(el) IsElementAllowed(el, includeFilter, excludeFilter, False)).
+                GroupBy(Function(el) el.Id.IntValue()).
+                Select(Function(g) g.First()).
+                ToList()
+
+            If progress IsNot Nothing Then
+                progress(0.05R, "Tap, Saddle 모델링 검토(묻힘) 후보를 수집하는 중...")
+            End If
+
+            If candidates.Count = 0 Then
+                If progress IsNot Nothing Then progress(1.0R, "완료")
+                Return rows
+            End If
+
+            Dim total = Math.Max(1, candidates.Count)
+            For index As Integer = 0 To candidates.Count - 1
+                Dim candidate = candidates(index)
+                Dim hit = FindBestProjectionDepthIssue(candidate, domain, tolFt)
+                If hit IsNot Nothing Then
+                    rows.Add(BuildProjectionDepthRow(doc, candidate, hit, unit, extraParams))
+                End If
+
+                If progress IsNot Nothing Then
+                    Dim pct = 0.05R + (0.95R * CDbl(index + 1) / CDbl(total))
+                    progress(pct, String.Format(CultureInfo.InvariantCulture, "Tap, Saddle 모델링 검토(묻힘) 중... ({0}/{1})", index + 1, total))
+                End If
+            Next
+
+            Return rows.
+                OrderByDescending(Function(row) Math.Abs(ParseNumber(ReadField(row, "Difference")))).
+                ThenBy(Function(row) ParseInteger(ReadField(row, "ElementId"))).
+                ToList()
+        End Function
+
+        Private Shared Function FindBestProjectionDepthIssue(candidate As Element,
+                                                             domain As String,
+                                                             tolFt As Double) As ProjectionDepthHit
+            Dim connectors = GetConnectors(candidate)
+            If connectors.Count = 0 Then Return Nothing
+
+            Dim standards = ReadProjectionDepthStandards(candidate)
+            If standards.Count = 0 Then
+                Return Nothing
+            End If
+
+            Dim compared As Boolean = False
+            Dim best = FindBestProjectionDepthHit(connectors,
+                                                  GetCandidateHostCurves(candidate, domain, includeNearbyFallback:=False),
+                                                  compared)
+
+            If best Is Nothing AndAlso Not compared Then
+                best = FindBestProjectionDepthHit(connectors,
+                                                  GetCandidateHostCurves(candidate, domain, includeNearbyFallback:=True),
+                                                  compared)
+            End If
+
+            If best Is Nothing Then Return Nothing
+            ApplyProjectionDepthStandards(best, standards)
+            If best.StandardFt <= 0.0R Then Return Nothing
+
+            If Not HasConnectorPathToHost(connectors, TryCast(best.Host, MEPCurve), domain) Then
+                best.HostConnectionMissing = True
+                best.Status = "HOST_DISCONNECTED"
+                best.Message = "호스트 배관/덕트와 커넥터 연결이 끊어져 있습니다. 호스트와 다시 연결해 주세요."
+                Return best
+            End If
+
+            If Math.Abs(best.DifferenceFt) <= tolFt Then Return Nothing
+
+            best.Status = If(best.DifferenceFt > 0.0R, "EMBED_TOO_DEEP", "EMBED_TOO_SHALLOW")
+            best.Message = If(best.DifferenceFt > 0.0R,
+                              $"{best.StandardName} 기준보다 깊게 묻혀 있습니다.",
+                              $"{best.StandardName} 기준보다 얕게 묻혀 있습니다.")
+            Return best
+        End Function
+
+        Private Shared Function FindBestProjectionDepthHit(connectors As IList(Of Connector),
+                                                           candidateHosts As IList(Of MEPCurve),
+                                                           ByRef compared As Boolean) As ProjectionDepthHit
+            Dim best As ProjectionDepthHit = Nothing
+            If connectors Is Nothing OrElse candidateHosts Is Nothing OrElse candidateHosts.Count = 0 Then Return best
+
+            For Each host In candidateHosts
+                Dim hit As ProjectionDepthHit = Nothing
+                If Not TryEvaluateProjectionDepth(connectors, host, hit) Then Continue For
+
+                compared = True
+                If best Is Nothing OrElse hit.HostPointDistanceFt < best.HostPointDistanceFt Then
+                    best = hit
+                End If
+            Next
+
+            Return best
         End Function
 
         Private Shared Function FindBestMisalignment(candidate As Element,
@@ -717,6 +871,74 @@ Namespace Services
             End Try
         End Function
 
+        Private Shared Function ReadProjectionDepthStandards(el As Element) As List(Of ProjectionDepthStandard)
+            Dim standards As New List(Of ProjectionDepthStandard)()
+            If el Is Nothing Then Return standards
+
+            Dim valueFt As Double = 0.0R
+            If TryReadTakeoffLengthProjectionFt(el, valueFt) Then
+                standards.Add(New ProjectionDepthStandard With {
+                    .Name = "Takeoff Length Projection",
+                    .ValueFt = valueFt
+                })
+            End If
+
+            If TryReadTakeoffLengthFt(el, valueFt) Then
+                standards.Add(New ProjectionDepthStandard With {
+                    .Name = "Takeoff Length",
+                    .ValueFt = valueFt
+                })
+            End If
+
+            Return standards
+        End Function
+
+        Private Shared Function TryReadTakeoffLengthProjectionFt(el As Element, ByRef valueFt As Double) As Boolean
+            valueFt = 0.0R
+            If el Is Nothing Then Return False
+
+            Dim param As Parameter = Nothing
+            If TryGetBuiltInParameterOnElementOrType(el, BuiltInParameter.RBS_FAMILY_CONTENT_TAKEOFF_PROJLENGTH, param) AndAlso
+               TryReadPositiveDoubleParameter(param, valueFt) Then
+                Return True
+            End If
+
+            For Each name In New String() {"Takeoff Length Projection", "Takeoff Length Proj.", "Takeoff Length Proj", "Takeoff Projection Length"}
+                param = FindParameterOnElementOrType(el, name)
+                If TryReadPositiveDoubleParameter(param, valueFt) Then Return True
+            Next
+
+            Return False
+        End Function
+
+        Private Shared Function TryReadTakeoffLengthFt(el As Element, ByRef valueFt As Double) As Boolean
+            valueFt = 0.0R
+            If el Is Nothing Then Return False
+
+            For Each name In New String() {"Takeoff Length", "Takeoff Len.", "Takeoff Len", "TakeoffLength"}
+                Dim param = FindParameterOnElementOrType(el, name)
+                If TryReadPositiveDoubleParameter(param, valueFt) Then Return True
+            Next
+
+            Return False
+        End Function
+
+        Private Shared Function TryReadPositiveDoubleParameter(param As Parameter, ByRef valueFt As Double) As Boolean
+            valueFt = 0.0R
+            If param Is Nothing Then Return False
+
+            Try
+                If param.StorageType = StorageType.Double Then
+                    valueFt = param.AsDouble()
+                    Return valueFt > 0.0R
+                End If
+            Catch
+                valueFt = 0.0R
+            End Try
+
+            Return False
+        End Function
+
         Private Shared Function TryEvaluateHostBranch(connectors As IList(Of Connector),
                                                       host As MEPCurve,
                                                       ByRef hit As ReviewHit) As Boolean
@@ -762,6 +984,363 @@ Namespace Services
                 .HostPointDistanceFt = hostPointDistanceFt
             }
             Return True
+        End Function
+
+        Private Shared Function TryEvaluateProjectionDepth(connectors As IList(Of Connector),
+                                                           host As MEPCurve,
+                                                           ByRef hit As ProjectionDepthHit) As Boolean
+            hit = Nothing
+            If connectors Is Nothing OrElse connectors.Count = 0 OrElse host Is Nothing Then Return False
+
+            Dim centerLine As Line = Nothing
+            If Not TryGetCenterLine(host, centerLine) Then Return False
+
+            Dim hostDirection = NormalizeVector(centerLine.Direction)
+            If hostDirection Is Nothing Then Return False
+
+            Dim insertionConnector As Connector = Nothing
+            Dim insertionOrigin As XYZ = Nothing
+            Dim hostPointDistanceFt As Double = Double.NaN
+            If Not TryResolveInsertionConnector(connectors,
+                                                centerLine.GetEndPoint(0),
+                                                hostDirection,
+                                                insertionConnector,
+                                                insertionOrigin,
+                                                hostPointDistanceFt) Then
+                Return False
+            End If
+
+            Dim branchAxis = ResolveBranchAxis(connectors, insertionConnector, hostDirection)
+            If branchAxis Is Nothing Then Return False
+
+            Dim angleDeg = AngleBetweenAxesDeg(branchAxis, hostDirection)
+            If Double.IsNaN(angleDeg) OrElse Double.IsInfinity(angleDeg) Then Return False
+            If angleDeg <= BranchAngleThresholdDeg Then Return False
+
+            Dim radialDirection = ResolveOutwardRadialDirection(insertionOrigin, candidateOwner:=insertionConnector.Owner, centerLine:=centerLine, hostDirection:=hostDirection, branchAxis:=branchAxis)
+            If radialDirection Is Nothing Then Return False
+
+            Dim hostHalfSizeFt = ResolveHostHalfSizeAlongDirectionFt(host, centerLine, radialDirection)
+            If hostHalfSizeFt <= 0.0R Then Return False
+
+            Dim actualBuriedFt As Double = 0.0R
+            Dim radialDistanceFt As Double = 0.0R
+            If Not TryComputeProjectionDepthFromGeometry(insertionConnector.Owner,
+                                                         centerLine,
+                                                         radialDirection,
+                                                         hostHalfSizeFt,
+                                                         actualBuriedFt,
+                                                         radialDistanceFt) Then
+                radialDistanceFt = DistanceFromPointToInfiniteLine(insertionOrigin,
+                                                                   centerLine.GetEndPoint(0),
+                                                                   hostDirection)
+                If Double.IsNaN(radialDistanceFt) OrElse Double.IsInfinity(radialDistanceFt) Then Return False
+                actualBuriedFt = hostHalfSizeFt - radialDistanceFt
+            End If
+
+            hit = New ProjectionDepthHit With {
+                .Host = host,
+                .ActualBuriedFt = actualBuriedFt,
+                .RadialDistanceFt = radialDistanceFt,
+                .HostHalfSizeFt = hostHalfSizeFt,
+                .HostPointDistanceFt = hostPointDistanceFt
+            }
+            Return True
+        End Function
+
+        Private Shared Sub ApplyProjectionDepthStandards(hit As ProjectionDepthHit,
+                                                         standards As IList(Of ProjectionDepthStandard))
+            If hit Is Nothing OrElse standards Is Nothing Then Return
+
+            Dim bestStandard As ProjectionDepthStandard = Nothing
+            Dim bestDifference As Double = Double.MaxValue
+
+            For Each depthStandard In standards
+                If depthStandard Is Nothing OrElse depthStandard.ValueFt <= 0.0R Then Continue For
+
+                Dim difference = hit.ActualBuriedFt - depthStandard.ValueFt
+                If String.Equals(depthStandard.Name, "Takeoff Length Projection", StringComparison.OrdinalIgnoreCase) Then
+                    hit.HasProjectionLength = True
+                    hit.ProjectionLengthFt = depthStandard.ValueFt
+                    hit.ProjectionDifferenceFt = difference
+                ElseIf String.Equals(depthStandard.Name, "Takeoff Length", StringComparison.OrdinalIgnoreCase) Then
+                    hit.HasTakeoffLength = True
+                    hit.TakeoffLengthFt = depthStandard.ValueFt
+                    hit.TakeoffDifferenceFt = difference
+                End If
+
+                If bestStandard Is Nothing OrElse Math.Abs(difference) < Math.Abs(bestDifference) Then
+                    bestStandard = depthStandard
+                    bestDifference = difference
+                End If
+            Next
+
+            If bestStandard IsNot Nothing Then
+                hit.StandardName = bestStandard.Name
+                hit.StandardFt = bestStandard.ValueFt
+                hit.DifferenceFt = bestDifference
+            End If
+        End Sub
+
+        Private Shared Function ResolveOutwardRadialDirection(insertionOrigin As XYZ,
+                                                              candidateOwner As Element,
+                                                              centerLine As Line,
+                                                              hostDirection As XYZ,
+                                                              branchAxis As XYZ) As XYZ
+            If centerLine Is Nothing OrElse hostDirection Is Nothing OrElse branchAxis Is Nothing Then Return Nothing
+
+            Dim projectedBranch = branchAxis.Subtract(hostDirection.Multiply(branchAxis.DotProduct(hostDirection)))
+            Dim radialDirection = NormalizeVector(projectedBranch)
+            If radialDirection Is Nothing Then Return Nothing
+
+            Dim probePoint As XYZ = Nothing
+            If Not TryGetElementBoundingBoxCenter(candidateOwner, probePoint) Then
+                probePoint = insertionOrigin
+            End If
+
+            If probePoint IsNot Nothing Then
+                Dim foot = ProjectPointToInfiniteLine(probePoint, centerLine.GetEndPoint(0), hostDirection)
+                If foot IsNot Nothing Then
+                    Dim fromLine = probePoint.Subtract(foot)
+                    If fromLine IsNot Nothing AndAlso fromLine.GetLength() > 0.0000001R AndAlso fromLine.DotProduct(radialDirection) < 0.0R Then
+                        radialDirection = radialDirection.Multiply(-1.0R)
+                    End If
+                End If
+            End If
+
+            Return radialDirection
+        End Function
+
+        Private Shared Function ResolveHostHalfSizeAlongDirectionFt(host As MEPCurve,
+                                                                    centerLine As Line,
+                                                                    radialDirection As XYZ) As Double
+            If host Is Nothing OrElse centerLine Is Nothing OrElse radialDirection Is Nothing Then Return 0.0R
+
+            Try
+                Dim origin = centerLine.GetEndPoint(0)
+                Dim points = CollectElementGeometryPoints(host)
+                Dim maxAbs = 0.0R
+
+                For Each point In points
+                    If point Is Nothing Then Continue For
+
+                    Dim coord = point.Subtract(origin).DotProduct(radialDirection)
+                    If Double.IsNaN(coord) OrElse Double.IsInfinity(coord) Then Continue For
+
+                    maxAbs = Math.Max(maxAbs, Math.Abs(coord))
+                Next
+
+                If maxAbs > 0.0000001R Then Return maxAbs
+            Catch
+            End Try
+
+            Return ResolveMepCurveHalfSizeFt(host)
+        End Function
+
+        Private Shared Function TryComputeProjectionDepthFromGeometry(candidate As Element,
+                                                                      centerLine As Line,
+                                                                      radialDirection As XYZ,
+                                                                      hostHalfSizeFt As Double,
+                                                                      ByRef actualBuriedFt As Double,
+                                                                      ByRef radialDistanceFt As Double) As Boolean
+            actualBuriedFt = 0.0R
+            radialDistanceFt = Double.NaN
+            If candidate Is Nothing OrElse centerLine Is Nothing OrElse radialDirection Is Nothing OrElse hostHalfSizeFt <= 0.0R Then Return False
+
+            Dim points = CollectElementGeometryPoints(candidate)
+            If points Is Nothing OrElse points.Count = 0 Then Return False
+
+            Dim origin = centerLine.GetEndPoint(0)
+            Dim minCoord = Double.MaxValue
+
+            For Each point In points
+                If point Is Nothing Then Continue For
+
+                Dim coord = point.Subtract(origin).DotProduct(radialDirection)
+                If Double.IsNaN(coord) OrElse Double.IsInfinity(coord) Then Continue For
+                If coord < minCoord Then minCoord = coord
+            Next
+
+            If minCoord = Double.MaxValue Then Return False
+
+            radialDistanceFt = Math.Abs(minCoord)
+            actualBuriedFt = Math.Max(0.0R, hostHalfSizeFt - minCoord)
+            Return True
+        End Function
+
+        Private Shared Function TryGetElementBoundingBoxCenter(el As Element, ByRef center As XYZ) As Boolean
+            center = Nothing
+            If el Is Nothing Then Return False
+
+            Try
+                Dim bbox = el.BoundingBox(Nothing)
+                If bbox Is Nothing OrElse bbox.Min Is Nothing OrElse bbox.Max Is Nothing Then Return False
+
+                center = New XYZ((bbox.Min.X + bbox.Max.X) / 2.0R,
+                                 (bbox.Min.Y + bbox.Max.Y) / 2.0R,
+                                 (bbox.Min.Z + bbox.Max.Z) / 2.0R)
+                Return True
+            Catch
+                center = Nothing
+                Return False
+            End Try
+        End Function
+
+        Private Shared Function CollectElementGeometryPoints(el As Element) As List(Of XYZ)
+            Dim points As New List(Of XYZ)()
+            If el Is Nothing Then Return points
+
+            Try
+                Dim opt As New Options() With {
+                    .ComputeReferences = False,
+                    .DetailLevel = ViewDetailLevel.Fine,
+                    .IncludeNonVisibleObjects = False
+                }
+
+                Dim geom = GetGeometryCompat(el, opt)
+                CollectGeometryPoints(geom, Nothing, points)
+            Catch
+            End Try
+
+            Return points
+        End Function
+
+        Private Shared Function GetGeometryCompat(el As Element, opt As Options) As GeometryElement
+            If el Is Nothing Then Return Nothing
+            If opt Is Nothing Then opt = New Options()
+
+            Try
+                Dim t = el.GetType()
+                Dim mi = t.GetMethod("get_Geometry",
+                                     Reflection.BindingFlags.Instance Or Reflection.BindingFlags.Public,
+                                     Nothing,
+                                     New Type() {GetType(Options)},
+                                     Nothing)
+                If mi Is Nothing Then
+                    mi = t.GetMethod("GetGeometry",
+                                     Reflection.BindingFlags.Instance Or Reflection.BindingFlags.Public,
+                                     Nothing,
+                                     New Type() {GetType(Options)},
+                                     Nothing)
+                End If
+                If mi Is Nothing Then Return Nothing
+
+                Return TryCast(mi.Invoke(el, New Object() {opt}), GeometryElement)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Sub CollectGeometryPoints(geom As GeometryElement,
+                                                 xform As Transform,
+                                                 acc As IList(Of XYZ))
+            If geom Is Nothing OrElse acc Is Nothing Then Return
+
+            For Each go As GeometryObject In geom
+                If go Is Nothing Then Continue For
+
+                Dim solid = TryCast(go, Solid)
+                If solid IsNot Nothing Then
+                    AddSolidEdgePoints(solid, xform, acc)
+                    Continue For
+                End If
+
+                Dim curve = TryCast(go, Curve)
+                If curve IsNot Nothing Then
+                    AddCurvePoints(curve, xform, acc)
+                    Continue For
+                End If
+
+                Dim instance = TryCast(go, GeometryInstance)
+                If instance IsNot Nothing Then
+                    Try
+                        Dim instGeom As GeometryElement = Nothing
+                        Try
+                            instGeom = instance.GetInstanceGeometry()
+                        Catch
+                        End Try
+
+                        If instGeom IsNot Nothing Then
+                            CollectGeometryPoints(instGeom, xform, acc)
+                        Else
+                            Dim symbolGeom As GeometryElement = Nothing
+                            Try
+                                symbolGeom = instance.GetSymbolGeometry()
+                            Catch
+                            End Try
+
+                            If symbolGeom IsNot Nothing Then
+                                Dim nextXform = If(xform Is Nothing, instance.Transform, xform.Multiply(instance.Transform))
+                                CollectGeometryPoints(symbolGeom, nextXform, acc)
+                            End If
+                        End If
+                    Catch
+                    End Try
+                End If
+            Next
+        End Sub
+
+        Private Shared Sub AddSolidEdgePoints(solid As Solid,
+                                              xform As Transform,
+                                              acc As IList(Of XYZ))
+            If solid Is Nothing OrElse acc Is Nothing Then Return
+
+            Try
+                If solid.Edges Is Nothing Then Return
+
+                For Each edge As Edge In solid.Edges
+                    If edge Is Nothing Then Continue For
+
+                    Dim curve As Curve = Nothing
+                    Try
+                        curve = edge.AsCurve()
+                    Catch
+                        curve = Nothing
+                    End Try
+
+                    If curve IsNot Nothing Then AddCurvePoints(curve, xform, acc)
+                Next
+            Catch
+            End Try
+        End Sub
+
+        Private Shared Sub AddCurvePoints(curve As Curve,
+                                          xform As Transform,
+                                          acc As IList(Of XYZ))
+            If curve Is Nothing OrElse acc Is Nothing Then Return
+
+            Try
+                Dim pts = curve.Tessellate()
+                If pts Is Nothing Then Return
+
+                For Each point As XYZ In pts
+                    If point Is Nothing Then Continue For
+
+                    If xform IsNot Nothing Then
+                        Try
+                            point = xform.OfPoint(point)
+                        Catch
+                        End Try
+                    End If
+
+                    acc.Add(point)
+                Next
+            Catch
+            End Try
+        End Sub
+
+        Private Shared Function ProjectPointToInfiniteLine(point As XYZ,
+                                                           linePoint As XYZ,
+                                                           lineDirection As XYZ) As XYZ
+            If point Is Nothing OrElse linePoint Is Nothing OrElse lineDirection Is Nothing Then Return Nothing
+
+            Try
+                Dim delta = point.Subtract(linePoint)
+                Dim along = delta.DotProduct(lineDirection)
+                Return linePoint.Add(lineDirection.Multiply(along))
+            Catch
+                Return Nothing
+            End Try
         End Function
 
         Private Shared Function TryResolveInsertionConnector(connectors As IList(Of Connector),
@@ -892,6 +1471,48 @@ Namespace Services
                 {"Domain", ResolveDomainLabel(hit.Host)},
                 {"DistanceFromCenter", FormatNumber(ToDisplayDistance(hit.DistanceFt, unit), 3)},
                 {"ModeledAngle", FormatNumber(ResolveDisplayAngleValue(hit), 3)},
+                {"Status", status},
+                {"Message", message}
+            }
+
+            If extraParams IsNot Nothing Then
+                For Each name In extraParams
+                    row("BranchParam::" & name) = ResolveExtraValue(candidate, name)
+                    row("HostParam::" & name) = ResolveExtraValue(hit.Host, name)
+                Next
+            End If
+
+            Return row
+        End Function
+
+        Private Shared Function BuildProjectionDepthRow(doc As Document,
+                                                        candidate As Element,
+                                                        hit As ProjectionDepthHit,
+                                                        unit As String,
+            extraParams As IList(Of String)) As Dictionary(Of String, Object)
+            Dim status = If(String.IsNullOrWhiteSpace(hit.Status), "ERROR", hit.Status)
+            Dim message = If(String.IsNullOrWhiteSpace(hit.Message), "Takeoff Length Projection / Takeoff Length 기준 묻힘 깊이를 확인해 주세요.", hit.Message)
+            Dim row As New Dictionary(Of String, Object)(StringComparer.Ordinal) From {
+                {"File", BuildFileLabel(doc)},
+                {"ElementId", SafeElementId(candidate)},
+                {"Category", SafeCategoryName(candidate)},
+                {"Family", GetFamilyName(candidate)},
+                {"Type", GetTypeName(candidate)},
+                {"HostId", SafeElementId(hit.Host)},
+                {"HostCategory", SafeCategoryName(hit.Host)},
+                {"HostType", GetTypeName(hit.Host)},
+                {"Domain", ResolveDomainLabel(hit.Host)},
+                {"ProjectionLength", FormatOptionalDistance(hit.HasProjectionLength, hit.ProjectionLengthFt, unit)},
+                {"TakeoffLength", FormatOptionalDistance(hit.HasTakeoffLength, hit.TakeoffLengthFt, unit)},
+                {"StandardName", If(String.IsNullOrWhiteSpace(hit.StandardName), String.Empty, hit.StandardName)},
+                {"StandardLength", If(hit.StandardFt > 0.0R, FormatNumber(ToDisplayDistance(hit.StandardFt, unit), 3), String.Empty)},
+                {"ActualBuriedLength", FormatNumber(ToDisplayDistance(hit.ActualBuriedFt, unit), 3)},
+                {"Difference", FormatNumber(ToDisplayDistance(hit.DifferenceFt, unit), 3)},
+                {"ProjectionDifference", FormatOptionalDistance(hit.HasProjectionLength, hit.ProjectionDifferenceFt, unit)},
+                {"TakeoffDifference", FormatOptionalDistance(hit.HasTakeoffLength, hit.TakeoffDifferenceFt, unit)},
+                {"DistanceFromCenter", FormatNumber(ToDisplayDistance(hit.RadialDistanceFt, unit), 3)},
+                {"HostHalfSize", FormatNumber(ToDisplayDistance(hit.HostHalfSizeFt, unit), 3)},
+                {"HostConnectionMissing", If(hit.HostConnectionMissing, "True", "False")},
                 {"Status", status},
                 {"Message", message}
             }
@@ -1129,6 +1750,24 @@ Namespace Services
                                                 0)
 
             Return results.ToList()
+        End Function
+
+        Private Shared Function HasConnectorPathToHost(connectors As IList(Of Connector),
+                                                       host As MEPCurve,
+                                                       domain As String) As Boolean
+            If connectors Is Nothing OrElse connectors.Count = 0 OrElse host Is Nothing OrElse host.Id Is Nothing Then Return False
+
+            Dim hostId = host.Id.IntValue()
+            For Each connector In connectors
+                If connector Is Nothing Then Continue For
+
+                For Each curve In GetConnectedHostCurves(connector, domain)
+                    If curve Is Nothing OrElse curve.Id Is Nothing Then Continue For
+                    If curve.Id.IntValue() = hostId Then Return True
+                Next
+            Next
+
+            Return False
         End Function
 
         Private Shared Sub AddConnectedHostCurvesFromConnector(connector As Connector,
@@ -1869,6 +2508,11 @@ Namespace Services
         Private Shared Function FormatNumber(value As Double, decimals As Integer) As String
             If Double.IsNaN(value) OrElse Double.IsInfinity(value) Then Return String.Empty
             Return Math.Round(value, decimals).ToString("0." & New String("#"c, decimals), CultureInfo.InvariantCulture)
+        End Function
+
+        Private Shared Function FormatOptionalDistance(hasValue As Boolean, valueFt As Double, unit As String) As String
+            If Not hasValue Then Return String.Empty
+            Return FormatNumber(ToDisplayDistance(valueFt, unit), 3)
         End Function
 
         Private Shared Function ParseNumber(value As String) As Double

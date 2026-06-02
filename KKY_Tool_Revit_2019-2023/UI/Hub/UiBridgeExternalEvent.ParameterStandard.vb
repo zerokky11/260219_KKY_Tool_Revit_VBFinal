@@ -414,10 +414,12 @@ Namespace UI.Hub
         Private Function IsParameterStandardBlankToken(value As String) As Boolean
             Dim text As String = CleanParameterStandardText(value)
             If String.IsNullOrWhiteSpace(text) Then Return False
+            Dim legacyBlankWithParens As String = String.Concat("(", ChrW(&H6028), ChrW(&HB4EC), "?)")
+            Dim legacyBlankPlain As String = String.Concat(ChrW(&H6028), ChrW(&HB4EC), "?")
             Return String.Equals(text, "(공란)", StringComparison.OrdinalIgnoreCase) _
                 OrElse String.Equals(text, "공란", StringComparison.OrdinalIgnoreCase) _
-                OrElse String.Equals(text, "(怨듬?)", StringComparison.OrdinalIgnoreCase) _
-                OrElse String.Equals(text, "怨듬?", StringComparison.OrdinalIgnoreCase)
+                OrElse String.Equals(text, legacyBlankWithParens, StringComparison.OrdinalIgnoreCase) _
+                OrElse String.Equals(text, legacyBlankPlain, StringComparison.OrdinalIgnoreCase)
         End Function
 
         Private Function BuildParameterStandardDefaultExcelName() As String

@@ -42,6 +42,14 @@ const HUB_ENTRY_CATALOG = Object.freeze({
     multiMode: 'bqc',
     groupLabel: BQC_GROUP_LABEL
   },
+  tapdepth: {
+    id: 'tapdepth',
+    label: 'Tap, Saddle 모델링 검토 (묻힘)',
+    desc: '실제 묻힘 깊이를 Takeoff Length Projection / Takeoff Length 기준과 비교합니다.',
+    route: 'multi',
+    multiMode: 'bqc',
+    groupLabel: BQC_GROUP_LABEL
+  },
   dupclash: {
     id: 'dupclash',
     label: '중복 / 자체 간섭 검토',
@@ -135,6 +143,15 @@ const HUB_ENTRY_CATALOG = Object.freeze({
     label: '파라미터 GUID 검토 및 정리',
     desc: '프로젝트와 패밀리 파라미터 GUID를 검토하고 정리 기준으로 정리합니다.',
     route: 'guid',
+    groupLabel: UTILITY_GROUP_LABEL
+  },
+  tapdepthutility: {
+    id: 'tapdepthutility',
+    featureKey: 'tapdepth',
+    label: 'Tap, Saddle 모델링 검토 (묻힘)',
+    desc: '활성/선택 RVT에서 Tap/Saddle 묻힘 깊이를 두 Takeoff Length 기준으로 검토합니다.',
+    route: 'multi',
+    multiMode: 'utility',
     groupLabel: UTILITY_GROUP_LABEL
   },
   familylink: {

@@ -108,6 +108,7 @@ if (-not (Test-Path -LiteralPath $zipPath)) {
     -DownloadUrl $packageUrl `
     -PublishedAt (Get-Date -Format 'yyyy-MM-dd') `
     -Notes $Notes `
+    -InstallerUrl $installerUrl `
     -OutputPath $feedPath
 
 & $historyScriptPath `

@@ -1,4 +1,4 @@
-Option Explicit On
+﻿Option Explicit On
 Option Strict On
 
 Imports System
@@ -19,6 +19,9 @@ Namespace UI.Hub
             Public Property IncludeCenterAxisCheck As Boolean
             Public Property CenterAxisTol As Double = 0.5R
             Public Property CenterAxisUnit As String = "mm"
+            Public Property IncludeTapDepthCheck As Boolean
+            Public Property TapDepthTol As Double = 5.0R
+            Public Property TapDepthUnit As String = "mm"
         End Class
 
         Private Shared _multiUnconnectedRows As List(Of UnconnectedConnectorReviewService.ReviewRow)
@@ -35,6 +38,11 @@ Namespace UI.Hub
             If opt.CenterAxisTol <= 0 Then opt.CenterAxisTol = 0.5R
             opt.CenterAxisUnit = NormalizeTapAlignUnit(SafeStr(GetDictValue(d, "centerAxisUnit")))
             If String.IsNullOrWhiteSpace(opt.CenterAxisUnit) Then opt.CenterAxisUnit = "mm"
+            opt.IncludeTapDepthCheck = ToBool(GetDictValue(d, "includeTapDepthCheck"))
+            opt.TapDepthTol = ToDouble(GetDictValue(d, "tapDepthTol"), 5.0R)
+            If opt.TapDepthTol <= 0 Then opt.TapDepthTol = 5.0R
+            opt.TapDepthUnit = NormalizeTapAlignUnit(SafeStr(GetDictValue(d, "tapDepthUnit")))
+            If String.IsNullOrWhiteSpace(opt.TapDepthUnit) Then opt.TapDepthUnit = "mm"
             Return opt
         End Function
 
@@ -74,6 +82,7 @@ Namespace UI.Hub
             Dim resultRows As IEnumerable(Of UnconnectedConnectorReviewService.ReviewRow) = Nothing
             If result IsNot Nothing Then resultRows = result.Rows
             Dim fullyUnconnectedElementIds As HashSet(Of String) = BuildFullyUnconnectedElementIdSet(resultRows)
+            Dim unconnectedIssueElementIds As HashSet(Of String) = BuildUnconnectedIssueElementIdSet(resultRows)
 
             Dim centerAxisTargetCount As Integer = 0
             Dim centerAxisRows = BuildUnconnectedCenterAxisRows(doc,
@@ -84,6 +93,15 @@ Namespace UI.Hub
                                                                 fullyUnconnectedElementIds,
                                                                 commonExtraParamNames,
                                                                 centerAxisTargetCount)
+            Dim tapDepthTargetCount As Integer = 0
+            Dim tapDepthRows = BuildUnconnectedTapDepthRows(doc,
+                                                            safeName,
+                                                            commonTargetFilter,
+                                                            commonExcludeTargetFilter,
+                                                            basePct,
+                                                            unconnectedIssueElementIds,
+                                                            commonExtraParamNames,
+                                                            tapDepthTargetCount)
 
             Dim documentRows As New List(Of UnconnectedConnectorReviewService.ReviewRow)()
             If result IsNot Nothing AndAlso result.Rows IsNot Nothing Then
@@ -91,6 +109,9 @@ Namespace UI.Hub
             End If
             If centerAxisRows IsNot Nothing AndAlso centerAxisRows.Count > 0 Then
                 documentRows.AddRange(centerAxisRows)
+            End If
+            If tapDepthRows IsNot Nothing AndAlso tapDepthRows.Count > 0 Then
+                documentRows.AddRange(tapDepthRows)
             End If
             If documentRows.Count > 0 Then
                 UnconnectedConnectorReviewService.ApplyGroupItemTexts(documentRows)
@@ -103,6 +124,7 @@ Namespace UI.Hub
             If result IsNot Nothing AndAlso result.FileSummaries IsNot Nothing Then
                 For Each summary In result.FileSummaries
                     ApplyCenterAxisSummary(summary, centerAxisTargetCount, If(centerAxisRows, New List(Of UnconnectedConnectorReviewService.ReviewRow)()).Count)
+                    ApplyTapDepthSummary(summary, tapDepthTargetCount, If(tapDepthRows, New List(Of UnconnectedConnectorReviewService.ReviewRow)()).Count)
                 Next
                 _multiUnconnectedFileSummaries.AddRange(result.FileSummaries)
             Else
@@ -118,6 +140,7 @@ Namespace UI.Hub
                     .Reason = "검토 결과가 없습니다."
                 }
                 ApplyCenterAxisSummary(summary, centerAxisTargetCount, If(centerAxisRows, New List(Of UnconnectedConnectorReviewService.ReviewRow)()).Count)
+                ApplyTapDepthSummary(summary, tapDepthTargetCount, If(tapDepthRows, New List(Of UnconnectedConnectorReviewService.ReviewRow)()).Count)
                 _multiUnconnectedFileSummaries.Add(summary)
             End If
         End Sub
@@ -210,6 +233,79 @@ Namespace UI.Hub
             Return result
         End Function
 
+        Private Function BuildUnconnectedTapDepthRows(doc As Document,
+                                                      safeName As String,
+                                                      commonTargetFilter As String,
+                                                      commonExcludeTargetFilter As String,
+                                                      basePct As Double,
+                                                      unconnectedIssueElementIds As ISet(Of String),
+                                                      commonExtraParamNames As IList(Of String),
+                                                      ByRef targetCount As Integer) As List(Of UnconnectedConnectorReviewService.ReviewRow)
+            targetCount = 0
+            Dim rows As New List(Of UnconnectedConnectorReviewService.ReviewRow)()
+            If _multiRequest Is Nothing OrElse _multiRequest.Unconnected Is Nothing OrElse Not _multiRequest.Unconnected.IncludeTapDepthCheck Then Return rows
+            If doc Is Nothing Then Return rows
+
+            Dim tol As Double = If(_multiRequest.Unconnected.TapDepthTol > 0, _multiRequest.Unconnected.TapDepthTol, 5.0R)
+            Dim unit As String = NormalizeTapAlignUnit(_multiRequest.Unconnected.TapDepthUnit)
+            If String.IsNullOrWhiteSpace(unit) Then unit = "mm"
+            Dim domain As String = "all"
+            Dim combinedTargetFilter = commonTargetFilter
+            targetCount = TapAlignmentReviewService.CountTargetsOnDocument(doc, domain, combinedTargetFilter, commonExcludeTargetFilter)
+
+            Dim tapRows = TapAlignmentReviewService.RunProjectionDepthOnDocument(doc,
+                                                                                 tol,
+                                                                                 unit,
+                                                                                 domain,
+                                                                                 If(commonExtraParamNames, New List(Of String)()),
+                                                                                 combinedTargetFilter,
+                                                                                 commonExcludeTargetFilter,
+                                                                                 Sub(pct, msg)
+                                                                                     Dim fraction As Double = Math.Max(0.0R, Math.Min(CDbl(pct), 1.0R))
+                                                                                     Dim overallPct = ((basePct + fraction / Math.Max(_multiTotal, 1)) * 100.0R)
+                                                                                     ReportMultiProgress(overallPct, "Tap, Saddle 묻힘 검토 실행 중", $"{safeName} · {msg}")
+                                                                                 End Sub)
+
+            If tapRows Is Nothing Then Return rows
+
+            Dim skippedUnconnected As Integer = 0
+            For Each tapRow In tapRows
+                If tapRow Is Nothing OrElse Not IsTapDepthIssueRow(tapRow) Then Continue For
+
+                Dim elementId As String = NormalizeElementIdText(ReadField(tapRow, "ElementId"))
+                If IsUnconnectedIssueElementId(elementId, unconnectedIssueElementIds) Then
+                    skippedUnconnected += 1
+                    Continue For
+                End If
+
+                Dim categoryName As String = ReadField(tapRow, "Category")
+                Dim typeName As String = ReadField(tapRow, "Type")
+                Dim familyName As String = ReadField(tapRow, "Family")
+
+                rows.Add(New UnconnectedConnectorReviewService.ReviewRow With {
+                    .File = safeName,
+                    .ItemBase = "Tap, Saddle 모델링 검토 (묻힘)",
+                    .Id = elementId,
+                    .Name = typeName,
+                    .Result = "오류",
+                    .Content = BuildUnconnectedTapDepthContent(tapRow, unit),
+                    .Etc = String.Empty,
+                    .Category = categoryName,
+                    .Family = familyName,
+                    .IssueKind = "tapdepth",
+                    .ConnectorCount = 0,
+                    .UnconnectedCount = 0,
+                    .ExtraParameterValues = BuildUnconnectedCenterAxisExtraValues(tapRow, commonExtraParamNames)
+                })
+            Next
+
+            If skippedUnconnected > 0 Then
+                targetCount = Math.Max(0, targetCount - skippedUnconnected)
+            End If
+
+            Return rows
+        End Function
+
         Private Shared Function BuildFullyUnconnectedElementIdSet(rows As IEnumerable(Of UnconnectedConnectorReviewService.ReviewRow)) As HashSet(Of String)
             Dim ids As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
             If rows Is Nothing Then Return ids
@@ -226,12 +322,35 @@ Namespace UI.Hub
             Return ids
         End Function
 
+        Private Shared Function BuildUnconnectedIssueElementIdSet(rows As IEnumerable(Of UnconnectedConnectorReviewService.ReviewRow)) As HashSet(Of String)
+            Dim ids As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
+            If rows Is Nothing Then Return ids
+
+            For Each row In rows
+                If row Is Nothing Then Continue For
+                If row.UnconnectedCount <= 0 Then Continue For
+
+                Dim id As String = NormalizeElementIdText(row.Id)
+                If Not String.IsNullOrWhiteSpace(id) Then ids.Add(id)
+            Next
+
+            Return ids
+        End Function
+
         Private Shared Function IsFullyUnconnectedElementId(elementId As String, fullyUnconnectedElementIds As ISet(Of String)) As Boolean
             If fullyUnconnectedElementIds Is Nothing OrElse fullyUnconnectedElementIds.Count = 0 Then Return False
 
             Dim id As String = NormalizeElementIdText(elementId)
             If String.IsNullOrWhiteSpace(id) Then Return False
             Return fullyUnconnectedElementIds.Contains(id)
+        End Function
+
+        Private Shared Function IsUnconnectedIssueElementId(elementId As String, unconnectedIssueElementIds As ISet(Of String)) As Boolean
+            If unconnectedIssueElementIds Is Nothing OrElse unconnectedIssueElementIds.Count = 0 Then Return False
+
+            Dim id As String = NormalizeElementIdText(elementId)
+            If String.IsNullOrWhiteSpace(id) Then Return False
+            Return unconnectedIssueElementIds.Contains(id)
         End Function
 
         Private Shared Function NormalizeElementIdText(value As String) As String
@@ -269,6 +388,36 @@ Namespace UI.Hub
             End If
         End Sub
 
+        Private Sub ApplyTapDepthSummary(summary As UnconnectedConnectorReviewService.FileSummary,
+                                         targetCount As Integer,
+                                         errorCount As Integer)
+            If summary Is Nothing Then Return
+
+            Dim enabled As Boolean = _multiRequest IsNot Nothing AndAlso
+                                     _multiRequest.Unconnected IsNot Nothing AndAlso
+                                     _multiRequest.Unconnected.IncludeTapDepthCheck
+            summary.TapDepthEnabled = enabled
+            If Not enabled Then Return
+
+            summary.TapDepthTargetCount = Math.Max(0, targetCount)
+            summary.TapDepthErrorCount = Math.Max(0, errorCount)
+
+            Dim depthReason As String
+            If summary.TapDepthTargetCount <= 0 Then
+                depthReason = "Tap/Saddle 묻힘 검토 대상 없음"
+            ElseIf summary.TapDepthErrorCount <= 0 Then
+                depthReason = "Tap/Saddle 묻힘 오류 없음"
+            Else
+                depthReason = $"Tap/Saddle 묻힘 오류 {summary.TapDepthErrorCount}건"
+            End If
+
+            If String.IsNullOrWhiteSpace(summary.Reason) Then
+                summary.Reason = depthReason
+            ElseIf summary.Reason.IndexOf(depthReason, StringComparison.OrdinalIgnoreCase) < 0 Then
+                summary.Reason = summary.Reason & " / " & depthReason
+            End If
+        End Sub
+
         Private Shared Function BuildUnconnectedCenterAxisContent(row As Dictionary(Of String, Object), unit As String) As String
             Dim typeLabel As String = ResolveUnconnectedCenterAxisTypeLabel(row)
             Dim typeName As String = ReadField(row, "HostType")
@@ -286,7 +435,31 @@ Namespace UI.Hub
             Dim distanceText As String = If(String.IsNullOrWhiteSpace(distance), "-", distance & normalizedUnit)
             Dim angleText As String = If(String.IsNullOrWhiteSpace(angle), "-", angle)
 
-            Return $"[{typeLabel}]: [{typeName}] 연결이 중심축에서 벗어 났습니다. ( 커넥터 이격거리:{distanceText}), 각도:{angleText}"
+            Return $"[{typeLabel}]: [{typeName}] 연결이 중심축에서 벗어났습니다. (커넥터 이격거리: {distanceText}, 각도: {angleText})"
+        End Function
+
+        Private Shared Function BuildUnconnectedTapDepthContent(row As Dictionary(Of String, Object), unit As String) As String
+            Dim typeName As String = ReadField(row, "Type")
+            If String.IsNullOrWhiteSpace(typeName) Then typeName = "알 수 없음"
+
+            Dim status As String = ReadField(row, "Status").Trim().ToUpperInvariant()
+            Dim standardName As String = ReadField(row, "StandardName").Trim()
+            If String.IsNullOrWhiteSpace(standardName) Then standardName = "Takeoff Length Projection / Takeoff Length"
+            Dim standardLength As String = ReadField(row, "StandardLength").Trim()
+            Dim actual As String = ReadField(row, "ActualBuriedLength").Trim()
+            Dim difference As String = ReadField(row, "Difference").Trim()
+            Dim normalizedUnit As String = NormalizeTapAlignUnit(unit)
+            Dim standardText As String = If(String.IsNullOrWhiteSpace(standardLength), "-", standardLength & normalizedUnit)
+            Dim actualText As String = If(String.IsNullOrWhiteSpace(actual), "-", actual & normalizedUnit)
+            Dim differenceText As String = If(String.IsNullOrWhiteSpace(difference), "-", difference & normalizedUnit)
+
+            If String.Equals(status, "HOST_DISCONNECTED", StringComparison.OrdinalIgnoreCase) Then
+                Dim hostType As String = ReadField(row, "HostType")
+                If String.IsNullOrWhiteSpace(hostType) Then hostType = "호스트"
+                Return $"[Tap/Saddle Type]: [{typeName}] 호스트 배관/덕트와 커넥터 연결이 끊어져 있습니다. 호스트와 다시 연결해 주세요. (호스트:{hostType}, 가장 가까운 기준:{standardName}, 기준값:{standardText}, 실제:{actualText})"
+            End If
+
+            Return $"[Tap/Saddle Type]: [{typeName}] Takeoff Length Projection / Takeoff Length 기준 묻힘 깊이가 벗어났습니다. (가장 가까운 기준:{standardName}, 기준값:{standardText}, 실제:{actualText}, 차이:{differenceText})"
         End Function
 
         Private Shared Function ResolveUnconnectedCenterAxisItemBase(row As Dictionary(Of String, Object)) As String
@@ -331,14 +504,24 @@ Namespace UI.Hub
             Dim centerAxisEnabled As Boolean = summaries.Any(Function(item) item IsNot Nothing AndAlso item.CenterAxisEnabled)
             Dim totalCenterAxisTargets As Integer = summaries.Sum(Function(item) If(item Is Nothing, 0, item.CenterAxisTargetCount))
             Dim totalCenterAxisErrors As Integer = summaries.Sum(Function(item) If(item Is Nothing, 0, item.CenterAxisErrorCount))
+            Dim tapDepthEnabled As Boolean = summaries.Any(Function(item) item IsNot Nothing AndAlso item.TapDepthEnabled)
+            Dim totalTapDepthTargets As Integer = summaries.Sum(Function(item) If(item Is Nothing, 0, item.TapDepthTargetCount))
+            Dim totalTapDepthErrors As Integer = summaries.Sum(Function(item) If(item Is Nothing, 0, item.TapDepthErrorCount))
             Dim centerAxisTolText As String = "0.5"
             Dim centerAxisUnitText As String = "mm"
+            Dim tapDepthTolText As String = "5"
+            Dim tapDepthUnitText As String = "mm"
             If _multiRequest IsNot Nothing AndAlso _multiRequest.Unconnected IsNot Nothing Then
                 centerAxisTolText = If(_multiRequest.Unconnected.CenterAxisTol > 0,
                                        _multiRequest.Unconnected.CenterAxisTol.ToString(Globalization.CultureInfo.InvariantCulture),
                                        "0.5")
                 centerAxisUnitText = NormalizeTapAlignUnit(_multiRequest.Unconnected.CenterAxisUnit)
                 If String.IsNullOrWhiteSpace(centerAxisUnitText) Then centerAxisUnitText = "mm"
+                tapDepthTolText = If(_multiRequest.Unconnected.TapDepthTol > 0,
+                                     _multiRequest.Unconnected.TapDepthTol.ToString(Globalization.CultureInfo.InvariantCulture),
+                                     "5")
+                tapDepthUnitText = NormalizeTapAlignUnit(_multiRequest.Unconnected.TapDepthUnit)
+                If String.IsNullOrWhiteSpace(tapDepthUnitText) Then tapDepthUnitText = "mm"
             End If
 
             Dim commonFilterLabel As String = "없음"
@@ -363,6 +546,10 @@ Namespace UI.Hub
                     $"중심축 허용 기준: {centerAxisTolText} {centerAxisUnitText}",
                     $"중심축 검토 대상: {totalCenterAxisTargets}개",
                     $"중심축 오류 수: {totalCenterAxisErrors}개",
+                    $"Tap/Saddle 묻힘 검토: {If(tapDepthEnabled, "사용", "미사용")}",
+                    $"Tap/Saddle 묻힘 허용 기준: {tapDepthTolText} {tapDepthUnitText}",
+                    $"Tap/Saddle 묻힘 검토 대상: {totalTapDepthTargets}개",
+                    $"Tap/Saddle 묻힘 오류 수: {totalTapDepthErrors}개",
                     $"정상 객체 수: {totalOk}개",
                     $"엑셀 결과 행 수: {GetMultiUnconnectedRowCount()}행"
                 },
@@ -385,7 +572,7 @@ Namespace UI.Hub
                 Dim summary = summaries.FirstOrDefault(Function(item) item IsNot Nothing AndAlso String.Equals(GetSafeMultiFileName(item.File), fileName, StringComparison.OrdinalIgnoreCase))
                 If summary IsNot Nothing Then
                     total = summary.ConnectorCount
-                    issues = summary.ErrorCount + summary.CenterAxisErrorCount
+                    issues = summary.ErrorCount + summary.CenterAxisErrorCount + summary.TapDepthErrorCount
                     near = summary.PartialErrorCount
                     statusText = If(String.IsNullOrWhiteSpace(summary.Status), "success", summary.Status)
                     reason = If(summary.Reason, "")
@@ -410,6 +597,15 @@ Namespace UI.Hub
                     End If
                 End If
 
+                If summary IsNot Nothing AndAlso summary.TapDepthEnabled Then
+                    Dim splitReason = $"Tap/Saddle 묻힘 오류 {summary.TapDepthErrorCount}건"
+                    If String.IsNullOrWhiteSpace(reason) Then
+                        reason = splitReason
+                    ElseIf reason.IndexOf(splitReason, StringComparison.OrdinalIgnoreCase) < 0 Then
+                        reason = reason & " / " & splitReason
+                    End If
+                End If
+
                 result.Add(New With {
                     .file = fileName,
                     .total = total,
@@ -417,6 +613,7 @@ Namespace UI.Hub
                     .near = near,
                     .unconnectedIssues = If(summary Is Nothing, 0, summary.ErrorCount),
                     .centerAxisIssues = If(summary Is Nothing, 0, summary.CenterAxisErrorCount),
+                    .tapDepthIssues = If(summary Is Nothing, 0, summary.TapDepthErrorCount),
                     .status = statusText,
                     .reason = reason
                 })

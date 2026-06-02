@@ -1,12 +1,13 @@
-{
-    "version":  "2.32",
-    "publishedAt":  "2026-05-27",
-    "title":  "버전 2.32",
+﻿{
+    "version":  "2.33",
+    "publishedAt":  "2026-06-02",
+    "title":  "버전 2.33",
     "notes":  [
-                  "속성 누락 검토 설정에서 선택 파라미터가 많아도 목록 영역이 묻히지 않도록 표시를 안정화했습니다.",
-                  "공유파라미터 추가 연동에서 단일 패밀리 추가 옵션 사용 시 복합/하위/단일 패밀리에 파라미터만 추가하고 연동은 제외하도록 정리했습니다.",
-                  "버전확인 창에서 업데이트 내역 한글이 깨지지 않도록 최신 배포 피드를 UTF-8로 읽도록 수정했습니다."
+                  "Tap, Saddle 모델링 검토(묻힘)를 BQC와 유틸리티 항목에 추가하고 실제 묻힘 깊이를 Takeoff Length Projection / Takeoff Length 기준과 비교하도록 정리했습니다.",
+                  "미연결 검토와 묻힘 검토를 함께 실행할 때 미연결으로 이미 잡힌 객체는 묻힘 결과에서 중복 제외되도록 정리했습니다.",
+                  "미연결 검토 설정에서 중심축/묻힘 검토 허용 범위와 단위를 함께 관리하고 결과 집계를 분리해 보기 쉽게 개선했습니다.",
+                  "속성 모수 검토의 공란 기준 토큰 호환 처리를 정리하고 배포 피드 한글 문구를 UTF-8 기준으로 확인했습니다."
               ],
-    "packageUrl":  "https://update.zerokky.com/KKY_Tool_Revit(2019,21,23,25,27)_v2.32.zip",
-    "installerUrl":  "https://update.zerokky.com/official/KKY_Tool_Revit(2019,21,23,25,27)_v2.32.exe"
+    "packageUrl":  "https://update.zerokky.com/KKY_Tool_Revit(2019,21,23,25,27)_v2.33.zip",
+    "installerUrl":  "https://update.zerokky.com/official/KKY_Tool_Revit(2019,21,23,25,27)_v2.33.exe"
 }

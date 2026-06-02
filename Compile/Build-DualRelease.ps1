@@ -153,15 +153,15 @@ Build-StagedOutputs -Version $SecondVersion
 $finalZipName = "KKY_Tool_Revit($releaseYearLabel)_v$SecondVersion.zip"
 $finalExeName = "KKY_Tool_Revit($releaseYearLabel)_v$SecondVersion.exe"
 $finalDownloadUrl = "$domainRoot/$finalZipName"
+$finalInstallerUrl = "$domainRoot/official/$finalExeName"
 
 & $feedScriptPath `
     -Version $SecondVersion `
     -DownloadUrl $finalDownloadUrl `
     -PublishedAt (Get-Date -Format 'yyyy-MM-dd') `
     -Notes "Release build v$SecondVersion" `
+    -InstallerUrl $finalInstallerUrl `
     -OutputPath (Join-Path $releaseDir 'latest.json')
-
-$finalInstallerUrl = "$domainRoot/official/$finalExeName"
 
 & $historyScriptPath `
     -Version $SecondVersion `

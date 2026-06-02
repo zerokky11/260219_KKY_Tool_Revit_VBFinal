@@ -286,6 +286,102 @@ Namespace UI.Hub
             Return table
         End Function
 
+        Private Function BuildTapDepthDataTable(rows As List(Of Dictionary(Of String, Object)),
+                                                unit As String,
+                                                extraHeaders As IList(Of String),
+                                                locale As String,
+                                                Optional targetCount As Integer = 0) As DataTable
+            locale = NormalizeTapAlignExportLocale(locale)
+
+            Dim table As New DataTable("TapSaddleEmbed")
+            Dim fileHeader = "File"
+            Dim elementIdHeader = "ElementId"
+            Dim categoryHeader = "Category"
+            Dim familyHeader = "Family"
+            Dim typeHeader = "Type"
+            Dim hostIdHeader = "Connected Host Id"
+            Dim hostCategoryHeader = "Connected Host Category"
+            Dim hostTypeHeader = "Connected Host Type"
+            Dim domainHeader = "Domain"
+            Dim projectionHeader = "Takeoff Length Projection (" & NormalizeTapAlignUnit(unit) & ")"
+            Dim takeoffHeader = "Takeoff Length (" & NormalizeTapAlignUnit(unit) & ")"
+            Dim standardNameHeader = "Compared Standard"
+            Dim standardLengthHeader = "Compared Standard Length (" & NormalizeTapAlignUnit(unit) & ")"
+            Dim actualHeader = "Actual Buried Length (" & NormalizeTapAlignUnit(unit) & ")"
+            Dim differenceHeader = "Difference (" & NormalizeTapAlignUnit(unit) & ")"
+            Dim reviewHeader = "Review"
+            Dim commentsHeader = "Comments"
+
+            table.Columns.Add(fileHeader, GetType(String))
+            table.Columns.Add(elementIdHeader, GetType(String))
+            table.Columns.Add(categoryHeader, GetType(String))
+            table.Columns.Add(familyHeader, GetType(String))
+            table.Columns.Add(typeHeader, GetType(String))
+            table.Columns.Add(hostIdHeader, GetType(String))
+            table.Columns.Add(hostCategoryHeader, GetType(String))
+            table.Columns.Add(hostTypeHeader, GetType(String))
+            table.Columns.Add(domainHeader, GetType(String))
+            table.Columns.Add(projectionHeader, GetType(String))
+            table.Columns.Add(takeoffHeader, GetType(String))
+            table.Columns.Add(standardNameHeader, GetType(String))
+            table.Columns.Add(standardLengthHeader, GetType(String))
+            table.Columns.Add(actualHeader, GetType(String))
+            table.Columns.Add(differenceHeader, GetType(String))
+            table.Columns.Add(reviewHeader, GetType(String))
+            table.Columns.Add(commentsHeader, GetType(String))
+
+            If extraHeaders IsNot Nothing Then
+                For Each name In extraHeaders
+                    table.Columns.Add(ResolveTapAlignExtraHeader(name, locale, "branch"), GetType(String))
+                    table.Columns.Add(ResolveTapAlignExtraHeader(name, locale, "host"), GetType(String))
+                Next
+            End If
+
+            Dim exportRows As New List(Of Dictionary(Of String, Object))()
+            If rows IsNot Nothing Then
+                exportRows.AddRange(rows.Where(Function(row) row IsNot Nothing))
+            End If
+
+            If exportRows.Count = 0 Then
+                exportRows.Add(New Dictionary(Of String, Object)(StringComparer.OrdinalIgnoreCase) From {
+                    {"Status", If(targetCount > 0, "OK", "NO_TARGET")},
+                    {"TargetCount", targetCount.ToString(CultureInfo.InvariantCulture)}
+                })
+            End If
+
+            For Each row In exportRows
+                Dim dr = table.NewRow()
+                dr(fileHeader) = ReadTapAlignField(row, "File")
+                dr(elementIdHeader) = ReadTapAlignField(row, "ElementId")
+                dr(categoryHeader) = ReadTapAlignField(row, "Category")
+                dr(familyHeader) = ReadTapAlignField(row, "Family")
+                dr(typeHeader) = ReadTapAlignField(row, "Type")
+                dr(hostIdHeader) = ReadTapAlignField(row, "HostId")
+                dr(hostCategoryHeader) = ReadTapAlignField(row, "HostCategory")
+                dr(hostTypeHeader) = ReadTapAlignField(row, "HostType")
+                dr(domainHeader) = TranslateTapAlignDomain(ReadTapAlignField(row, "Domain"), locale)
+                dr(projectionHeader) = ReadTapAlignField(row, "ProjectionLength")
+                dr(takeoffHeader) = ReadTapAlignField(row, "TakeoffLength")
+                dr(standardNameHeader) = ReadTapAlignField(row, "StandardName")
+                dr(standardLengthHeader) = ReadTapAlignField(row, "StandardLength")
+                dr(actualHeader) = ReadTapAlignField(row, "ActualBuriedLength")
+                dr(differenceHeader) = ReadTapAlignField(row, "Difference")
+                dr(reviewHeader) = BuildTapDepthReviewText(row, locale)
+                dr(commentsHeader) = BuildTapDepthCommentsText(row, locale)
+
+                If extraHeaders IsNot Nothing Then
+                    For Each name In extraHeaders
+                        dr(ResolveTapAlignExtraHeader(name, locale, "branch")) = ReadTapAlignField(row, "BranchParam::" & name)
+                        dr(ResolveTapAlignExtraHeader(name, locale, "host")) = ReadTapAlignField(row, "HostParam::" & name)
+                    Next
+                End If
+
+                table.Rows.Add(dr)
+            Next
+
+            Return table
+        End Function
+
         Private Function ReadTapAlignCommonOptions(payload As Object) As Services.HubCommonOptionsStorageService.HubCommonOptions
             Dim stored = Services.HubCommonOptionsStorageService.Load()
             Dim result As New Services.HubCommonOptionsStorageService.HubCommonOptions() With {
@@ -398,6 +494,56 @@ Namespace UI.Hub
             End Select
         End Function
 
+        Private Shared Function BuildTapDepthReviewText(row As Dictionary(Of String, Object), locale As String) As String
+            locale = NormalizeTapAlignExportLocale(locale)
+
+            Dim status = ReadTapAlignField(row, "Status").Trim().ToUpperInvariant()
+            Select Case status
+                Case "NO_TARGET"
+                    Return If(locale = "en", "No target elements found.", "검토 대상 객체가 없습니다.")
+                Case "OK"
+                    Dim count As Integer = 0
+                    Integer.TryParse(ReadTapAlignField(row, "TargetCount"), NumberStyles.Integer, CultureInfo.InvariantCulture, count)
+                    If count <= 0 Then
+                        Return If(locale = "en", "No target elements found.", "검토 대상 객체가 없습니다.")
+                    End If
+
+                    If locale = "en" Then
+                        Return $"All {count} tap/saddle elements match Takeoff Length Projection or Takeoff Length."
+                    End If
+
+                    Return $"전체 {count}개 Tap/Saddle 객체의 묻힘 깊이가 Takeoff Length Projection 또는 Takeoff Length 기준 안에 있습니다."
+                Case "HOST_DISCONNECTED"
+                    Dim typeName = ReadTapAlignField(row, "Type")
+                    If String.IsNullOrWhiteSpace(typeName) Then typeName = If(locale = "en", "Unknown", "알 수 없음")
+                    Dim hostType = ReadTapAlignField(row, "HostType")
+                    If String.IsNullOrWhiteSpace(hostType) Then hostType = If(locale = "en", "host", "호스트")
+                    Dim standardName = ReadTapAlignField(row, "StandardName")
+                    Dim standardText = ReadTapAlignField(row, "StandardLength")
+                    Dim actualText = ReadTapAlignField(row, "ActualBuriedLength")
+
+                    If locale = "en" Then
+                        Return $"Tap/Saddle: {typeName} - The host connector is disconnected. Reconnect it to the host. (host: {hostType}, closest: {standardName}, standard: {standardText}, actual: {actualText})"
+                    End If
+
+                    Return $"Tap/Saddle: {typeName} - 호스트 배관/덕트와 커넥터 연결이 끊어져 있습니다. 호스트와 다시 연결해 주세요. (호스트:{hostType}, 가장 가까운 기준:{standardName}, 기준값:{standardText}, 실제:{actualText})"
+                Case Else
+                    Dim typeName = ReadTapAlignField(row, "Type")
+                    If String.IsNullOrWhiteSpace(typeName) Then typeName = If(locale = "en", "Unknown", "알 수 없음")
+                    Dim standardName = ReadTapAlignField(row, "StandardName")
+                    If String.IsNullOrWhiteSpace(standardName) Then standardName = "Takeoff Length Projection / Takeoff Length"
+                    Dim standardText = ReadTapAlignField(row, "StandardLength")
+                    Dim actualText = ReadTapAlignField(row, "ActualBuriedLength")
+                    Dim differenceText = ReadTapAlignField(row, "Difference")
+
+                    If locale = "en" Then
+                        Return $"Tap/Saddle: {typeName} - Buried depth is outside Takeoff Length Projection and Takeoff Length. (closest: {standardName}, standard: {standardText}, actual: {actualText}, difference: {differenceText})"
+                    End If
+
+                    Return $"Tap/Saddle: {typeName} - Takeoff Length Projection / Takeoff Length 기준 묻힘 깊이가 벗어났습니다. (가장 가까운 기준:{standardName}, 기준값:{standardText}, 실제:{actualText}, 차이:{differenceText})"
+            End Select
+        End Function
+
         Private Shared Function BuildTapAlignCommentsText(row As Dictionary(Of String, Object), locale As String) As String
             locale = NormalizeTapAlignExportLocale(locale)
 
@@ -417,6 +563,27 @@ Namespace UI.Hub
             End If
 
             Return "요소를 다시 연결하여 중심축에 정렬되도록 해주세요."
+        End Function
+
+        Private Shared Function BuildTapDepthCommentsText(row As Dictionary(Of String, Object), locale As String) As String
+            locale = NormalizeTapAlignExportLocale(locale)
+
+            Dim status = ReadTapAlignField(row, "Status").Trim().ToUpperInvariant()
+            If status = "OK" OrElse status = "NO_TARGET" Then Return String.Empty
+
+            If status = "HOST_DISCONNECTED" Then
+                If locale = "en" Then
+                    Return "Reconnect the tap/saddle to the host pipe or duct first, then run the embed-depth review again."
+                End If
+
+                Return "Tap/Saddle을 호스트 배관/덕트에 다시 연결한 뒤 묻힘 검토를 다시 실행해 주세요."
+            End If
+
+            If locale = "en" Then
+                Return "Please adjust the tap/saddle insertion depth against the host centerline."
+            End If
+
+            Return "호스트 배관/덕트 기준 묻힘 깊이를 확인하고 Tap/Saddle 배치를 조정해 주세요."
         End Function
 
         Private Shared Function ResolveTapAlignReviewTypeLabel(row As Dictionary(Of String, Object), locale As String) As String

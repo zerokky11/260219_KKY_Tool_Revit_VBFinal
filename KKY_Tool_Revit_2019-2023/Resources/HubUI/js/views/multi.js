@@ -65,6 +65,15 @@ const FEATURE_META = {
       categoryTitle: 'MEP 축 정렬 검토 기능',
       requiresSharedParams: false
     },
+    tapdepth: {
+      label: 'Tap, Saddle 모델링 검토 (묻힘)',
+      cardLabel: 'Tap, Saddle 모델링 검토 (묻힘)',
+      desc: 'Tap/Saddle 실제 묻힘 깊이를 두 Takeoff Length 기준과 비교',
+      cardDesc: 'Tap/Saddle 객체의 실제 묻힘 깊이를 Takeoff Length Projection / Takeoff Length 값과 비교합니다.',
+      categoryLabel: 'MEP',
+      categoryTitle: 'Tap/Saddle 묻힘 검토 기능',
+      requiresSharedParams: false
+    },
     dupclash: {
       label: '중복 / 자체 간섭 검토',
       cardLabel: '중복 / 자체 간섭 검토',
@@ -148,15 +157,16 @@ const FEATURE_META = {
   }
 };
 const FEATURE_KEYS = Object.keys(FEATURE_META);
-const BQC_FEATURE_KEYS = ['connector', 'unconnected', 'floorinfo', 'familysuitability', 'tapalign', 'dupclash', 'worksetassignment', 'parameterduplication', 'parametermissing', 'parameterstandard'];
-const COMMON_SCOPE_DEPENDENT_FEATURE_KEYS = ['connector', 'unconnected', 'floorinfo', 'tapalign', 'dupclash', 'worksetassignment', 'parametermissing', 'parameterstandard'];
-const COMMON_EXTRA_PARAM_DEPENDENT_FEATURE_KEYS = ['connector', 'unconnected', 'floorinfo', 'tapalign', 'dupclash', 'worksetassignment', 'parametermissing', 'parameterstandard'];
-const COMMON_TAPALIGN_OPTION_DEPENDENT_FEATURE_KEYS = ['tapalign'];
-const UTILITY_FEATURE_KEYS = FEATURE_KEYS.filter((key) => !BQC_FEATURE_KEYS.includes(key));
+const BQC_FEATURE_KEYS = ['connector', 'unconnected', 'floorinfo', 'familysuitability', 'tapalign', 'tapdepth', 'dupclash', 'worksetassignment', 'parameterduplication', 'parametermissing', 'parameterstandard'];
+const COMMON_SCOPE_DEPENDENT_FEATURE_KEYS = ['connector', 'unconnected', 'floorinfo', 'tapalign', 'tapdepth', 'dupclash', 'worksetassignment', 'parametermissing', 'parameterstandard'];
+const COMMON_EXTRA_PARAM_DEPENDENT_FEATURE_KEYS = ['connector', 'unconnected', 'floorinfo', 'tapalign', 'tapdepth', 'dupclash', 'worksetassignment', 'parametermissing', 'parameterstandard'];
+const COMMON_TAPALIGN_OPTION_DEPENDENT_FEATURE_KEYS = ['tapalign', 'tapdepth'];
+const UTILITY_FEATURE_KEYS = ['tapdepth', ...FEATURE_KEYS.filter((key) => !BQC_FEATURE_KEYS.includes(key))];
 const COMMON_OPTIONS_KEY = 'kky.hub.commonOptions';
 const GROUP_FILTER_KEY = 'kky.hub.multiGroupFilter';
 const MULTI_MODE_KEY = 'kky.hub.multiMode';
 const TAPALIGN_STORAGE_KEY = 'kky_tapalign_opts';
+const TAPDEPTH_STORAGE_KEY = 'kky_tapdepth_opts';
 const FAMILY_SUITABILITY_STORAGE_KEY = 'kky.hub.familySuitabilityRecent';
 const FAMILY_SUITABILITY_PRESET_KEY = 'kky.hub.familySuitabilityPresets';
 const PARAMETER_DUPLICATION_PRESET_KEY = 'kky.hub.parameterDuplicationPresets';
@@ -204,6 +214,7 @@ export function renderMulti(root, options = {}) {
     ? { query: '', entryId: '' }
     : getHubPanelSearch(multiMode);
   const tapAlignPersisted = loadTapAlignConfigFromStorage();
+  const tapDepthPersisted = loadTapDepthConfigFromStorage();
   const familySuitabilityPersisted = loadFamilySuitabilityConfigFromStorage();
   const parameterMissingPersisted = loadParameterMissingConfigFromStorage();
   const parameterStandardPersisted = loadParameterStandardConfigFromStorage();
@@ -233,11 +244,15 @@ export function renderMulti(root, options = {}) {
       unconnected: createFeatureState({
         includeCenterAxisCheck: false,
         centerAxisTol: 0.5,
-        centerAxisUnit: 'mm'
+        centerAxisUnit: 'mm',
+        includeTapDepthCheck: false,
+        tapDepthTol: 5,
+        tapDepthUnit: 'mm'
       }),
       floorinfo: createFeatureState({ parameterName: '', levelRules: [], documentTitle: '', warnings: [] }),
       familysuitability: createFeatureState(familySuitabilityPersisted.config),
       tapalign: createFeatureState(tapAlignPersisted.config),
+      tapdepth: createFeatureState(tapDepthPersisted.config),
       dupclash: createFeatureState({ mode: 'duplicate', tolFeet: 1 / 64 }),
       worksetassignment: createFeatureState({ expectedWorksetName: 'Workset1', flaggedWorksetName: '' }),
       parameterduplication: createFeatureState({
@@ -311,6 +326,7 @@ export function renderMulti(root, options = {}) {
       modalRecentHint: null,
       modalRecentTableBody: null,
       modalRecentEmpty: null,
+      tapDepthSummaries: [],
       lastRunAt: null,
       featureInfoPanels: {},
       searchQuery: String(persistedPanelSearch?.query || ''),
@@ -336,6 +352,9 @@ export function renderMulti(root, options = {}) {
 
   if (tapAlignPersisted.hasStored) {
     state.features.tapalign.applied = true;
+  }
+  if (tapDepthPersisted.hasStored) {
+    state.features.tapdepth.applied = true;
   }
   if (familySuitabilityPersisted.hasStored) {
     state.features.familysuitability.applied = true;
@@ -387,6 +406,7 @@ export function renderMulti(root, options = {}) {
   group1.section.append(buildToggleRow('floorinfo', buildFloorInfoConfig()));
   group1.section.append(buildToggleRow('familysuitability', buildFamilySuitabilityConfig()));
   group1.section.append(buildToggleRow('tapalign', buildTapAlignConfig()));
+  group1.section.append(buildToggleRow('tapdepth', buildTapDepthConfig()));
   group1.section.append(buildToggleRow('dupclash', buildDupClashConfig()));
   group1.section.append(buildToggleRow('worksetassignment', buildWorksetAssignmentConfig()));
   group1.section.append(buildToggleRow('parameterduplication', buildParameterDuplicationConfig()));
@@ -404,6 +424,7 @@ export function renderMulti(root, options = {}) {
   group3.section.append(buildLinkPathWorkflowRow());
   group3.section.append(buildLateralNozzleWorkflowRow());
   group3.section.append(buildGuidWorkflowRow());
+  group3.section.append(buildToggleRow('tapdepth', buildTapDepthConfig(), { entryId: 'tapdepthutility' }));
   group3.section.append(buildToggleRow('familylink', buildFamilyLinkConfig()));
   group3.section.append(buildToggleRow('points', buildPointsConfig()));
   group3.section.append(buildToggleRow('linkworkset', buildLinkWorksetConfig()));
@@ -951,7 +972,7 @@ export function renderMulti(root, options = {}) {
   }
 
   function clearFavoriteFeatureSelection(entryId) {
-    const key = String(entryId || '').trim();
+    const key = resolveFeatureKeyFromEntry(entryId);
     if (!FEATURE_KEYS.includes(key) || !state.features[key]) return false;
     const feature = state.features[key];
     if (!feature.enabled && !feature.applied && !feature.dirty) return false;
@@ -1247,15 +1268,16 @@ export function renderMulti(root, options = {}) {
     return panel;
   }
 
-  function buildToggleRow(key, config) {
+  function buildToggleRow(key, config, options = {}) {
     config = config || { panel: div('settings-panel'), controls: {} };
     const meta = FEATURE_META[key] || {};
+    const entryId = options.entryId || key;
     const cardLabel = meta.cardLabel || meta.label || key;
     const cardDesc = meta.cardDesc || meta.desc || '';
     const row = div('feature-row');
     row.classList.add('feature-row--selectable');
     row.dataset.key = key;
-    row.dataset.entryId = key;
+    row.dataset.entryId = entryId;
     const header = div('feature-row__header');
     const setFeatureEnabled = (enabled, shouldOpenSettings) => {
       const feature = state.features[key];
@@ -1281,12 +1303,13 @@ export function renderMulti(root, options = {}) {
       refreshFloorInfoFeatureSummary();
       refreshFamilySuitabilityFeatureSummary();
       refreshTapAlignFeatureSummary();
+      refreshTapDepthFeatureSummary();
       refreshDupClashFeatureSummary();
       refreshWorksetAssignmentFeatureSummary();
       refreshParameterStandardFeatureSummary();
       renderSelectedFeatures();
       if (nextEnabled && !wasEnabled) {
-        recordHubEntryUse(key);
+        recordHubEntryUse(entryId);
       }
     };
 
@@ -1308,7 +1331,7 @@ export function renderMulti(root, options = {}) {
       badge.textContent = 'BQC 핵심';
       badge.setAttribute('aria-label', 'BQC 핵심 검토 기능');
       right.append(badge);
-    } else if (key === 'floorinfo' || key === 'familysuitability' || key === 'tapalign' || key === 'dupclash' || key === 'worksetassignment' || key === 'parameterduplication' || key === 'parametermissing' || key === 'parameterstandard') {
+    } else if (key === 'floorinfo' || key === 'familysuitability' || key === 'tapalign' || key === 'tapdepth' || key === 'dupclash' || key === 'worksetassignment' || key === 'parameterduplication' || key === 'parametermissing' || key === 'parameterstandard') {
       const badge = document.createElement('span');
       badge.className = 'chip chip--info';
       badge.textContent = 'BQC 보조';
@@ -1342,7 +1365,7 @@ export function renderMulti(root, options = {}) {
       ev.preventDefault();
       setFeatureEnabled(!state.features[key].enabled, !state.features[key].enabled);
     });
-    bindHubEntryContextMenu(row, key);
+    bindHubEntryContextMenu(row, entryId);
 
     if (key === 'connector') {
       const summary = div('feature-row__summary');
@@ -1424,6 +1447,23 @@ export function renderMulti(root, options = {}) {
       row.append(summary);
       state.ui.tapAlignSummary = { row, top, sub };
       refreshTapAlignFeatureSummary();
+    } else if (key === 'tapdepth') {
+      const summary = div('feature-row__summary');
+      summary.style.display = 'grid';
+      summary.style.gap = '4px';
+      summary.style.padding = '10px 12px';
+      summary.style.borderRadius = '14px';
+      summary.style.border = '1px dashed var(--border-soft)';
+      summary.style.background = 'var(--surface-help)';
+      const top = document.createElement('strong');
+      const sub = document.createElement('span');
+      top.textContent = 'Takeoff Length Projection / Takeoff Length 기준으로 Tap/Saddle 묻힘 깊이를 검토합니다.';
+      sub.textContent = '아직 허용 범위, 검토 범위, 엑셀 언어가 적용되지 않았습니다.';
+      summary.append(top, sub);
+      row.append(summary);
+      state.ui.tapDepthSummaries = state.ui.tapDepthSummaries || [];
+      state.ui.tapDepthSummaries.push({ row, top, sub });
+      refreshTapDepthFeatureSummary();
     } else if (key === 'dupclash') {
       const summary = div('feature-row__summary');
       summary.style.display = 'grid';
@@ -2303,6 +2343,109 @@ function buildConditionExtractWorkflowRow() {
     });
     renderCenterAxisState();
 
+    const tapDepth = {
+      field: document.createElement('label'),
+      input: document.createElement('input')
+    };
+    tapDepth.field.className = 'settings-control-surface settings-toggle-row';
+    tapDepth.field.style.borderRadius = '14px';
+    tapDepth.field.style.borderColor = 'var(--border-accent-soft)';
+    tapDepth.field.style.background = 'var(--surface-card)';
+    tapDepth.field.style.alignItems = 'center';
+    tapDepth.input.type = 'checkbox';
+    tapDepth.input.checked = !!state.features.unconnected.configDraft.includeTapDepthCheck;
+
+    const tapDepthCopy = div('settings-toggle-copy');
+    const tapDepthTitle = document.createElement('strong');
+    tapDepthTitle.textContent = 'Tap, Saddle 모델링 검토 (묻힘) 함께 실행';
+    const tapDepthDesc = document.createElement('span');
+    tapDepthDesc.textContent = '켜면 두 Takeoff Length 기준 묻힘 오류를 미연결 결과 엑셀에 별도 Check로 함께 출력합니다.';
+    tapDepthCopy.append(tapDepthTitle, tapDepthDesc);
+
+    const tapDepthMeta = div('settings-toggle-meta');
+    const tapDepthBadge = document.createElement('span');
+    const tapDepthSwitchBox = document.createElement('span');
+    tapDepthSwitchBox.className = 'settings-switch';
+    const tapDepthSwitchTrack = document.createElement('span');
+    tapDepthSwitchTrack.className = 'settings-switch-track';
+    const tapDepthSwitchThumb = document.createElement('span');
+    tapDepthSwitchThumb.className = 'settings-switch-thumb';
+    tapDepthSwitchTrack.append(tapDepthSwitchThumb);
+    tapDepthSwitchBox.append(tapDepth.input, tapDepthSwitchTrack);
+    tapDepthMeta.append(tapDepthBadge, tapDepthSwitchBox);
+    tapDepth.field.append(tapDepthCopy, tapDepthMeta);
+
+    const tapDepthSettings = div('feature-row__summary');
+    tapDepthSettings.style.display = 'grid';
+    tapDepthSettings.style.gap = '10px';
+    tapDepthSettings.style.padding = '12px';
+    tapDepthSettings.style.borderRadius = '14px';
+    tapDepthSettings.style.border = '1px solid var(--border-soft)';
+    tapDepthSettings.style.background = 'var(--surface-elevated)';
+
+    const tapDepthSettingsTitle = document.createElement('strong');
+    tapDepthSettingsTitle.textContent = '묻힘 검토 기준';
+
+    const tapDepthSettingsGrid = div('settings-grid');
+    tapDepthSettingsGrid.style.display = 'grid';
+    tapDepthSettingsGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(160px, 1fr))';
+    tapDepthSettingsGrid.style.gap = '10px';
+
+    const tapDepthTol = makeField('허용 범위', 'unconnected_tap_depth_tol', '', 'number');
+    tapDepthTol.input.value = state.features.unconnected.configDraft.tapDepthTol ?? 5;
+    tapDepthTol.input.min = '0';
+    tapDepthTol.input.step = '0.01';
+    tapDepthTol.input.style.fontWeight = '600';
+
+    const tapDepthUnit = makeSelectField('거리 단위', [
+      { value: 'mm', label: 'mm' },
+      { value: 'inch', label: 'inch' }
+    ]);
+    tapDepthUnit.select.value = normalizeTapAlignUnit(state.features.unconnected.configDraft.tapDepthUnit || 'mm');
+    tapDepthUnit.select.style.fontWeight = '600';
+
+    tapDepthSettingsGrid.append(tapDepthTol.field, tapDepthUnit.field);
+    tapDepthSettings.append(tapDepthSettingsTitle, tapDepthSettingsGrid);
+
+    const collectTapDepthSettings = () => {
+      const tolValue = parseFloat(tapDepthTol.input.value || '5');
+      state.features.unconnected.configDraft.tapDepthTol = Number.isFinite(tolValue) && tolValue > 0 ? tolValue : 5;
+      state.features.unconnected.configDraft.tapDepthUnit = normalizeTapAlignUnit(tapDepthUnit.select.value);
+    };
+
+    const renderTapDepthState = () => {
+      const enabled = !!tapDepth.input.checked;
+      tapDepthBadge.className = `chip ${enabled ? 'chip--ok' : 'chip--info'}`;
+      tapDepthBadge.textContent = enabled ? '포함' : '제외';
+      tapDepthTol.input.disabled = !enabled;
+      tapDepthUnit.select.disabled = !enabled;
+      tapDepthSettings.classList.toggle('is-disabled', !enabled);
+    };
+    tapDepthTol.input.addEventListener('change', () => {
+      collectTapDepthSettings();
+      markFeatureDirty('unconnected');
+      refreshUnconnectedFeatureSummary();
+    });
+    tapDepthTol.input.addEventListener('blur', () => {
+      collectTapDepthSettings();
+      tapDepthTol.input.value = state.features.unconnected.configDraft.tapDepthTol;
+      markFeatureDirty('unconnected');
+      refreshUnconnectedFeatureSummary();
+    });
+    tapDepthUnit.select.addEventListener('change', () => {
+      collectTapDepthSettings();
+      markFeatureDirty('unconnected');
+      refreshUnconnectedFeatureSummary();
+    });
+    tapDepth.input.addEventListener('change', () => {
+      state.features.unconnected.configDraft.includeTapDepthCheck = !!tapDepth.input.checked;
+      collectTapDepthSettings();
+      renderTapDepthState();
+      markFeatureDirty('unconnected');
+      refreshUnconnectedFeatureSummary();
+    });
+    renderTapDepthState();
+
     const ruleGrid = div('unconnected-config-grid');
     ruleGrid.style.display = 'grid';
     ruleGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(240px, 1fr))';
@@ -2326,7 +2469,7 @@ function buildConditionExtractWorkflowRow() {
     ruleGrid.append(
       makeRuleCard('결과 판정', '모든 커넥터가 미연결이면 “오류”, 일부만 미연결이면 “일부오류”로 출력합니다.'),
       makeRuleCard('Family 열', '선형 객체는 시스템 타입 계열명, 피팅과 액세서리류는 실제 패밀리명을 출력합니다.'),
-      makeRuleCard('결과 분리', '미연결 오류와 중심축 오류는 요약에서 따로 집계하고, 엑셀 항목명도 별도 Check로 출력합니다.')
+      makeRuleCard('결과 분리', '미연결, 중심축, Tap/Saddle 묻힘 오류는 요약에서 따로 집계하고, 엑셀 항목명도 별도 Check로 출력합니다.')
     );
 
     const common = div('feature-note');
@@ -2334,11 +2477,24 @@ function buildConditionExtractWorkflowRow() {
     common.textContent = '적용 범위: 공통 설정의 검토 대상 필터와 검토 제외 대상 필터를 그대로 따릅니다.';
 
     info.append(title, body, chips);
-    panel.append(info, centerAxis.field, axisSettings, ruleGrid, common);
+    panel.append(info, centerAxis.field, axisSettings, tapDepth.field, tapDepthSettings, ruleGrid, common);
 
     return {
       panel,
-      controls: { centerAxis, centerAxisTol, centerAxisUnit, collectDraft: collectCenterAxisSettings, renderCenterAxisState }
+      controls: {
+        centerAxis,
+        centerAxisTol,
+        centerAxisUnit,
+        tapDepth,
+        tapDepthTol,
+        tapDepthUnit,
+        collectDraft: () => {
+          collectCenterAxisSettings();
+          collectTapDepthSettings();
+        },
+        renderCenterAxisState,
+        renderTapDepthState
+      }
     };
   }
 
@@ -2558,6 +2714,132 @@ function buildConditionExtractWorkflowRow() {
     commonCard.append(commonTitle, commonExtra.row, commonFilter.row, commonExcludeFilter.row, commonOptions.row, commonHint);
 
     panel.append(basicsCard, featureFilterCard, commonCard);
+    return {
+      panel,
+      controls: {
+        tol,
+        unit,
+        domain,
+        featureTargetFilter,
+        renderCommonSummary
+      }
+    };
+  }
+
+  function buildTapDepthConfig() {
+    const panel = div('multi-config');
+    panel.style.display = 'grid';
+    panel.style.gap = '12px';
+    panel.style.width = '100%';
+    panel.style.maxWidth = 'none';
+    panel.style.minWidth = '0';
+    panel.style.boxSizing = 'border-box';
+
+    const tol = makeField('허용 범위', 'tapdepth_tol', '', 'number');
+    tol.input.value = state.features.tapdepth.configDraft.tol;
+    tol.input.min = '0';
+    tol.input.step = '0.01';
+    tol.input.style.fontWeight = '600';
+
+    const unit = makeSelectField('거리 단위', [
+      { value: 'mm', label: 'mm' },
+      { value: 'inch', label: 'inch' }
+    ]);
+    unit.select.value = state.features.tapdepth.configDraft.unit;
+    unit.select.style.fontWeight = '600';
+
+    const domain = makeSelectField('검토 범위', [
+      { value: 'all', label: '배관 + 덕트' },
+      { value: 'pipe', label: '배관' },
+      { value: 'duct', label: '덕트' }
+    ]);
+    domain.select.value = state.features.tapdepth.configDraft.domain;
+
+    const featureTargetFilter = makeField('기능 전용 필터', 'tapdepth_feature_target_filter', '예: Family=Tap; Category=Pipe Fittings', 'text');
+    featureTargetFilter.input.value = state.features.tapdepth.configDraft.featureTargetFilter || '';
+
+    const markDirty = () => {
+      state.features.tapdepth.configDraft.tol = Math.max(0, parseFloat(tol.input.value || '5') || 5);
+      state.features.tapdepth.configDraft.unit = normalizeTapAlignUnit(unit.select.value);
+      state.features.tapdepth.configDraft.domain = normalizeTapAlignDomain(domain.select.value);
+      state.features.tapdepth.configDraft.featureTargetFilter = String(featureTargetFilter.input.value || '').trim();
+      markFeatureDirty('tapdepth');
+      refreshTapDepthFeatureSummary();
+    };
+
+    tol.input.addEventListener('change', markDirty);
+    tol.input.addEventListener('blur', markDirty);
+    unit.select.addEventListener('change', markDirty);
+    domain.select.addEventListener('change', markDirty);
+    featureTargetFilter.input.addEventListener('change', markDirty);
+    featureTargetFilter.input.addEventListener('blur', markDirty);
+
+    const basicsCard = div('feature-row__summary');
+    basicsCard.style.display = 'grid';
+    basicsCard.style.gap = '10px';
+    basicsCard.style.padding = '12px';
+    basicsCard.style.borderRadius = '18px';
+    basicsCard.style.border = '1px solid var(--border-accent-soft)';
+    basicsCard.style.background = 'var(--surface-elevated)';
+    basicsCard.style.width = '100%';
+    basicsCard.style.boxSizing = 'border-box';
+
+    const basicsTitle = document.createElement('strong');
+    basicsTitle.textContent = '기본 설정';
+    const basics = div('multi-config');
+    basics.style.display = 'grid';
+    basics.style.gridTemplateColumns = 'repeat(3, minmax(0, 1fr))';
+    basics.style.gap = '10px';
+    basics.append(tol.field, unit.field, domain.field);
+    basicsCard.append(basicsTitle, basics);
+
+    const filterCard = div('feature-row__summary');
+    filterCard.style.display = 'grid';
+    filterCard.style.gap = '8px';
+    filterCard.style.padding = '12px';
+    filterCard.style.borderRadius = '18px';
+    filterCard.style.border = '1px solid var(--border-accent-soft)';
+    filterCard.style.background = 'var(--surface-elevated)';
+    const filterTitle = document.createElement('strong');
+    filterTitle.textContent = '기능 전용 필터';
+    const filterHint = document.createElement('div');
+    filterHint.className = 'feature-note';
+    filterHint.textContent = '공통 검토 대상 필터에 이어 추가 AND 조건으로 적용됩니다.';
+    filterCard.append(filterTitle, featureTargetFilter.field, filterHint);
+
+    const commonCard = div('feature-row__summary');
+    commonCard.style.display = 'grid';
+    commonCard.style.gap = '8px';
+    commonCard.style.padding = '12px';
+    commonCard.style.borderRadius = '18px';
+    commonCard.style.border = '1px solid var(--border-accent-soft)';
+    commonCard.style.background = 'var(--surface-help)';
+    const commonTitle = document.createElement('strong');
+    commonTitle.textContent = '공통 옵션 반영';
+    const commonSummary = document.createElement('span');
+    commonSummary.style.color = 'var(--muted,#64748b)';
+    commonSummary.style.lineHeight = '1.5';
+    const commonHint = document.createElement('div');
+    commonHint.className = 'feature-note';
+    commonHint.textContent = '공통 옵션의 검토 대상/제외 필터와 추가 추출 파라미터를 그대로 반영합니다.';
+
+    const renderCommonSummary = () => {
+      const committed = state.common.configCommitted || {};
+      const extras = String(committed.extraParams || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const filterText = String(committed.targetFilter || '').trim() || '필터가 없습니다.';
+      const excludeText = String(committed.excludeTargetFilter || '').trim() || '제외 필터가 없습니다.';
+      const optionParts = [];
+      if (committed.includePointXY) optionParts.push('좌표 X/Y');
+      if (committed.includeLinearMetrics) optionParts.push('선형 길이/방향');
+      commonSummary.textContent = `포함 필터 ${filterText} · 제외 필터 ${excludeText} · 추가 추출 ${extras.length}개${optionParts.length ? ` · ${optionParts.join(', ')}` : ''}`;
+    };
+    renderCommonSummary();
+    commonCard.append(commonTitle, commonSummary, commonHint);
+
+    panel.append(basicsCard, filterCard, commonCard);
     return {
       panel,
       controls: {
@@ -5789,7 +6071,18 @@ function buildConditionExtractWorkflowRow() {
   }
 
   function collectCurrentFavoriteKeys() {
-    return collectCurrentFavoriteEntryIds().filter((key) => FEATURE_KEYS.includes(key));
+    return collectCurrentFavoriteEntryIds()
+      .map((entryId) => resolveFeatureKeyFromEntry(entryId))
+      .filter((key) => FEATURE_KEYS.includes(key));
+  }
+
+  function resolveFeatureKeyFromEntry(entryId) {
+    const raw = String(entryId || '').trim();
+    if (FEATURE_KEYS.includes(raw)) return raw;
+    const entry = getHubEntry(raw);
+    const featureKey = String(entry?.featureKey || '').trim();
+    if (FEATURE_KEYS.includes(featureKey)) return featureKey;
+    return raw;
   }
 
   function buildFavoriteFeaturePresetConfig(key, config) {
@@ -6875,8 +7168,8 @@ function buildConditionExtractWorkflowRow() {
         existing.near = (Number(existing.near) || 0) + (Number(item?.near) || 0);
         existing.status = existing.status || getReviewItemStatus(item);
         let itemReason = getReviewItemReason(item);
-        if (key === 'unconnected' && (item?.unconnectedIssues !== undefined || item?.centerAxisIssues !== undefined)) {
-          itemReason = `미연결 ${Number(item?.unconnectedIssues) || 0}건 / 중심축 ${Number(item?.centerAxisIssues) || 0}건`;
+        if (key === 'unconnected' && (item?.unconnectedIssues !== undefined || item?.centerAxisIssues !== undefined || item?.tapDepthIssues !== undefined)) {
+          itemReason = `미연결 ${Number(item?.unconnectedIssues) || 0}건 / 중심축 ${Number(item?.centerAxisIssues) || 0}건 / 묻힘 ${Number(item?.tapDepthIssues) || 0}건`;
         }
         if (itemReason && String(existing.reason || '').indexOf(itemReason) < 0) {
           existing.reason = existing.reason ? `${existing.reason} / ${itemReason}` : itemReason;
@@ -6906,6 +7199,7 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'floorinfo') return '층정보 결과 엑셀';
     if (key === 'familysuitability') return '패밀리 타입 적합성 결과 엑셀';
     if (key === 'tapalign') return '탭/분기 축 결과 엑셀';
+    if (key === 'tapdepth') return 'Tap/Saddle 묻힘 결과 엑셀';
     if (key === 'dupclash') {
       return normalizeDupClashMode(state.features.dupclash?.configCommitted?.mode) === 'clash'
         ? '자체 간섭 결과 엑셀'
@@ -7096,6 +7390,7 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'floorinfo') refreshFloorInfoFeatureSummary();
     if (key === 'familysuitability') refreshFamilySuitabilityFeatureSummary();
     if (key === 'tapalign') refreshTapAlignFeatureSummary();
+    if (key === 'tapdepth') refreshTapDepthFeatureSummary();
     if (key === 'dupclash') refreshDupClashFeatureSummary();
   }
 
@@ -7254,6 +7549,7 @@ function buildConditionExtractWorkflowRow() {
         floorinfo: buildCommittedFeature('floorinfo'),
         familysuitability: buildCommittedFeature('familysuitability'),
         tapalign: buildCommittedFeature('tapalign'),
+        tapdepth: buildCommittedFeature('tapdepth'),
         dupclash: buildCommittedFeature('dupclash'),
         worksetassignment: buildCommittedFeature('worksetassignment'),
         parameterduplication: buildCommittedFeature('parameterduplication'),
@@ -7595,7 +7891,7 @@ function buildConditionExtractWorkflowRow() {
           child.style.margin = '0';
           child.style.boxSizing = 'border-box';
         });
-      } else if (key === 'floorinfo' || key === 'guid' || key === 'tapalign') {
+      } else if (key === 'floorinfo' || key === 'guid' || key === 'tapalign' || key === 'tapdepth') {
         panel.style.display = 'flex';
         panel.style.flexDirection = 'column';
         panel.style.alignItems = 'stretch';
@@ -7676,6 +7972,9 @@ function buildConditionExtractWorkflowRow() {
       }
       if (key === 'tapalign') {
         persistTapAlignConfig(state.features.tapalign.configCommitted);
+      }
+      if (key === 'tapdepth') {
+        persistTapDepthConfig(state.features.tapdepth.configCommitted);
       }
       markStale(key);
     }
@@ -7930,6 +8229,7 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'floorinfo') refreshFloorInfoFeatureSummary();
     if (key === 'familysuitability') refreshFamilySuitabilityFeatureSummary();
     if (key === 'tapalign') refreshTapAlignFeatureSummary();
+    if (key === 'tapdepth') refreshTapDepthFeatureSummary();
     if (key === 'dupclash') refreshDupClashFeatureSummary();
     if (key === 'worksetassignment') refreshWorksetAssignmentFeatureSummary();
     if (key === 'parameterduplication') refreshParameterDuplicationFeatureSummary();
@@ -7960,6 +8260,7 @@ function buildConditionExtractWorkflowRow() {
       ...COMMON_TAPALIGN_OPTION_DEPENDENT_FEATURE_KEYS
     ])).forEach(updateFeatureSummary);
     if (state.ui.controls.tapalign?.renderCommonSummary) state.ui.controls.tapalign.renderCommonSummary();
+    if (state.ui.controls.tapdepth?.renderCommonSummary) state.ui.controls.tapdepth.renderCommonSummary();
     if (state.ui.controls.dupclash?.renderCommonSummary) state.ui.controls.dupclash.renderCommonSummary();
   }
 
@@ -8023,6 +8324,7 @@ function buildConditionExtractWorkflowRow() {
       return [
         '기본 검토는 커넥터가 있는 객체의 연결 여부만 객체 단위로 계산합니다.',
         '중심축 연결 검토는 필요한 경우에만 켜 주세요. 미연결 설정의 허용 범위와 단위를 사용해 같은 엑셀 양식에 함께 출력됩니다.',
+        'Tap, Saddle 모델링 검토(묻힘)를 함께 켜면 두 Takeoff Length 기준 묻힘 오류도 별도 Check로 출력됩니다.',
         '검토 범위는 BQC 공통 설정의 검토 대상 필터와 제외 필터를 따릅니다.'
       ];
     }
@@ -8049,6 +8351,14 @@ function buildConditionExtractWorkflowRow() {
         '탭 또는 분기 피팅의 연결 커넥터 축이 연결된 배관/덕트 중심축을 통과하는지 확인합니다.',
         '허용 범위 이내의 중심축 이탈은 오류로 보지 않으며, 초과한 경우만 결과에 포함합니다.',
         '거리 단위는 설정값을 따르고, 결과 내용 언어는 엑셀 내보내기 시점에 선택합니다.',
+        '추가 추출 파라미터, 포함/제외 대상 필터와 추가 추출 옵션은 BQC 공통 설정 값을 사용합니다.'
+      ];
+    }
+    if (key === 'tapdepth') {
+      return [
+        'Tap/Saddle 피팅의 실제 묻힘 깊이를 Takeoff Length Projection / Takeoff Length 값과 비교합니다.',
+        '허용 범위 이내의 차이는 오류로 보지 않으며, 초과한 경우만 결과에 포함합니다.',
+        '미연결 검토 설정에서 함께 실행하면 같은 결과 엑셀에 별도 묻힘 Check로 출력됩니다.',
         '추가 추출 파라미터, 포함/제외 대상 필터와 추가 추출 옵션은 BQC 공통 설정 값을 사용합니다.'
       ];
     }
@@ -9042,6 +9352,13 @@ function buildConditionExtractWorkflowRow() {
     const centerAxisText = centerAxisEnabled
       ? `중심축 연결 검토 포함 · 허용 ${centerAxisTol} ${centerAxisUnit}`
       : '중심축 연결 검토 제외';
+    const tapDepthEnabled = !!(feature.configDraft?.includeTapDepthCheck ?? feature.configCommitted?.includeTapDepthCheck);
+    const tapDepthTolRaw = feature.configDraft?.tapDepthTol ?? feature.configCommitted?.tapDepthTol ?? 5;
+    const tapDepthTol = Number.isFinite(Number(tapDepthTolRaw)) && Number(tapDepthTolRaw) > 0 ? Number(tapDepthTolRaw) : 5;
+    const tapDepthUnit = normalizeTapAlignUnit(feature.configDraft?.tapDepthUnit || feature.configCommitted?.tapDepthUnit || 'mm');
+    const tapDepthText = tapDepthEnabled
+      ? `Tap/Saddle 묻힘 검토 포함 · 허용 ${tapDepthTol} ${tapDepthUnit}`
+      : 'Tap/Saddle 묻힘 검토 제외';
     const commonExtraCount = String(common.extraParams || '')
       .split(',')
       .map((item) => item.trim())
@@ -9051,7 +9368,7 @@ function buildConditionExtractWorkflowRow() {
     target.top.textContent = feature.enabled
       ? '선택 완료 · 커넥터가 있는 객체의 미연결 상태를 객체 단위로 검토합니다.'
       : '필요할 때만 켜서 배관, 덕트, 트레이, 컨듀잇과 피팅류의 미연결 상태를 확인해 주세요.';
-    target.sub.textContent = `${scopeText} · ${centerAxisText} · 추가 추출 ${commonExtraCount}개 · 결과는 객체별 전체/일부 미연결로 구분됩니다.`;
+    target.sub.textContent = `${scopeText} · ${centerAxisText} · ${tapDepthText} · 추가 추출 ${commonExtraCount}개 · 결과는 객체별 전체/일부 미연결로 구분됩니다.`;
     target.row.classList.toggle('is-active', !!feature.enabled);
     applyFeatureRowTooltip(target.row, [
       FEATURE_META.unconnected?.label || '미연결 검토',
@@ -9184,6 +9501,48 @@ function buildConditionExtractWorkflowRow() {
     ], {
       title: FEATURE_META.tapalign?.label || '탭/분기 축 틀어짐 검토',
       desc: `${FEATURE_META.tapalign?.desc || ''} ${target.sub.textContent}`.trim()
+    });
+  }
+
+  function refreshTapDepthFeatureSummary() {
+    const targets = Array.isArray(state.ui.tapDepthSummaries) ? state.ui.tapDepthSummaries : [];
+    if (!targets.length) return;
+    const feature = state.features.tapdepth;
+    const draft = feature.configDraft || {};
+    const committed = feature.configCommitted || {};
+    const tolRaw = draft.tol ?? committed.tol ?? 5;
+    const tol = Number.isFinite(Number(tolRaw)) ? Number(tolRaw) : 5;
+    const unit = normalizeTapAlignUnit(draft.unit || committed.unit || 'mm');
+    const domain = normalizeTapAlignDomain(draft.domain || committed.domain || 'all');
+    const featureFilterText = String(draft.featureTargetFilter || committed.featureTargetFilter || '').trim();
+    const common = state.common.configCommitted || {};
+    const extraCount = String(common.extraParams || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .length;
+    const optionParts = [];
+    if (common.includePointXY) optionParts.push('좌표 X/Y');
+    if (common.includeLinearMetrics) optionParts.push('선형 길이/방향');
+    const optionText = optionParts.length ? ` · 공통 옵션 ${optionParts.join(', ')}` : '';
+    const featureFilterNote = featureFilterText ? ' · 기능 필터 적용' : '';
+
+    targets.forEach((target) => {
+      if (!target) return;
+      target.top.textContent = feature.enabled
+        ? '선택 완료 · Tap/Saddle 묻힘 깊이를 두 Takeoff Length 기준으로 검토합니다.'
+        : '보조 기능입니다. 필요할 때만 켜서 Tap/Saddle 묻힘 깊이를 검토해 주세요.';
+      target.sub.textContent = `허용 범위 ${tol} ${unit} · 범위 ${resolveTapAlignDomainLabel(domain)} · 추가 추출 ${extraCount}개${optionText}${featureFilterNote}`;
+      target.row.classList.toggle('is-active', !!feature.enabled);
+      applyFeatureRowTooltip(target.row, [
+        FEATURE_META.tapdepth?.label || 'Tap, Saddle 모델링 검토 (묻힘)',
+        FEATURE_META.tapdepth?.desc || '',
+        target.top.textContent,
+        target.sub.textContent
+      ], {
+        title: FEATURE_META.tapdepth?.label || 'Tap, Saddle 모델링 검토 (묻힘)',
+        desc: `${FEATURE_META.tapdepth?.desc || ''} ${target.sub.textContent}`.trim()
+      });
     });
   }
 
@@ -9456,6 +9815,15 @@ function buildConditionExtractWorkflowRow() {
   function updateSelectedFeatureRow(key) {
     const entry = state.ui.selectedRows.get(key);
     const status = getSelectedFeatureStatus(key);
+    const feature = state.features[key];
+    Array.from(page.querySelectorAll('.feature-row[data-key]'))
+      .filter((row) => row.dataset.key === key)
+      .forEach((row) => {
+        const enabled = !!feature?.enabled;
+        row.classList.toggle('is-active', enabled);
+        row.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+        row.dataset.selected = enabled ? 'true' : 'false';
+      });
     if (entry) {
       entry.statusChip.textContent = status.label;
       entry.statusChip.className = `chip status-chip ${status.className}`;
@@ -9761,6 +10129,57 @@ function buildConditionExtractWorkflowRow() {
     }
   }
 
+  function loadTapDepthConfigFromStorage() {
+    const defaults = {
+      tol: 5,
+      unit: 'mm',
+      domain: 'all',
+      featureTargetFilter: ''
+    };
+
+    let stored = null;
+    try {
+      const raw = localStorage.getItem(TAPDEPTH_STORAGE_KEY);
+      if (raw) stored = JSON.parse(raw);
+    } catch {
+      stored = null;
+    }
+
+    const config = {
+      tol: Math.max(0, parseFloat(stored?.tol) || defaults.tol),
+      unit: normalizeTapAlignUnit(stored?.unit || defaults.unit),
+      domain: normalizeTapAlignDomain(stored?.domain || defaults.domain),
+      featureTargetFilter: typeof stored?.featureTargetFilter === 'string' ? stored.featureTargetFilter : defaults.featureTargetFilter
+    };
+
+    return {
+      config,
+      hasStored: !!stored
+    };
+  }
+
+  function persistTapDepthConfig(committed) {
+    const normalized = {
+      tol: Math.max(0, parseFloat(committed?.tol) || 5),
+      unit: normalizeTapAlignUnit(committed?.unit || 'mm'),
+      domain: normalizeTapAlignDomain(committed?.domain || 'all'),
+      featureTargetFilter: String(committed?.featureTargetFilter || '').trim()
+    };
+
+    let payload = {};
+    try {
+      const raw = localStorage.getItem(TAPDEPTH_STORAGE_KEY);
+      if (raw) payload = JSON.parse(raw) || {};
+    } catch {
+      payload = {};
+    }
+
+    try {
+      localStorage.setItem(TAPDEPTH_STORAGE_KEY, JSON.stringify({ ...payload, ...normalized }));
+    } catch {
+    }
+  }
+
   function loadFamilySuitabilityConfigFromStorage() {
     const defaults = {
       criteriaExcelPath: '',
@@ -9972,16 +10391,31 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'unconnected') {
       const committed = deepCopy(feature.configCommitted || {});
       const centerAxisTol = parseFloat(committed.centerAxisTol);
+      const tapDepthTol = parseFloat(committed.tapDepthTol);
       return {
         enabled: feature.enabled,
         includeCenterAxisCheck: !!committed.includeCenterAxisCheck,
         centerAxisTol: Number.isFinite(centerAxisTol) && centerAxisTol > 0 ? centerAxisTol : 0.5,
-        centerAxisUnit: normalizeTapAlignUnit(committed.centerAxisUnit || 'mm')
+        centerAxisUnit: normalizeTapAlignUnit(committed.centerAxisUnit || 'mm'),
+        includeTapDepthCheck: !!committed.includeTapDepthCheck,
+        tapDepthTol: Number.isFinite(tapDepthTol) && tapDepthTol > 0 ? tapDepthTol : 5,
+        tapDepthUnit: normalizeTapAlignUnit(committed.tapDepthUnit || 'mm')
       };
     }
     if (key === 'tapalign') {
       const committed = deepCopy(feature.configCommitted || {});
       committed.tol = Math.max(0, parseFloat(committed.tol) || 0.5);
+      committed.unit = normalizeTapAlignUnit(committed.unit);
+      committed.domain = normalizeTapAlignDomain(committed.domain);
+      committed.featureTargetFilter = String(committed.featureTargetFilter || '').trim();
+      return {
+        enabled: feature.enabled,
+        ...committed
+      };
+    }
+    if (key === 'tapdepth') {
+      const committed = deepCopy(feature.configCommitted || {});
+      committed.tol = Math.max(0, parseFloat(committed.tol) || 5);
       committed.unit = normalizeTapAlignUnit(committed.unit);
       committed.domain = normalizeTapAlignDomain(committed.domain);
       committed.featureTargetFilter = String(committed.featureTargetFilter || '').trim();
@@ -10039,11 +10473,21 @@ function buildConditionExtractWorkflowRow() {
       const centerAxisTol = parseFloat(target.configDraft.centerAxisTol);
       target.configDraft.centerAxisTol = Number.isFinite(centerAxisTol) && centerAxisTol > 0 ? centerAxisTol : 0.5;
       target.configDraft.centerAxisUnit = normalizeTapAlignUnit(target.configDraft.centerAxisUnit || 'mm');
+      target.configDraft.includeTapDepthCheck = !!target.configDraft.includeTapDepthCheck;
+      const tapDepthTol = parseFloat(target.configDraft.tapDepthTol);
+      target.configDraft.tapDepthTol = Number.isFinite(tapDepthTol) && tapDepthTol > 0 ? tapDepthTol : 5;
+      target.configDraft.tapDepthUnit = normalizeTapAlignUnit(target.configDraft.tapDepthUnit || 'mm');
     }
     if (state.ui.activeFeatureKey === 'tapalign') {
       target.configDraft.tol = Math.max(0, parseFloat(target.configDraft.tol) || 0.5);
       target.configDraft.unit = normalizeTapAlignUnit(target.configDraft.unit);
       target.configDraft.domain = normalizeTapAlignDomain(target.configDraft.domain);
+    }
+    if (state.ui.activeFeatureKey === 'tapdepth') {
+      target.configDraft.tol = Math.max(0, parseFloat(target.configDraft.tol) || 5);
+      target.configDraft.unit = normalizeTapAlignUnit(target.configDraft.unit);
+      target.configDraft.domain = normalizeTapAlignDomain(target.configDraft.domain);
+      target.configDraft.featureTargetFilter = String(target.configDraft.featureTargetFilter || '').trim();
     }
     if (state.ui.activeFeatureKey === 'dupclash') {
       target.configDraft.mode = normalizeDupClashMode(target.configDraft.mode);
@@ -10096,6 +10540,9 @@ function buildConditionExtractWorkflowRow() {
     }
     if (state.ui.activeFeatureKey === 'parameterstandard') {
       persistParameterStandardConfig(target.configCommitted);
+    }
+    if (state.ui.activeFeatureKey === 'tapdepth') {
+      persistTapDepthConfig(target.configCommitted);
     }
     target.applied = true;
     target.dirty = false;
@@ -10155,6 +10602,12 @@ function buildConditionExtractWorkflowRow() {
     if (key === 'dupclash') {
       feature.configDraft.mode = normalizeDupClashMode(feature.configDraft.mode);
       feature.configDraft.tolFeet = Number(feature.configDraft.tolFeet) > 0 ? Number(feature.configDraft.tolFeet) : 1 / 64;
+    }
+    if (key === 'tapdepth') {
+      feature.configDraft.tol = Math.max(0, parseFloat(feature.configDraft.tol) || 5);
+      feature.configDraft.unit = normalizeTapAlignUnit(feature.configDraft.unit);
+      feature.configDraft.domain = normalizeTapAlignDomain(feature.configDraft.domain);
+      feature.configDraft.featureTargetFilter = String(feature.configDraft.featureTargetFilter || '').trim();
     }
     if (key === 'familylink') {
       feature.configDraft.targetsText = buildTargetsText(feature.configDraft.selectedTargets);
@@ -10234,9 +10687,20 @@ function buildConditionExtractWorkflowRow() {
       if (controls.centerAxis?.input) controls.centerAxis.input.checked = !!draft.includeCenterAxisCheck;
       if (controls.centerAxisTol?.input) controls.centerAxisTol.input.value = draft.centerAxisTol ?? 0.5;
       if (controls.centerAxisUnit?.select) controls.centerAxisUnit.select.value = normalizeTapAlignUnit(draft.centerAxisUnit || 'mm');
+      if (controls.tapDepth?.input) controls.tapDepth.input.checked = !!draft.includeTapDepthCheck;
+      if (controls.tapDepthTol?.input) controls.tapDepthTol.input.value = draft.tapDepthTol ?? 5;
+      if (controls.tapDepthUnit?.select) controls.tapDepthUnit.select.value = normalizeTapAlignUnit(draft.tapDepthUnit || 'mm');
       if (typeof controls.renderCenterAxisState === 'function') controls.renderCenterAxisState();
+      if (typeof controls.renderTapDepthState === 'function') controls.renderTapDepthState();
     } else if (key === 'tapalign') {
       const draft = state.features.tapalign.configDraft;
+      controls.tol.input.value = draft.tol;
+      controls.unit.select.value = normalizeTapAlignUnit(draft.unit);
+      controls.domain.select.value = normalizeTapAlignDomain(draft.domain);
+      if (controls.featureTargetFilter?.input) controls.featureTargetFilter.input.value = draft.featureTargetFilter || '';
+      if (controls.renderCommonSummary) controls.renderCommonSummary();
+    } else if (key === 'tapdepth') {
+      const draft = state.features.tapdepth.configDraft;
       controls.tol.input.value = draft.tol;
       controls.unit.select.value = normalizeTapAlignUnit(draft.unit);
       controls.domain.select.value = normalizeTapAlignDomain(draft.domain);
