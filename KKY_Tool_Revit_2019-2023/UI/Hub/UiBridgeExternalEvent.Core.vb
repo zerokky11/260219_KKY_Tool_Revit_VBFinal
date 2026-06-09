@@ -253,6 +253,10 @@ Namespace UI.Hub
             map.Add("update:query", "HandleUpdateQuery")
             map.Add("update:check", "HandleUpdateCheck")
             map.Add("update:install", "HandleUpdateInstall")
+            ' User Management
+            map.Add("usermanagement:init", "HandleUserManagementInit")
+            map.Add("usermanagement:login", "HandleUserManagementLogin")
+            map.Add("usermanagement:save", "HandleUserManagementSave")
             ' Document Visual Aid
             map.Add("documentvisualaid:query-settings", "HandleDocumentVisualAidQuerySettings")
             map.Add("documentvisualaid:set-enabled", "HandleDocumentVisualAidSetEnabled")

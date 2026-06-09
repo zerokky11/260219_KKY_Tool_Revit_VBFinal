@@ -58,6 +58,12 @@ export function renderHome(root) {
       '즐겨찾기로 모은 기능만 따로 열어 자주 쓰는 작업을 바로 실행합니다.',
       'favorites',
       favoriteItems
+    ),
+    buildCard(
+      'KKY TOOL 사용자 관리',
+      '허용 프로필 키워드와 예외 사용자를 관리합니다.',
+      'usermanagement',
+      ['KCIM 프로필 허용', '예외 사용자 관리', '관리자 비밀번호 변경']
     )
   );
 

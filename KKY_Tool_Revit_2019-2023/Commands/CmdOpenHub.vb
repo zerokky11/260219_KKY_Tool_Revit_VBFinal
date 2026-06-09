@@ -4,6 +4,7 @@ Option Strict On
 Imports Autodesk.Revit.Attributes
 Imports Autodesk.Revit.DB
 Imports Autodesk.Revit.UI
+Imports KKY_Tool_Revit.Services
 Imports KKY_Tool_Revit.UI.Hub
 ' ʿϸ ӽ̽  :
 'Imports KKY_Tool_Revit.UI.Hub
@@ -19,6 +20,11 @@ Public Class DuplicateExport
                             elements As ElementSet) As Result Implements IExternalCommand.Execute
         Try
             Dim uiapp = commandData.Application
+            Dim access = KkyToolUserAccessService.Evaluate(uiapp)
+            If Not access.Allowed Then
+                TaskDialog.Show("KKY Tools", access.Message)
+                Return Result.Cancelled
+            End If
 
             ' 허브는 싱글톤으로 관리한다.
             HubHostWindow.ShowSingleton(uiapp)

@@ -19,6 +19,7 @@ import { renderParamModifier } from './views/parammodifier.js?v=20260505j';
 import { renderConditionExtract } from './views/conditionextract.js?v=20260505j';
 import { renderLateralNozzle } from './views/lateralnozzle.js?v=20260505e';
 import { renderTapAlign } from './views/tapalign.js?v=20260505i';
+import { renderUserManagement } from './views/usermanagement.js?v=20260609a';
 
 initTheme();
 
@@ -170,6 +171,7 @@ function route() {
     case 'lateralnozzle': renderView = renderLateralNozzle; break;
     case 'tapalign': renderView = renderTapAlign; break;
     case 'active-menu': renderView = renderActiveMenu; break;
+    case 'usermanagement': renderView = renderUserManagement; break;
     default: renderView = renderHome; break;
   }
 

@@ -1,13 +1,8 @@
 ﻿{
-    "version":  "2.33",
-    "publishedAt":  "2026-06-02",
-    "title":  "버전 2.33",
-    "notes":  [
-                  "Tap, Saddle 모델링 검토(묻힘)를 BQC와 유틸리티 항목에 추가하고 실제 묻힘 깊이를 Takeoff Length Projection / Takeoff Length 기준과 비교하도록 정리했습니다.",
-                  "미연결 검토와 묻힘 검토를 함께 실행할 때 미연결으로 이미 잡힌 객체는 묻힘 결과에서 중복 제외되도록 정리했습니다.",
-                  "미연결 검토 설정에서 중심축/묻힘 검토 허용 범위와 단위를 함께 관리하고 결과 집계를 분리해 보기 쉽게 개선했습니다.",
-                  "속성 모수 검토의 공란 기준 토큰 호환 처리를 정리하고 배포 피드 한글 문구를 UTF-8 기준으로 확인했습니다."
-              ],
-    "packageUrl":  "https://update.zerokky.com/KKY_Tool_Revit(2019,21,23,25,27)_v2.33.zip",
-    "installerUrl":  "https://update.zerokky.com/official/KKY_Tool_Revit(2019,21,23,25,27)_v2.33.exe"
+    "version":  "2.34",
+    "publishedAt":  "2026-06-09",
+    "title":  "버전 2.34",
+    "notes":  "외부 환경에서 사용 제한하는 기능 추가",
+    "packageUrl":  "https://update.zerokky.com/KKY_Tool_Revit(2019,21,23,25,27)_v2.34.zip",
+    "installerUrl":  "https://update.zerokky.com/official/KKY_Tool_Revit(2019,21,23,25,27)_v2.34.exe"
 }
