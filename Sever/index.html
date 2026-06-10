@@ -297,6 +297,7 @@
 
       <nav class="tabs" aria-label="Homepage tabs">
         <button class="tab active" data-tab="tool">KKY Tool Update</button>
+        <button class="tab" data-tab="kky-users">KKY Tool Users</button>
         <button class="tab" data-tab="family">Family Browser Path</button>
       </nav>
 
@@ -334,6 +335,82 @@
             <strong>Family Browser profile index URL:</strong>
             <p><code>https://update.zerokky.com/family-browser/bootstrap-index.json</code></p>
           </div>
+        </div>
+      </section>
+
+      <section id="tab-kky-users">
+        <h2>KKY Tool User Access</h2>
+        <p>Use this tab to manage the central <code>kky-tool/user-access.json</code> policy read by KKY Tool clients.</p>
+
+        <div id="kky-users-lock" class="locked">
+          <strong>Protected settings</strong>
+          <p class="hint">Enter the page password to view and edit KKY Tool user access settings.</p>
+          <label for="kkyUsersPassword">Password</label>
+          <input id="kkyUsersPassword" type="password" autocomplete="current-password">
+          <div class="actions">
+            <button class="primary" id="kkyUsersUnlock">Unlock</button>
+          </div>
+          <div id="kky-users-lock-status" class="status"></div>
+        </div>
+
+        <div id="kky-users-editor" class="hidden">
+          <div class="notice">
+            This policy is central. Do not edit each user's PC. KKY Tool reads <code>https://update.zerokky.com/kky-tool/user-access.json</code> and allows users whose Autodesk/Revit profile contains one of these keywords.
+          </div>
+
+          <label class="checkline" for="kkyUsersEnabled">
+            <input id="kkyUsersEnabled" type="checkbox" checked>
+            Enable external user restriction
+          </label>
+
+          <label for="kkyAllowedProfileKeywords">Allowed Autodesk/Revit profile keywords</label>
+          <textarea id="kkyAllowedProfileKeywords" spellcheck="false" placeholder="KCIM"></textarea>
+          <p class="hint">One keyword per line, or separate with commas/semicolons. Example: <code>KCIM</code></p>
+
+          <label for="kkyAllowedUsers">Exact allowed users</label>
+          <textarea id="kkyAllowedUsers" spellcheck="false" placeholder="kim.kky&#10;hong.gildong"></textarea>
+          <p class="hint">Optional emergency exceptions. Prefer profile keywords for site-wide control.</p>
+
+          <label for="kkyBlockMessage">Block message</label>
+          <input id="kkyBlockMessage" value="외부 사용자는 사용할 수 없습니다.">
+
+          <div class="box" style="margin-top:18px">
+            <strong>GitHub Pages save target</strong>
+            <p class="hint">Use the same GitHub token method as Family Browser. The token is not stored in this page.</p>
+            <div class="row">
+              <div>
+                <label for="kkyGithubOwner">Owner</label>
+                <input id="kkyGithubOwner" value="zerokky11">
+              </div>
+              <div>
+                <label for="kkyGithubRepo">Repository</label>
+                <input id="kkyGithubRepo" value="Release">
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <label for="kkyGithubBranch">Branch</label>
+                <input id="kkyGithubBranch" value="main">
+              </div>
+              <div>
+                <label for="kkyGithubPath">File path</label>
+                <input id="kkyGithubPath" value="kky-tool/user-access.json">
+              </div>
+            </div>
+            <label for="kkyGithubToken">GitHub token</label>
+            <input id="kkyGithubToken" type="password" autocomplete="off" placeholder="Fine-grained token with Contents read/write">
+          </div>
+
+          <div class="actions">
+            <button class="primary" id="kkyBuildUsers">Build JSON</button>
+            <button id="kkyCopyUsers">Copy JSON</button>
+            <button id="kkyDownloadUsers">Download user-access.json</button>
+            <button id="kkySaveUsersGithub">Save to GitHub Pages</button>
+            <button id="kkyLoadUsersCurrent">Reload current policy</button>
+          </div>
+
+          <div id="kky-users-status" class="status"></div>
+          <pre id="kkyUsersPreview" aria-label="KKY Tool user access json preview"></pre>
         </div>
       </section>
 
@@ -423,7 +500,7 @@
           <p class="hint">This is the central policy path every installed PC will use.</p>
 
           <label for="managedPolicyPathCandidates">Shared policy JSON fallback paths</label>
-          <textarea id="managedPolicyPathCandidates" spellcheck="false" placeholder="Z:\\FamilyBrowser\\SiteA\\Config\\standard-policy.json&#10;\\\\SERVER\\KKY\\FamilyBrowser\\SiteA\\Config\\standard-policy.json"></textarea>
+          <textarea id="managedPolicyPathCandidates" spellcheck="false" placeholder="I:\\FamilyBrowser\\SiteA\\Config\\standard-policy.json&#10;\\\\SERVER\\KKY\\FamilyBrowser\\SiteA\\Config\\standard-policy.json"></textarea>
           <p class="hint">One path per line. Family Browser uses the first path that can be reached on this PC.</p>
 
           <label class="checkline" for="disabled">
@@ -460,7 +537,7 @@
           <input id="requestStorePath" placeholder="\\\\SERVER\\KKY\\FamilyBrowser\\Requests">
 
           <label for="requestStorePathCandidates">Family request fallback paths</label>
-          <textarea id="requestStorePathCandidates" spellcheck="false" placeholder="Z:\\FamilyBrowser\\SiteA\\Requests&#10;\\\\SERVER\\KKY\\FamilyBrowser\\SiteA\\Requests"></textarea>
+          <textarea id="requestStorePathCandidates" spellcheck="false" placeholder="I:\\FamilyBrowser\\SiteA\\Requests&#10;\\\\SERVER\\KKY\\FamilyBrowser\\SiteA\\Requests"></textarea>
 
           <label for="requestStoreEndpoint">Family request endpoint (optional)</label>
           <input id="requestStoreEndpoint" placeholder="https://internal.example.com/family-browser/requests">
@@ -477,17 +554,25 @@
 
           <div class="row">
             <div>
-              <label for="adminUsers">Admin users / keywords</label>
-              <input id="adminUsers" placeholder="KKY;Admin;BIM">
+              <label for="adminProfileKeywords">Admin profile keywords</label>
+              <input id="adminProfileKeywords" placeholder="KCIM;KKY;BIM">
+            </div>
+            <div>
+              <label for="adminUsers">Exact admin users</label>
+              <input id="adminUsers" placeholder="kim.kky;hong.gildong">
+            </div>
+          </div>
+
+          <div class="row">
+            <div>
+              <label for="readOnlyUsers">Read-only users / keywords</label>
+              <input id="readOnlyUsers" placeholder="Viewer;Guest">
             </div>
             <div>
               <label for="requestApproverUsers">Request approver users / keywords</label>
               <input id="requestApproverUsers" placeholder="Lead;Manager">
             </div>
           </div>
-
-          <label for="readOnlyUsers">Read-only users / keywords</label>
-          <input id="readOnlyUsers" placeholder="Viewer;Guest">
 
           <div class="actions">
             <button class="primary" id="build">Build JSON</button>
@@ -537,6 +622,7 @@
       var PASSWORD_SHA256 = '578647f84f744607d061c4da2b27f663946e15c7f12abbe0a2d2130ad56a7626';
       var DEFAULT_BOOTSTRAP_PATH = 'family-browser/bootstrap.json';
       var INDEX_PATH = 'family-browser/bootstrap-index.json';
+      var KKY_USER_ACCESS_PATH = 'kky-tool/user-access.json';
       var currentIndex = null;
 
       function byId(id) { return document.getElementById(id); }
@@ -608,6 +694,13 @@
       function splitLines(value) {
         return (value || '')
           .split(/\r?\n/)
+          .map(function (item) { return item.trim(); })
+          .filter(function (item) { return !!item; });
+      }
+
+      function splitPolicyList(value) {
+        return (value || '')
+          .split(/[\r\n,;]+/)
           .map(function (item) { return item.trim(); })
           .filter(function (item) { return !!item; });
       }
@@ -797,6 +890,7 @@
           standardMode: byId('standardMode').value,
           standardLibraries: standardLibraries,
           security: {
+            adminProfileKeywords: splitList(byId('adminProfileKeywords').value),
             adminUsers: splitList(byId('adminUsers').value),
             requestApproverUsers: splitList(byId('requestApproverUsers').value),
             readOnlyUsers: splitList(byId('readOnlyUsers').value)
@@ -814,7 +908,8 @@
         if (!bootstrap.requestStore.endpoint) delete bootstrap.requestStore.endpoint;
         if (!bootstrap.requestStore.path && !bootstrap.requestStore.endpoint && !bootstrap.requestStore.pathCandidates) delete bootstrap.requestStore;
         if (bootstrap.standardLibraries.length === 0) delete bootstrap.standardLibraries;
-        if (bootstrap.security.adminUsers.length === 0 &&
+        if (bootstrap.security.adminProfileKeywords.length === 0 &&
+            bootstrap.security.adminUsers.length === 0 &&
             bootstrap.security.requestApproverUsers.length === 0 &&
             bootstrap.security.readOnlyUsers.length === 0) {
           delete bootstrap.security;
@@ -848,6 +943,7 @@
         byId('requestStoreEndpoint').value = (data.requestStore && data.requestStore.endpoint) || '';
         byId('standardMode').value = data.standardMode || 'DisciplineSeparated';
         byId('standardLibraries').value = data.standardLibraries ? JSON.stringify(data.standardLibraries, null, 2) : '';
+        byId('adminProfileKeywords').value = data.security && data.security.adminProfileKeywords ? data.security.adminProfileKeywords.join('; ') : '';
         byId('adminUsers').value = data.security && data.security.adminUsers ? data.security.adminUsers.join('; ') : '';
         byId('requestApproverUsers').value = data.security && data.security.requestApproverUsers ? data.security.requestApproverUsers.join('; ') : '';
         byId('readOnlyUsers').value = data.security && data.security.readOnlyUsers ? data.security.readOnlyUsers.join('; ') : '';
@@ -949,6 +1045,26 @@
         };
       }
 
+      function kkyGithubTarget() {
+        var owner = byId('kkyGithubOwner').value.trim();
+        var repo = byId('kkyGithubRepo').value.trim();
+        var branch = byId('kkyGithubBranch').value.trim() || 'main';
+        var path = byId('kkyGithubPath').value.trim() || KKY_USER_ACCESS_PATH;
+        var token = byId('kkyGithubToken').value.trim();
+        if (!owner || !repo || !token) {
+          throw new Error('Owner, repository, and GitHub token are required to save.');
+        }
+
+        return {
+          owner: owner,
+          repo: repo,
+          branch: branch,
+          path: path,
+          token: token,
+          apiPath: 'https://api.github.com/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo) + '/contents/' + encodePath(path)
+        };
+      }
+
       function saveGithubContent(target, content, message) {
         var headers = githubHeaders(target.token);
 
@@ -1029,6 +1145,132 @@
           });
       }
 
+      function unlockKkyUsers() {
+        var value = byId('kkyUsersPassword').value || '';
+        sha256(value).then(function (hash) {
+          if (hash !== PASSWORD_SHA256) {
+            setStatus('kky-users-lock-status', 'Wrong password.', 'bad');
+            return;
+          }
+          byId('kky-users-lock').classList.add('hidden');
+          byId('kky-users-editor').classList.remove('hidden');
+          setStatus('kky-users-status', 'Unlocked. Current user-access.json will be loaded if it exists.', 'good');
+          loadKkyUsersCurrent();
+        }).catch(function (err) {
+          setStatus('kky-users-lock-status', err.message || String(err), 'bad');
+        });
+      }
+
+      function collectKkyUserAccess() {
+        var keywords = splitPolicyList(byId('kkyAllowedProfileKeywords').value);
+        var users = splitPolicyList(byId('kkyAllowedUsers').value);
+        if (keywords.length === 0 && users.length === 0) {
+          keywords = ['KCIM'];
+          byId('kkyAllowedProfileKeywords').value = 'KCIM';
+        }
+
+        return {
+          enabled: byId('kkyUsersEnabled').checked,
+          allowedProfileKeywords: keywords,
+          allowedUsers: users,
+          blockMessage: byId('kkyBlockMessage').value.trim() || '외부 사용자는 사용할 수 없습니다.',
+          updatedAtUtc: new Date().toISOString()
+        };
+      }
+
+      function fillKkyUserAccess(data) {
+        data = data || {};
+        byId('kkyUsersEnabled').checked = data.enabled !== false;
+        byId('kkyAllowedProfileKeywords').value = Array.isArray(data.allowedProfileKeywords) ? data.allowedProfileKeywords.join('\n') : 'KCIM';
+        byId('kkyAllowedUsers').value = Array.isArray(data.allowedUsers) ? data.allowedUsers.join('\n') : '';
+        byId('kkyBlockMessage').value = data.blockMessage || data.message || '외부 사용자는 사용할 수 없습니다.';
+        buildKkyUsersJson();
+      }
+
+      function buildKkyUsersJson() {
+        try {
+          var json = JSON.stringify(collectKkyUserAccess(), null, 2);
+          byId('kkyUsersPreview').textContent = json;
+          setStatus('kky-users-status', 'JSON preview updated.', 'good');
+          return json;
+        } catch (err) {
+          setStatus('kky-users-status', err.message || String(err), 'bad');
+          return '';
+        }
+      }
+
+      function loadKkyUsersCurrent() {
+        fetch(KKY_USER_ACCESS_PATH, { cache: 'no-store' })
+          .then(function (response) {
+            if (!response.ok) throw new Error(KKY_USER_ACCESS_PATH + ' was not found yet.');
+            return response.json();
+          })
+          .then(function (data) {
+            fillKkyUserAccess(data || {});
+            setStatus('kky-users-status', 'Loaded current ' + KKY_USER_ACCESS_PATH + '.', 'good');
+          })
+          .catch(function (err) {
+            fillKkyUserAccess({
+              enabled: true,
+              allowedProfileKeywords: ['KCIM'],
+              allowedUsers: [],
+              blockMessage: '외부 사용자는 사용할 수 없습니다.'
+            });
+            setStatus('kky-users-status', err.message + ' A default KCIM policy is ready.', 'warn');
+          });
+      }
+
+      function copyKkyUsersJson() {
+        var json = buildKkyUsersJson();
+        if (!json) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(json).then(function () {
+            setStatus('kky-users-status', 'Copied JSON to clipboard.', 'good');
+          }).catch(function () {
+            setStatus('kky-users-status', 'Clipboard copy failed. Select the preview text manually.', 'warn');
+          });
+        } else {
+          setStatus('kky-users-status', 'Clipboard API is unavailable. Select the preview text manually.', 'warn');
+        }
+      }
+
+      function downloadKkyUsersJson() {
+        var json = buildKkyUsersJson();
+        if (!json) return;
+        var blob = new Blob([json + '\n'], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'user-access.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setStatus('kky-users-status', 'Downloaded user-access.json. Upload it to /' + KKY_USER_ACCESS_PATH + '.', 'good');
+      }
+
+      function saveKkyUsersToGitHub() {
+        var json = buildKkyUsersJson();
+        if (!json) return;
+
+        var target;
+        try {
+          target = kkyGithubTarget();
+        } catch (err) {
+          setStatus('kky-users-status', err.message || String(err), 'bad');
+          return;
+        }
+
+        setStatus('kky-users-status', 'Saving user-access.json to GitHub...', '');
+        saveGithubContent(target, json, 'Update KKY Tool user access policy')
+          .then(function () {
+            setStatus('kky-users-status', 'Saved user-access.json. KKY Tool clients will follow this central policy.', 'good');
+          })
+          .catch(function (err) {
+            setStatus('kky-users-status', err.message || String(err), 'bad');
+          });
+      }
+
       function clearForm() {
         fillForm({
           refreshMinutes: 30,
@@ -1049,6 +1291,15 @@
       byId('password').addEventListener('keydown', function (ev) {
         if (ev.key === 'Enter') unlock();
       });
+      byId('kkyUsersUnlock').addEventListener('click', unlockKkyUsers);
+      byId('kkyUsersPassword').addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') unlockKkyUsers();
+      });
+      byId('kkyBuildUsers').addEventListener('click', buildKkyUsersJson);
+      byId('kkyCopyUsers').addEventListener('click', copyKkyUsersJson);
+      byId('kkyDownloadUsers').addEventListener('click', downloadKkyUsersJson);
+      byId('kkySaveUsersGithub').addEventListener('click', saveKkyUsersToGitHub);
+      byId('kkyLoadUsersCurrent').addEventListener('click', loadKkyUsersCurrent);
       byId('build').addEventListener('click', buildJson);
       byId('copy').addEventListener('click', copyJson);
       byId('download').addEventListener('click', downloadJson);
@@ -1064,6 +1315,15 @@
       populateProfileSelect(currentIndex);
       fillProfileMeta(currentIndex.profiles[0]);
       buildJson();
+      fillKkyUserAccess({
+        enabled: true,
+        allowedProfileKeywords: ['KCIM'],
+        allowedUsers: [],
+        blockMessage: '외부 사용자는 사용할 수 없습니다.'
+      });
+      if (window.location.hash === '#kky-users') {
+        switchTab('kky-users');
+      }
     })();
   </script>
 </body>

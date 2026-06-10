@@ -1,7 +1,7 @@
 ﻿{
-    "version":  "2.34",
-    "url":  "https://update.zerokky.com/KKY_Tool_Revit(2019,21,23,25,27)_v2.34.zip",
-    "publishedAt":  "2026-06-09",
-    "notes":  "외부 환경에서 사용 제한하는 기능 추가",
-    "installerUrl":  "https://update.zerokky.com/official/KKY_Tool_Revit(2019,21,23,25,27)_v2.34.exe"
+    "version":  "2.35",
+    "url":  "https://update.zerokky.com/KKY_Tool_Revit(2019,21,23,25,27)_v2.35.zip",
+    "publishedAt":  "2026-06-10",
+    "notes":  "외부 사용자 제한 정책을 홈페이지 중앙 관리로 변경",
+    "installerUrl":  "https://update.zerokky.com/official/KKY_Tool_Revit(2019,21,23,25,27)_v2.35.exe"
 }

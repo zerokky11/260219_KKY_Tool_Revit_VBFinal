@@ -5,6 +5,7 @@ Imports System
 Imports System.Collections.Generic
 Imports System.IO
 Imports System.Linq
+Imports System.Net
 Imports System.Security.Cryptography
 Imports System.Text
 Imports System.Web.Script.Serialization
@@ -14,6 +15,8 @@ Namespace Services
     Public NotInheritable Class KkyToolUserAccessService
         Private Const DefaultKeyword As String = "KCIM"
         Private Const DefaultAdminPassword As String = "KKYTOOL"
+        Private Const DefaultRemoteConfigUrl As String = "https://update.zerokky.com/kky-tool/user-access.json"
+
         Public Const DefaultBlockMessage As String = "외부 사용자는 사용할 수 없습니다."
 
         Private Shared ReadOnly Serializer As New JavaScriptSerializer()
@@ -22,7 +25,7 @@ Namespace Services
         End Sub
 
         Public Shared Function Evaluate(uiapp As UIApplication) As KkyToolUserAccessEvaluation
-            Dim config = LoadOrCreate()
+            Dim config = LoadEffectiveConfig()
             Dim userName = ResolveRevitUserName(uiapp)
             Dim allowed = IsUserAllowed(config, userName)
             Return New KkyToolUserAccessEvaluation With {
@@ -51,19 +54,36 @@ Namespace Services
             Return String.Empty
         End Function
 
+        Public Shared Function LoadEffectiveConfig() As KkyToolUserAccessConfig
+            Dim remote = TryLoadRemoteConfig()
+            If remote IsNot Nothing Then Return remote
+
+            Dim cached = TryLoadConfigFile(GetCachePath(), False)
+            If cached IsNot Nothing Then
+                cached.Source = "cache"
+                cached.SourceUrl = GetRemoteConfigUrl()
+                Return NormalizeConfig(cached)
+            End If
+
+            Dim local = TryLoadConfigFile(GetConfigPath(), False)
+            If local IsNot Nothing Then
+                local.Source = "local"
+                local.SourceUrl = GetRemoteConfigUrl()
+                Return NormalizeConfig(local)
+            End If
+
+            Dim fallback = CreateDefaultConfig()
+            fallback.Source = "default"
+            fallback.SourceUrl = GetRemoteConfigUrl()
+            Return fallback
+        End Function
+
         Public Shared Function LoadOrCreate() As KkyToolUserAccessConfig
-            Dim path = GetConfigPath()
-            Try
-                If File.Exists(path) Then
-                    Dim raw = File.ReadAllText(path, Encoding.UTF8)
-                    Dim config = Serializer.Deserialize(Of KkyToolUserAccessConfig)(raw)
-                    Return NormalizeConfig(config)
-                End If
-            Catch
-            End Try
+            Dim existing = TryLoadConfigFile(GetConfigPath(), False)
+            If existing IsNot Nothing Then Return existing
 
             Dim created = CreateDefaultConfig()
-            Save(created)
+            SaveConfigFile(GetConfigPath(), created)
             Return created
         End Function
 
@@ -77,7 +97,10 @@ Namespace Services
                 .message = eval.Message,
                 .authenticated = authenticated,
                 .requirePasswordChange = config.RequirePasswordChange,
-                .configPath = GetConfigPath(),
+                .configPath = GetRemoteConfigUrl(),
+                .cachePath = GetCachePath(),
+                .source = config.Source,
+                .sourceUrl = config.SourceUrl,
                 .allowedProfileKeywords = config.AllowedProfileKeywords.ToArray(),
                 .allowedUsers = config.AllowedUsers.ToArray()
             }
@@ -114,7 +137,7 @@ Namespace Services
             End If
 
             config.UpdatedAtUtc = DateTime.UtcNow.ToString("o")
-            Save(config)
+            SaveConfigFile(GetConfigPath(), config)
             Return config
         End Function
 
@@ -143,6 +166,7 @@ Namespace Services
                 .AllowedUsers = New List(Of String)(),
                 .BlockMessage = DefaultBlockMessage,
                 .RequirePasswordChange = True,
+                .SourceUrl = GetRemoteConfigUrl(),
                 .UpdatedAtUtc = DateTime.UtcNow.ToString("o")
             }
             SetPassword(config, DefaultAdminPassword)
@@ -157,6 +181,7 @@ Namespace Services
                 config.AllowedProfileKeywords.Add(DefaultKeyword)
             End If
             If String.IsNullOrWhiteSpace(config.BlockMessage) Then config.BlockMessage = DefaultBlockMessage
+            If String.IsNullOrWhiteSpace(config.SourceUrl) Then config.SourceUrl = GetRemoteConfigUrl()
             If String.IsNullOrWhiteSpace(config.AdminPasswordSalt) OrElse String.IsNullOrWhiteSpace(config.AdminPasswordHash) Then
                 SetPassword(config, DefaultAdminPassword)
                 config.RequirePasswordChange = True
@@ -219,20 +244,93 @@ Namespace Services
             Return diff = 0
         End Function
 
-        Private Shared Sub Save(config As KkyToolUserAccessConfig)
-            Dim path = GetConfigPath()
+        Private Shared Function TryLoadRemoteConfig() As KkyToolUserAccessConfig
+            Dim url = GetRemoteConfigUrl()
+            If String.IsNullOrWhiteSpace(url) Then Return Nothing
+
             Try
-                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path))
-                Dim json = Serializer.Serialize(NormalizeConfig(config))
-                File.WriteAllText(path, json, New UTF8Encoding(False))
+                Using wc As New TimeoutWebClient(5000)
+                    wc.Encoding = Encoding.UTF8
+                    wc.Headers(HttpRequestHeader.UserAgent) = "KKY_Tool_Revit/UserAccess"
+                    wc.Headers(HttpRequestHeader.CacheControl) = "no-cache"
+                    Dim raw = wc.DownloadString(url)
+                    Dim config = Serializer.Deserialize(Of KkyToolUserAccessConfig)(raw)
+                    config = NormalizeConfig(config)
+                    config.Source = "remote"
+                    config.SourceUrl = url
+                    SaveCache(config)
+                    Return config
+                End Using
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Function TryLoadConfigFile(path As String, createIfMissing As Boolean) As KkyToolUserAccessConfig
+            Try
+                If Not File.Exists(path) Then
+                    If Not createIfMissing Then Return Nothing
+                    Dim created = CreateDefaultConfig()
+                    SaveConfigFile(path, created)
+                    Return created
+                End If
+
+                Dim raw = File.ReadAllText(path, Encoding.UTF8)
+                Dim config = Serializer.Deserialize(Of KkyToolUserAccessConfig)(raw)
+                Return NormalizeConfig(config)
+            Catch
+                Return Nothing
+            End Try
+        End Function
+
+        Private Shared Sub SaveCache(config As KkyToolUserAccessConfig)
+            Try
+                config.CachedAtUtc = DateTime.UtcNow.ToString("o")
+                SaveConfigFile(GetCachePath(), config)
             Catch
             End Try
+        End Sub
+
+        Private Shared Sub SaveConfigFile(path As String, config As KkyToolUserAccessConfig)
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path))
+            Dim json = Serializer.Serialize(NormalizeConfig(config))
+            File.WriteAllText(path, json, New UTF8Encoding(False))
         End Sub
 
         Private Shared Function GetConfigPath() As String
             Dim root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
             Return Path.Combine(root, "KKY_Tool_Revit", "Security", "user-access.json")
         End Function
+
+        Private Shared Function GetCachePath() As String
+            Dim root = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
+            Return Path.Combine(root, "KKY_Tool_Revit", "Security", "user-access-cache.json")
+        End Function
+
+        Private Shared Function GetRemoteConfigUrl() As String
+            Try
+                Dim env = Environment.GetEnvironmentVariable("KKY_TOOL_USER_ACCESS_URL")
+                If Not String.IsNullOrWhiteSpace(env) Then Return env.Trim()
+            Catch
+            End Try
+            Return DefaultRemoteConfigUrl
+        End Function
+
+        Private NotInheritable Class TimeoutWebClient
+            Inherits WebClient
+
+            Private ReadOnly _timeoutMilliseconds As Integer
+
+            Public Sub New(timeoutMilliseconds As Integer)
+                _timeoutMilliseconds = timeoutMilliseconds
+            End Sub
+
+            Protected Overrides Function GetWebRequest(address As Uri) As WebRequest
+                Dim request = MyBase.GetWebRequest(address)
+                If request IsNot Nothing Then request.Timeout = _timeoutMilliseconds
+                Return request
+            End Function
+        End Class
     End Class
 
     Public Class KkyToolUserAccessEvaluation
@@ -251,5 +349,8 @@ Namespace Services
         Public Property AdminPasswordHash As String = String.Empty
         Public Property RequirePasswordChange As Boolean = True
         Public Property UpdatedAtUtc As String = String.Empty
+        Public Property CachedAtUtc As String = String.Empty
+        Public Property Source As String = String.Empty
+        Public Property SourceUrl As String = String.Empty
     End Class
 End Namespace
