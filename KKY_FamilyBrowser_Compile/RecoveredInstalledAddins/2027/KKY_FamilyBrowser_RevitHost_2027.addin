@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>KKY_FamilyBrowser_RevitHost_2027</Name>
+    <Assembly>C:\ProgramData\Autodesk\Revit\Addins\2027\KKY_FamilyBrowser\KKY_FamilyBrowser_RevitHost_2027.dll</Assembly>
+    <AddInId>8A0D0C84-8E3C-4A1B-B7D8-00C2CECB2027</AddInId>
+    <FullClassName>KKY_FamilyBrowser_RevitHost_2027.App</FullClassName>
+    <VendorId>KKY</VendorId>
+    <VendorDescription>KKY Family Browser isolated test host</VendorDescription>
+  </AddIn>
+</RevitAddIns>

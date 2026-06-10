@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <PropertyGroup>
+    <AssemblyName>KKY_FamilyBrowser_RevitHost</AssemblyName>
+    <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
+    <UseWindowsForms>True</UseWindowsForms>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup>
+    <LangVersion>14.0</LangVersion>
+    <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <CheckForOverflowUnderflow>False</CheckForOverflowUnderflow>
+  </PropertyGroup>
+  <PropertyGroup>
+    <RootNamespace />
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.css" />
+    <None Remove="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.js" />
+    <EmbeddedResource Include="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.css" LogicalName="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.css" />
+    <EmbeddedResource Include="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.js" LogicalName="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.js" />
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.VisualBasic" />
+    <Reference Include="RevitAPIUI">
+      <HintPath>..\Compile\2019addin\RevitAPIUI.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="RevitAPI">
+      <HintPath>..\Compile\2019addin\RevitAPI.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Core" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+  </ItemGroup>
+</Project>
