@@ -1,6 +1,6 @@
 # KKY Family Browser Button Audit
 
-Last updated: 2026-07-22 11:13 KST
+Last updated: 2026-07-22 11:23 KST
 
 ## Working Rule
 
@@ -4368,7 +4368,8 @@ Status: `Source/Stage/ProgramData/Installer Complete / Automated Regression Pass
 - Revit 2019/2021/2023/2025/2027 Release builds and Stage verification passed. Elevated ProgramData installation completed and installed verification passed for all five targets. Revit itself was not launched.
 - Official installer: `artifacts\family-browser\installers\KKY_FamilyBrowser_RevitHost(2019,21,23,25,27)_v1.0.1_official-20260722_Setup.exe`; SHA-256 `0183917680C19BD2626C58FD64BA820E1D2B8482DA77018A3B98019C0F637E5A`.
 - Mail package: `artifacts\family-browser\mail-packages\20260722_01.zip`; SHA-256 `3F55F1DE05AE1C0ABA2E3B49F0A698663FAE03C263F16C9F8FFAF1B29A9CCDA2`. Distribution audit passed at `artifacts\family-browser-distribution-audit\official-20260722`.
-- Homepage release repository commit: `b3ba54ad536c163144352186d423d8e4bb71772a`. The `1.0.1` feed and official installer were pushed to `main`; public GitHub Pages propagation was still pending when this entry was written and is verified separately before release close-out.
+- Homepage release repository commit: `b3ba54ad536c163144352186d423d8e4bb71772a`. GitHub Pages deployment `5548774534` completed successfully. The public feed returned `1.0.1`; the public installer returned `3,887,724` bytes with SHA-256 `0183917680C19BD2626C58FD64BA820E1D2B8482DA77018A3B98019C0F637E5A`; and the published homepage/script pair retained the enabled Family Browser feed-to-download binding.
+- Public download: `https://update.zerokky.com/Release/family-browser/official/KKY_FamilyBrowser_RevitHost(2019,21,23,25,27)_v1.0.1_Setup.exe`.
 
 #### Runtime Boundary
 
