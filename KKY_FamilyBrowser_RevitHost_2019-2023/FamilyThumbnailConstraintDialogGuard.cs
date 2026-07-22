@@ -33,13 +33,16 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 
 		public string Reason { get; }
 
-		public NativeFamilyScanDialog(IntPtr handle, string title, string body, NativeFamilyScanDialogAction action, string reason)
+		public List<NativeWindowButton> Buttons { get; }
+
+		public NativeFamilyScanDialog(IntPtr handle, string title, string body, NativeFamilyScanDialogAction action, string reason, IEnumerable<NativeWindowButton> buttons = null)
 		{
 			Handle = handle;
 			Title = title ?? string.Empty;
 			Body = body ?? string.Empty;
 			Action = action;
 			Reason = reason ?? string.Empty;
+			Buttons = (buttons ?? Enumerable.Empty<NativeWindowButton>()).Where([SpecialName] (NativeWindowButton x) => x != null).ToList();
 		}
 	}
 
@@ -131,19 +134,35 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		{
 			_uiApplication.DialogBoxShowing += HandleDialogBoxShowing;
 		}
-		_nativeDialogTimer = new Timer(HandleNativeDialogTimerTick, null, 250, 250);
+		_nativeDialogTimer = new Timer(HandleNativeDialogTimerTick, null, 150, 150);
 	}
 
 	public void SetCurrentFamily(string categoryName, string familyName)
 	{
-		_currentCategoryName = categoryName ?? string.Empty;
-		_currentFamilyName = familyName ?? string.Empty;
+		lock (_recordSyncRoot)
+		{
+			_currentCategoryName = categoryName ?? string.Empty;
+			_currentFamilyName = familyName ?? string.Empty;
+		}
 	}
 
 	public void ClearCurrentFamily()
 	{
-		_currentCategoryName = string.Empty;
-		_currentFamilyName = string.Empty;
+		lock (_recordSyncRoot)
+		{
+			_currentCategoryName = string.Empty;
+			_currentFamilyName = string.Empty;
+		}
+	}
+
+	private bool TryGetCurrentFamilyContext(out string categoryName, out string familyName)
+	{
+		lock (_recordSyncRoot)
+		{
+			categoryName = _currentCategoryName ?? string.Empty;
+			familyName = _currentFamilyName ?? string.Empty;
+		}
+		return !string.IsNullOrWhiteSpace(familyName);
 	}
 
 	public List<FamilyThumbnailAutoConfirmedDialogRecord> GetRecordsSince(int startIndex)
@@ -179,22 +198,36 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		{
 			return;
 		}
+		string currentCategoryName;
+		string currentFamilyName;
+		bool activeFamilyEditScope = TryGetCurrentFamilyContext(out currentCategoryName, out currentFamilyName);
 		string dialogText = CollectDialogText(e);
 		string reason = ResolveAutoConfirmReason(dialogText);
+		if (string.IsNullOrWhiteSpace(reason) && activeFamilyEditScope && IsOpeningNotCuttingAnythingText(dialogText))
+		{
+			reason = "OpeningNotCuttingAnything";
+		}
+		if (ShouldCancelDialog(reason))
+		{
+			// Delete/Remove dialogs must be decided from their real enabled buttons by the native timer.
+			return;
+		}
 		if (!string.IsNullOrWhiteSpace(reason))
 		{
 			string resultText = string.Empty;
-			resultText = ((!ShouldCancelDialog(reason)) ? TryOverrideDialogResult(e, new int[3] { 1, 1, 8 }, new string[3] { "IDOK(1)", "TaskDialogResult.Ok", "TaskDialogResult.Close" }) : TryOverrideDialogResult(e, new int[2] { 2, 2 }, new string[2] { "IDCANCEL(2)", "TaskDialogResult.Cancel" }));
+			resultText = TryOverrideDialogResult(e, new int[3] { 1, 1, 8 }, new string[3] { "IDOK(1)", "TaskDialogResult.Ok", "TaskDialogResult.Close" });
 			if (!string.IsNullOrWhiteSpace(resultText))
 			{
 				AddRecord(new FamilyThumbnailAutoConfirmedDialogRecord
 				{
 					ConfirmedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-					CategoryName = _currentCategoryName,
-					FamilyName = _currentFamilyName,
+					CategoryName = currentCategoryName,
+					FamilyName = currentFamilyName,
 					Reason = reason,
 					DialogText = dialogText,
-					OverrideResult = resultText
+					OverrideResult = resultText,
+					ActionTaken = "OK",
+					AvailableButtons = "DialogBoxShowingEventArgs"
 				});
 			}
 		}
@@ -231,7 +264,10 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		}
 		try
 		{
-			NativeFamilyScanDialog candidate = FindNativeFamilyScanDialog();
+			string currentCategoryName;
+			string currentFamilyName;
+			bool activeFamilyEditScope = TryGetCurrentFamilyContext(out currentCategoryName, out currentFamilyName);
+			NativeFamilyScanDialog candidate = FindNativeFamilyScanDialog(activeFamilyEditScope);
 			if (candidate != null && !(candidate.Handle == IntPtr.Zero) && (!(candidate.Handle == _lastNativeDialogHandle) || !((DateTime.UtcNow - _lastNativeDialogHandledAtUtc).TotalSeconds < 3.0)))
 			{
 				string clickedButtonText = string.Empty;
@@ -242,11 +278,13 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 					AddRecord(new FamilyThumbnailAutoConfirmedDialogRecord
 					{
 						ConfirmedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-						CategoryName = _currentCategoryName,
-						FamilyName = _currentFamilyName,
+						CategoryName = currentCategoryName,
+						FamilyName = currentFamilyName,
 						Reason = "NativeDialog:" + candidate.Reason,
 						DialogText = candidate.Title + Environment.NewLine + candidate.Body,
-						OverrideResult = "Win32Click:" + clickedButtonText
+						OverrideResult = "Win32Click:" + clickedButtonText,
+						ActionTaken = ((candidate.Action == NativeFamilyScanDialogAction.Cancel) ? "Cancel" : "OK"),
+						AvailableButtons = BuildNativeButtonSummary(candidate.Buttons)
 					});
 				}
 			}
@@ -267,10 +305,10 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 	{
 		List<string> values = new List<string>();
 		HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
-		AddDialogTextValue(values, seen, "EventType", ((object)e).GetType().FullName);
+		AddDialogTextValue(values, seen, "EventType", e.GetType().FullName);
 		try
 		{
-			string summary = ((object)e).ToString();
+			string summary = e.ToString();
 			if (!string.IsNullOrWhiteSpace(summary))
 			{
 				AddDialogTextValue(values, seen, "ToString", summary);
@@ -281,8 +319,8 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 			ProjectData.SetProjectError(projectError);
 			ProjectData.ClearProjectError();
 		}
-		AddDialogMemberValues(values, seen, ((object)e).GetType(), e, BindingFlags.Instance | BindingFlags.Public);
-		AddDialogMemberValues(values, seen, ((object)e).GetType(), e, BindingFlags.Instance | BindingFlags.NonPublic);
+		AddDialogMemberValues(values, seen, e.GetType(), e, BindingFlags.Instance | BindingFlags.Public);
+		AddDialogMemberValues(values, seen, e.GetType(), e, BindingFlags.Instance | BindingFlags.NonPublic);
 		return string.Join(Environment.NewLine, values);
 	}
 
@@ -453,6 +491,10 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		{
 			return "ConstraintParameterWarning";
 		}
+		if (IsDestructiveDeleteChoiceText(text))
+		{
+			return "DeleteInstanceOrType";
+		}
 		if (ContainsAll(text, "remove constraints") || ContainsAll(text, "delete constraints") || ContainsAll(text, "remove", "constraint") || ContainsAll(text, "delete", "constraint") || ContainsAny(text, "제거", "삭제"))
 		{
 			if (ContainsAny(text, "delete", "삭제"))
@@ -516,7 +558,7 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		{
 			return string.Empty;
 		}
-		if (ContainsAny(text, "remove constraints", "delete constraints", "구속 제거", "구속 삭제", "제약 제거", "제약 삭제") || (ContainsAny(text, "remove", "delete", "제거", "삭제") && ContainsAny(text, "constraint", "constraints", "구속", "제약")))
+		if (IsDestructiveDeleteChoiceText(text) || ContainsAny(text, "remove constraints", "delete constraints", "구속 제거", "구속 삭제", "제약 제거", "제약 삭제") || (ContainsAny(text, "remove", "delete", "제거", "삭제") && ContainsAny(text, "constraint", "constraints", "구속", "제약")))
 		{
 			return string.Empty;
 		}
@@ -525,22 +567,22 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 			return "ConstraintParameterWarning";
 		}
 		bool looksLikeRevitDialog = ContainsAny(text, "taskdialog", "dialogboxshowingeventargs", "dialogid", "messagebox", "dialog");
-		bool looksLikeWarning = ContainsAny(text, "warning", "warn", "docwarn", "경고", "caution");
-		bool looksLikeFamilyScanIssue = ContainsAny(text, "family", "families", "geometry", "constraint", "constraints", "parameter", "formula", "dimension", "패밀리", "형상", "기하", "구속", "제약", "매개변수", "치수");
+		bool looksLikeWarning = ContainsAny(text, "warning", "warn", "docwarn", "경고", "caution", "error", "failed", "cannot", "can not", "오류", "실패", "할 수 없습니다");
+		bool looksLikeFamilyScanIssue = ContainsAny(text, "family", "families", "geometry", "constraint", "constraints", "parameter", "formula", "dimension", "thumbnail", "preview", "image", "패밀리", "형상", "기하", "구속", "제약", "매개변수", "치수", "미리보기", "이미지");
 		if (looksLikeRevitDialog && looksLikeWarning && looksLikeFamilyScanIssue)
 		{
-			return "StandardFamilyScanWarning";
+			return "StandardFamilyScanOkDialog";
 		}
 		return string.Empty;
 	}
 
 	private static bool ShouldCancelDialog(string reason)
 	{
-		if (!string.Equals(reason, "RemoveConstraints", StringComparison.OrdinalIgnoreCase))
+		if (string.Equals(reason, "RemoveConstraints", StringComparison.OrdinalIgnoreCase) || string.Equals(reason, "DeleteInstanceOrType", StringComparison.OrdinalIgnoreCase))
 		{
-			return string.Equals(reason, "DeleteConstraints", StringComparison.OrdinalIgnoreCase);
+			return true;
 		}
-		return true;
+		return string.Equals(reason, "DeleteConstraints", StringComparison.OrdinalIgnoreCase);
 	}
 
 	private static bool IsGeometryConstraintWarningText(string text)
@@ -559,6 +601,15 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 			return false;
 		}
 		return ContainsAny(text, "remove constraints", "delete constraints") || (ContainsAny(text, "remove", "delete") && ContainsAny(text, "constraint", "constraints"));
+	}
+
+	private static bool IsDestructiveDeleteChoiceText(string text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return false;
+		}
+		return ContainsAny(text, "delete instance", "delete type", "delete instances", "delete types", "delete element", "delete elements", "remove instance", "remove type", "인스턴스 삭제", "타입 삭제", "유형 삭제", "요소 삭제") || (ContainsAny(text, "delete", "remove", "삭제", "제거") && ContainsAny(text, "instance", "instances", "type", "types", "element", "elements", "인스턴스", "타입", "유형", "요소"));
 	}
 
 	private static string NormalizeDialogText(string value)
@@ -615,7 +666,7 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		return ContainsAll(value, "dialogid", fragment) || ContainsAll(value, "taskdialog", fragment);
 	}
 
-	private static NativeFamilyScanDialog FindNativeFamilyScanDialog()
+	private static NativeFamilyScanDialog FindNativeFamilyScanDialog(bool activeFamilyEditScope)
 	{
 		NativeFamilyScanDialog nativeFamilyScanDialog = null;
 		int id = Process.GetCurrentProcess().Id;
@@ -641,12 +692,13 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 			}
 			string windowTextSafe = GetWindowTextSafe(hWnd);
 			string body = string.Join(Environment.NewLine, GetDescendantTexts(hWnd));
-			NativeFamilyScanDialogAction nativeFamilyScanDialogAction = ResolveNativeFamilyScanDialogAction(windowTextSafe, body);
+			List<NativeWindowButton> buttons = GetChildButtons(hWnd);
+			NativeFamilyScanDialogAction nativeFamilyScanDialogAction = ResolveNativeFamilyScanDialogAction(windowTextSafe, body, buttons, activeFamilyEditScope);
 			if (nativeFamilyScanDialogAction == NativeFamilyScanDialogAction.None)
 			{
 				return true;
 			}
-			nativeFamilyScanDialog = new NativeFamilyScanDialog(hWnd, windowTextSafe, body, nativeFamilyScanDialogAction, ResolveNativeFamilyScanDialogReason(nativeFamilyScanDialogAction, windowTextSafe, body));
+			nativeFamilyScanDialog = new NativeFamilyScanDialog(hWnd, windowTextSafe, body, nativeFamilyScanDialogAction, ResolveNativeFamilyScanDialogReason(nativeFamilyScanDialogAction, windowTextSafe, body), buttons);
 			return false;
 		}, IntPtr.Zero);
 		return nativeFamilyScanDialog;
@@ -678,7 +730,7 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		{
 			return true;
 		}
-		return ContainsAny(NormalizeDialogText(record.Reason ?? string.Empty), "removeconstraints", "deleteconstraints", "remove constraints", "delete constraints");
+		return ContainsAny(NormalizeDialogText(record.Reason ?? string.Empty), "removeconstraints", "deleteconstraints", "deleteinstanceortype", "remove constraints", "delete constraints", "delete instance", "delete type");
 	}
 
 	private static bool IsPotentialNativeDialogClass(string className)
@@ -690,38 +742,49 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		return string.Equals(className, "#32770", StringComparison.OrdinalIgnoreCase) || className.IndexOf("Dialog", StringComparison.OrdinalIgnoreCase) >= 0 || className.IndexOf("Task", StringComparison.OrdinalIgnoreCase) >= 0;
 	}
 
-	private static NativeFamilyScanDialogAction ResolveNativeFamilyScanDialogAction(string title, string body)
+	private static NativeFamilyScanDialogAction ResolveNativeFamilyScanDialogAction(string title, string body, IList<NativeWindowButton> buttons, bool activeFamilyEditScope)
 	{
 		string text = NormalizeDialogText((title ?? string.Empty) + "\n" + (body ?? string.Empty));
 		if (string.IsNullOrWhiteSpace(text))
 		{
 			return NativeFamilyScanDialogAction.None;
 		}
-		if (IsGeometryConstraintWarningText(text))
+		bool hasOkButton = (buttons ?? new List<NativeWindowButton>()).Any([SpecialName] (NativeWindowButton x) => x != null && x.Enabled && IsNativeOkButton(x));
+		bool hasCancelButton = (buttons ?? new List<NativeWindowButton>()).Any([SpecialName] (NativeWindowButton x) => x != null && x.Enabled && IsNativeCancelButton(x));
+		if (activeFamilyEditScope && hasOkButton)
 		{
 			return NativeFamilyScanDialogAction.Confirm;
 		}
-		if (ContainsAny(text, "remove constraints", "delete constraints", "제거", "삭제") || (ContainsAny(text, "remove", "delete") && ContainsAny(text, "constraint", "constraints")))
+		if (activeFamilyEditScope && hasCancelButton && !hasOkButton && HasOnlyDeleteOrCancelButtons(buttons))
 		{
 			return NativeFamilyScanDialogAction.Cancel;
 		}
-		if (ContainsAny(text, "constraints between geometry", "constraint geometry", "geometry constraint"))
+		if (IsDestructiveDeleteChoiceText(text) || ContainsAny(text, "remove constraints", "delete constraints", "제거", "삭제") || (ContainsAny(text, "remove", "delete") && ContainsAny(text, "constraint", "constraints")))
+		{
+			if (!hasOkButton && hasCancelButton)
+			{
+				return NativeFamilyScanDialogAction.Cancel;
+			}
+		}
+		if (hasOkButton && (IsGeometryConstraintWarningText(text) || LooksLikeStandardFamilyScanDialog(text)))
 		{
 			return NativeFamilyScanDialogAction.Confirm;
 		}
-		if (ContainsAny(text, "remove constraints", "delete constraints", "구속 제거", "구속 삭제", "제약 제거", "제약 삭제") || (ContainsAny(text, "remove", "delete", "제거", "삭제") && ContainsAny(text, "constraint", "constraints", "구속", "제약")))
+		if (ContainsAny(text, "constraints between geometry", "constraint geometry", "geometry constraint") && hasOkButton)
+		{
+			return NativeFamilyScanDialogAction.Confirm;
+		}
+		if ((ContainsAny(text, "remove constraints", "delete constraints", "구속 제거", "구속 삭제", "제약 제거", "제약 삭제") || (ContainsAny(text, "remove", "delete", "제거", "삭제") && ContainsAny(text, "constraint", "constraints", "구속", "제약"))) && !hasOkButton && hasCancelButton)
 		{
 			return NativeFamilyScanDialogAction.Cancel;
 		}
-		if (ContainsAny(text, "constraints between geometry", "constraint geometry", "geometry constraint", "형상 구속", "기하 구속", "형상 제약", "기하 제약"))
+		if (ContainsAny(text, "constraints between geometry", "constraint geometry", "geometry constraint", "형상 구속", "기하 구속", "형상 제약", "기하 제약") && hasOkButton)
 		{
 			return NativeFamilyScanDialogAction.Confirm;
 		}
-		bool looksLikeWarning = ContainsAny(text, "warning", "warn", "docwarn", "경고", "caution");
-		bool looksLikeFamilyScanIssue = ContainsAny(text, "family", "families", "geometry", "constraint", "constraints", "parameter", "formula", "dimension", "패밀리", "형상", "기하", "구속", "제약", "매개변수", "치수");
-		if (looksLikeWarning && looksLikeFamilyScanIssue)
+		if (hasCancelButton && !hasOkButton && HasOnlyDeleteOrCancelButtons(buttons))
 		{
-			return NativeFamilyScanDialogAction.Confirm;
+			return NativeFamilyScanDialogAction.Cancel;
 		}
 		return NativeFamilyScanDialogAction.None;
 	}
@@ -731,6 +794,10 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		string text = NormalizeDialogText((title ?? string.Empty) + "\n" + (body ?? string.Empty));
 		if (action == NativeFamilyScanDialogAction.Cancel)
 		{
+			if (IsDestructiveDeleteChoiceText(text))
+			{
+				return "DeleteInstanceOrType";
+			}
 			if (ContainsAny(text, "delete", "삭제"))
 			{
 				return "DeleteConstraints";
@@ -741,7 +808,43 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		{
 			return "ConstraintParameterWarning";
 		}
-		return "StandardFamilyScanWarning";
+		if (IsOpeningNotCuttingAnythingText(text))
+		{
+			return "OpeningNotCuttingAnything";
+		}
+		return "StandardFamilyScanOkDialog";
+	}
+
+	public static string ResolveFamilyEditDialogActionForAudit(string title, string body, IEnumerable<string> enabledButtonLabels, bool activeFamilyEditScope)
+	{
+		List<NativeWindowButton> buttons = new List<NativeWindowButton>();
+		int nextControlId = 100;
+		foreach (string rawLabel in enabledButtonLabels ?? Enumerable.Empty<string>())
+		{
+			string label = rawLabel ?? string.Empty;
+			bool enabled = true;
+			int explicitControlId = 0;
+			if (label.StartsWith("disabled:", StringComparison.OrdinalIgnoreCase))
+			{
+				enabled = false;
+				label = label.Substring("disabled:".Length);
+			}
+			if (label.StartsWith("idok:", StringComparison.OrdinalIgnoreCase))
+			{
+				explicitControlId = IDOK;
+				label = label.Substring("idok:".Length);
+			}
+			else if (label.StartsWith("idcancel:", StringComparison.OrdinalIgnoreCase))
+			{
+				explicitControlId = IDCANCEL;
+				label = label.Substring("idcancel:".Length);
+			}
+			int controlId = explicitControlId != 0 ? explicitControlId : (IsNativeOkButtonLabel(label) ? IDOK : (IsNativeCancelButtonLabel(label) ? IDCANCEL : nextControlId++));
+			buttons.Add(new NativeWindowButton(IntPtr.Zero, label, enabled, controlId));
+		}
+		NativeFamilyScanDialogAction action = ResolveNativeFamilyScanDialogAction(title, body, buttons, activeFamilyEditScope);
+		string reason = action == NativeFamilyScanDialogAction.None ? string.Empty : ResolveNativeFamilyScanDialogReason(action, title, body);
+		return action.ToString() + "|" + reason;
 	}
 
 	private static bool TryClickNativeDialogAction(NativeFamilyScanDialog dialog, ref string clickedButtonText)
@@ -751,26 +854,19 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		{
 			return false;
 		}
-		List<NativeWindowButton> buttons = GetChildButtons(dialog.Handle);
+		List<NativeWindowButton> buttons = ((dialog.Buttons != null && dialog.Buttons.Count > 0) ? dialog.Buttons : GetChildButtons(dialog.Handle));
 		if (buttons.Count == 0)
 		{
 			return false;
 		}
 		NativeWindowButton okButton = buttons.FirstOrDefault([SpecialName] (NativeWindowButton x) => x.Enabled && IsNativeOkButton(x));
 		NativeWindowButton cancelButton = buttons.FirstOrDefault([SpecialName] (NativeWindowButton x) => x.Enabled && IsNativeCancelButton(x));
-		string text = NormalizeDialogText((dialog.Title ?? string.Empty) + "\n" + (dialog.Body ?? string.Empty));
-		bool geometryWarning = IsGeometryConstraintWarningText(text);
-		bool removeOrDeleteChoice = HasRemoveOrDeleteConstraintChoice(text);
 		NativeWindowButton button = null;
 		if (dialog.Action == NativeFamilyScanDialogAction.Confirm)
 		{
 			if (okButton != null && okButton.Handle != IntPtr.Zero)
 			{
 				button = okButton;
-			}
-			else if (geometryWarning && removeOrDeleteChoice && cancelButton != null && cancelButton.Handle != IntPtr.Zero)
-			{
-				button = cancelButton;
 			}
 		}
 		else if (dialog.Action == NativeFamilyScanDialogAction.Cancel && cancelButton != null && cancelButton.Handle != IntPtr.Zero)
@@ -784,12 +880,6 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 				clickedButtonText = "IDCANCEL";
 				SendMessage(dialog.Handle, 273, new IntPtr(2), IntPtr.Zero);
 				SendMessage(dialog.Handle, 16, IntPtr.Zero, IntPtr.Zero);
-				return true;
-			}
-			if (dialog.Action == NativeFamilyScanDialogAction.Confirm)
-			{
-				clickedButtonText = "IDOK";
-				SendMessage(dialog.Handle, 273, new IntPtr(1), IntPtr.Zero);
 				return true;
 			}
 			return false;
@@ -824,7 +914,15 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		{
 			return false;
 		}
-		return button.ControlId == 1 || IsNativeOkButtonLabel(button.Text) || string.Equals(NormalizeDialogText(button.Text).Trim(), "확인", StringComparison.OrdinalIgnoreCase) || ContainsAny(NormalizeDialogText(button.Text), "계속");
+		if (IsNativeDeleteButtonLabel(button.Text))
+		{
+			return false;
+		}
+		if (IsNativeOkButtonLabel(button.Text) || string.Equals(NormalizeDialogText(button.Text).Trim(), "확인", StringComparison.OrdinalIgnoreCase) || ContainsAny(NormalizeDialogText(button.Text), "계속"))
+		{
+			return true;
+		}
+		return button.ControlId == IDOK && string.IsNullOrWhiteSpace(button.Text);
 	}
 
 	private static bool IsNativeOkButtonLabel(string text)
@@ -838,7 +936,63 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 		{
 			return false;
 		}
-		return string.Equals(normalized, "ok", StringComparison.OrdinalIgnoreCase) || string.Equals(normalized, "확인", StringComparison.OrdinalIgnoreCase) || ContainsAny(normalized, "continue", "proceed", "계속");
+		return string.Equals(normalized, "ok", StringComparison.OrdinalIgnoreCase) || string.Equals(normalized, "확인", StringComparison.OrdinalIgnoreCase) || ContainsAny(normalized, "confirm", "continue", "proceed", "계속");
+	}
+
+	private static bool IsOpeningNotCuttingAnythingText(string text)
+	{
+		return ContainsAll(NormalizeDialogText(text), "opening", "not", "cutting", "anything");
+	}
+
+	private static bool IsNativeDeleteButtonLabel(string text)
+	{
+		string normalized = NormalizeDialogText(text).Replace("&", string.Empty).Trim();
+		if (string.IsNullOrWhiteSpace(normalized))
+		{
+			return false;
+		}
+		return ContainsAny(normalized, "delete instance", "delete type", "delete instances", "delete types", "delete constraints", "remove constraints", "delete", "remove", "삭제", "제거");
+	}
+
+	private static bool HasOnlyDeleteOrCancelButtons(IList<NativeWindowButton> buttons)
+	{
+		List<NativeWindowButton> enabledButtons = (buttons ?? new List<NativeWindowButton>()).Where([SpecialName] (NativeWindowButton x) => x != null && x.Enabled).ToList();
+		if (enabledButtons.Count == 0)
+		{
+			return false;
+		}
+		bool hasCancel = enabledButtons.Any([SpecialName] (NativeWindowButton x) => IsNativeCancelButton(x));
+		bool hasDelete = enabledButtons.Any([SpecialName] (NativeWindowButton x) => IsNativeDeleteButtonLabel(x.Text));
+		if (!hasCancel || !hasDelete)
+		{
+			return false;
+		}
+		return enabledButtons.All([SpecialName] (NativeWindowButton x) => IsNativeCancelButton(x) || IsNativeDeleteButtonLabel(x.Text));
+	}
+
+	private static bool LooksLikeStandardFamilyScanDialog(string text)
+	{
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return false;
+		}
+		if (IsDestructiveDeleteChoiceText(text) || HasRemoveOrDeleteConstraintChoice(text))
+		{
+			return false;
+		}
+		bool looksLikeWarning = ContainsAny(text, "warning", "warn", "docwarn", "경고", "caution", "error", "failed", "cannot", "can not", "오류", "실패", "할 수 없습니다");
+		bool looksLikeFamilyScanIssue = ContainsAny(text, "family", "families", "geometry", "constraint", "constraints", "parameter", "formula", "dimension", "thumbnail", "preview", "image", "패밀리", "형상", "기하", "구속", "제약", "매개변수", "치수", "미리보기", "이미지");
+		return looksLikeWarning && looksLikeFamilyScanIssue;
+	}
+
+	private static string BuildNativeButtonSummary(IEnumerable<NativeWindowButton> buttons)
+	{
+		List<string> parts = new List<string>();
+		foreach (NativeWindowButton button in (buttons ?? Enumerable.Empty<NativeWindowButton>()).Where([SpecialName] (NativeWindowButton x) => x != null))
+		{
+			parts.Add((button.Enabled ? "enabled" : "disabled") + ":" + button.ControlId.ToString(CultureInfo.InvariantCulture) + ":" + (string.IsNullOrWhiteSpace(button.Text) ? "(blank)" : button.Text.Trim()));
+		}
+		return string.Join(" | ", parts);
 	}
 
 	private static List<string> GetDescendantTexts(IntPtr parentHandle)
@@ -865,7 +1019,7 @@ public sealed class FamilyThumbnailConstraintDialogGuard : IDisposable
 			{
 				return true;
 			}
-			if (!string.Equals(GetWindowClassName(childHandle), "Button", StringComparison.OrdinalIgnoreCase))
+			if (GetWindowClassName(childHandle).IndexOf("Button", StringComparison.OrdinalIgnoreCase) < 0)
 			{
 				return true;
 			}

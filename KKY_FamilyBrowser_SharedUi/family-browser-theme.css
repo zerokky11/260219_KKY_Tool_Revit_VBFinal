@@ -1,0 +1,1860 @@
+/* KKY Tool aligned Family Browser theme. IE11-safe resolved colors only. */
+html,
+body {
+  letter-spacing: 0;
+}
+
+body.theme-light {
+  background: #f5f7fb !important;
+  color: #111827 !important;
+}
+
+body.theme-dark {
+  background: #0b1220 !important;
+  color: #f4f7fb !important;
+}
+
+/* Product header */
+.theme-light .top,
+.theme-light .fb-dialog-head,
+.theme-light .detached-top {
+  background: #ffffff !important;
+  border-color: #d6dde9 !important;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, .08) !important;
+}
+
+.theme-dark .top,
+.theme-dark .fb-dialog-head,
+.theme-dark .detached-top {
+  background: #0f1a2b !important;
+  border-color: #334766 !important;
+  box-shadow: 0 10px 28px rgba(2, 6, 20, .46) !important;
+}
+
+body.theme-light.fb-shell-20260507 .top {
+  background: #ffffff !important;
+  border-color: #d6dde9 !important;
+}
+
+body.theme-dark.fb-shell-20260507 .top {
+  background: #0f1a2b !important;
+  border-color: #334766 !important;
+}
+
+body.theme-light.fb-shell-20260507 .brand-lockup .title {
+  color: #111827 !important;
+}
+
+body.theme-dark.fb-shell-20260507 .brand-lockup .title {
+  color: #f4f7fb !important;
+}
+
+body.theme-light.fb-shell-20260507 .brand-lockup .kicker {
+  color: #2f6bff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .brand-lockup .kicker {
+  color: #62c8ff !important;
+}
+
+.top:before,
+.detached-top:before {
+  background: #2f6bff !important;
+}
+
+.theme-dark .top:before,
+.theme-dark .detached-top:before {
+  background: #2fb7ff !important;
+}
+
+.brand-lockup {
+  position: absolute;
+  left: 228px;
+  top: 18px;
+  height: 58px;
+  width: 540px;
+  padding-left: 52px;
+  box-sizing: border-box;
+  overflow: visible;
+  z-index: 3;
+}
+
+body.fb-shell-20260507 .brand-lockup .kicker,
+body.fb-shell-20260507 .brand-lockup .title {
+  display: block !important;
+  position: static !important;
+  left: auto !important;
+  top: auto !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: none !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+body.fb-shell-20260507 .brand-lockup .title {
+  font-size: 24px !important;
+  line-height: 1.15 !important;
+  margin: 3px 0 0 0 !important;
+}
+
+.brand-mark {
+  position: absolute;
+  left: 0;
+  top: 3px;
+  width: 38px;
+  height: 38px;
+  line-height: 38px;
+  text-align: center;
+  border: 1px solid #d6dde9;
+  border-radius: 8px;
+  background: #f1f4fa;
+  overflow: hidden;
+}
+
+.brand-mark img {
+  width: 24px;
+  height: 24px;
+  margin-top: 7px;
+  border: 0;
+}
+
+.theme-dark .brand-mark {
+  background: #121c33;
+  border-color: #3a4f72;
+}
+
+.brand-lockup .kicker,
+.theme-light .kicker,
+.theme-light .detached-kicker {
+  color: #2f6bff !important;
+}
+
+.theme-dark .brand-lockup .kicker,
+.theme-dark .kicker,
+.theme-dark .detached-kicker {
+  color: #2fb7ff !important;
+}
+
+.theme-light .title,
+.theme-light .detached-top h1,
+.theme-light .detail-name,
+.theme-light .section,
+.theme-light h1,
+.theme-light h2,
+.theme-light h3 {
+  color: #111827 !important;
+}
+
+.theme-dark .title,
+.theme-dark .detached-top h1,
+.theme-dark .detail-name,
+.theme-dark .section,
+.theme-dark h1,
+.theme-dark h2,
+.theme-dark h3 {
+  color: #f4f7fb !important;
+}
+
+.theme-light .sub,
+.theme-light .project-context,
+.theme-light .project-status,
+.theme-light .hint,
+.theme-light .step-note,
+.theme-light .path,
+.theme-light .empty span,
+.theme-light .footer-note {
+  color: #64748b !important;
+}
+
+.theme-dark .sub,
+.theme-dark .project-context,
+.theme-dark .project-status,
+.theme-dark .hint,
+.theme-dark .step-note,
+.theme-dark .path,
+.theme-dark .empty span,
+.theme-dark .footer-note {
+  color: #9fb0cf !important;
+}
+
+.theme-light .project-label {
+  color: #2f6bff !important;
+}
+
+.theme-dark .project-label {
+  color: #62c8ff !important;
+}
+
+/* Top controls and semantic status */
+.top-actions {
+  white-space: nowrap;
+}
+
+.theme-light a.pill.action,
+.theme-light span.pill.action {
+  background: #ffffff !important;
+  border-color: #c1ccdf !important;
+  border-left-color: #2f6bff !important;
+  color: #1f2937 !important;
+  box-shadow: 0 2px 7px rgba(17, 24, 39, .07) !important;
+}
+
+.theme-light a.pill.action:hover,
+.theme-light a.pill.action.primary,
+.theme-light a.pill.action.active {
+  background: #2f6bff !important;
+  border-color: #2f6bff !important;
+  color: #ffffff !important;
+}
+
+.theme-dark a.pill.action,
+.theme-dark span.pill.action {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+  border-left-color: #2fb7ff !important;
+  color: #dbe7ff !important;
+  box-shadow: 0 3px 10px rgba(2, 6, 20, .30) !important;
+}
+
+.theme-dark a.pill.action:hover,
+.theme-dark a.pill.action.primary,
+.theme-dark a.pill.action.active {
+  background: #2fb7ff !important;
+  border-color: #2fb7ff !important;
+  color: #06121f !important;
+}
+
+.theme-light .pill.info {
+  background: #eaf2ff !important;
+  border-color: #b8cffc !important;
+  border-left-color: #2f6bff !important;
+  color: #1f55d1 !important;
+}
+
+.theme-dark .pill.info {
+  background: #122743 !important;
+  border-color: #315779 !important;
+  border-left-color: #2fb7ff !important;
+  color: #a9e3ff !important;
+}
+
+.theme-light .pill.good,
+.theme-light .badge.good,
+.theme-light .detail-status-badge.good {
+  background: #eaf8ef !important;
+  border-color: #aadbb9 !important;
+  color: #166534 !important;
+}
+
+.theme-dark .pill.good,
+.theme-dark .badge.good,
+.theme-dark .detail-status-badge.good {
+  background: #123125 !important;
+  border-color: #2f6d50 !important;
+  color: #7ee2ad !important;
+}
+
+.theme-light .pill.warn,
+.theme-light .badge.warn,
+.theme-light .detail-status-badge.warn {
+  background: #fff7e6 !important;
+  border-color: #eccf8d !important;
+  color: #92400e !important;
+}
+
+.theme-dark .pill.warn,
+.theme-dark .badge.warn,
+.theme-dark .detail-status-badge.warn {
+  background: #332814 !important;
+  border-color: #765c24 !important;
+  color: #ffd36a !important;
+}
+
+.theme-light .pill.bad,
+.theme-light .badge.bad,
+.theme-light .detail-status-badge.bad {
+  background: #fff0f0 !important;
+  border-color: #efb3b3 !important;
+  color: #b42318 !important;
+}
+
+.theme-dark .pill.bad,
+.theme-dark .badge.bad,
+.theme-dark .detail-status-badge.bad {
+  background: #371b24 !important;
+  border-color: #743949 !important;
+  color: #ff9aa9 !important;
+}
+
+/* Left navigation */
+.toolbar.fb-nav-10,
+.theme-light .toolbar.fb-nav-10,
+.theme-dark .toolbar.fb-nav-10 {
+  background: #0b1426 !important;
+  border-color: #1d2d48 !important;
+  box-shadow: 7px 0 22px rgba(2, 6, 20, .18) !important;
+}
+
+body.fb-shell-20260507 .toolbar.fb-nav-10 {
+  background: #0b1426 !important;
+  border-color: #1d2d48 !important;
+  box-shadow: 7px 0 22px rgba(2, 6, 20, .18) !important;
+}
+
+.toolbar .rail-kicker {
+  color: #7bbce8 !important;
+}
+
+.toolbar .rail-title {
+  color: #7f94b8 !important;
+  border-color: #263b5e !important;
+}
+
+.toolbar a.tool {
+  background: transparent !important;
+  border-color: transparent !important;
+  border-left: 4px solid transparent !important;
+  color: #d0dcff !important;
+  box-shadow: none !important;
+}
+
+body.fb-shell-20260507 .toolbar.fb-nav-10 a.tool {
+  background: transparent !important;
+  border-color: transparent !important;
+  border-left: 4px solid transparent !important;
+  color: #c8d6ee !important;
+  box-shadow: none !important;
+}
+
+.toolbar a.tool:hover {
+  background: #15213a !important;
+  border-color: #263b5e !important;
+  border-left-color: #2fb7ff !important;
+  color: #ffffff !important;
+}
+
+.toolbar a.tool.primary,
+.toolbar a.tool.active {
+  background: #182746 !important;
+  border-color: #314b76 !important;
+  border-left-color: #2fb7ff !important;
+  color: #ffffff !important;
+}
+
+body.fb-shell-20260507 .toolbar.fb-nav-10 a.tool:hover,
+body.fb-shell-20260507 .toolbar.fb-nav-10 a.tool.primary,
+body.fb-shell-20260507 .toolbar.fb-nav-10 a.tool.active {
+  background: #182746 !important;
+  border-color: #314b76 !important;
+  border-left-color: #2fb7ff !important;
+  color: #ffffff !important;
+}
+
+.toolbar a.tool.disabled {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: #607293 !important;
+}
+
+/* Main surfaces */
+.theme-light .layout {
+  background: #f5f7fb !important;
+}
+
+.theme-dark .layout {
+  background: #0b1220 !important;
+}
+
+.theme-light .center,
+.theme-light .search,
+.theme-light .pane-head,
+.theme-light .statusbar,
+.theme-light .request-pane-scroll,
+.theme-light .family-list-panel,
+.theme-light .tablewrap,
+.theme-light .family-tablewrap,
+.theme-light .detached-content {
+  background: #ffffff !important;
+  border-color: #d6dde9 !important;
+  color: #111827 !important;
+}
+
+.theme-dark .center,
+.theme-dark .search,
+.theme-dark .pane-head,
+.theme-dark .statusbar,
+.theme-dark .request-pane-scroll,
+.theme-dark .family-list-panel,
+.theme-dark .tablewrap,
+.theme-dark .family-tablewrap,
+.theme-dark .detached-content {
+  background: #0f1a2b !important;
+  border-color: #334766 !important;
+  color: #f4f7fb !important;
+}
+
+.theme-light .center {
+  box-shadow: 0 12px 30px rgba(17, 24, 39, .08) !important;
+}
+
+.theme-dark .center {
+  box-shadow: 0 14px 34px rgba(2, 6, 20, .46) !important;
+}
+
+.theme-light .family-tree-panel {
+  background: #f1f4fa !important;
+  border-color: #d6dde9 !important;
+}
+
+.theme-dark .family-tree-panel {
+  background: #0b1426 !important;
+  border-color: #334766 !important;
+}
+
+.theme-light .tree-title,
+.theme-light .tree-node,
+.theme-light .kind-label,
+.theme-light .discipline-label {
+  color: #1f2937 !important;
+}
+
+.theme-dark .tree-title,
+.theme-dark .tree-node,
+.theme-dark .kind-label,
+.theme-dark .discipline-label {
+  color: #d0dcff !important;
+}
+
+.theme-light a.tree-node:hover,
+.theme-light a.tree-node.active {
+  background: #eaf2ff !important;
+  border-color: #9dbbf9 !important;
+  color: #1f55d1 !important;
+}
+
+.theme-dark a.tree-node:hover,
+.theme-dark a.tree-node.active {
+  background: #182746 !important;
+  border-color: #3b6393 !important;
+  color: #7fd4ff !important;
+}
+
+/* Inputs, controls, filters */
+.theme-light input,
+.theme-light select,
+.theme-light textarea,
+.theme-light .filter-input,
+.theme-light #searchBox {
+  background: #ffffff !important;
+  border-color: #c1ccdf !important;
+  color: #111827 !important;
+}
+
+.theme-dark input,
+.theme-dark select,
+.theme-dark textarea,
+.theme-dark .filter-input,
+.theme-dark #searchBox {
+  background: #111b2f !important;
+  border-color: #405477 !important;
+  color: #f4f7fb !important;
+}
+
+.theme-dark input::-ms-input-placeholder,
+.theme-dark textarea::-ms-input-placeholder {
+  color: #8397ba !important;
+}
+
+.theme-light a.filter,
+.theme-light .chip,
+.theme-light .selector a,
+.theme-light .inline-status-filter,
+.theme-light .audit-target-chip,
+.theme-light .discipline-chip,
+.theme-light .admin-target-chip {
+  background: #ffffff !important;
+  border-color: #cbd5e3 !important;
+  color: #374151 !important;
+}
+
+.theme-dark a.filter,
+.theme-dark .chip,
+.theme-dark .selector a,
+.theme-dark .inline-status-filter,
+.theme-dark .audit-target-chip,
+.theme-dark .discipline-chip,
+.theme-dark .admin-target-chip {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+  color: #d0dcff !important;
+}
+
+.theme-light a.filter:hover,
+.theme-light a.filter.active,
+.theme-light .selector a.active,
+.theme-light .inline-status-filter.active,
+.theme-light .audit-target-chip.active,
+.theme-light .discipline-chip.active,
+.theme-light .admin-target-chip.active {
+  background: #2f6bff !important;
+  border-color: #2f6bff !important;
+  color: #ffffff !important;
+}
+
+.theme-dark a.filter:hover,
+.theme-dark a.filter.active,
+.theme-dark .selector a.active,
+.theme-dark .inline-status-filter.active,
+.theme-dark .audit-target-chip.active,
+.theme-dark .discipline-chip.active,
+.theme-dark .admin-target-chip.active {
+  background: #2fb7ff !important;
+  border-color: #2fb7ff !important;
+  color: #06121f !important;
+}
+
+.theme-light a.tool:not(.primary),
+.theme-light span.tool:not(.primary),
+.theme-light .btn,
+.theme-light button {
+  background: #ffffff !important;
+  border-color: #c1ccdf !important;
+  color: #1f2937 !important;
+}
+
+.theme-dark a.tool:not(.primary),
+.theme-dark span.tool:not(.primary),
+.theme-dark .btn,
+.theme-dark button {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+  color: #e4ecff !important;
+}
+
+.theme-light a.tool.primary,
+.theme-light .btn.primary,
+.theme-light button.primary,
+.theme-light .run.primary {
+  background: #2f6bff !important;
+  border-color: #2f6bff !important;
+  color: #ffffff !important;
+}
+
+.theme-dark a.tool.primary,
+.theme-dark .btn.primary,
+.theme-dark button.primary,
+.theme-dark .run.primary {
+  background: #2fb7ff !important;
+  border-color: #2fb7ff !important;
+  color: #06121f !important;
+}
+
+.theme-light .disabled,
+.theme-light [disabled] {
+  background: #eef2f7 !important;
+  border-color: #d6dde9 !important;
+  color: #94a3b8 !important;
+}
+
+.theme-dark .disabled,
+.theme-dark [disabled] {
+  background: #172238 !important;
+  border-color: #2d3e5e !important;
+  color: #6f83a8 !important;
+}
+
+/* Tables */
+.theme-light table,
+.theme-light td {
+  background-color: #ffffff !important;
+  border-color: #e3e8f0 !important;
+  color: #1f2937 !important;
+}
+
+.theme-light th,
+.theme-light .fixed-table-head {
+  background-color: #eef4ff !important;
+  border-color: #cbd5e3 !important;
+  color: #374151 !important;
+}
+
+.theme-dark table,
+.theme-dark td {
+  background-color: #0f1a2b !important;
+  border-color: #253754 !important;
+  color: #e4ecff !important;
+}
+
+.theme-dark th,
+.theme-dark .fixed-table-head {
+  background-color: #17243b !important;
+  border-color: #334766 !important;
+  color: #d0dcff !important;
+}
+
+.theme-light tr.data:hover td,
+.theme-light tr.data.selected td,
+.theme-light tr.selected td {
+  background: #edf4ff !important;
+}
+
+.theme-dark tr.data:hover td,
+.theme-dark tr.data.selected td,
+.theme-dark tr.selected td {
+  background: #182746 !important;
+}
+
+/* Cards, workflow sections, empty states */
+.theme-light .admin-box,
+.theme-light .summary-card,
+.theme-light .discipline-card,
+.theme-light .settings-action-group,
+.theme-light .standard-rvt-manager-panel,
+.theme-light .request-context,
+.theme-light .request-status,
+.theme-light .detail-block,
+.theme-light .detail-kv,
+.theme-light .home-hero,
+.theme-light .home-panel,
+.theme-light .home-stat,
+.theme-light .flow-card,
+.theme-light .action-card,
+.theme-light .card,
+.theme-light .section-card,
+.theme-light .simple-card,
+.theme-light .diagnostic-card {
+  background: #ffffff !important;
+  border-color: #d6dde9 !important;
+  color: #111827 !important;
+  box-shadow: 0 5px 16px rgba(17, 24, 39, .05) !important;
+}
+
+.theme-dark .admin-box,
+.theme-dark .summary-card,
+.theme-dark .discipline-card,
+.theme-dark .settings-action-group,
+.theme-dark .standard-rvt-manager-panel,
+.theme-dark .request-context,
+.theme-dark .request-status,
+.theme-dark .detail-block,
+.theme-dark .detail-kv,
+.theme-dark .home-hero,
+.theme-dark .home-panel,
+.theme-dark .home-stat,
+.theme-dark .flow-card,
+.theme-dark .action-card,
+.theme-dark .card,
+.theme-dark .section-card,
+.theme-dark .simple-card,
+.theme-dark .diagnostic-card {
+  background: #121c33 !important;
+  border-color: #334766 !important;
+  color: #f4f7fb !important;
+  box-shadow: 0 7px 20px rgba(2, 6, 20, .28) !important;
+}
+
+.theme-light .admin-note,
+.theme-light .request-notice,
+.theme-light .setup-callout,
+.theme-light .info-band {
+  background: #eef5ff !important;
+  border-color: #c7d8fa !important;
+  color: #374151 !important;
+}
+
+.theme-dark .admin-note,
+.theme-dark .request-notice,
+.theme-dark .setup-callout,
+.theme-dark .info-band {
+  background: #13243d !important;
+  border-color: #345274 !important;
+  color: #d0dcff !important;
+}
+
+.theme-light .empty {
+  background: #f8fbff !important;
+  border-color: #d6dde9 !important;
+  color: #374151 !important;
+}
+
+.theme-dark .empty {
+  background: #101a2d !important;
+  border-color: #334766 !important;
+  color: #d0dcff !important;
+}
+
+/* Detail, preview, and modal surfaces */
+.theme-light .preview,
+.theme-dark .preview,
+.theme-light .preview-image-stage,
+.theme-dark .preview-image-stage,
+.theme-light .preview-modal-stage,
+.theme-dark .preview-modal-stage {
+  background: #f7f9fc !important;
+  border-color: #cbd5e3 !important;
+  color: #64748b !important;
+}
+
+.theme-light .preview-modal,
+.theme-light .filter-dialog,
+.theme-light .parameter-type-panel,
+.theme-light .family-type-panel,
+.theme-light .nested-family-panel {
+  background: #ffffff !important;
+  border-color: #cbd5e3 !important;
+  color: #111827 !important;
+}
+
+.theme-dark .preview-modal,
+.theme-dark .filter-dialog,
+.theme-dark .parameter-type-panel,
+.theme-dark .family-type-panel,
+.theme-dark .nested-family-panel {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+  color: #f4f7fb !important;
+}
+
+.theme-light .preview-modal-head,
+.theme-light .filter-head {
+  background: #eef4ff !important;
+  border-color: #cbd5e3 !important;
+  color: #111827 !important;
+}
+
+.theme-dark .preview-modal-head,
+.theme-dark .filter-head {
+  background: #17243b !important;
+  border-color: #405477 !important;
+  color: #f4f7fb !important;
+}
+
+.theme-light .preview-modal-mask {
+  background: rgba(15, 23, 42, .32) !important;
+}
+
+.theme-dark .preview-modal-mask {
+  background: rgba(2, 6, 20, .72) !important;
+}
+
+.theme-light .detail-category-chip,
+.theme-light .composition-badge {
+  background: #eaf2ff !important;
+  border-color: #b8cffc !important;
+  color: #1f55d1 !important;
+}
+
+.theme-dark .detail-category-chip,
+.theme-dark .composition-badge {
+  background: #153050 !important;
+  border-color: #37658d !important;
+  color: #8fdcff !important;
+}
+
+/* Shared HTML dialogs */
+.theme-light .hero,
+.theme-light .section,
+.theme-light .stats .stat,
+.theme-light .table-scroll,
+.theme-light .technical-scroll,
+.theme-light .meta-value {
+  background: #ffffff !important;
+  border-color: #d6dde9 !important;
+  color: #111827 !important;
+}
+
+.theme-dark .hero,
+.theme-dark .section,
+.theme-dark .stats .stat,
+.theme-dark .table-scroll,
+.theme-dark .technical-scroll,
+.theme-dark .meta-value {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+  color: #f4f7fb !important;
+}
+
+.theme-light .meta-label {
+  background: #eef4ff !important;
+  color: #475569 !important;
+}
+
+.theme-dark .meta-label {
+  background: #17243b !important;
+  color: #b5c5e3 !important;
+}
+
+.theme-dark .intro,
+.theme-dark .section-copy,
+.theme-dark .section-title,
+.theme-dark .scope,
+.theme-dark li,
+.theme-dark .path-note,
+.theme-dark .technical-scroll pre {
+  color: #d0dcff !important;
+}
+
+.theme-light.fb-message-dialog,
+.theme-light.fb-operation-dialog {
+  background: #f5f7fb !important;
+}
+
+.theme-dark.fb-message-dialog,
+.theme-dark.fb-operation-dialog {
+  background: #0b1220 !important;
+}
+
+.theme-dark .eyebrow,
+.theme-dark .stat .label,
+.theme-dark .stat .value {
+  color: #dbe7ff !important;
+}
+
+.theme-light .stat .value {
+  color: #111827 !important;
+}
+
+.theme-light .table-scroll th,
+.theme-light .technical-scroll th {
+  background: #eef4ff !important;
+  border-color: #cbd5e3 !important;
+  color: #334155 !important;
+}
+
+.theme-dark .table-scroll th,
+.theme-dark .technical-scroll th {
+  background: #17243b !important;
+  border-color: #405477 !important;
+  color: #e4ecff !important;
+}
+
+/* File Guard and worksheet selection windows */
+.fb-file-guard .top,
+.theme-light.fb-file-guard .top,
+.theme-dark.fb-file-guard .top,
+.fb-sheet-selection .head {
+  background: #0f1a2b !important;
+  border-color: #2f6bff !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+.theme-dark.fb-file-guard .top,
+.theme-dark.fb-sheet-selection .head {
+  border-color: #2fb7ff !important;
+}
+
+.fb-file-guard .mark {
+  background: #2f6bff !important;
+}
+
+.theme-dark.fb-file-guard .mark {
+  background: #2fb7ff !important;
+}
+
+.fb-file-guard .top h1,
+.fb-sheet-selection .head h1,
+.fb-file-guard .top .hint,
+.fb-sheet-selection .head p,
+.fb-sheet-selection .close {
+  color: #ffffff !important;
+}
+
+.theme-light.fb-file-guard .shell,
+.theme-light.fb-file-guard .body,
+.theme-light.fb-file-guard .footer,
+.theme-light.fb-sheet-selection .shell,
+.theme-light.fb-sheet-selection .body,
+.theme-light.fb-sheet-selection .foot {
+  background: #f5f7fb !important;
+  border-color: #d6dde9 !important;
+  color: #111827 !important;
+}
+
+.theme-dark.fb-file-guard .shell,
+.theme-dark.fb-file-guard .body,
+.theme-dark.fb-file-guard .footer,
+.theme-dark.fb-sheet-selection .shell,
+.theme-dark.fb-sheet-selection .body,
+.theme-dark.fb-sheet-selection .foot {
+  background: #0b1220 !important;
+  border-color: #334766 !important;
+  color: #f4f7fb !important;
+}
+
+.theme-light.fb-sheet-selection .sheet {
+  background: #ffffff !important;
+  border-color: #cbd5e3 !important;
+  color: #1f2937 !important;
+}
+
+.theme-dark.fb-sheet-selection .sheet {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+  color: #e4ecff !important;
+}
+
+.theme-light.fb-sheet-selection .sheet:hover,
+.theme-light.fb-sheet-selection .sheet.active {
+  background: #eaf2ff !important;
+  border-color: #2f6bff !important;
+  box-shadow: inset 4px 0 0 #2f6bff !important;
+}
+
+.theme-dark.fb-sheet-selection .sheet:hover,
+.theme-dark.fb-sheet-selection .sheet.active {
+  background: #182746 !important;
+  border-color: #2fb7ff !important;
+  box-shadow: inset 4px 0 0 #2fb7ff !important;
+}
+
+.theme-light.fb-sheet-selection .meta,
+.theme-light.fb-file-guard .count,
+.theme-light.fb-file-guard .path {
+  color: #64748b !important;
+}
+
+.theme-dark.fb-sheet-selection .meta,
+.theme-dark.fb-file-guard .count,
+.theme-dark.fb-file-guard .path {
+  color: #9fb0cf !important;
+}
+
+/* Request composer, selection, and Standard RVT manager */
+.fb-request-composer .header,
+.fb-selection-dialog .header,
+.fb-standard-manager .header {
+  background: #0f1a2b !important;
+  border-color: #2f6bff !important;
+  color: #ffffff !important;
+}
+
+.theme-dark.fb-request-composer .header,
+.theme-dark.fb-selection-dialog .header,
+.theme-dark.fb-standard-manager .header {
+  border-color: #2fb7ff !important;
+}
+
+.fb-request-composer .header .title,
+.fb-selection-dialog .header .title,
+.fb-standard-manager .header .title {
+  color: #ffffff !important;
+}
+
+.fb-request-composer .header .subtitle,
+.fb-selection-dialog .header .subtitle,
+.fb-standard-manager .header .subtitle {
+  color: #b7c8e5 !important;
+}
+
+.fb-request-composer .mark {
+  background: #2f6bff !important;
+}
+
+.theme-dark.fb-request-composer .mark {
+  background: #2fb7ff !important;
+}
+
+.fb-standard-manager .topbtn {
+  background: #17243b !important;
+  border-color: #4a6288 !important;
+  color: #ffffff !important;
+}
+
+.theme-light.fb-request-composer .page,
+.theme-light.fb-request-composer .content,
+.theme-light.fb-selection-dialog .shell,
+.theme-light.fb-selection-dialog .tablewrap,
+.theme-light.fb-standard-manager,
+.theme-light.fb-standard-manager .wrap {
+  background: #f5f7fb !important;
+  color: #111827 !important;
+}
+
+.theme-dark.fb-request-composer .page,
+.theme-dark.fb-request-composer .content,
+.theme-dark.fb-selection-dialog .shell,
+.theme-dark.fb-selection-dialog .tablewrap,
+.theme-dark.fb-standard-manager,
+.theme-dark.fb-standard-manager .wrap {
+  background: #0b1220 !important;
+  color: #f4f7fb !important;
+}
+
+.theme-light.fb-request-composer .card,
+.theme-light.fb-request-composer .footer,
+.theme-light.fb-request-composer .attach-list,
+.theme-light.fb-selection-dialog .toolbar,
+.theme-light.fb-selection-dialog .footer,
+.theme-light.fb-standard-manager .info,
+.theme-light.fb-standard-manager .disciplinebar,
+.theme-light.fb-standard-manager .card,
+.theme-light.fb-standard-manager .candidate {
+  background: #ffffff !important;
+  border-color: #d6dde9 !important;
+  color: #111827 !important;
+  box-shadow: 0 4px 14px rgba(17, 24, 39, .06) !important;
+}
+
+.theme-dark.fb-request-composer .card,
+.theme-dark.fb-request-composer .footer,
+.theme-dark.fb-request-composer .attach-list,
+.theme-dark.fb-selection-dialog .toolbar,
+.theme-dark.fb-selection-dialog .footer,
+.theme-dark.fb-standard-manager .info,
+.theme-dark.fb-standard-manager .disciplinebar,
+.theme-dark.fb-standard-manager .card,
+.theme-dark.fb-standard-manager .candidate {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+  color: #f4f7fb !important;
+  box-shadow: 0 6px 18px rgba(2, 6, 20, .28) !important;
+}
+
+.theme-light.fb-request-composer .card-title,
+.theme-light.fb-request-composer label,
+.theme-light.fb-standard-manager .card-title,
+.theme-light.fb-standard-manager .info-value {
+  color: #1f2937 !important;
+}
+
+.theme-dark.fb-request-composer .card-title,
+.theme-dark.fb-request-composer label,
+.theme-dark.fb-standard-manager .card-title,
+.theme-dark.fb-standard-manager .info-value {
+  color: #f4f7fb !important;
+}
+
+.theme-light.fb-request-composer .footnote,
+.theme-light.fb-request-composer .attach-row,
+.theme-light.fb-standard-manager .card-desc,
+.theme-light.fb-standard-manager .note,
+.theme-light.fb-standard-manager .info-label,
+.theme-light.fb-standard-manager .disciplinebar-title,
+.theme-light.fb-selection-dialog .summary,
+.theme-light.fb-selection-dialog .category,
+.theme-light.fb-selection-dialog .meta,
+.theme-light.fb-selection-dialog .types {
+  color: #64748b !important;
+}
+
+.theme-dark.fb-request-composer .footnote,
+.theme-dark.fb-request-composer .attach-row,
+.theme-dark.fb-standard-manager .card-desc,
+.theme-dark.fb-standard-manager .note,
+.theme-dark.fb-standard-manager .info-label,
+.theme-dark.fb-standard-manager .disciplinebar-title,
+.theme-dark.fb-selection-dialog .summary,
+.theme-dark.fb-selection-dialog .category,
+.theme-dark.fb-selection-dialog .meta,
+.theme-dark.fb-selection-dialog .types {
+  color: #9fb0cf !important;
+}
+
+.theme-light.fb-standard-manager .run {
+  background: #ffffff !important;
+  border-color: #c1ccdf !important;
+  color: #1f2937 !important;
+}
+
+.theme-dark.fb-standard-manager .run {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+  color: #e4ecff !important;
+}
+
+/* Home dashboard uses highly specific legacy shell selectors; resolve every
+   non-semantic surface and text color explicitly for the dark theme. */
+body.theme-dark.fb-shell-20260507 .home-dashboard-scroll {
+  background: #0b1220 !important;
+}
+
+body.theme-dark.fb-shell-20260507 .home-hero,
+body.theme-dark.fb-shell-20260507 .home-metric,
+body.theme-dark.fb-shell-20260507 .home-board,
+body.theme-dark.fb-shell-20260507 .home-action {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+  color: #f4f7fb !important;
+}
+
+body.theme-dark.fb-shell-20260507 .home-hero-status {
+  background: #17243b !important;
+  border-color: #405477 !important;
+  color: #f4f7fb !important;
+}
+
+body.theme-dark.fb-shell-20260507 .home-hero-copy span {
+  color: #2fb7ff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .home-hero-copy strong,
+body.theme-dark.fb-shell-20260507 .home-metric strong,
+body.theme-dark.fb-shell-20260507 .home-board-head strong,
+body.theme-dark.fb-shell-20260507 .home-recent-item strong,
+body.theme-dark.fb-shell-20260507 .home-recent-item span,
+body.theme-dark.fb-shell-20260507 .home-action strong {
+  color: #f4f7fb !important;
+}
+
+body.theme-dark.fb-shell-20260507 .home-hero-copy em,
+body.theme-dark.fb-shell-20260507 .home-hero-status span:last-child,
+body.theme-dark.fb-shell-20260507 .home-metric span,
+body.theme-dark.fb-shell-20260507 .home-metric em,
+body.theme-dark.fb-shell-20260507 .home-board-head span,
+body.theme-dark.fb-shell-20260507 .home-recent-item em,
+body.theme-dark.fb-shell-20260507 .home-action span {
+  color: #9fb0cf !important;
+}
+
+body.theme-dark.fb-shell-20260507 .home-board-head,
+body.theme-dark.fb-shell-20260507 .home-recent-item {
+  border-color: #334766 !important;
+}
+
+body.theme-dark.fb-shell-20260507 .home-progress-count {
+  background: #153050 !important;
+  color: #8fdcff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .home-discipline-table,
+body.theme-dark.fb-shell-20260507 .home-discipline-table td {
+  background: #0f1a2b !important;
+  border-color: #334766 !important;
+  color: #e4ecff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .home-discipline-table th {
+  background: #17243b !important;
+  border-color: #405477 !important;
+  color: #dbe7ff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .home-action:hover {
+  background: #182746 !important;
+  border-color: #2fb7ff !important;
+}
+
+/* Resolve legacy dashboard selectors with body-level specificity. */
+body.theme-light.fb-shell-20260507 a.tool.primary,
+body.theme-light.fb-shell-20260507 span.tool.primary,
+body.theme-light.fb-shell-20260507 .request-actions a.primary,
+body.theme-light.fb-shell-20260507 a.standard-action-link.primary {
+  background: #2f6bff !important;
+  border-color: #2f6bff !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(47, 107, 255, .20) !important;
+}
+
+body.theme-dark.fb-shell-20260507 a.tool.primary,
+body.theme-dark.fb-shell-20260507 span.tool.primary,
+body.theme-dark.fb-shell-20260507 .request-actions a.primary,
+body.theme-dark.fb-shell-20260507 a.standard-action-link.primary {
+  background: #2fb7ff !important;
+  border-color: #2fb7ff !important;
+  color: #06121f !important;
+  box-shadow: 0 4px 14px rgba(47, 183, 255, .18) !important;
+}
+
+body.theme-light.fb-shell-20260507.fb-browser .pane-head.action-head a.tool.command-apply,
+body.theme-light.fb-shell-20260507.fb-browser .pane-head.action-head span.tool.command-apply {
+  background: #2f6bff !important;
+  border-color: #2f6bff !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 0 3px rgba(47, 107, 255, .14) !important;
+}
+
+body.theme-dark.fb-shell-20260507.fb-browser .pane-head.action-head a.tool.command-apply,
+body.theme-dark.fb-shell-20260507.fb-browser .pane-head.action-head span.tool.command-apply {
+  background: #2fb7ff !important;
+  border-color: #2fb7ff !important;
+  color: #06121f !important;
+  box-shadow: 0 0 0 3px rgba(47, 183, 255, .13) !important;
+}
+
+body.theme-light.fb-shell-20260507 .inline-status-toggle a.inline-status-filter.active,
+body.theme-light.fb-shell-20260507 .family-kind-toggle a.active {
+  background: #eaf1ff !important;
+  border-color: #8badff !important;
+  color: #1f56d8 !important;
+}
+
+body.theme-dark.fb-shell-20260507 .inline-status-toggle a.inline-status-filter.active,
+body.theme-dark.fb-shell-20260507 .family-kind-toggle a.active {
+  background: #153b5c !important;
+  border-color: #2fb7ff !important;
+  color: #bfeaff !important;
+}
+
+body.theme-light.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-selector .selector a.active {
+  background: #2f6bff !important;
+  border-color: #2f6bff !important;
+  color: #ffffff !important;
+  box-shadow: 0 3px 9px rgba(47, 107, 255, .18) !important;
+}
+
+body.theme-dark.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-selector .selector a.active {
+  background: #2fb7ff !important;
+  border-color: #2fb7ff !important;
+  color: #06121f !important;
+  box-shadow: 0 3px 10px rgba(47, 183, 255, .16) !important;
+}
+
+body.theme-light.fb-shell-20260507 a.filter.active,
+body.theme-light.fb-shell-20260507 .chip.active,
+body.theme-light.fb-shell-20260507 .selector a.active,
+body.theme-light.fb-shell-20260507 .tree-node.active,
+body.theme-light.fb-shell-20260507 .tree-node.selected {
+  background: #eaf1ff !important;
+  border-color: #8badff !important;
+  color: #1f56d8 !important;
+}
+
+body.theme-dark.fb-shell-20260507 a.filter.active,
+body.theme-dark.fb-shell-20260507 .chip.active,
+body.theme-dark.fb-shell-20260507 .selector a.active,
+body.theme-dark.fb-shell-20260507 .tree-node.active,
+body.theme-dark.fb-shell-20260507 .tree-node.selected {
+  background: #153b5c !important;
+  border-color: #2fb7ff !important;
+  color: #bfeaff !important;
+}
+
+body.theme-light.fb-shell-20260507 .request-pane-scroll,
+body.theme-light.fb-shell-20260507 .search,
+body.theme-light.fb-shell-20260507 .pane-head,
+body.theme-light.fb-shell-20260507 .family-browser-grid,
+body.theme-light.fb-shell-20260507 .family-tree-panel,
+body.theme-light.fb-shell-20260507 .family-list-panel,
+body.theme-light.fb-shell-20260507 .statusbar {
+  background: #ffffff !important;
+  border-color: #d6dde9 !important;
+  color: #111827 !important;
+}
+
+body.theme-light.fb-shell-20260507 #mainCenter,
+body.theme-light.fb-shell-20260507 #browserSearch,
+body.theme-light.fb-shell-20260507 .family-tablewrap,
+body.theme-light.fb-shell-20260507 .fixed-table-head {
+  background: #ffffff !important;
+  border-color: #d6dde9 !important;
+  color: #111827 !important;
+}
+
+body.theme-dark.fb-shell-20260507 .request-pane-scroll,
+body.theme-dark.fb-shell-20260507 .search,
+body.theme-dark.fb-shell-20260507 .pane-head,
+body.theme-dark.fb-shell-20260507 .family-browser-grid,
+body.theme-dark.fb-shell-20260507 .family-list-panel,
+body.theme-dark.fb-shell-20260507 .statusbar {
+  background: #0b1220 !important;
+  border-color: #334766 !important;
+  color: #e4ecff !important;
+}
+
+body.theme-dark.fb-shell-20260507 #mainCenter,
+body.theme-dark.fb-shell-20260507 #browserSearch,
+body.theme-dark.fb-shell-20260507 .family-tablewrap {
+  background: #0b1220 !important;
+  border-color: #334766 !important;
+  color: #e4ecff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .fixed-table-head {
+  background: #17243b !important;
+  border-color: #405477 !important;
+  color: #dbe7ff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .family-tree-panel {
+  background: #101a2d !important;
+  border-color: #334766 !important;
+  color: #e4ecff !important;
+}
+
+body.theme-light.fb-shell-20260507 .tree-node {
+  background: #ffffff !important;
+  border-color: #d6dde9 !important;
+  color: #374151 !important;
+}
+
+body.theme-dark.fb-shell-20260507 .tree-node {
+  background: #121c33 !important;
+  border-color: #334766 !important;
+  color: #dbe7ff !important;
+}
+
+body.theme-light.fb-shell-20260507 .tree-node:hover {
+  background: #f2f6ff !important;
+  border-color: #9cb7f5 !important;
+  color: #1f56d8 !important;
+}
+
+body.theme-dark.fb-shell-20260507 .tree-node:hover {
+  background: #182746 !important;
+  border-color: #3f6f9e !important;
+  color: #ffffff !important;
+}
+
+body.theme-dark.fb-shell-20260507 #searchBox,
+body.theme-dark.fb-shell-20260507 .filter-input {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+  color: #f4f7fb !important;
+}
+
+body.theme-dark.fb-shell-20260507 .tree-title,
+body.theme-dark.fb-shell-20260507 .tree-help,
+body.theme-dark.fb-shell-20260507 .discipline-label,
+body.theme-dark.fb-shell-20260507 .label,
+body.theme-dark.fb-shell-20260507 .count,
+body.theme-dark.fb-shell-20260507 .statusbar {
+  color: #b8c8e5 !important;
+}
+
+body.theme-light.fb-shell-20260507 .family-list-panel tr.data.selected td,
+body.theme-light.fb-shell-20260507 .family-list-panel tr.data:hover td {
+  background: #edf4ff !important;
+  color: #111827 !important;
+}
+
+body.theme-dark.fb-shell-20260507 .family-list-panel th {
+  background: #17243b !important;
+  border-color: #405477 !important;
+  color: #dbe7ff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .family-list-panel tr.data td {
+  background: #0f1a2b !important;
+  border-color: #334766 !important;
+  color: #e4ecff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .family-list-panel tr.data.selected td,
+body.theme-dark.fb-shell-20260507 .family-list-panel tr.data:hover td {
+  background: #182746 !important;
+  color: #f4f7fb !important;
+}
+
+body.theme-light.fb-shell-20260507 .settings-note,
+body.theme-light.fb-shell-20260507 .admin-required {
+  border-left-color: #2f6bff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .settings-note,
+body.theme-dark.fb-shell-20260507 .admin-required {
+  border-left-color: #2fb7ff !important;
+}
+
+body.theme-light.fb-shell-20260507 .settings-note,
+body.theme-light.fb-shell-20260507 .admin-guide,
+body.theme-light.fb-shell-20260507 .admin-flow-step {
+  background: #f7f9fd !important;
+  border-color: #d6dde9 !important;
+  color: #374151 !important;
+}
+
+body.theme-dark.fb-shell-20260507 .settings-note,
+body.theme-dark.fb-shell-20260507 .admin-guide,
+body.theme-dark.fb-shell-20260507 .admin-flow-step {
+  background: #13203a !important;
+  border-color: #405477 !important;
+  color: #d0dcff !important;
+}
+
+body.theme-light.fb-shell-20260507 .admin-flow-number {
+  background: #2f6bff !important;
+  color: #ffffff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .admin-flow-number {
+  background: #2fb7ff !important;
+  color: #06121f !important;
+}
+
+body.theme-light.fb-shell-20260507 .admin-section-eyebrow,
+body.theme-light.fb-shell-20260507 .admin-guide-label {
+  color: #2f6bff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .admin-section-eyebrow,
+body.theme-dark.fb-shell-20260507 .admin-guide-label {
+  color: #62c8ff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .admin-guide-value,
+body.theme-dark.fb-shell-20260507 .admin-flow-title,
+body.theme-dark.fb-shell-20260507 .admin-flow-value,
+body.theme-dark.fb-shell-20260507 .settings-action-title,
+body.theme-dark.fb-shell-20260507 .settings-action-body,
+body.theme-dark.fb-shell-20260507 .standard-action-caption,
+body.theme-dark.fb-shell-20260507 .admin-trade-management-label {
+  color: #e4ecff !important;
+}
+
+body.theme-dark.fb-shell-20260507 .settings-action-group {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+}
+
+/* Audit-only detached detail canvas mirrors the real modeless detail window. */
+body.fb-detail-capture {
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: 14px !important;
+  line-height: 1.45 !important;
+}
+
+body.theme-light.fb-detail-capture #kkyfbAuditDetailCapture {
+  background: #f5f7fb !important;
+  color: #111827 !important;
+}
+
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture {
+  background: #0b1220 !important;
+  color: #f4f7fb !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture {
+  padding: 14px 16px 18px 16px !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detached-top {
+  border: 1px solid #d6dde9 !important;
+  border-left: 5px solid #2f6bff !important;
+  border-radius: 8px !important;
+  padding: 12px 16px !important;
+  margin: 0 0 10px 0 !important;
+  box-sizing: border-box !important;
+}
+
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detached-top {
+  border-color: #405477 !important;
+  border-left-color: #2fb7ff !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detached-kicker {
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  margin: 0 0 3px 0 !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture h1 {
+  font-size: 20px !important;
+  line-height: 1.25 !important;
+  margin: 0 !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detached-kind {
+  color: #64748b !important;
+  font-size: 13px !important;
+  margin-top: 4px !important;
+}
+
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detached-kind {
+  color: #9fb0cf !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detached-content {
+  border: 0 !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-title,
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-detach-action,
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-detach-row {
+  display: none !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-hero,
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-block,
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-kv,
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-state-card {
+  border: 1px solid #d6dde9 !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+  box-shadow: 0 4px 12px rgba(17, 24, 39, .05) !important;
+  box-sizing: border-box !important;
+}
+
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-hero,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-block,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-kv,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-state-card {
+  border-color: #405477 !important;
+  background: #121c33 !important;
+  color: #f4f7fb !important;
+  box-shadow: 0 5px 15px rgba(2, 6, 20, .30) !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-hero {
+  border-left: 5px solid #2f6bff !important;
+  padding: 14px 16px !important;
+  margin: 0 0 10px 0 !important;
+}
+
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-hero {
+  border-left-color: #2fb7ff !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-name-row,
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-block-title-row,
+body.fb-detail-capture #kkyfbAuditDetailCapture .parameter-summary {
+  display: -ms-flexbox !important;
+  display: flex !important;
+  -ms-flex-align: center !important;
+  align-items: center !important;
+  -ms-flex-pack: justify !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-name {
+  font-size: 23px !important;
+  font-weight: 900 !important;
+  color: #111827 !important;
+}
+
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-name,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-block-title,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-text,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-kv b,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-state-card b {
+  color: #f4f7fb !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-category-chip,
+body.fb-detail-capture #kkyfbAuditDetailCapture .composition-badge {
+  display: inline-block !important;
+  border: 1px solid #9cb7f5 !important;
+  border-radius: 999px !important;
+  background: #eef4ff !important;
+  color: #1f56d8 !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  padding: 6px 10px !important;
+}
+
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-category-chip,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .composition-badge {
+  border-color: #3f6f9e !important;
+  background: #153b5c !important;
+  color: #bfeaff !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-block {
+  clear: both !important;
+  width: 100% !important;
+  padding: 14px 16px !important;
+  margin: 0 0 10px 0 !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-block-title {
+  color: #374151 !important;
+  font-size: 15px !important;
+  font-weight: 900 !important;
+  margin-bottom: 8px !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-text {
+  color: #1f2937 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  white-space: pre-line !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-kv-grid,
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-state-grid {
+  display: -ms-grid !important;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+  margin: 0 0 10px 0 !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-kv,
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-state-card {
+  padding: 11px 13px !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-kv span,
+body.fb-detail-capture #kkyfbAuditDetailCapture .detail-state-card span {
+  display: block !important;
+  color: #64748b !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  margin-bottom: 4px !important;
+}
+
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-kv span,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detail-state-card span {
+  color: #9fb0cf !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .family-type-table-wrap,
+body.fb-detail-capture #kkyfbAuditDetailCapture .parameter-table-scroll {
+  max-width: 100% !important;
+  overflow: auto !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .family-type-table-wrap {
+  max-height: 240px !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .parameter-table-scroll {
+  max-height: 420px !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  table-layout: auto !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture th,
+body.fb-detail-capture #kkyfbAuditDetailCapture td {
+  padding: 8px 10px !important;
+  font-size: 13px !important;
+  text-align: left !important;
+  vertical-align: top !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .preview {
+  position: relative !important;
+  display: -ms-flexbox !important;
+  display: flex !important;
+  -ms-flex-align: center !important;
+  align-items: center !important;
+  -ms-flex-pack: center !important;
+  justify-content: center !important;
+  width: 100% !important;
+  height: 320px !important;
+  min-height: 320px !important;
+  overflow: hidden !important;
+  background: #f7f9fc !important;
+  border: 1px solid #cbd5e3 !important;
+  border-radius: 8px !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .preview-image-wrap {
+  position: relative !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+body.fb-detail-capture #kkyfbAuditDetailCapture .preview-fit-image,
+body.fb-detail-capture #kkyfbAuditDetailCapture .preview-image-wrap img {
+  display: block !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  margin: auto !important;
+}
+
+.theme-light .fingerprint-diff-toggle,
+.theme-light .preview-open-chip,
+.theme-light .parameter-formula-open {
+  background: #2f6bff !important;
+  border-color: #2f6bff !important;
+  color: #ffffff !important;
+}
+
+.theme-dark .fingerprint-diff-toggle,
+.theme-dark .preview-open-chip,
+.theme-dark .parameter-formula-open {
+  background: #2fb7ff !important;
+  border-color: #2fb7ff !important;
+  color: #06121f !important;
+}
+
+.theme-light .fingerprint-diff-wrap,
+.theme-light .parameter-type-panel,
+.theme-light .composition-badge {
+  border-left-color: #2f6bff !important;
+}
+
+.theme-dark .fingerprint-diff-wrap,
+.theme-dark .parameter-type-panel,
+.theme-dark .composition-badge {
+  border-left-color: #2fb7ff !important;
+}
+
+body.theme-dark.fb-detached-window .detached-content,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .detached-content {
+  background: #0b1220 !important;
+  color: #f4f7fb !important;
+}
+
+body.theme-dark.fb-detached-window .nested-child-list,
+body.theme-dark.fb-detached-window .parameter-type-panel,
+body.theme-dark.fb-detached-window .parameter-panel,
+body.theme-dark.fb-detached-window .fingerprint-diff-wrap,
+body.theme-dark.fb-detached-window .fingerprint-diff-summary,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .nested-child-list,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .parameter-type-panel,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .parameter-panel,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .fingerprint-diff-wrap,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .fingerprint-diff-summary {
+  background: #121c33 !important;
+  border-color: #405477 !important;
+  color: #e4ecff !important;
+}
+
+body.theme-dark.fb-detached-window .fingerprint-diff-head,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .fingerprint-diff-head {
+  background: #17243b !important;
+  border-color: #405477 !important;
+  color: #f4f7fb !important;
+}
+
+body.theme-dark.fb-detached-window .fingerprint-diff-title,
+body.theme-dark.fb-detached-window .parameter-type-title,
+body.theme-dark.fb-detached-window .nested-child-list b,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .fingerprint-diff-title,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .parameter-type-title,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .nested-child-list b {
+  color: #bfeaff !important;
+}
+
+body.theme-dark.fb-detached-window .fingerprint-diff-chip,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .fingerprint-diff-chip {
+  background: #182746 !important;
+  border-color: #405477 !important;
+  color: #dbe7ff !important;
+}
+
+body.theme-dark.fb-detached-window .basis-card,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .basis-card {
+  background: #102d2a !important;
+  border-color: #2d6d5f !important;
+  color: #d9fff3 !important;
+}
+
+body.theme-dark.fb-detached-window .basis-card.warn,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .basis-card.warn {
+  background: #382b13 !important;
+  border-color: #8c6826 !important;
+  color: #ffe3a3 !important;
+}
+
+body.theme-dark.fb-detached-window .basis-card.bad,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .basis-card.bad {
+  background: #3a1d25 !important;
+  border-color: #9d4656 !important;
+  color: #ffd4dc !important;
+}
+
+body.theme-dark.fb-detached-window .family-type-table-wrap,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .family-type-table-wrap {
+  background: #0f1a2b !important;
+  border-color: #405477 !important;
+  color: #e4ecff !important;
+}
+
+body.theme-dark.fb-detached-window .family-type-panel,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .family-type-panel {
+  background: #0f1a2b !important;
+  border: 1px solid #405477 !important;
+  border-radius: 8px !important;
+  color: #e4ecff !important;
+  padding: 10px 12px !important;
+}
+
+body.theme-dark.fb-detached-window .family-type-panel b,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .family-type-panel b {
+  color: #bfeaff !important;
+}
+
+body.theme-dark.fb-detached-window .family-type-table,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .family-type-table {
+  background: #0f1a2b !important;
+  border-color: #405477 !important;
+  color: #e4ecff !important;
+}
+
+body.theme-dark.fb-detached-window .family-type-table th,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .family-type-table th {
+  background: #17243b !important;
+  border-color: #405477 !important;
+  color: #dbe7ff !important;
+}
+
+body.theme-dark.fb-detached-window .family-type-table td,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .family-type-table td {
+  background: #0f1a2b !important;
+  border-color: #334766 !important;
+  color: #e4ecff !important;
+}
+
+body.theme-dark.fb-detached-window .basis-card .basis-desc,
+body.theme-dark.fb-detail-capture #kkyfbAuditDetailCapture .basis-card .basis-desc {
+  color: inherit !important;
+}
+
+/* Bottom debug console keeps a developer-console treatment in both themes. */
+#fbDebug,
+.theme-light #fbDebug,
+.theme-dark #fbDebug {
+  background: #08101e !important;
+  border-color: #36557d !important;
+  color: #dbe7ff !important;
+}
+
+#fbDebugHead,
+.theme-light #fbDebugHead,
+.theme-dark #fbDebugHead {
+  background: #111d33 !important;
+  color: #ffffff !important;
+}
+
+#fbDebugLog,
+.theme-light #fbDebugLog,
+.theme-dark #fbDebugLog {
+  background: #050b16 !important;
+  color: #b9d9ff !important;
+}
+
+/* Stable component sizing */
+.theme-light .admin-box,
+.theme-dark .admin-box,
+.theme-light .settings-action-group,
+.theme-dark .settings-action-group,
+.theme-light .summary-card,
+.theme-dark .summary-card,
+.theme-light .detail-block,
+.theme-dark .detail-block {
+  border-radius: 8px !important;
+}
+
+.theme-toggle-mark {
+  display: inline-block;
+  width: 14px;
+  margin-right: 6px;
+  text-align: center;
+  font-family: 'Segoe UI Symbol','Segoe UI',sans-serif;
+}
+
+@media screen and (max-width: 1500px) {
+  .brand-lockup {
+    left: 224px;
+    top: 13px;
+    padding-left: 45px;
+  }
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    line-height: 34px;
+  }
+  .brand-mark img {
+    margin-top: 5px;
+  }
+}

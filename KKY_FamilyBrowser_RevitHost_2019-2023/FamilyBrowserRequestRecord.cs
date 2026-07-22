@@ -16,6 +16,10 @@ public class FamilyBrowserRequestRecord
 
 	public string LastUpdatedBy { get; set; }
 
+	public long Revision { get; set; }
+
+	public string RevisionToken { get; set; }
+
 	public string ProjectTitle { get; set; }
 
 	public string ProjectPath { get; set; }
@@ -71,6 +75,8 @@ public class FamilyBrowserRequestRecord
 		CreatedBy = string.Empty;
 		UpdatedAtUtc = string.Empty;
 		LastUpdatedBy = string.Empty;
+		Revision = 0L;
+		RevisionToken = string.Empty;
 		ProjectTitle = string.Empty;
 		ProjectPath = string.Empty;
 		CentralPath = string.Empty;

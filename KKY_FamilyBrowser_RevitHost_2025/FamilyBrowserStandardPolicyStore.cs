@@ -91,14 +91,22 @@ public sealed class FamilyBrowserStandardPolicyStore
 			{
 				ProjectData.SetProjectError(projectError);
 				ProjectData.ClearProjectError();
+				throw new InvalidDataException("The managed Family Browser policy exists but could not be read. It was not overwritten.", projectError);
 			}
 		}
-		FamilyBrowserStandardPolicy created = CreateDefaultPolicy(currentUser);
-		if (!string.IsNullOrWhiteSpace(FamilyBrowserMachineConfigStore.ResolveManagedPolicyPath()))
+		return WithPolicyMutationLock(workspaceRoot, [SpecialName] () =>
 		{
-			Save(workspaceRoot, created, currentUser);
-		}
-		return created;
+			string latestPath = GetPolicyPath(workspaceRoot);
+			if (File.Exists(latestPath))
+			{
+				FamilyBrowserStandardPolicy latest = DataContractJsonFileStore.Load<FamilyBrowserStandardPolicy>(latestPath);
+				NormalizePolicy(latest);
+				return latest;
+			}
+			FamilyBrowserStandardPolicy created = CreateDefaultPolicy(currentUser);
+			SaveUnlocked(workspaceRoot, created, currentUser);
+			return created;
+		});
 	}
 
 	public static string Save(string workspaceRoot, FamilyBrowserStandardPolicy policy, string currentUser)
@@ -107,12 +115,40 @@ public sealed class FamilyBrowserStandardPolicyStore
 		{
 			throw new InvalidOperationException(BuildManagedDataRootRequiredMessage(T("Save Family Browser policy", "Family Browser 정책 저장")));
 		}
+		return WithPolicyMutationLock(workspaceRoot, [SpecialName] () => SaveUnlocked(workspaceRoot, policy, currentUser));
+	}
+
+	private static string SaveUnlocked(string workspaceRoot, FamilyBrowserStandardPolicy policy, string currentUser)
+	{
 		NormalizePolicy(policy);
 		policy.LastUpdatedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
 		policy.LastUpdatedBy = currentUser ?? string.Empty;
 		string policyPath = GetPolicyPath(workspaceRoot);
 		EnsureParentFolder(policyPath);
-		File.WriteAllText(policyPath, PlainJsonReportWriter.Serialize(policy));
+		string temporaryPath = FamilyBrowserAtomicFileService.CreateSiblingTemporaryPath(policyPath);
+		try
+		{
+			byte[] payload = new UTF8Encoding(false).GetBytes(PlainJsonReportWriter.Serialize(policy));
+			using (FileStream stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+			{
+				stream.Write(payload, 0, payload.Length);
+				stream.Flush(true);
+			}
+			FamilyBrowserAtomicFileService.Promote(temporaryPath, policyPath);
+		}
+		finally
+		{
+			try
+			{
+				if (File.Exists(temporaryPath))
+				{
+					File.Delete(temporaryPath);
+				}
+			}
+			catch
+			{
+			}
+		}
 		return policyPath;
 	}
 
@@ -135,6 +171,7 @@ public sealed class FamilyBrowserStandardPolicyStore
 			{
 				ProjectData.SetProjectError(projectError);
 				ProjectData.ClearProjectError();
+				throw new InvalidDataException("The managed Family Browser policy exists but could not be read for mutation. It was not overwritten.", projectError);
 			}
 		}
 		return CreateDefaultPolicy(currentUser);
@@ -150,7 +187,20 @@ public sealed class FamilyBrowserStandardPolicyStore
 		{
 			FamilyBrowserStandardPolicy familyBrowserStandardPolicy = LoadLatestPolicyForMutation(workspaceRoot, currentUser);
 			mutator(familyBrowserStandardPolicy);
-			return Save(workspaceRoot, familyBrowserStandardPolicy, currentUser);
+			return SaveUnlocked(workspaceRoot, familyBrowserStandardPolicy, currentUser);
+		});
+	}
+
+	public static TResult ReadLatestPolicyWithMutationLock<TResult>(string workspaceRoot, string currentUser, Func<FamilyBrowserStandardPolicy, TResult> reader)
+	{
+		if (reader == null)
+		{
+			throw new ArgumentNullException("reader");
+		}
+		return WithPolicyMutationLock(workspaceRoot, [SpecialName] () =>
+		{
+			FamilyBrowserStandardPolicy latest = LoadLatestPolicyForMutation(workspaceRoot, currentUser);
+			return reader(latest);
 		});
 	}
 
@@ -186,7 +236,10 @@ public sealed class FamilyBrowserStandardPolicyStore
 			try
 			{
 				Monitor.Enter(policyMutationSyncRoot, ref lockTaken);
-				return action();
+				using (FileStream policyFileLease = AcquirePolicyFileMutationLock(GetPolicyPath(workspaceRoot), TimeSpan.FromSeconds(10.0)))
+				{
+					return action();
+				}
 			}
 			finally
 			{
@@ -285,15 +338,36 @@ public sealed class FamilyBrowserStandardPolicyStore
 			safeSlotKey = "standard";
 		}
 		string resolvedSlotPath = Path.Combine(registryFolder, "standard-library-" + safeSlotKey + ".json");
-		if (string.IsNullOrWhiteSpace(configuredPath) && !File.Exists(resolvedSlotPath))
-		{
-			string activePath = Path.Combine(registryFolder, "active-standard-library.json");
-			if (File.Exists(activePath))
-			{
-				return activePath;
-			}
-		}
 		return resolvedSlotPath;
+	}
+
+	private static FileStream AcquirePolicyFileMutationLock(string policyPath, TimeSpan timeout)
+	{
+		if (string.IsNullOrWhiteSpace(policyPath))
+		{
+			throw new IOException("The Family Browser policy path is empty.");
+		}
+		EnsureParentFolder(policyPath);
+		string lockPath = policyPath + ".kky-lock";
+		DateTime deadline = DateTime.UtcNow.Add(timeout <= TimeSpan.Zero ? TimeSpan.FromSeconds(10.0) : timeout);
+		Exception lastError = null;
+		while (DateTime.UtcNow < deadline)
+		{
+			try
+			{
+				return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.WriteThrough);
+			}
+			catch (IOException ex)
+			{
+				lastError = ex;
+			}
+			catch (UnauthorizedAccessException ex)
+			{
+				lastError = ex;
+			}
+			Thread.Sleep(75);
+		}
+		throw new IOException("Timed out waiting for the shared Family Browser policy file lock.", lastError);
 	}
 
 	public static string ResolveSlotSnapshotPath(string workspaceRoot, FamilyBrowserStandardLibrarySlot slot, StandardLibraryRegistrationRecord registration)
@@ -510,7 +584,7 @@ public sealed class FamilyBrowserStandardPolicyStore
 			}
 			string text = SaveSlotRegistration(workspaceRoot, familyBrowserStandardLibrarySlot2.SlotKey, registration);
 			ApplyRegistrationToSlot(familyBrowserStandardLibrarySlot2, text, registration);
-			Save(workspaceRoot, policy2, currentUser);
+			SaveUnlocked(workspaceRoot, policy2, currentUser);
 			return text;
 		});
 	}
@@ -719,6 +793,31 @@ public sealed class FamilyBrowserStandardPolicyStore
 			latest.Mode = mode2;
 			policy.Mode = mode2;
 		});
+	}
+
+	public static bool IsDetailedSystemTypeComparisonEnabled(FamilyBrowserStandardPolicy policy)
+	{
+		return policy == null || policy.CompareDetailedSystemTypeComponents != false;
+	}
+
+	public static void SetDetailedSystemTypeComparison(string workspaceRoot, FamilyBrowserStandardPolicy policy, bool enabled, string currentUser)
+	{
+		NormalizePolicy(policy);
+		MutateLatestPolicy(workspaceRoot, currentUser, [SpecialName] (FamilyBrowserStandardPolicy latest) =>
+		{
+			latest.CompareDetailedSystemTypeComponents = enabled;
+			policy.CompareDetailedSystemTypeComponents = enabled;
+		});
+	}
+
+	public static bool IsProjectElementChangeTrackingEnabled(FamilyBrowserStandardPolicy policy)
+	{
+		if (policy?.FileGuard == null || !policy.FileGuard.Enabled)
+		{
+			return false;
+		}
+		return (policy.FileGuard.Targets ?? new List<FamilyBrowserFileGuardTarget>())
+			.Any([SpecialName] (FamilyBrowserFileGuardTarget target) => target != null && target.Enabled && target.TrackElementChanges);
 	}
 
 	public static void SetActiveDiscipline(string workspaceRoot, FamilyBrowserStandardPolicy policy, string discipline, string currentUser)
@@ -1087,7 +1186,30 @@ public sealed class FamilyBrowserStandardPolicyStore
 		}
 		string text = Path.Combine(registryFolder, "standard-library-" + safeSlotKey + ".json");
 		Directory.CreateDirectory(Path.GetDirectoryName(text));
-		File.WriteAllText(text, PlainJsonReportWriter.Serialize(registration));
+		string temporaryPath = FamilyBrowserAtomicFileService.CreateSiblingTemporaryPath(text);
+		try
+		{
+			byte[] payload = new UTF8Encoding(false).GetBytes(PlainJsonReportWriter.Serialize(registration));
+			using (FileStream stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+			{
+				stream.Write(payload, 0, payload.Length);
+				stream.Flush(true);
+			}
+			FamilyBrowserAtomicFileService.Promote(temporaryPath, text);
+		}
+		finally
+		{
+			try
+			{
+				if (File.Exists(temporaryPath))
+				{
+					File.Delete(temporaryPath);
+				}
+			}
+			catch
+			{
+			}
+		}
 		return text;
 	}
 
@@ -1121,6 +1243,8 @@ public sealed class FamilyBrowserStandardPolicyStore
 			Security = CreateDefaultSecurity(currentUser),
 			ProjectPolicyRules = new List<FamilyBrowserProjectPolicyRule>(),
 			FileGuard = FamilyBrowserFileGuardPolicy.CreateDefault(),
+			CompareDetailedSystemTypeComponents = true,
+			TrackProjectElementChanges = false,
 			LastUpdatedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
 			LastUpdatedBy = (currentUser ?? string.Empty)
 		};
@@ -1248,10 +1372,14 @@ public sealed class FamilyBrowserStandardPolicyStore
 		fileGuard.LastUpdatedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
 		fileGuard.LastUpdatedBy = currentUser ?? string.Empty;
 		FamilyBrowserFileGuardPolicy fileGuard2 = CloneFileGuardPolicy(fileGuard);
+		bool fileScopedTrackingEnabled = (fileGuard2.Targets ?? new List<FamilyBrowserFileGuardTarget>())
+			.Any([SpecialName] (FamilyBrowserFileGuardTarget target) => target != null && target.Enabled && target.TrackElementChanges);
 		MutateLatestPolicy(workspaceRoot, currentUser, [SpecialName] (FamilyBrowserStandardPolicy latest) =>
 		{
 			latest.FileGuard = CloneFileGuardPolicy(fileGuard2);
 			policy.FileGuard = CloneFileGuardPolicy(fileGuard2);
+			latest.TrackProjectElementChanges = fileScopedTrackingEnabled;
+			policy.TrackProjectElementChanges = fileScopedTrackingEnabled;
 		});
 	}
 
@@ -1355,8 +1483,12 @@ public sealed class FamilyBrowserStandardPolicyStore
 			FileName = (target.FileName ?? string.Empty),
 			CentralPath = (target.CentralPath ?? string.Empty),
 			RelativePath = (target.RelativePath ?? string.Empty),
+			Discipline = (target.Discipline ?? string.Empty),
 			BlockFamilyLoadAndEdit = target.BlockFamilyLoadAndEdit,
 			BlockTypeChanges = target.BlockTypeChanges,
+			BlockNestedOnlyStandalonePlacement = target.BlockNestedOnlyStandalonePlacement,
+			TrackElementChanges = target.TrackElementChanges,
+			TrackElementChangesConfigured = target.TrackElementChangesConfigured,
 			LastUpdatedUtc = (target.LastUpdatedUtc ?? string.Empty),
 			LastUpdatedBy = (target.LastUpdatedBy ?? string.Empty)
 		};
@@ -1403,6 +1535,14 @@ public sealed class FamilyBrowserStandardPolicyStore
 		if (policy.FileGuard == null)
 		{
 			policy.FileGuard = FamilyBrowserFileGuardPolicy.CreateDefault();
+		}
+		if (!policy.CompareDetailedSystemTypeComponents.HasValue)
+		{
+			policy.CompareDetailedSystemTypeComponents = true;
+		}
+		if (!policy.TrackProjectElementChanges.HasValue)
+		{
+			policy.TrackProjectElementChanges = false;
 		}
 		NormalizeRequestStore(policy.RequestStore);
 		NormalizePermissionExcel(policy.PermissionExcel);
@@ -1587,6 +1727,12 @@ public sealed class FamilyBrowserStandardPolicyStore
 			target.FileName = (target.FileName ?? string.Empty).Trim();
 			target.CentralPath = (target.CentralPath ?? string.Empty).Trim();
 			target.RelativePath = (target.RelativePath ?? string.Empty).Trim();
+			target.Discipline = (target.Discipline ?? string.Empty).Trim();
+			if (!target.TrackElementChangesConfigured)
+			{
+				target.TrackElementChanges = true;
+				target.TrackElementChangesConfigured = true;
+			}
 		}
 	}
 

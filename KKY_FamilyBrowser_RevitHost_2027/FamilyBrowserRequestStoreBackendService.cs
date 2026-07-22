@@ -285,7 +285,7 @@ public sealed class FamilyBrowserRequestStoreBackendService
 					else
 					{
 						Directory.CreateDirectory(info.StoreLocation);
-						string path = Path.Combine(info.StoreLocation, ".kky-family-browser-write-test-" + Guid.NewGuid().ToString("N") + ".tmp");
+						string path = Path.Combine(info.StoreLocation, ".kky-w-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".tmp");
 						File.WriteAllText(path, DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture), Encoding.UTF8);
 						File.Delete(path);
 						detail = info.StoreLocation;

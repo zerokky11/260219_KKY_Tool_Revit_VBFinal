@@ -31,8 +31,9 @@ public sealed class SystemTypeSupportPolicyService
 		{ "ductsystemtype", "PreflightThenConfirm" },
 		{ "mechanicalsystemtype", "PreflightThenConfirm" },
 		{ "electricalsystemtype", "PreflightThenConfirm" },
-		{ "stairstype", "ReviewOnly" },
-		{ "railingtype", "ReviewOnly" }
+		{ "paneltype", "ReviewOnly" },
+		{ "stairstype", "PreflightThenConfirm" },
+		{ "railingtype", "PreflightThenConfirm" }
 	};
 
 	private SystemTypeSupportPolicyService()
@@ -80,7 +81,7 @@ public sealed class SystemTypeSupportPolicyService
 
 	public static string SupportedApplySummary()
 	{
-		return "Auto: Wall/Floor/Roof/Ceiling, insulation, lining and Wire. Dependencies: Pipe/Duct/Flex/CableTray/Conduit. Confirm: Piping/Duct/Mechanical/Electrical system types.";
+		return "Auto: Wall/Floor/Roof/Ceiling, insulation, lining and Wire. Dependencies: Pipe/Duct/Flex/CableTray/Conduit. Confirm: Piping/Duct/Mechanical/Electrical systems plus Railing/Stair types. Curtain Panel remains review-only.";
 	}
 
 	private static string Normalize(string value)

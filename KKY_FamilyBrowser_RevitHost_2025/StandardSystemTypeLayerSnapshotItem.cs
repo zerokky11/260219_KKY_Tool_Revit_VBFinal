@@ -10,6 +10,12 @@ public class StandardSystemTypeLayerSnapshotItem
 
 	public double ThicknessFeet { get; set; }
 
+	public bool IsCore { get; set; }
+
+	public bool IsStructuralMaterial { get; set; }
+
+	public bool IsVariable { get; set; }
+
 	public StandardSystemTypeLayerSnapshotItem()
 	{
 		FunctionName = string.Empty;

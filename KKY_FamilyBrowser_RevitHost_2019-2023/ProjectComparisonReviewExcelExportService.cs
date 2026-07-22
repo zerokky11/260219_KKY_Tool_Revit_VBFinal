@@ -71,19 +71,59 @@ public sealed class ProjectComparisonReviewExcelExportService
 
 	public static ProjectComparisonReviewExcelExportResult SaveReviewList(string outputPath, ProjectStandardComparisonReport report, string disciplineLabel, string comparisonReportPath, bool korean = false)
 	{
+		return SaveReviewList(outputPath, report, disciplineLabel, comparisonReportPath, null, korean);
+	}
+
+	public static ProjectComparisonReviewExcelExportResult SaveReviewList(string outputPath, ProjectStandardComparisonReport report, string disciplineLabel, string comparisonReportPath, IEnumerable<FamilyThumbnailAutoConfirmedDialogRecord> autoHandledDialogs, bool korean = false)
+	{
 		if (report == null)
 		{
 			throw new ArgumentNullException("report");
 		}
 		List<List<string>> rows = BuildRows(report, disciplineLabel, comparisonReportPath, korean);
 		string sheetName = (korean ? "검토결과" : "Review");
-		WriteWorkbook(outputPath, sheetName, BuildHeaders(korean), rows);
+		List<string> headers = BuildHeaders(korean);
+		List<List<string>> dialogRows = BuildAutoHandledDialogRows(autoHandledDialogs);
+		string dialogSheetName = (korean ? "스캔경고" : "ScanDialogs");
+		string workbookPath = EnsureWorkbookOutputPath(outputPath);
+		WriteWorkbook(workbookPath, sheetName, headers, rows, dialogSheetName, BuildAutoHandledDialogHeaders(korean), dialogRows);
 		return new ProjectComparisonReviewExcelExportResult
 		{
-			OutputPath = outputPath,
-			RowCount = rows.Count,
+			OutputPath = workbookPath,
+			RowCount = checked(rows.Count + dialogRows.Count),
 			SheetName = sheetName
 		};
+	}
+
+	private static List<string> BuildAutoHandledDialogHeaders(bool korean)
+	{
+		return korean
+			? new List<string> { "처리 시각(UTC)", "카테고리", "패밀리", "자동 동작", "판정 사유", "처리 결과", "사용 가능 버튼", "오류/경고 내용" }
+			: new List<string> { "Handled At (UTC)", "Category", "Family", "Automatic Action", "Reason", "Result", "Available Buttons", "Error / Warning Text" };
+	}
+
+	private static List<List<string>> BuildAutoHandledDialogRows(IEnumerable<FamilyThumbnailAutoConfirmedDialogRecord> records)
+	{
+		List<List<string>> rows = new List<List<string>>();
+		foreach (FamilyThumbnailAutoConfirmedDialogRecord record in records ?? Enumerable.Empty<FamilyThumbnailAutoConfirmedDialogRecord>())
+		{
+			if (record == null)
+			{
+				continue;
+			}
+			rows.Add(new List<string>
+			{
+				record.ConfirmedAtUtc ?? string.Empty,
+				record.CategoryName ?? string.Empty,
+				record.FamilyName ?? string.Empty,
+				record.ActionTaken ?? string.Empty,
+				record.Reason ?? string.Empty,
+				record.OverrideResult ?? string.Empty,
+				record.AvailableButtons ?? string.Empty,
+				record.DialogText ?? string.Empty
+			});
+		}
+		return rows;
 	}
 
 	private static List<string> BuildHeaders(bool korean)
@@ -149,6 +189,7 @@ public sealed class ProjectComparisonReviewExcelExportService
 		{
 			foreach (SystemTypeComparisonItem item2 in report.SystemTypes.Where([SpecialName] (SystemTypeComparisonItem x) => x != null && IsReviewExportStatus(x.Status)).OrderBy([SpecialName] (SystemTypeComparisonItem x) => x.CategoryName ?? string.Empty, StringComparer.OrdinalIgnoreCase).ThenBy([SpecialName] (SystemTypeComparisonItem x) => x.TypeName ?? string.Empty, StringComparer.OrdinalIgnoreCase))
 			{
+				DifferenceExportFields difference2 = BuildSystemDifferenceFields(item2, korean);
 				rows.Add(new List<string>
 				{
 					discipline,
@@ -162,10 +203,10 @@ public sealed class ProjectComparisonReviewExcelExportService
 					string.Empty,
 					string.Empty,
 					BuildSystemNotes(item2, korean),
-					string.Empty,
-					string.Empty,
-					string.Empty,
-					string.Empty,
+					difference2.Area,
+					difference2.StandardValue,
+					difference2.ProjectValue,
+					difference2.Summary,
 					standardName,
 					projectName,
 					comparisonReportPath ?? string.Empty
@@ -258,6 +299,172 @@ public sealed class ProjectComparisonReviewExcelExportService
 		}
 		fields.Summary = JoinDistinct(summaries);
 		return fields;
+	}
+
+	private static DifferenceExportFields BuildSystemDifferenceFields(SystemTypeComparisonItem item, bool korean)
+	{
+		DifferenceExportFields fields = new DifferenceExportFields();
+		if (item == null)
+		{
+			return fields;
+		}
+		List<string> summaries = new List<string>();
+		if (item.DifferenceSummary != null)
+		{
+			foreach (string difference in item.DifferenceSummary.Where([SpecialName] (string x) => !string.IsNullOrWhiteSpace(x)).Take(3))
+			{
+				if (string.IsNullOrWhiteSpace(fields.Area))
+				{
+					PopulateSystemDifferenceFields(fields, difference, korean);
+				}
+				AddIfNotEmpty(summaries, BuildSystemDifferenceSummaryText(difference, korean));
+			}
+		}
+		if (string.IsNullOrWhiteSpace(fields.Area))
+		{
+			string status = Normalize(item.Status);
+			if (Operators.CompareString(status, "categorymismatch", TextCompare: false) == 0)
+			{
+				fields.Area = (korean ? "카테고리" : "Category");
+				fields.StandardValue = item.CategoryName ?? string.Empty;
+				fields.ProjectValue = ExtractCategoryMismatchProjectValue(item.Notes);
+				AddIfNotEmpty(summaries, korean ? "같은 이름의 시스템 타입이 다른 카테고리에 있습니다." : "Same-name system type exists under a different category.");
+			}
+			else if (Operators.CompareString(status, "projectonly", TextCompare: false) == 0)
+			{
+				fields.Area = (korean ? "표준 목록" : "Standard List");
+				fields.ProjectValue = item.TypeName ?? string.Empty;
+				AddIfNotEmpty(summaries, korean ? "표준 목록에 없는 프로젝트 전용 시스템 타입입니다." : "Project-only system type is not in the selected standard.");
+			}
+			else if (!string.Equals(Normalize(item.StandardFingerprint), Normalize(item.ProjectFingerprint), StringComparison.Ordinal))
+			{
+				fields.Area = "Fingerprint";
+				fields.StandardValue = ShortDiffValue(item.StandardFingerprint, 32);
+				fields.ProjectValue = ShortDiffValue(item.ProjectFingerprint, 32);
+				AddIfNotEmpty(summaries, korean ? "시스템 타입 Fingerprint 다름" : "System Type fingerprint differs");
+			}
+		}
+		fields.Summary = JoinDistinct(summaries);
+		return fields;
+	}
+
+	private static void PopulateSystemDifferenceFields(DifferenceExportFields fields, string difference, bool korean)
+	{
+		string text = CleanDiffCell(difference);
+		if (fields == null || string.IsNullOrWhiteSpace(text))
+		{
+			return;
+		}
+		Match match = Regex.Match(text, "^(.*?)\\s+differs:\\s+standard\\s+(.*?)\\s+/\\s+project\\s+(.*)$", RegexOptions.IgnoreCase);
+		if (match.Success)
+		{
+			fields.Area = SystemDifferenceAreaLabel(match.Groups[1].Value, korean);
+			fields.StandardValue = ShortDiffValue(match.Groups[2].Value, 120);
+			fields.ProjectValue = ShortDiffValue(match.Groups[3].Value, 120);
+			return;
+		}
+		if (text.IndexOf("Layer differs", StringComparison.OrdinalIgnoreCase) >= 0)
+		{
+			fields.Area = korean ? "레이어" : "Layer";
+		}
+		else if (text.IndexOf("Routing", StringComparison.OrdinalIgnoreCase) >= 0)
+		{
+			fields.Area = korean ? "라우팅 환경설정" : "Routing Preference";
+		}
+		else if (text.IndexOf("fingerprint", StringComparison.OrdinalIgnoreCase) >= 0)
+		{
+			fields.Area = "Fingerprint";
+		}
+		else
+		{
+			fields.Area = korean ? "시스템 타입 차이" : "System Type Difference";
+		}
+		fields.Summary = BuildSystemDifferenceSummaryText(text, korean);
+	}
+
+	private static string BuildSystemDifferenceSummaryText(string difference, bool korean)
+	{
+		string text = CleanDiffCell(difference);
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return string.Empty;
+		}
+		Match match = Regex.Match(text, "^(.*?)\\s+differs:\\s+standard\\s+(.*?)\\s+/\\s+project\\s+(.*)$", RegexOptions.IgnoreCase);
+		if (match.Success)
+		{
+			return SystemDifferenceAreaLabel(match.Groups[1].Value, korean);
+		}
+		if (korean)
+		{
+			text = text.Replace("RoutingDependencyFingerprint differs", "라우팅 의존 패밀리 Fingerprint 다름").Replace("Routing Preference differs", "라우팅 환경설정 다름").Replace("Routing Criteria differs", "라우팅 기준 다름")
+				.Replace("Routing Part Fingerprint differs", "라우팅 부품 Fingerprint 다름")
+				.Replace("Layer differs", "레이어 다름")
+				.Replace("System Type fingerprint differs", "시스템 타입 Fingerprint 다름")
+				.Replace("standard", "표준")
+				.Replace("project", "프로젝트");
+		}
+		return ShortDiffValue(text, 90);
+	}
+
+	private static string SystemDifferenceAreaLabel(string area, bool korean)
+	{
+		string normalized = Normalize(area);
+		if (normalized.IndexOf("routingdependencyfingerprint", StringComparison.Ordinal) >= 0)
+		{
+			return korean ? "라우팅 의존 패밀리 Fingerprint" : "Routing Dependency Fingerprint";
+		}
+		if (normalized.IndexOf("routing part fingerprint", StringComparison.Ordinal) >= 0)
+		{
+			return korean ? "라우팅 부품 Fingerprint" : "Routing Part Fingerprint";
+		}
+		if (normalized.IndexOf("routing criteria", StringComparison.Ordinal) >= 0)
+		{
+			return korean ? "라우팅 기준" : "Routing Criteria";
+		}
+		if (normalized.IndexOf("routing preference", StringComparison.Ordinal) >= 0)
+		{
+			return korean ? "라우팅 환경설정" : "Routing Preference";
+		}
+		if (normalized.IndexOf("classification", StringComparison.Ordinal) >= 0)
+		{
+			return korean ? "분류" : "Classification";
+		}
+		if (normalized.IndexOf("segment", StringComparison.Ordinal) >= 0)
+		{
+			return "Segment";
+		}
+		if (normalized.IndexOf("material", StringComparison.Ordinal) >= 0)
+		{
+			return korean ? "재질" : "Material";
+		}
+		if (normalized.IndexOf("shape", StringComparison.Ordinal) >= 0)
+		{
+			return korean ? "형상" : "Shape";
+		}
+		if (normalized.IndexOf("layer", StringComparison.Ordinal) >= 0)
+		{
+			return korean ? "레이어" : "Layer";
+		}
+		if (normalized.IndexOf("fingerprint", StringComparison.Ordinal) >= 0)
+		{
+			return "Fingerprint";
+		}
+		return FirstNonEmpty(area, korean ? "시스템 타입 차이" : "System Type Difference");
+	}
+
+	private static string ExtractCategoryMismatchProjectValue(string notes)
+	{
+		string text = CleanDiffCell(notes);
+		if (string.IsNullOrWhiteSpace(text))
+		{
+			return string.Empty;
+		}
+		Match match = Regex.Match(text, "Project categor(?:y|ies)\\s*:\\s*(.*)$", RegexOptions.IgnoreCase);
+		if (match.Success)
+		{
+			return ShortDiffValue(match.Groups[1].Value, 80);
+		}
+		return ShortDiffValue(text, 80);
 	}
 
 	private static string BuildConciseSummaryDifferenceNote(string reason, bool korean)
@@ -1253,7 +1460,20 @@ public sealed class ProjectComparisonReviewExcelExportService
 		return value.Trim().ToLowerInvariant();
 	}
 
-	private static void WriteWorkbook(string outputPath, string sheetName, List<string> headers, List<List<string>> rows)
+	private static string EnsureWorkbookOutputPath(string outputPath)
+	{
+		if (string.IsNullOrWhiteSpace(outputPath))
+		{
+			return outputPath;
+		}
+		if (string.Equals(Path.GetExtension(outputPath), ".xlsx", StringComparison.OrdinalIgnoreCase))
+		{
+			return outputPath;
+		}
+		return Path.ChangeExtension(outputPath, ".xlsx");
+	}
+
+	private static void WriteWorkbook(string outputPath, string sheetName, List<string> headers, List<List<string>> rows, string dialogSheetName, List<string> dialogHeaders, List<List<string>> dialogRows)
 	{
 		//IL_0048: Unknown result type (might be due to invalid IL or missing references)
 		//IL_004e: Expected O, but got Unknown
@@ -1274,14 +1494,19 @@ public sealed class ProjectComparisonReviewExcelExportService
 		ZipArchive archive = new ZipArchive((Stream)stream, (ZipArchiveMode)1);
 		try
 		{
-			AddEntry(archive, "[Content_Types].xml", BuildContentTypesXml());
+			bool includeDialogSheet = dialogRows != null && dialogRows.Count > 0;
+			AddEntry(archive, "[Content_Types].xml", BuildContentTypesXml(includeDialogSheet));
 			AddEntry(archive, "_rels/.rels", BuildRootRelationshipsXml());
 			AddEntry(archive, "docProps/app.xml", BuildAppXml());
 			AddEntry(archive, "docProps/core.xml", BuildCoreXml());
-			AddEntry(archive, "xl/workbook.xml", BuildWorkbookXml(sheetName));
-			AddEntry(archive, "xl/_rels/workbook.xml.rels", BuildWorkbookRelationshipsXml());
+			AddEntry(archive, "xl/workbook.xml", BuildWorkbookXml(sheetName, dialogSheetName, includeDialogSheet));
+			AddEntry(archive, "xl/_rels/workbook.xml.rels", BuildWorkbookRelationshipsXml(includeDialogSheet));
 			AddEntry(archive, "xl/styles.xml", BuildStylesXml());
 			AddEntry(archive, "xl/worksheets/sheet1.xml", BuildWorksheetXml(headers, rows));
+			if (includeDialogSheet)
+			{
+				AddEntry(archive, "xl/worksheets/sheet2.xml", BuildWorksheetXml(dialogHeaders, dialogRows));
+			}
 		}
 		finally
 		{
@@ -1296,9 +1521,10 @@ public sealed class ProjectComparisonReviewExcelExportService
 		writer.Write(content);
 	}
 
-	private static string BuildContentTypesXml()
+	private static string BuildContentTypesXml(bool includeDialogSheet)
 	{
-		return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/><Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>";
+		string secondSheet = includeDialogSheet ? "<Override PartName=\"/xl/worksheets/sheet2.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>" : string.Empty;
+		return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/><Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/styles.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>" + secondSheet + "</Types>";
 	}
 
 	private static string BuildRootRelationshipsXml()
@@ -1306,14 +1532,17 @@ public sealed class ProjectComparisonReviewExcelExportService
 		return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/><Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/></Relationships>";
 	}
 
-	private static string BuildWorkbookXml(string sheetName)
+	private static string BuildWorkbookXml(string sheetName, string dialogSheetName, bool includeDialogSheet)
 	{
-		return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"" + XmlEscape(string.IsNullOrWhiteSpace(sheetName) ? "Review" : sheetName) + "\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>";
+		string secondSheet = includeDialogSheet ? ("<sheet name=\"" + XmlEscape(string.IsNullOrWhiteSpace(dialogSheetName) ? "ScanDialogs" : dialogSheetName) + "\" sheetId=\"2\" r:id=\"rId2\"/>") : string.Empty;
+		return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"" + XmlEscape(string.IsNullOrWhiteSpace(sheetName) ? "Review" : sheetName) + "\" sheetId=\"1\" r:id=\"rId1\"/>" + secondSheet + "</sheets></workbook>";
 	}
 
-	private static string BuildWorkbookRelationshipsXml()
+	private static string BuildWorkbookRelationshipsXml(bool includeDialogSheet)
 	{
-		return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/><Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>";
+		string secondSheet = includeDialogSheet ? "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet2.xml\"/>" : string.Empty;
+		string stylesRelationshipId = includeDialogSheet ? "rId3" : "rId2";
+		return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>" + secondSheet + "<Relationship Id=\"" + stylesRelationshipId + "\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles\" Target=\"styles.xml\"/></Relationships>";
 	}
 
 	private static string BuildStylesXml()

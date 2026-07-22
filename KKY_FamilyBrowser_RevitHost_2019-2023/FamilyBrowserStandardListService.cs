@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -677,13 +677,7 @@ public sealed class FamilyBrowserStandardListService
 			throw new InvalidOperationException(FamilyBrowserLanguageService.Text("Standard list JSON output path must include a folder.", "표준 목록 JSON 출력 경로에는 폴더가 포함되어야 합니다."));
 		}
 		Directory.CreateDirectory(directoryName);
-		string text = outputPath + ".tmp";
-		File.WriteAllText(text, PlainJsonReportWriter.Serialize(document), Encoding.UTF8);
-		if (File.Exists(outputPath))
-		{
-			File.Delete(outputPath);
-		}
-		File.Move(text, outputPath);
+		WriteAllTextAtomically(outputPath, PlainJsonReportWriter.Serialize(document));
 		return new FamilyBrowserStandardListMaterializeResult
 		{
 			SourcePath = expandedSourcePath,
@@ -936,28 +930,25 @@ public sealed class FamilyBrowserStandardListService
 
 	public static FamilyBrowserStandardListIndexResult SaveStandardListIndex(string workspaceRoot, FamilyBrowserStandardPolicy policy, string currentUser)
 	{
-		FamilyBrowserStandardPolicyStore.RequireManagedDataRootForWrite(workspaceRoot, FamilyBrowserLanguageService.Text("Save standard family list index", "표준 패밀리 목록 인덱스 저장"));
-		string standardListFolder = FamilyBrowserStandardPolicyStore.GetStandardListFolder(workspaceRoot);
-		Directory.CreateDirectory(standardListFolder);
-		FamilyBrowserStandardListIndexDocument document = new FamilyBrowserStandardListIndexDocument
+		return FamilyBrowserStandardPolicyStore.ReadLatestPolicyWithMutationLock(workspaceRoot, currentUser, [SpecialName] (FamilyBrowserStandardPolicy latestPolicy) =>
 		{
-			GeneratedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-			GeneratedBy = (currentUser ?? string.Empty),
-			Items = BuildStandardListIndexItems(policy)
-		};
-		string outputPath = Path.Combine(standardListFolder, "standard-list-index.json");
-		string text = outputPath + ".tmp";
-		File.WriteAllText(text, PlainJsonReportWriter.Serialize(document), Encoding.UTF8);
-		if (File.Exists(outputPath))
-		{
-			File.Delete(outputPath);
-		}
-		File.Move(text, outputPath);
-		return new FamilyBrowserStandardListIndexResult
-		{
-			OutputPath = outputPath,
-			ItemCount = document.Items.Count
-		};
+			FamilyBrowserStandardPolicyStore.RequireManagedDataRootForWrite(workspaceRoot, FamilyBrowserLanguageService.Text("Save standard family list index", "표준 패밀리 목록 인덱스 저장"));
+			string standardListFolder = FamilyBrowserStandardPolicyStore.GetStandardListFolder(workspaceRoot);
+			Directory.CreateDirectory(standardListFolder);
+			FamilyBrowserStandardListIndexDocument document = new FamilyBrowserStandardListIndexDocument
+			{
+				GeneratedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+				GeneratedBy = (currentUser ?? string.Empty),
+				Items = BuildStandardListIndexItems(latestPolicy ?? policy)
+			};
+			string outputPath = Path.Combine(standardListFolder, "standard-list-index.json");
+			WriteAllTextAtomically(outputPath, PlainJsonReportWriter.Serialize(document));
+			return new FamilyBrowserStandardListIndexResult
+			{
+				OutputPath = outputPath,
+				ItemCount = document.Items.Count
+			};
+		});
 	}
 
 	public static bool IsFilteringEnabled(FamilyBrowserStandardListCatalog catalog)
@@ -1215,6 +1206,78 @@ public sealed class FamilyBrowserStandardListService
 		return Path.Combine(standardListFolder, SanitizePathSegment(disciplineKey), SanitizePathSegment(baseName) + ".json");
 	}
 
+	private static void WriteAllTextAtomically(string outputPath, string content)
+	{
+		string tempPath = FamilyBrowserAtomicFileService.CreateSiblingTemporaryPath(outputPath);
+		string lockPath = outputPath + ".lock";
+		DateTime deadline = DateTime.UtcNow.AddSeconds(30.0);
+		while (true)
+		{
+			FileStream lockStream = null;
+			try
+			{
+				lockStream = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+				using (lockStream)
+				{
+					File.WriteAllText(tempPath, content ?? string.Empty, Encoding.UTF8);
+					FamilyBrowserAtomicFileService.Promote(tempPath, outputPath);
+				}
+				TryDeleteQuietly(lockPath);
+				return;
+			}
+			catch (IOException ex)
+			{
+				ProjectData.SetProjectError(ex);
+				if (DateTime.UtcNow >= deadline)
+				{
+					ProjectData.ClearProjectError();
+					throw new TimeoutException(FamilyBrowserLanguageService.Text("Timed out while waiting to save the standard family list.", "표준 패밀리 목록 저장 대기 시간이 초과되었습니다."), ex);
+				}
+				ProjectData.ClearProjectError();
+				Thread.Sleep(100);
+			}
+			catch (UnauthorizedAccessException ex2)
+			{
+				ProjectData.SetProjectError(ex2);
+				if (DateTime.UtcNow >= deadline)
+				{
+					ProjectData.ClearProjectError();
+					throw new TimeoutException(FamilyBrowserLanguageService.Text("Timed out while waiting to save the standard family list.", "표준 패밀리 목록 저장 대기 시간이 초과되었습니다."), ex2);
+				}
+				ProjectData.ClearProjectError();
+				Thread.Sleep(100);
+			}
+			finally
+			{
+				if (lockStream != null)
+				{
+					lockStream.Dispose();
+				}
+				TryDeleteQuietly(tempPath);
+			}
+		}
+	}
+
+	private static void TryDeleteQuietly(string path)
+	{
+		if (string.IsNullOrWhiteSpace(path))
+		{
+			return;
+		}
+		try
+		{
+			if (File.Exists(path))
+			{
+				File.Delete(path);
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+	}
+
 	private static List<FamilyBrowserStandardListIndexItem> BuildStandardListIndexItems(FamilyBrowserStandardPolicy policy)
 	{
 		List<FamilyBrowserStandardListIndexItem> items = new List<FamilyBrowserStandardListIndexItem>();
@@ -1281,6 +1344,52 @@ public sealed class FamilyBrowserStandardListService
 			return new List<FamilyBrowserStandardListEntry>();
 		}
 		return MapRows(lines.Select([SpecialName] (string line) => SplitCsvLine(line)).ToList());
+	}
+
+	public static List<string> ReadExcelSheetNames(string sourcePath)
+	{
+		string expandedSourcePath = Environment.ExpandEnvironmentVariables((sourcePath ?? string.Empty).Trim());
+		if (string.IsNullOrWhiteSpace(expandedSourcePath) || !File.Exists(expandedSourcePath))
+		{
+			return new List<string>();
+		}
+		if (!string.Equals(Path.GetExtension(expandedSourcePath), ".xlsx", StringComparison.OrdinalIgnoreCase))
+		{
+			return new List<string>();
+		}
+		ZipArchive archive = ZipFile.OpenRead(expandedSourcePath);
+		try
+		{
+			return ReadWorkbookSheetNames(archive);
+		}
+		finally
+		{
+			((IDisposable)archive)?.Dispose();
+		}
+	}
+
+	private static List<string> ReadWorkbookSheetNames(ZipArchive archive)
+	{
+		List<string> result = new List<string>();
+		ZipArchiveEntry workbookEntry = archive.GetEntry("xl/workbook.xml");
+		if (workbookEntry == null)
+		{
+			return result;
+		}
+		using (Stream workbookStream = workbookEntry.Open())
+		{
+			XDocument document = XDocument.Load(workbookStream);
+			XNamespace ns = XNamespace.Get("http://schemas.openxmlformats.org/spreadsheetml/2006/main");
+			foreach (XElement sheet in document.Descendants(ns + "sheet"))
+			{
+				string name = ((sheet.Attribute("name") == null) ? string.Empty : sheet.Attribute("name").Value).Trim();
+				if (!string.IsNullOrWhiteSpace(name) && !result.Any((string existing) => string.Equals(existing, name, StringComparison.OrdinalIgnoreCase)))
+				{
+					result.Add(name);
+				}
+			}
+		}
+		return result;
 	}
 
 	private static List<FamilyBrowserStandardListEntry> ReadXlsxEntries(string path, string sheetName)
@@ -1601,7 +1710,12 @@ public sealed class FamilyBrowserStandardListService
 		{
 			return true;
 		}
-		return item.IsShared && IsModelLoadableFamily(item) && (item.IsNestedLoadableChild || (nestedFamilyNames?.Contains(NormalizeFamilyToken(item.FamilyName)) ?? false));
+		string familyName = NormalizeFamilyToken(item.FamilyName);
+		if (nestedFamilyNames != null && familyName.Length > 0 && nestedFamilyNames.Contains(familyName))
+		{
+			return true;
+		}
+		return false;
 	}
 
 	private static HashSet<string> BuildNestedLoadableNameSet(StandardLibrarySnapshot snapshot)
@@ -1617,7 +1731,8 @@ public sealed class FamilyBrowserStandardListService
 			{
 				continue;
 			}
-			if (parentItem.IsNestedLoadableChild && parentItem.IsShared && IsModelLoadableFamily(parentItem))
+			AddNestedLoadableNamesFromSignature(result, parentItem.ContentSignatureDebugPath);
+			if (parentItem.IsNestedLoadableChild)
 			{
 				string nestedFamilyName = NormalizeFamilyToken(parentItem.FamilyName);
 				if (nestedFamilyName.Length > 0)
@@ -1631,7 +1746,7 @@ public sealed class FamilyBrowserStandardListService
 			}
 			foreach (StandardNestedLoadableFamilySnapshotItem child in parentItem.NestedLoadableFamilies)
 			{
-				if (child != null && child.IsShared && IsModelNestedLoadableChild(child))
+				if (child != null && IsModelNestedLoadableChild(child))
 				{
 					string familyName = NormalizeFamilyToken(child.FamilyName);
 					if (familyName.Length > 0)
@@ -1642,6 +1757,145 @@ public sealed class FamilyBrowserStandardListService
 			}
 		}
 		return result;
+	}
+
+	private static void AddNestedLoadableNamesFromSignature(HashSet<string> result, string signaturePath)
+	{
+		if (result == null || string.IsNullOrWhiteSpace(signaturePath))
+		{
+			return;
+		}
+		try
+		{
+			string path = Environment.ExpandEnvironmentVariables(signaturePath.Trim());
+			if (!File.Exists(path))
+			{
+				return;
+			}
+			bool inSource = false;
+			foreach (string rawLine in File.ReadLines(path))
+			{
+				string line = (rawLine ?? string.Empty).Trim();
+				if (line.Length == 0)
+				{
+					continue;
+				}
+				if (!inSource)
+				{
+					if (string.Equals(line, "----- signature-source -----", StringComparison.OrdinalIgnoreCase))
+					{
+						inSource = true;
+					}
+					continue;
+				}
+				if (line.StartsWith("----- ", StringComparison.Ordinal))
+				{
+					break;
+				}
+				if (!line.StartsWith("familyinstance|", StringComparison.OrdinalIgnoreCase))
+				{
+					if (!line.StartsWith("familysymbol|", StringComparison.OrdinalIgnoreCase) && !line.StartsWith("family|", StringComparison.OrdinalIgnoreCase))
+					{
+						continue;
+					}
+				}
+				AddNestedLoadableNameFromSignatureLine(result, line);
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+	}
+
+	private static void AddNestedLoadableNameFromSignatureLine(HashSet<string> result, string line)
+	{
+		if (result == null || string.IsNullOrWhiteSpace(line))
+		{
+			return;
+		}
+		string familyName = ExtractSignatureDebugTokenValue(line, "nestedFamily");
+		if (string.IsNullOrWhiteSpace(familyName))
+		{
+			familyName = ExtractSignatureDebugTokenValue(line, "family");
+		}
+		if (string.IsNullOrWhiteSpace(familyName))
+		{
+			List<string> tokens = SplitSignatureRawTokens(line);
+			string kind = NormalizeFamilyToken(GetToken(tokens, 0));
+			if (string.Equals(kind, "familyinstance", StringComparison.Ordinal) || string.Equals(kind, "familysymbol", StringComparison.Ordinal) || string.Equals(kind, "family", StringComparison.Ordinal))
+			{
+				familyName = GetToken(tokens, 2);
+			}
+		}
+		string normalized = NormalizeFamilyToken(familyName);
+		if (normalized.Length > 0)
+		{
+			result.Add(normalized);
+		}
+	}
+
+	private static string ExtractSignatureDebugTokenValue(string value, string key)
+	{
+		string text = value ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(key))
+		{
+			return string.Empty;
+		}
+		string marker = key + "=";
+		int index = text.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+		if (index < 0)
+		{
+			return string.Empty;
+		}
+		checked
+		{
+			index += marker.Length;
+			if (index < text.Length && text[index] == '"')
+			{
+				index++;
+				int quotedEndIndex = text.IndexOf('"', index);
+				if (quotedEndIndex < 0 || quotedEndIndex <= index)
+				{
+					return string.Empty;
+				}
+				return text.Substring(index, quotedEndIndex - index).Trim();
+			}
+			int endIndex = text.IndexOfAny(new char[4] { ' ', '/', ',', ']' }, index);
+			if (endIndex < 0)
+			{
+				endIndex = text.Length;
+			}
+			if (endIndex <= index)
+			{
+				return string.Empty;
+			}
+			return text.Substring(index, endIndex - index).Trim();
+		}
+	}
+
+	private static List<string> SplitSignatureRawTokens(string value)
+	{
+		string text = value ?? string.Empty;
+		int bracketIndex = text.IndexOf("[", StringComparison.Ordinal);
+		if (bracketIndex >= 0)
+		{
+			text = text.Substring(0, bracketIndex);
+		}
+		return (from x in text.Split('|')
+			select (x ?? string.Empty).Trim() into x
+			where x.Length > 0
+			select x).ToList();
+	}
+
+	private static string GetToken(IList<string> tokens, int index)
+	{
+		if (tokens == null || index < 0 || index >= tokens.Count)
+		{
+			return string.Empty;
+		}
+		return tokens[index];
 	}
 
 	private static bool IsModelLoadableFamily(StandardLoadableFamilySnapshotItem item)
@@ -1659,7 +1913,16 @@ public sealed class FamilyBrowserStandardListService
 		{
 			return false;
 		}
-		return string.Equals(FamilyBrowserFamilyClassificationService.ResolveCategoryGroup(item.CategoryGroup, item.CategoryName, item.CategoryId, item.FamilyName), "Model", StringComparison.OrdinalIgnoreCase);
+		return IsNestedLoadableFamilyCandidate(item.CategoryGroup, item.CategoryName, item.CategoryId, item.FamilyName);
+	}
+
+	private static bool IsNestedLoadableFamilyCandidate(string categoryGroup, string categoryName, string categoryId, string familyName)
+	{
+		if (string.IsNullOrWhiteSpace(familyName))
+		{
+			return false;
+		}
+		return !FamilyBrowserFamilyClassificationService.IsTypeManagedFamilyLike(categoryName, categoryId, familyName);
 	}
 
 	private static string NormalizeFamilyToken(string value)

@@ -11,11 +11,30 @@ public sealed class FamilyParameterSnapshotNormalizationService
 
 	public static List<StandardFamilyParameterSnapshotItem> DeduplicateDefinitions(IEnumerable<StandardFamilyParameterSnapshotItem> parameters)
 	{
-		return (from x in (parameters ?? Enumerable.Empty<StandardFamilyParameterSnapshotItem>()).Where([SpecialName] (StandardFamilyParameterSnapshotItem x) => x != null && !string.IsNullOrWhiteSpace(x.Name)).GroupBy<StandardFamilyParameterSnapshotItem, string>([SpecialName] (StandardFamilyParameterSnapshotItem x) => BuildDefinitionIdentityKey(x), StringComparer.Ordinal)
+		return (from x in (parameters ?? Enumerable.Empty<StandardFamilyParameterSnapshotItem>()).Where([SpecialName] (StandardFamilyParameterSnapshotItem x) => x != null && !string.IsNullOrWhiteSpace(x.Name)).GroupBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => BuildDefinitionIdentityKey(x), StringComparer.Ordinal)
 			select NormalizeSelectedParameter(SelectPreferredParameterSnapshot(x)) into x
 			where x != null
-			select x).OrderBy<StandardFamilyParameterSnapshotItem, string>([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(NormalizedRole(x)), StringComparer.Ordinal).ThenBy<StandardFamilyParameterSnapshotItem, string>([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(x.Name), StringComparer.Ordinal).ThenBy<StandardFamilyParameterSnapshotItem, string>([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(x.TypeName), StringComparer.Ordinal)
+			select x).OrderBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(NormalizedRole(x)), StringComparer.Ordinal).ThenBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(x.Name), StringComparer.Ordinal).ThenBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(x.TypeName), StringComparer.Ordinal)
 			.ToList();
+	}
+
+	public static List<StandardFamilyParameterSnapshotItem> DeduplicateDefinitionsAndTypeValues(IEnumerable<StandardFamilyParameterSnapshotItem> parameters)
+	{
+		return (from x in (parameters ?? Enumerable.Empty<StandardFamilyParameterSnapshotItem>()).Where([SpecialName] (StandardFamilyParameterSnapshotItem x) => x != null && !string.IsNullOrWhiteSpace(x.Name)).GroupBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => BuildDefinitionAndTypeValueIdentityKey(x), StringComparer.Ordinal)
+			select NormalizeSelectedParameter(SelectPreferredParameterSnapshot(x)) into x
+			where x != null
+			select x).OrderBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(NormalizedRole(x)), StringComparer.Ordinal).ThenBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(x.Name), StringComparer.Ordinal).ThenBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(x.TypeName), StringComparer.Ordinal)
+			.ToList();
+	}
+
+	private static string BuildDefinitionAndTypeValueIdentityKey(StandardFamilyParameterSnapshotItem item)
+	{
+		string key = BuildDefinitionIdentityKey(item);
+		if (item != null && string.Equals(NormalizedRole(item), "type", StringComparison.Ordinal))
+		{
+			key += "|typevalue|" + Normalize(item.TypeName);
+		}
+		return key;
 	}
 
 	public static string BuildDefinitionIdentityKey(StandardFamilyParameterSnapshotItem item)
@@ -39,7 +58,7 @@ public sealed class FamilyParameterSnapshotNormalizationService
 	public static string BuildComparableDefinitionSignature(IEnumerable<StandardFamilyParameterSnapshotItem> parameters)
 	{
 		IOrderedEnumerable<string> parts = (from x in DeduplicateDefinitions(parameters)
-			select NormalizedRole(x) + ":" + Normalize(x.Name) + ":" + Normalize(x.StorageType) + ":" + Normalize(x.Formula) + ":" + x.IsShared + ":" + Normalize(ResolvePortableParameterIdentity(x))).Distinct<string>(StringComparer.Ordinal).OrderBy<string, string>([SpecialName] (string x) => x, StringComparer.Ordinal);
+			select NormalizedRole(x) + ":" + Normalize(x.Name) + ":" + Normalize(x.StorageType) + ":" + Normalize(x.Formula) + ":" + x.IsShared + ":" + Normalize(ResolvePortableParameterIdentity(x))).Distinct(StringComparer.Ordinal).OrderBy([SpecialName] (string x) => x, StringComparer.Ordinal);
 		return string.Join("|", parts);
 	}
 

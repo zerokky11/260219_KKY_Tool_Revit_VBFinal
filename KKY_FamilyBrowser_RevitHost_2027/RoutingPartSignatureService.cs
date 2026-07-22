@@ -32,7 +32,7 @@ public sealed class RoutingPartSignatureService
 		int elementId = ResolveElementIntegerId(element);
 		if (elementId >= 0 && visitedElementIds != null && visitedElementIds.Contains(elementId))
 		{
-			return "class=" + Normalize(((object)element).GetType().Name) + "\ncategory=" + Normalize(ResolveCategoryName(element)) + "\nname=" + Normalize(ResolveElementName(element)) + "\ncycle=true";
+			return "class=" + Normalize(element.GetType().Name) + "\ncategory=" + Normalize(ResolveCategoryName(element)) + "\nname=" + Normalize(ResolveElementName(element)) + "\ncycle=true";
 		}
 		if (elementId >= 0)
 		{
@@ -40,7 +40,7 @@ public sealed class RoutingPartSignatureService
 		}
 		List<string> lines = new List<string>
 		{
-			"class=" + Normalize(((object)element).GetType().Name),
+			"class=" + Normalize(element.GetType().Name),
 			"category=" + Normalize(ResolveCategoryName(element)),
 			"name=" + Normalize(ResolveElementName(element)),
 			"params=" + BuildParameterSignature(doc, element, depth, visitedElementIds),
@@ -67,7 +67,7 @@ public sealed class RoutingPartSignatureService
 		List<string> parts = new List<string>();
 		try
 		{
-			foreach (Parameter parameter in (from Parameter x in (IEnumerable)element.Parameters
+			foreach (Parameter parameter in (from Parameter x in element.Parameters
 				where ShouldCaptureParameter(x)
 				select x).OrderBy<Parameter, string>([SpecialName] (Parameter x) => Normalize(ResolveParameterName(x)), StringComparer.Ordinal))
 			{
@@ -89,7 +89,7 @@ public sealed class RoutingPartSignatureService
 			return string.Empty;
 		}
 		List<string> sizeSignatures = new List<string>();
-		IOrderedEnumerable<MethodInfo> methods = (from x in ((object)element).GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public)
+		IOrderedEnumerable<MethodInfo> methods = (from x in element.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public)
 			where x.GetParameters().Length == 0
 			where string.Equals(x.Name, "GetSizes", StringComparison.OrdinalIgnoreCase) || string.Equals(x.Name, "GetMEPSizes", StringComparison.OrdinalIgnoreCase)
 			select x).OrderBy<MethodInfo, string>([SpecialName] (MethodInfo x) => x.Name, StringComparer.Ordinal);
@@ -150,8 +150,6 @@ public sealed class RoutingPartSignatureService
 
 	private static string FormatSignatureValue(object value)
 	{
-		//IL_0017: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0021: Expected O, but got Unknown
 		if (value == null)
 		{
 			return string.Empty;
@@ -187,7 +185,7 @@ public sealed class RoutingPartSignatureService
 		}
 		try
 		{
-			if (parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) == -1002001)
+			if ((object)parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) == -1002001)
 			{
 				return false;
 			}
@@ -205,21 +203,7 @@ public sealed class RoutingPartSignatureService
 		string ResolveParameterName;
 		try
 		{
-			object obj;
-			if (parameter == null)
-			{
-				obj = null;
-			}
-			else
-			{
-				Definition definition = parameter.Definition;
-				obj = ((definition != null) ? definition.Name : null);
-			}
-			if (obj == null)
-			{
-				obj = string.Empty;
-			}
-			ResolveParameterName = (string)obj;
+			ResolveParameterName = parameter?.Definition?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -232,12 +216,10 @@ public sealed class RoutingPartSignatureService
 
 	private static string ResolveStorageTypeName(Parameter parameter)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Unknown result type (might be due to invalid IL or missing references)
 		string ResolveStorageTypeName;
 		try
 		{
-			ResolveStorageTypeName = ((Enum)parameter.StorageType/*cast due to .constrained prefix*/).ToString();
+			ResolveStorageTypeName = parameter.StorageType.ToString();
 		}
 		catch (Exception projectError)
 		{
@@ -250,36 +232,30 @@ public sealed class RoutingPartSignatureService
 
 	private static string ResolveParameterValue(Document doc, Parameter parameter, int depth, ISet<int> visitedElementIds)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0009: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001f: Expected I4, but got Unknown
 		string ResolveParameterValue;
 		try
 		{
-			StorageType storageType = parameter.StorageType;
-			switch (storageType - 1)
+			switch (parameter.StorageType)
 			{
-			case 2:
+			case StorageType.String:
 				ResolveParameterValue = NormalizeMultiline(parameter.AsString());
 				break;
-			case 1:
+			case StorageType.Double:
 			{
 				string formatted2 = parameter.AsValueString();
 				ResolveParameterValue = (string.IsNullOrWhiteSpace(formatted2) ? parameter.AsDouble().ToString("G17", CultureInfo.InvariantCulture) : NormalizeMultiline(formatted2));
 				break;
 			}
-			case 0:
+			case StorageType.Integer:
 			{
 				string formatted3 = parameter.AsValueString();
 				ResolveParameterValue = (string.IsNullOrWhiteSpace(formatted3) ? parameter.AsInteger().ToString(CultureInfo.InvariantCulture) : NormalizeMultiline(formatted3));
 				break;
 			}
-			case 3:
+			case StorageType.ElementId:
 			{
 				ElementId id = parameter.AsElementId();
-				if (id == null || id == ElementId.InvalidElementId)
+				if ((object)id == null || id == ElementId.InvalidElementId)
 				{
 					ResolveParameterValue = string.Empty;
 				}
@@ -290,7 +266,7 @@ public sealed class RoutingPartSignatureService
 				}
 				else
 				{
-					Element referenced = ((doc == null) ? null : doc.GetElement(id));
+					Element referenced = doc?.GetElement(id);
 					ResolveParameterValue = ((referenced != null) ? BuildReferencedElementValue(doc, referenced, depth, visitedElementIds) : RevitElementIdCompat.CompatIntegerValue(id).ToString(CultureInfo.InvariantCulture));
 				}
 				break;
@@ -315,7 +291,7 @@ public sealed class RoutingPartSignatureService
 		{
 			return string.Empty;
 		}
-		string header = ((object)referenced).GetType().Name + ":" + ResolveCategoryName(referenced) + ":" + ResolveElementName(referenced);
+		string header = referenced.GetType().Name + ":" + ResolveCategoryName(referenced) + ":" + ResolveElementName(referenced);
 		if (depth >= 1)
 		{
 			return header;
@@ -327,7 +303,7 @@ public sealed class RoutingPartSignatureService
 	{
 		try
 		{
-			if (element != null && element.Id != null)
+			if (element != null && (object)element.Id != null)
 			{
 				return RevitElementIdCompat.CompatIntegerValue(element.Id);
 			}
@@ -353,7 +329,7 @@ public sealed class RoutingPartSignatureService
 		}
 		try
 		{
-			if (parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) < 0)
+			if ((object)parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) < 0)
 			{
 				return "builtin:" + RevitElementIdCompat.CompatIntegerValue(parameter.Id).ToString(CultureInfo.InvariantCulture);
 			}
@@ -370,11 +346,9 @@ public sealed class RoutingPartSignatureService
 	{
 		try
 		{
-			Definition obj = ((parameter != null) ? parameter.Definition : null);
-			ExternalDefinition externalDefinition = (ExternalDefinition)(object)((obj is ExternalDefinition) ? obj : null);
-			if (externalDefinition != null)
+			if (parameter?.Definition is ExternalDefinition { GUID: var gUID })
 			{
-				return externalDefinition.GUID.ToString("D");
+				return gUID.ToString("D");
 			}
 		}
 		catch (Exception projectError)
@@ -413,8 +387,7 @@ public sealed class RoutingPartSignatureService
 		string ResolveCategoryName;
 		try
 		{
-			Category category = element.Category;
-			ResolveCategoryName = ((category != null) ? category.Name : null) ?? string.Empty;
+			ResolveCategoryName = element.Category?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{

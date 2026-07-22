@@ -13,13 +13,15 @@ public sealed class FamilyBrowserUserSettingsStore
 
 	private static string _runtimeAdminModeValue = string.Empty;
 
+	private static string _runtimeDetailedSystemTypeComparisonValue = string.Empty;
+
 	private FamilyBrowserUserSettingsStore()
 	{
 	}
 
 	public static string GetSettingsRoot(bool createFolder = false)
 	{
-		string root = ResolveManagedUserSettingsRoot();
+		string root = ResolveLocalUserSettingsRoot();
 		if (string.IsNullOrWhiteSpace(root))
 		{
 			return string.Empty;
@@ -49,6 +51,16 @@ public sealed class FamilyBrowserUserSettingsStore
 			return string.Empty;
 		}
 		return Path.Combine(root, "admin-mode.txt");
+	}
+
+	public static string GetDetailedSystemTypeComparisonSettingsPath()
+	{
+		string root = GetSettingsRoot();
+		if (string.IsNullOrWhiteSpace(root))
+		{
+			return string.Empty;
+		}
+		return Path.Combine(root, "system-type-detail-components.txt");
 	}
 
 	public static string LoadLanguageCode()
@@ -131,6 +143,39 @@ public sealed class FamilyBrowserUserSettingsStore
 		return string.Equals(value, "on", StringComparison.Ordinal) || string.Equals(value, "true", StringComparison.Ordinal) || string.Equals(value, "1", StringComparison.Ordinal);
 	}
 
+	public static bool HasAdminModePreference()
+	{
+		object syncRoot = SyncRoot;
+		ObjectFlowControl.CheckForSyncLockOnValueType(syncRoot);
+		bool lockTaken = false;
+		try
+		{
+			Monitor.Enter(syncRoot, ref lockTaken);
+			if (string.Equals(_runtimeAdminModeValue, "on", StringComparison.OrdinalIgnoreCase) || string.Equals(_runtimeAdminModeValue, "off", StringComparison.OrdinalIgnoreCase))
+			{
+				return true;
+			}
+		}
+		finally
+		{
+			if (lockTaken)
+			{
+				Monitor.Exit(syncRoot);
+			}
+		}
+		string value = ReadTrimmed(GetAdminModeSettingsPath()).ToLowerInvariant();
+		return string.Equals(value, "on", StringComparison.Ordinal) || string.Equals(value, "true", StringComparison.Ordinal) || string.Equals(value, "1", StringComparison.Ordinal) || string.Equals(value, "off", StringComparison.Ordinal) || string.Equals(value, "false", StringComparison.Ordinal) || string.Equals(value, "0", StringComparison.Ordinal);
+	}
+
+	public static bool ResolveInitialAdminModeEnabled(bool canEnableAdminMode)
+	{
+		if (HasAdminModePreference())
+		{
+			return LoadAdminModeEnabled();
+		}
+		return canEnableAdminMode;
+	}
+
 	public static void SaveAdminModeEnabled(bool enabled)
 	{
 		object syncRoot = SyncRoot;
@@ -149,6 +194,92 @@ public sealed class FamilyBrowserUserSettingsStore
 			}
 		}
 		WriteText(GetAdminModeSettingsPathForWrite(), enabled ? "on" : "off");
+	}
+
+	public static bool ResolveDetailedSystemTypeComparisonEnabled(FamilyBrowserStandardPolicy policy)
+	{
+		string value = string.Empty;
+		object syncRoot = SyncRoot;
+		ObjectFlowControl.CheckForSyncLockOnValueType(syncRoot);
+		bool lockTaken = false;
+		try
+		{
+			Monitor.Enter(syncRoot, ref lockTaken);
+			value = _runtimeDetailedSystemTypeComparisonValue;
+		}
+		finally
+		{
+			if (lockTaken)
+			{
+				Monitor.Exit(syncRoot);
+			}
+		}
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			value = ReadTrimmed(GetDetailedSystemTypeComparisonSettingsPath());
+		}
+		if (string.Equals(value, "on", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "1", StringComparison.Ordinal))
+		{
+			return true;
+		}
+		if (string.Equals(value, "off", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "false", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "0", StringComparison.Ordinal))
+		{
+			return false;
+		}
+		return FamilyBrowserStandardPolicyStore.IsDetailedSystemTypeComparisonEnabled(policy);
+	}
+
+	public static void SaveDetailedSystemTypeComparisonEnabled(bool enabled)
+	{
+		string value = enabled ? "on" : "off";
+		object syncRoot = SyncRoot;
+		ObjectFlowControl.CheckForSyncLockOnValueType(syncRoot);
+		bool lockTaken = false;
+		try
+		{
+			Monitor.Enter(syncRoot, ref lockTaken);
+			_runtimeDetailedSystemTypeComparisonValue = value;
+		}
+		finally
+		{
+			if (lockTaken)
+			{
+				Monitor.Exit(syncRoot);
+			}
+		}
+		WriteText(GetDetailedSystemTypeComparisonSettingsPathForWrite(), value);
+	}
+
+	public static bool ClearDetailedSystemTypeComparisonPreference()
+	{
+		object syncRoot = SyncRoot;
+		ObjectFlowControl.CheckForSyncLockOnValueType(syncRoot);
+		bool lockTaken = false;
+		try
+		{
+			Monitor.Enter(syncRoot, ref lockTaken);
+			_runtimeDetailedSystemTypeComparisonValue = string.Empty;
+		}
+		finally
+		{
+			if (lockTaken)
+			{
+				Monitor.Exit(syncRoot);
+			}
+		}
+		try
+		{
+			string path = GetDetailedSystemTypeComparisonSettingsPath();
+			if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+			{
+				File.Delete(path);
+			}
+			return true;
+		}
+		catch
+		{
+			return false;
+		}
 	}
 
 	private static string GetLanguageSettingsPathForWrite()
@@ -171,32 +302,24 @@ public sealed class FamilyBrowserUserSettingsStore
 		return Path.Combine(root, "admin-mode.txt");
 	}
 
-	private static string ResolveManagedUserSettingsRoot()
+	private static string GetDetailedSystemTypeComparisonSettingsPathForWrite()
 	{
-		string policyPath = FamilyBrowserMachineConfigStore.ResolveManagedPolicyPath();
-		if (string.IsNullOrWhiteSpace(policyPath))
+		string root = GetSettingsRoot(createFolder: true);
+		if (string.IsNullOrWhiteSpace(root))
 		{
 			return string.Empty;
 		}
-		string policyFolder = Path.GetDirectoryName(policyPath);
-		if (string.IsNullOrWhiteSpace(policyFolder))
+		return Path.Combine(root, "system-type-detail-components.txt");
+	}
+
+	private static string ResolveLocalUserSettingsRoot()
+	{
+		string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+		if (string.IsNullOrWhiteSpace(localAppData))
 		{
 			return string.Empty;
 		}
-		string root = policyFolder.TrimEnd(new char[2]
-		{
-			Path.DirectorySeparatorChar,
-			Path.AltDirectorySeparatorChar
-		});
-		if (string.Equals(Path.GetFileName(root), "Config", StringComparison.OrdinalIgnoreCase))
-		{
-			DirectoryInfo parent = Directory.GetParent(root);
-			if (parent != null && !string.IsNullOrWhiteSpace(parent.FullName))
-			{
-				root = parent.FullName;
-			}
-		}
-		return Path.Combine(root, "UserSettings", SafeFolderName(Environment.UserName));
+		return Path.Combine(localAppData, "KKY", "FamilyBrowser", "Settings");
 	}
 
 	private static string ReadTrimmed(string path)

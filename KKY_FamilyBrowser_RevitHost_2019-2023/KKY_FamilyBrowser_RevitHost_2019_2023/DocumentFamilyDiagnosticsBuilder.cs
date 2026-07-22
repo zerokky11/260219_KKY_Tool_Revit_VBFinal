@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -49,7 +48,6 @@ internal sealed class DocumentFamilyDiagnosticsBuilder
 
 	public static DocumentFamilyDiagnosticsReport Build(Document doc)
 	{
-		//IL_005f: Unknown result type (might be due to invalid IL or missing references)
 		DocumentFamilyDiagnosticsReport report = new DocumentFamilyDiagnosticsReport
 		{
 			GeneratedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
@@ -57,9 +55,9 @@ internal sealed class DocumentFamilyDiagnosticsBuilder
 			DocumentPath = (doc.PathName ?? string.Empty),
 			RevitVersion = doc.Application.VersionNumber
 		};
-		IOrderedEnumerable<Family> families = (from Family x in (IEnumerable)new FilteredElementCollector(doc).OfClass(typeof(Family))
+		IOrderedEnumerable<Family> families = (from Family x in new FilteredElementCollector(doc).OfClass(typeof(Family))
 			where x != null
-			select x).OrderBy([SpecialName] (Family x) => Normalize(((Element)x).Name), StringComparer.Ordinal);
+			select x).OrderBy([SpecialName] (Family x) => Normalize(x.Name), StringComparer.Ordinal);
 		using (IEnumerator<Family> enumerator = families.GetEnumerator())
 		{
 			_Closure_0024__1_002D0 closure_0024__1_002D = default(_Closure_0024__1_002D0);
@@ -69,13 +67,13 @@ internal sealed class DocumentFamilyDiagnosticsBuilder
 				closure_0024__1_002D._0024VB_0024Local_family = enumerator.Current;
 				report.Families.Add(new DocumentFamilyDiagnosticsItem
 				{
-					FamilyName = (((Element)closure_0024__1_002D._0024VB_0024Local_family).Name ?? string.Empty),
+					FamilyName = (closure_0024__1_002D._0024VB_0024Local_family.Name ?? string.Empty),
 					CategoryName = ResolveCategoryName(closure_0024__1_002D._0024VB_0024Local_family),
 					IsEditable = SafeBool(closure_0024__1_002D._Lambda_0024__2),
 					IsInPlace = SafeBool(closure_0024__1_002D._Lambda_0024__3),
 					IsShared = ResolveIsShared(closure_0024__1_002D._0024VB_0024Local_family),
 					TypeCount = SafeInt(closure_0024__1_002D._Lambda_0024__4),
-					UniqueId = (((Element)closure_0024__1_002D._0024VB_0024Local_family).UniqueId ?? string.Empty)
+					UniqueId = (closure_0024__1_002D._0024VB_0024Local_family.UniqueId ?? string.Empty)
 				});
 			}
 		}
@@ -94,8 +92,7 @@ internal sealed class DocumentFamilyDiagnosticsBuilder
 		string ResolveCategoryName;
 		try
 		{
-			Category familyCategory = family.FamilyCategory;
-			ResolveCategoryName = ((familyCategory != null) ? familyCategory.Name : null) ?? string.Empty;
+			ResolveCategoryName = family.FamilyCategory?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -108,12 +105,10 @@ internal sealed class DocumentFamilyDiagnosticsBuilder
 
 	private static bool ResolveIsShared(Family family)
 	{
-		//IL_0010: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0016: Invalid comparison between Unknown and I4
 		try
 		{
-			Parameter parameterValue = ((Element)family)[(BuiltInParameter)(-1012834)];
-			if (parameterValue != null && (int)parameterValue.StorageType == 1)
+			Parameter parameterValue = ((Element)family).get_Parameter(BuiltInParameter.FAMILY_SHARED);
+			if (parameterValue != null && parameterValue.StorageType == StorageType.Integer)
 			{
 				return parameterValue.AsInteger() != 0;
 			}

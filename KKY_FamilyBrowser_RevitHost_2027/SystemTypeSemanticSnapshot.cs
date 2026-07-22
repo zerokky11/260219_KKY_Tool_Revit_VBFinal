@@ -25,6 +25,14 @@ public class SystemTypeSemanticSnapshot
 
 	public List<RoutingDependencySnapshot> RoutingDependencies { get; set; }
 
+	public bool DetailedComponentsCaptured { get; set; }
+
+	public string DetailedComponentSignature { get; set; }
+
+	public List<SystemTypeDetailedComponentSnapshotItem> DetailedComponents { get; set; }
+
+	public string DetailSummary { get; set; }
+
 	public SystemTypeSemanticSnapshot()
 	{
 		SystemFamilyKind = string.Empty;
@@ -38,5 +46,9 @@ public class SystemTypeSemanticSnapshot
 		CompoundStructureSignature = string.Empty;
 		Parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 		RoutingDependencies = new List<RoutingDependencySnapshot>();
+		DetailedComponentsCaptured = false;
+		DetailedComponentSignature = string.Empty;
+		DetailedComponents = new List<SystemTypeDetailedComponentSnapshotItem>();
+		DetailSummary = string.Empty;
 	}
 }

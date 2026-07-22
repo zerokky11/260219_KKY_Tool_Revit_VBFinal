@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -15,7 +14,7 @@ using Microsoft.VisualBasic.CompilerServices;
 
 public sealed class StandardLibraryRegistrationService
 {
-	private sealed class StandardLoadableFamilyDeepMetadata
+	internal sealed class StandardLoadableFamilyDeepMetadata
 	{
 		public List<StandardNestedLoadableFamilySnapshotItem> NestedLoadableFamilies { get; set; }
 
@@ -77,8 +76,7 @@ public sealed class StandardLibraryRegistrationService
 		[SpecialName]
 		internal ElementType _Lambda_0024__2(ElementId id)
 		{
-			Element element = _0024VB_0024Local_doc.GetElement(id);
-			return (ElementType)(object)((element is ElementType) ? element : null);
+			return _0024VB_0024Local_doc.GetElement(id) as ElementType;
 		}
 
 		[SpecialName]
@@ -153,7 +151,7 @@ public sealed class StandardLibraryRegistrationService
 		[SpecialName]
 		internal bool _Lambda_0024__1(Family x)
 		{
-			return _0024VB_0024Local_selectedNames.Contains(Normalize(((Element)x).Name ?? string.Empty));
+			return _0024VB_0024Local_selectedNames.Contains(Normalize(x.Name ?? string.Empty));
 		}
 	}
 
@@ -173,13 +171,13 @@ public sealed class StandardLibraryRegistrationService
 		[SpecialName]
 		internal bool _Lambda_0024__1(Family x)
 		{
-			return _0024VB_0024Local_selectedNames.Contains(Normalize(((Element)x).Name ?? string.Empty));
+			return _0024VB_0024Local_selectedNames.Contains(Normalize(x.Name ?? string.Empty));
 		}
 	}
 
-	private static readonly HashSet<string> AllowedSystemTypeNames = new HashSet<string>(new string[21]
+	private static readonly HashSet<string> AllowedSystemTypeNames = new HashSet<string>(new string[23]
 	{
-		"WallType", "FloorType", "RoofType", "CeilingType", "StairsType", "RailingType", "DuctType", "PipeType", "FlexDuctType", "FlexPipeType",
+		"WallType", "FloorType", "RoofType", "CeilingType", "StairsType", "RailingType", "CurtainSystemType", "PanelType", "DuctType", "PipeType", "FlexDuctType", "FlexPipeType",
 		"DuctSystemType", "PipingSystemType", "MechanicalSystemType", "ElectricalSystemType", "CableTrayType", "ConduitType", "WireType", "DuctInsulationType", "PipeInsulationType", "DuctLiningType",
 		"MullionType"
 	}, StringComparer.OrdinalIgnoreCase);
@@ -202,13 +200,14 @@ public sealed class StandardLibraryRegistrationService
 			throw new FileNotFoundException(T("Standard library RVT was not found.", "표준 라이브러리 RVT를 찾지 못했습니다."), resolvedPath);
 		}
 		FamilyBrowserStandardPolicyStore.RequireManagedDataRootForWrite(workspaceRoot, T("Register standard RVT", "표준 RVT 등록"));
+		EnsureSelectedStandardRvtIsClosed(application, resolvedPath);
 		string sourceKind = InferSourceKind(resolvedPath);
 		string sourceId = BuildSourceId(sourceKind, resolvedPath);
 		string effectiveSnapshotMode = NormalizeSnapshotMode(snapshotMode);
 		FileInfo fileInfo = new FileInfo(resolvedPath);
 		string sourceFileLastWriteUtc = fileInfo.LastWriteTimeUtc.ToString("O", CultureInfo.InvariantCulture);
 		long sourceFileLength = fileInfo.Length;
-		Document standardDoc = FindOpenDocument(application, resolvedPath);
+		Document standardDoc = null;
 		bool shouldClose = false;
 		ReportProgress(progress, 2, 100, T("Checking reusable standard snapshot...", "재사용 가능한 표준 스냅샷 확인 중..."));
 		if (standardDoc == null && !forceSnapshotRebuild)
@@ -257,9 +256,7 @@ public sealed class StandardLibraryRegistrationService
 			ReportProgress(progress, 12, 100, T("Scanning standard RVT content...", "표준 RVT 내용 스캔 중..."));
 			StandardLibrarySnapshot snapshot = BuildSnapshot(standardDoc, workspaceRoot, sourceId, sourceKind, resolvedPath, effectiveSnapshotMode, sourceFileLastWriteUtc, sourceFileLength, dialogGuard, nestedLoadableScanFamilyNames, progress);
 			ReportProgress(progress, 94, 100, T("Saving standard snapshot...", "표준 스냅샷 저장 중..."));
-			string snapshotPath = StandardLibraryRegistryStore.SaveSnapshot(workspaceRoot, snapshot);
 			List<FamilyThumbnailAutoConfirmedDialogRecord> dialogRecords = dialogGuard.GetRecordsSince(0);
-			string diagnosticReportPath = WriteRegistrationDialogDiagnosticReport(workspaceRoot, sourceId, dialogRecords);
 			StandardLibraryRegistrationRecord registration = new StandardLibraryRegistrationRecord
 			{
 				SourceId = snapshot.SourceId,
@@ -273,12 +270,14 @@ public sealed class StandardLibraryRegistrationService
 				RegisteredAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
 				RegisteredBy = (currentUser ?? string.Empty),
 				LastSnapshotAtUtc = snapshot.CapturedAtUtc,
-				LastSnapshotPath = snapshotPath,
+				LastSnapshotPath = string.Empty,
 				RevitVersion = snapshot.RevitVersion,
 				Summary = snapshot.Summary
 			};
 			ReportProgress(progress, 98, 100, T("Saving active standard registration...", "현재 표준 등록 정보 저장 중..."));
-			string registrationPath = StandardLibraryRegistryStore.SaveActiveRegistration(workspaceRoot, registration);
+			StandardLibraryPublicationResult publication = StandardLibraryRegistryStore.PublishSnapshotAndActiveRegistration(workspaceRoot, snapshot, registration);
+			string snapshotPath = publication.SnapshotPath;
+			string registrationPath = publication.RegistrationPath;
 			ReportProgress(progress, 100, 100, T("Standard RVT registration completed.", "표준 RVT 등록이 완료되었습니다."));
 			return new StandardLibraryRegistrationResult
 			{
@@ -286,23 +285,21 @@ public sealed class StandardLibraryRegistrationService
 				Snapshot = snapshot,
 				RegistrationPath = registrationPath,
 				SnapshotPath = snapshotPath,
-				DiagnosticReportPath = diagnosticReportPath,
+				DiagnosticReportPath = string.Empty,
 				AutoHandledDialogs = dialogRecords
 			};
 		}
 		finally
 		{
-			if (shouldClose && standardDoc != null)
+			if (shouldClose)
 			{
-				standardDoc.Close(false);
+				standardDoc?.Close(saveModified: false);
 			}
 		}
 	}
 
 	private static StandardLibrarySnapshot BuildSnapshot(Document doc, string workspaceRoot, string sourceId, string sourceKind, string resolvedPath, string snapshotMode, string sourceFileLastWriteUtc, long sourceFileLength, FamilyThumbnailConstraintDialogGuard dialogGuard, ISet<string> nestedLoadableScanFamilyNames, Action<int, int, string> progress)
 	{
-		//IL_0140: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0904: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__5_002D0 arg = default(_Closure_0024__5_002D0);
 		_Closure_0024__5_002D0 CS_0024_003C_003E8__locals28 = new _Closure_0024__5_002D0(arg);
 		CS_0024_003C_003E8__locals28._0024VB_0024Local_doc = doc;
@@ -315,7 +312,7 @@ public sealed class StandardLibraryRegistrationService
 		ISet<string> normalizedNestedLoadableScanFamilyNames = NormalizeFamilyNameSet(nestedLoadableScanFamilyNames);
 		StandardLibrarySnapshot snapshot = new StandardLibrarySnapshot
 		{
-			SnapshotSchemaVersion = 4,
+			SnapshotSchemaVersion = 9,
 			SourceId = CS_0024_003C_003E8__locals28._0024VB_0024Local_sourceId,
 			DisplayName = Path.GetFileNameWithoutExtension(resolvedPath),
 			SourceKind = sourceKind,
@@ -330,9 +327,10 @@ public sealed class StandardLibraryRegistrationService
 		Dictionary<string, string> loadableContentFingerprintCache = new Dictionary<string, string>(StringComparer.Ordinal);
 		string fingerprintDebugRunFolder = FingerprintDebugSignatureStore.CreateStandardRunFolder(workspaceRoot, CS_0024_003C_003E8__locals28._0024VB_0024Local_sourceId, snapshot.DisplayName, snapshot.CapturedAtUtc);
 		ReportProgress(CS_0024_003C_003E8__locals28._0024VB_0024Local_progress, 14, 100, T("Collecting loadable families...", "로더블 패밀리 수집 중..."));
-		List<Family> loadableFamilies = (from Family x in (IEnumerable)new FilteredElementCollector(CS_0024_003C_003E8__locals28._0024VB_0024Local_doc).OfClass(typeof(Family))
+		List<Family> loadableFamilies = (from Family x in new FilteredElementCollector(CS_0024_003C_003E8__locals28._0024VB_0024Local_doc).OfClass(typeof(Family))
 			where FamilyBrowserFamilyClassificationService.IsBrowserLoadableFamily(x)
-			select x).OrderBy<Family, string>([SpecialName] (Family x) => Normalize(((Element)x).Name), StringComparer.Ordinal).ToList();
+			select x).OrderBy([SpecialName] (Family x) => Normalize(x.Name), StringComparer.Ordinal).ToList();
+		Dictionary<int, int> standaloneInstanceCounts = BuildStandaloneInstanceCountsByFamily(CS_0024_003C_003E8__locals28._0024VB_0024Local_doc);
 		int loadableTotal = Math.Max(1, loadableFamilies.Count);
 		checked
 		{
@@ -344,16 +342,13 @@ public sealed class StandardLibraryRegistrationService
 				closure_0024__5_002D = new _Closure_0024__5_002D1(closure_0024__5_002D);
 				closure_0024__5_002D._0024VB_0024NonLocal__0024VB_0024Closure_2 = CS_0024_003C_003E8__locals28;
 				Family family = loadableFamilies[loadableIndex];
-				ReportProgress(closure_0024__5_002D._0024VB_0024NonLocal__0024VB_0024Closure_2._0024VB_0024Local_progress, 24 + (int)Math.Round((double)loadableIndex / (double)loadableTotal * 52.0), 100, T("Scanning loadable family ", "로더블 패밀리 스캔 중 ") + (loadableIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + loadableFamilies.Count.ToString(CultureInfo.InvariantCulture) + ": " + (((Element)family).Name ?? string.Empty));
-				List<string> typeNames = (from x in family.GetFamilySymbolIds().Select([SpecialName] (ElementId id) =>
-					{
-						Element element = closure_0024__5_002D._0024VB_0024NonLocal__0024VB_0024Closure_2._0024VB_0024Local_doc.GetElement(id);
-						return (ElementType)(object)((element is ElementType) ? element : null);
-					})
+				ReportProgress(closure_0024__5_002D._0024VB_0024NonLocal__0024VB_0024Closure_2._0024VB_0024Local_progress, 24 + (int)Math.Round((double)loadableIndex / (double)loadableTotal * 52.0), 100, T("Scanning loadable family ", "로더블 패밀리 스캔 중 ") + (loadableIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + loadableFamilies.Count.ToString(CultureInfo.InvariantCulture) + ": " + (family.Name ?? string.Empty));
+				List<string> typeNames = (from id in family.GetFamilySymbolIds()
+					select closure_0024__5_002D._0024VB_0024NonLocal__0024VB_0024Closure_2._0024VB_0024Local_doc.GetElement(id) as ElementType into x
 					where x != null
-					select ((Element)x).Name ?? string.Empty).OrderBy<string, string>([SpecialName] (string x) => Normalize(x), StringComparer.Ordinal).ToList();
+					select x.Name ?? string.Empty).OrderBy([SpecialName] (string x) => Normalize(x), StringComparer.Ordinal).ToList();
 				closure_0024__5_002D._0024VB_0024Local_categoryName = FamilyBrowserFamilyClassificationService.ResolveCategoryName(family);
-				closure_0024__5_002D._0024VB_0024Local_familyName = ((Element)family).Name ?? string.Empty;
+				closure_0024__5_002D._0024VB_0024Local_familyName = family.Name ?? string.Empty;
 				dialogGuard?.SetCurrentFamily(closure_0024__5_002D._0024VB_0024Local_categoryName, closure_0024__5_002D._0024VB_0024Local_familyName);
 				closure_0024__5_002D._0024VB_0024Local_item = null;
 				int dialogRecordStart = dialogGuard?.RecordCount ?? 0;
@@ -386,8 +381,10 @@ public sealed class StandardLibraryRegistrationService
 						ContentFingerprint = (closure_0024__5_002D._0024VB_0024NonLocal__0024VB_0024Closure_2._0024VB_0024Local_includeDeepLoadableContent ? string.Empty : fastContentFingerprint),
 						ContentSignatureDebugPath = (closure_0024__5_002D._0024VB_0024NonLocal__0024VB_0024Closure_2._0024VB_0024Local_includeDeepLoadableContent ? string.Empty : fastContentSignatureDebugPath),
 						ContentFingerprintFailureReason = (closure_0024__5_002D._0024VB_0024NonLocal__0024VB_0024Closure_2._0024VB_0024Local_includeDeepLoadableContent ? string.Empty : fastContentFingerprintFailureReason),
-						UniqueId = (((Element)family).UniqueId ?? string.Empty),
-						IsShared = ResolveIsShared(family)
+						UniqueId = (family.UniqueId ?? string.Empty),
+						IsShared = ResolveIsShared(family),
+						StandalonePlacementUsageCaptured = true,
+						StandaloneInstanceCount = ResolveStandaloneInstanceCount(family, standaloneInstanceCounts)
 					};
 					if (ShouldCaptureLoadableFamilyDeepMetadata(closure_0024__5_002D._0024VB_0024Local_familyName, closure_0024__5_002D._0024VB_0024NonLocal__0024VB_0024Closure_2._0024VB_0024Local_includeDeepLoadableContent, normalizedNestedLoadableScanFamilyNames))
 					{
@@ -435,26 +432,26 @@ public sealed class StandardLibraryRegistrationService
 				ReportProgress(CS_0024_003C_003E8__locals28._0024VB_0024Local_progress, 80 + (int)Math.Round((double)current / (double)Math.Max(1, total) * 4.0), 100, message);
 			});
 			ReportProgress(CS_0024_003C_003E8__locals28._0024VB_0024Local_progress, 84, 100, T("Collecting supported system types...", "지원되는 시스템 타입 수집 중..."));
-			List<ElementType> systemTypes = (from ElementType x in (IEnumerable)new FilteredElementCollector(CS_0024_003C_003E8__locals28._0024VB_0024Local_doc).WhereElementIsElementType()
+			List<ElementType> systemTypes = (from ElementType x in new FilteredElementCollector(CS_0024_003C_003E8__locals28._0024VB_0024Local_doc).WhereElementIsElementType()
 				where x != null
-				where !(x is FamilySymbol)
-				where AllowedSystemTypeNames.Contains(((object)x).GetType().Name)
-				select x).OrderBy<ElementType, string>([SpecialName] (ElementType x) => ((object)x).GetType().Name, StringComparer.Ordinal).ThenBy<ElementType, string>([SpecialName] (ElementType x) => Normalize(((Element)x).Name), StringComparer.Ordinal).ToList();
+				where !(x is FamilySymbol) || SystemTypeDetailedComponentSnapshotService.SupportsRequiredCurtainPanelComponents(x.GetType().Name)
+				where AllowedSystemTypeNames.Contains(x.GetType().Name)
+				select x).OrderBy([SpecialName] (ElementType x) => x.GetType().Name, StringComparer.Ordinal).ThenBy([SpecialName] (ElementType x) => Normalize(x.Name), StringComparer.Ordinal).ToList();
 			int systemTotal = Math.Max(1, systemTypes.Count);
 			int num2 = systemTypes.Count - 1;
 			for (int systemIndex = 0; systemIndex <= num2; systemIndex++)
 			{
 				ElementType systemType = systemTypes[systemIndex];
-				SystemTypeSemanticSnapshot semanticSnapshot = ResolveSemanticSnapshot(semanticMap, ((object)systemType).GetType().Name, ResolveCategoryName((Element)(object)systemType), ((Element)systemType).Name ?? string.Empty);
-				ReportProgress(CS_0024_003C_003E8__locals28._0024VB_0024Local_progress, 85 + (int)Math.Round((double)systemIndex / (double)systemTotal * 7.0), 100, T("Scanning system type ", "시스템 타입 스캔 중 ") + (systemIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + systemTypes.Count.ToString(CultureInfo.InvariantCulture) + ": " + ((object)systemType).GetType().Name + " / " + (((Element)systemType).Name ?? string.Empty));
+				SystemTypeSemanticSnapshot semanticSnapshot = ResolveSemanticSnapshot(semanticMap, systemType.GetType().Name, ResolveCategoryName(systemType), systemType.Name ?? string.Empty);
+				ReportProgress(CS_0024_003C_003E8__locals28._0024VB_0024Local_progress, 85 + (int)Math.Round((double)systemIndex / (double)systemTotal * 7.0), 100, T("Scanning system type ", "시스템 타입 스캔 중 ") + (systemIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + systemTypes.Count.ToString(CultureInfo.InvariantCulture) + ": " + systemType.GetType().Name + " / " + (systemType.Name ?? string.Empty));
 				snapshot.SystemTypes.Add(new StandardSystemTypeSnapshotItem
 				{
-					TypeName = (((Element)systemType).Name ?? string.Empty),
-					CategoryName = ResolveCategoryName((Element)(object)systemType),
-					CategoryId = ResolveCategoryId((Element)(object)systemType),
-					TypeClassName = ((object)systemType).GetType().Name,
-					UniqueId = (((Element)systemType).UniqueId ?? string.Empty),
-					SupportsRoutingDependencies = RoutingAwareSystemTypeNames.Contains(((object)systemType).GetType().Name),
+					TypeName = (systemType.Name ?? string.Empty),
+					CategoryName = ResolveCategoryName(systemType),
+					CategoryId = ResolveCategoryId(systemType),
+					TypeClassName = systemType.GetType().Name,
+					UniqueId = (systemType.UniqueId ?? string.Empty),
+					SupportsRoutingDependencies = RoutingAwareSystemTypeNames.Contains(systemType.GetType().Name),
 					SemanticFingerprint = ((semanticSnapshot == null) ? string.Empty : SystemTypeFingerprintService.Compute(semanticSnapshot)),
 					ClassificationCode = ((semanticSnapshot == null) ? string.Empty : semanticSnapshot.ClassificationCode),
 					SegmentName = ((semanticSnapshot == null) ? string.Empty : semanticSnapshot.SegmentName),
@@ -462,6 +459,10 @@ public sealed class StandardLibraryRegistrationService
 					Shape = ((semanticSnapshot == null) ? string.Empty : semanticSnapshot.Shape),
 					RoutingPreferenceSignature = ((semanticSnapshot == null) ? string.Empty : semanticSnapshot.RoutingPreferenceSignature),
 					CompoundStructureSignature = ((semanticSnapshot == null) ? string.Empty : semanticSnapshot.CompoundStructureSignature),
+					DetailedComponentsCaptured = semanticSnapshot != null && semanticSnapshot.DetailedComponentsCaptured,
+					DetailedComponentSignature = ((semanticSnapshot == null) ? string.Empty : semanticSnapshot.DetailedComponentSignature),
+					DetailedComponents = SystemTypeDetailedComponentSnapshotService.CloneItems(semanticSnapshot?.DetailedComponents),
+					DetailSummary = ((semanticSnapshot == null) ? string.Empty : SystemTypeDetailSummaryService.Build(CS_0024_003C_003E8__locals28._0024VB_0024Local_doc, systemType, semanticSnapshot, CaptureSystemTypeLayers(CS_0024_003C_003E8__locals28._0024VB_0024Local_doc, systemType))),
 					Layers = CaptureSystemTypeLayers(CS_0024_003C_003E8__locals28._0024VB_0024Local_doc, systemType)
 				});
 			}
@@ -471,7 +472,7 @@ public sealed class StandardLibraryRegistrationService
 				LoadableFamilyCount = snapshot.LoadableFamilies.Count,
 				LoadableTypeCount = snapshot.LoadableFamilies.Sum([SpecialName] (StandardLoadableFamilySnapshotItem x) => x.TypeCount),
 				SystemTypeCount = snapshot.SystemTypes.Count,
-				SystemTypeClassCount = snapshot.SystemTypes.Select([SpecialName] (StandardSystemTypeSnapshotItem x) => x.TypeClassName).Distinct<string>(StringComparer.OrdinalIgnoreCase).Count()
+				SystemTypeClassCount = snapshot.SystemTypes.Select([SpecialName] (StandardSystemTypeSnapshotItem x) => x.TypeClassName).Distinct(StringComparer.OrdinalIgnoreCase).Count()
 			};
 			EnsureStandardLoadableFingerprints(snapshot, T("Standard RVT Scan", "표준 RVT 스캔"));
 			return snapshot;
@@ -480,7 +481,6 @@ public sealed class StandardLibraryRegistrationService
 
 	public static StandardLibraryPartialRefreshResult RefreshSelectedLoadableFamilies(string workspaceRoot, Application application, StandardLibraryRegistrationRecord registration, string currentUser, ISet<string> familyNames, UIApplication uiApplication = null, Action<int, int, string> progress = null)
 	{
-		//IL_01a1: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__6_002D0 arg = default(_Closure_0024__6_002D0);
 		_Closure_0024__6_002D0 CS_0024_003C_003E8__locals5 = new _Closure_0024__6_002D0(arg);
 		if (registration == null)
@@ -534,14 +534,14 @@ public sealed class StandardLibraryRegistrationService
 					standardDoc = application.OpenDocumentFile(resolvedPath);
 					shouldClose = true;
 				}
-				List<Family> families = (from Family x in (IEnumerable)new FilteredElementCollector(standardDoc).OfClass(typeof(Family))
+				List<Family> families = (from Family x in new FilteredElementCollector(standardDoc).OfClass(typeof(Family))
 					where FamilyBrowserFamilyClassificationService.IsBrowserLoadableFamily(x)
-					where CS_0024_003C_003E8__locals5._0024VB_0024Local_selectedNames.Contains(Normalize(((Element)x).Name ?? string.Empty))
-					select x).OrderBy<Family, string>([SpecialName] (Family x) => Normalize(FamilyBrowserFamilyClassificationService.ResolveCategoryName(x)) + "|" + Normalize(((Element)x).Name), StringComparer.Ordinal).ToList();
+					where CS_0024_003C_003E8__locals5._0024VB_0024Local_selectedNames.Contains(Normalize(x.Name ?? string.Empty))
+					select x).OrderBy([SpecialName] (Family x) => Normalize(FamilyBrowserFamilyClassificationService.ResolveCategoryName(x)) + "|" + Normalize(x.Name), StringComparer.Ordinal).ToList();
 				HashSet<string> foundNames = new HashSet<string>(StringComparer.Ordinal);
 				foreach (Family family in families)
 				{
-					foundNames.Add(Normalize(((Element)family).Name ?? string.Empty));
+					foundNames.Add(Normalize(family.Name ?? string.Empty));
 				}
 				foreach (string selectedName in CS_0024_003C_003E8__locals5._0024VB_0024Local_selectedNames)
 				{
@@ -558,7 +558,7 @@ public sealed class StandardLibraryRegistrationService
 				{
 					Family family2 = families[familyIndex];
 					string categoryName = FamilyBrowserFamilyClassificationService.ResolveCategoryName(family2);
-					string familyName = ((Element)family2).Name ?? string.Empty;
+					string familyName = family2.Name ?? string.Empty;
 					ReportProgress(progress, 8 + (int)Math.Round((double)familyIndex / (double)total * 82.0), 100, T("Refreshing selected family ", "선택 패밀리 갱신 중 ") + (familyIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + families.Count.ToString(CultureInfo.InvariantCulture) + ": " + familyName);
 					int dialogRecordStart = dialogGuard.RecordCount;
 					dialogGuard.SetCurrentFamily(categoryName, familyName);
@@ -582,26 +582,27 @@ public sealed class StandardLibraryRegistrationService
 					}
 				}
 				ReportProgress(progress, 92, 100, T("Updating nested family markers...", "하위 패밀리 표시 갱신 중..."));
+				RefreshStandalonePlacementUsage(snapshot, standardDoc);
 				MarkNestedLoadableChildren(snapshot);
 				RefreshSnapshotHeaderAndSummary(snapshot, sourceId, sourceKind, resolvedPath, sourceFileLastWriteUtc, sourceFileLength, standardDoc.Application.VersionNumber);
 				ReportProgress(progress, 96, 100, T("Saving merged standard snapshot...", "병합된 표준 스냅샷 저장 중..."));
-				string snapshotPath = StandardLibraryRegistryStore.SaveSnapshot(workspaceRoot, snapshot);
-				string diagnosticReportPath = WriteRegistrationDialogDiagnosticReport(workspaceRoot, sourceId, result.AutoHandledDialogs);
-				StandardLibraryRegistrationRecord updatedRegistration = BuildRegistrationFromSnapshot(snapshot, snapshotPath, currentUser);
-				string registrationPath = StandardLibraryRegistryStore.SaveActiveRegistration(workspaceRoot, updatedRegistration);
+				StandardLibraryRegistrationRecord updatedRegistration = BuildRegistrationFromSnapshot(snapshot, string.Empty, currentUser);
+				StandardLibraryPublicationResult publication = StandardLibraryRegistryStore.PublishSnapshotAndActiveRegistration(workspaceRoot, snapshot, updatedRegistration);
+				string snapshotPath = publication.SnapshotPath;
+				string registrationPath = publication.RegistrationPath;
 				ReportProgress(progress, 100, 100, T("Selected standard families refreshed.", "선택한 표준 패밀리 갱신이 완료되었습니다."));
 				result.Registration = updatedRegistration;
 				result.Snapshot = snapshot;
 				result.SnapshotPath = snapshotPath;
 				result.RegistrationPath = registrationPath;
-				result.DiagnosticReportPath = diagnosticReportPath;
+				result.DiagnosticReportPath = string.Empty;
 				return result;
 			}
 			finally
 			{
-				if (shouldClose && standardDoc != null)
+				if (shouldClose)
 				{
-					standardDoc.Close(false);
+					standardDoc?.Close(saveModified: false);
 				}
 			}
 		}
@@ -609,7 +610,6 @@ public sealed class StandardLibraryRegistrationService
 
 	public static StandardLibraryPartialRefreshResult RefreshSelectedLoadableNestedMetadata(string workspaceRoot, Application application, StandardLibraryRegistrationRecord registration, string currentUser, ISet<string> familyNames, UIApplication uiApplication = null, Action<int, int, string> progress = null)
 	{
-		//IL_01a1: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__7_002D0 arg = default(_Closure_0024__7_002D0);
 		_Closure_0024__7_002D0 CS_0024_003C_003E8__locals5 = new _Closure_0024__7_002D0(arg);
 		if (registration == null)
@@ -663,14 +663,14 @@ public sealed class StandardLibraryRegistrationService
 					standardDoc = application.OpenDocumentFile(resolvedPath);
 					shouldClose = true;
 				}
-				List<Family> families = (from Family x in (IEnumerable)new FilteredElementCollector(standardDoc).OfClass(typeof(Family))
+				List<Family> families = (from Family x in new FilteredElementCollector(standardDoc).OfClass(typeof(Family))
 					where FamilyBrowserFamilyClassificationService.IsBrowserLoadableFamily(x)
-					where CS_0024_003C_003E8__locals5._0024VB_0024Local_selectedNames.Contains(Normalize(((Element)x).Name ?? string.Empty))
-					select x).OrderBy<Family, string>([SpecialName] (Family x) => Normalize(FamilyBrowserFamilyClassificationService.ResolveCategoryName(x)) + "|" + Normalize(((Element)x).Name), StringComparer.Ordinal).ToList();
+					where CS_0024_003C_003E8__locals5._0024VB_0024Local_selectedNames.Contains(Normalize(x.Name ?? string.Empty))
+					select x).OrderBy([SpecialName] (Family x) => Normalize(FamilyBrowserFamilyClassificationService.ResolveCategoryName(x)) + "|" + Normalize(x.Name), StringComparer.Ordinal).ToList();
 				HashSet<string> foundNames = new HashSet<string>(StringComparer.Ordinal);
 				foreach (Family family in families)
 				{
-					foundNames.Add(Normalize(((Element)family).Name ?? string.Empty));
+					foundNames.Add(Normalize(family.Name ?? string.Empty));
 				}
 				foreach (string selectedName in CS_0024_003C_003E8__locals5._0024VB_0024Local_selectedNames)
 				{
@@ -685,7 +685,7 @@ public sealed class StandardLibraryRegistrationService
 				{
 					Family family2 = families[familyIndex];
 					string categoryName = FamilyBrowserFamilyClassificationService.ResolveCategoryName(family2);
-					string familyName = ((Element)family2).Name ?? string.Empty;
+					string familyName = family2.Name ?? string.Empty;
 					ReportProgress(progress, 8 + (int)Math.Round((double)familyIndex / (double)total * 82.0), 100, T("Refreshing nested family metadata ", "하위 패밀리 메타데이터 갱신 중 ") + (familyIndex + 1).ToString(CultureInfo.InvariantCulture) + "/" + families.Count.ToString(CultureInfo.InvariantCulture) + ": " + familyName);
 					int dialogRecordStart = dialogGuard.RecordCount;
 					dialogGuard.SetCurrentFamily(categoryName, familyName);
@@ -709,23 +709,23 @@ public sealed class StandardLibraryRegistrationService
 				MarkNestedLoadableChildren(snapshot);
 				RefreshSnapshotHeaderAndSummary(snapshot, sourceId, sourceKind, resolvedPath, sourceFileLastWriteUtc, sourceFileLength, standardDoc.Application.VersionNumber);
 				ReportProgress(progress, 96, 100, T("Saving nested family metadata...", "하위 패밀리 메타데이터 저장 중..."));
-				string snapshotPath = StandardLibraryRegistryStore.SaveSnapshot(workspaceRoot, snapshot);
-				string diagnosticReportPath = WriteRegistrationDialogDiagnosticReport(workspaceRoot, sourceId, result.AutoHandledDialogs);
-				StandardLibraryRegistrationRecord updatedRegistration = BuildRegistrationFromSnapshot(snapshot, snapshotPath, currentUser);
-				string registrationPath = StandardLibraryRegistryStore.SaveActiveRegistration(workspaceRoot, updatedRegistration);
+				StandardLibraryRegistrationRecord updatedRegistration = BuildRegistrationFromSnapshot(snapshot, string.Empty, currentUser);
+				StandardLibraryPublicationResult publication = StandardLibraryRegistryStore.PublishSnapshotAndActiveRegistration(workspaceRoot, snapshot, updatedRegistration);
+				string snapshotPath = publication.SnapshotPath;
+				string registrationPath = publication.RegistrationPath;
 				ReportProgress(progress, 100, 100, T("Nested family metadata refreshed.", "하위 패밀리 메타데이터 갱신이 완료되었습니다."));
 				result.Registration = updatedRegistration;
 				result.Snapshot = snapshot;
 				result.SnapshotPath = snapshotPath;
 				result.RegistrationPath = registrationPath;
-				result.DiagnosticReportPath = diagnosticReportPath;
+				result.DiagnosticReportPath = string.Empty;
 				return result;
 			}
 			finally
 			{
-				if (shouldClose && standardDoc != null)
+				if (shouldClose)
 				{
-					standardDoc.Close(false);
+					standardDoc?.Close(saveModified: false);
 				}
 			}
 		}
@@ -733,14 +733,11 @@ public sealed class StandardLibraryRegistrationService
 
 	private static StandardLoadableFamilySnapshotItem BuildLoadableFamilySnapshotItem(Document doc, Family family, IDictionary<string, string> loadableContentFingerprintCache, bool includeDeepLoadableContent, bool forceDeepMetadata, string workspaceRoot = "", string sourceId = "", string fingerprintDebugRunFolder = "", string fingerprintDebugContextName = "")
 	{
-		List<string> typeNames = (from x in family.GetFamilySymbolIds().Select([SpecialName] (ElementId id) =>
-			{
-				Element element = doc.GetElement(id);
-				return (ElementType)(object)((element is ElementType) ? element : null);
-			})
+		List<string> typeNames = (from id in family.GetFamilySymbolIds()
+			select doc.GetElement(id) as ElementType into x
 			where x != null
-			select ((Element)x).Name ?? string.Empty).OrderBy<string, string>([SpecialName] (string x) => Normalize(x), StringComparer.Ordinal).ToList();
-		string familyName = ((Element)family).Name ?? string.Empty;
+			select x.Name ?? string.Empty).OrderBy([SpecialName] (string x) => Normalize(x), StringComparer.Ordinal).ToList();
+		string familyName = family.Name ?? string.Empty;
 		StandardLoadableFamilySnapshotItem item = new StandardLoadableFamilySnapshotItem
 		{
 			FamilyName = familyName,
@@ -751,8 +748,10 @@ public sealed class StandardLibraryRegistrationService
 			TypeCount = typeNames.Count,
 			TypeNames = typeNames,
 			Parameters = CaptureLoadableFamilyParameters(doc, family),
-			UniqueId = (((Element)family).UniqueId ?? string.Empty),
-			IsShared = ResolveIsShared(family)
+			UniqueId = (family.UniqueId ?? string.Empty),
+			IsShared = ResolveIsShared(family),
+			StandalonePlacementUsageCaptured = true,
+			StandaloneInstanceCount = CountStandaloneFamilyInstances(doc, family)
 		};
 		string debugContextName = (string.IsNullOrWhiteSpace(fingerprintDebugContextName) ? ResolveStandardDebugContextName(doc, sourceId) : fingerprintDebugContextName);
 		if (!includeDeepLoadableContent && !forceDeepMetadata)
@@ -803,7 +802,7 @@ public sealed class StandardLibraryRegistrationService
 			string text = BuildNestedLoadableKey(item);
 			snapshot.LoadableFamilies.RemoveAll([SpecialName] (StandardLoadableFamilySnapshotItem existing) => existing != null && (string.Equals(BuildNestedLoadableKey(existing), text, StringComparison.Ordinal) || (string.IsNullOrWhiteSpace(text) && string.Equals(Normalize(existing.FamilyName), Normalize(item.FamilyName), StringComparison.Ordinal))));
 			snapshot.LoadableFamilies.Add(item);
-			snapshot.LoadableFamilies = snapshot.LoadableFamilies.OrderBy<StandardLoadableFamilySnapshotItem, string>([SpecialName] (StandardLoadableFamilySnapshotItem x) => Normalize(x.CategoryName) + "|" + Normalize(x.FamilyName), StringComparer.Ordinal).ToList();
+			snapshot.LoadableFamilies = snapshot.LoadableFamilies.OrderBy([SpecialName] (StandardLoadableFamilySnapshotItem x) => Normalize(x.CategoryName) + "|" + Normalize(x.FamilyName), StringComparer.Ordinal).ToList();
 		}
 	}
 
@@ -818,18 +817,15 @@ public sealed class StandardLibraryRegistrationService
 			snapshot.LoadableFamilies = new List<StandardLoadableFamilySnapshotItem>();
 		}
 		string categoryName = FamilyBrowserFamilyClassificationService.ResolveCategoryName(family);
-		string text = ((Element)family).Name ?? string.Empty;
+		string text = family.Name ?? string.Empty;
 		string b = BuildNestedLoadableKey(FamilyBrowserFamilyClassificationService.ResolveCategoryId(family), categoryName, text);
 		StandardLoadableFamilySnapshotItem existing = snapshot.LoadableFamilies.FirstOrDefault([SpecialName] (StandardLoadableFamilySnapshotItem x) => string.Equals(BuildNestedLoadableKey(x), b, StringComparison.Ordinal) || string.Equals(Normalize(x.FamilyName), Normalize(text), StringComparison.Ordinal));
 		if (existing == null)
 		{
-			List<string> typeNames = (from x in family.GetFamilySymbolIds().Select([SpecialName] (ElementId id) =>
-				{
-					Element element = ((Element)family).Document.GetElement(id);
-					return (ElementType)(object)((element is ElementType) ? element : null);
-				})
+			List<string> typeNames = (from id in family.GetFamilySymbolIds()
+				select family.Document.GetElement(id) as ElementType into x
 				where x != null
-				select ((Element)x).Name ?? string.Empty).OrderBy<string, string>([SpecialName] (string x) => Normalize(x), StringComparer.Ordinal).ToList();
+				select x.Name ?? string.Empty).OrderBy([SpecialName] (string x) => Normalize(x), StringComparer.Ordinal).ToList();
 			existing = new StandardLoadableFamilySnapshotItem
 			{
 				FamilyName = text,
@@ -839,13 +835,17 @@ public sealed class StandardLibraryRegistrationService
 				MetadataMode = "Fast",
 				TypeCount = typeNames.Count,
 				TypeNames = typeNames,
-				Parameters = CaptureLoadableFamilyParameters(((Element)family).Document, family),
-				UniqueId = (((Element)family).UniqueId ?? string.Empty),
-				IsShared = ResolveIsShared(family)
+				Parameters = CaptureLoadableFamilyParameters(family.Document, family),
+				UniqueId = (family.UniqueId ?? string.Empty),
+				IsShared = ResolveIsShared(family),
+				StandalonePlacementUsageCaptured = true,
+				StandaloneInstanceCount = CountStandaloneFamilyInstances(family.Document, family)
 			};
 			snapshot.LoadableFamilies.Add(existing);
 		}
 		existing.NestedLoadableFamilies = (metadata?.NestedLoadableFamilies ?? new List<StandardNestedLoadableFamilySnapshotItem>()).ToList();
+		existing.StandalonePlacementUsageCaptured = true;
+		existing.StandaloneInstanceCount = CountStandaloneFamilyInstances(family.Document, family);
 		if (!string.Equals(existing.MetadataMode, "Precise", StringComparison.OrdinalIgnoreCase))
 		{
 			existing.MetadataMode = "Fast+Nested";
@@ -910,6 +910,8 @@ public sealed class StandardLibraryRegistrationService
 		standardLoadableFamilySnapshotItem.UniqueId = item.UniqueId;
 		standardLoadableFamilySnapshotItem.IsShared = item.IsShared;
 		standardLoadableFamilySnapshotItem.IsNestedLoadableChild = item.IsNestedLoadableChild;
+		standardLoadableFamilySnapshotItem.StandalonePlacementUsageCaptured = item.StandalonePlacementUsageCaptured;
+		standardLoadableFamilySnapshotItem.StandaloneInstanceCount = item.StandaloneInstanceCount;
 		standardLoadableFamilySnapshotItem.NestedLoadableFamilies = (metadata?.NestedLoadableFamilies ?? new List<StandardNestedLoadableFamilySnapshotItem>()).ToList();
 		return standardLoadableFamilySnapshotItem;
 	}
@@ -939,7 +941,7 @@ public sealed class StandardLibraryRegistrationService
 	{
 		if (snapshot != null)
 		{
-			snapshot.SnapshotSchemaVersion = Math.Max(snapshot.SnapshotSchemaVersion, 4);
+			snapshot.SnapshotSchemaVersion = Math.Max(snapshot.SnapshotSchemaVersion, 7);
 			snapshot.SourceId = sourceId;
 			snapshot.DisplayName = Path.GetFileNameWithoutExtension(resolvedPath);
 			snapshot.SourceKind = sourceKind;
@@ -964,7 +966,7 @@ public sealed class StandardLibraryRegistrationService
 				SystemTypeCount = (snapshot.SystemTypes ?? new List<StandardSystemTypeSnapshotItem>()).Count,
 				SystemTypeClassCount = (from x in snapshot.SystemTypes ?? new List<StandardSystemTypeSnapshotItem>()
 					where x != null
-					select x.TypeClassName).Distinct<string>(StringComparer.OrdinalIgnoreCase).Count()
+					select x.TypeClassName).Distinct(StringComparer.OrdinalIgnoreCase).Count()
 			};
 		}
 	}
@@ -1027,7 +1029,6 @@ public sealed class StandardLibraryRegistrationService
 
 	private static StandardLoadableFamilyDeepMetadata CaptureLoadableFamilyDeepMetadata(Document doc, Family parentFamily, string previewImagePath = "", bool captureContentFingerprint = false, string fingerprintDebugRunFolder = "", string fingerprintDebugContextName = "", Func<StandardLoadableFamilyDeepMetadata, bool> shouldGenerateThumbnail = null)
 	{
-		//IL_00eb: Unknown result type (might be due to invalid IL or missing references)
 		StandardLoadableFamilyDeepMetadata metadata = new StandardLoadableFamilyDeepMetadata();
 		Dictionary<string, StandardNestedLoadableFamilySnapshotItem> result = new Dictionary<string, StandardNestedLoadableFamilySnapshotItem>(StringComparer.Ordinal);
 		StandardLoadableFamilyDeepMetadata CaptureLoadableFamilyDeepMetadata;
@@ -1037,7 +1038,7 @@ public sealed class StandardLibraryRegistrationService
 		}
 		else
 		{
-			string parentKey = BuildNestedLoadableKey(FamilyBrowserFamilyClassificationService.ResolveCategoryId(parentFamily), FamilyBrowserFamilyClassificationService.ResolveCategoryName(parentFamily), ((Element)parentFamily).Name ?? string.Empty);
+			string parentKey = BuildNestedLoadableKey(FamilyBrowserFamilyClassificationService.ResolveCategoryId(parentFamily), FamilyBrowserFamilyClassificationService.ResolveCategoryName(parentFamily), parentFamily.Name ?? string.Empty);
 			Document familyDoc = null;
 			try
 			{
@@ -1059,12 +1060,21 @@ public sealed class StandardLibraryRegistrationService
 					{
 						metadata.ContentFingerprintFailureReason = ResolveFingerprintFailureReason(signatureResult, "Open standard family document fingerprint was empty.");
 					}
-					metadata.ContentSignatureDebugPath = FingerprintDebugSignatureStore.SaveLoadableSignature(fingerprintDebugRunFolder, "standard", fingerprintDebugContextName, FamilyBrowserFamilyClassificationService.ResolveCategoryName(parentFamily), ((Element)parentFamily).Name ?? string.Empty, metadata.ContentFingerprint, signatureResult);
+					metadata.ContentSignatureDebugPath = FingerprintDebugSignatureStore.SaveLoadableSignature(fingerprintDebugRunFolder, "standard", fingerprintDebugContextName, FamilyBrowserFamilyClassificationService.ResolveCategoryName(parentFamily), parentFamily.Name ?? string.Empty, metadata.ContentFingerprint, signatureResult);
 				}
 				metadata.Parameters = CaptureFamilyDocumentParameters(familyDoc);
-				foreach (FamilyInstance instance in ((IEnumerable)new FilteredElementCollector(familyDoc).OfClass(typeof(FamilyInstance))).Cast<FamilyInstance>())
+				foreach (FamilyInstance instance in new FilteredElementCollector(familyDoc).OfClass(typeof(FamilyInstance)).Cast<FamilyInstance>())
 				{
-					TryAddNestedLoadableFamily(result, familyDoc, parentKey, ResolveNestedFamily(instance));
+					TryAddNestedLoadableFamily(result, familyDoc, parentKey, instance);
+				}
+				string parentFamilyNameToken = Normalize(parentFamily.Name ?? string.Empty);
+				foreach (Family loadedFamily in new FilteredElementCollector(familyDoc).OfClass(typeof(Family)).Cast<Family>())
+				{
+					if (loadedFamily == null || string.Equals(Normalize(loadedFamily.Name ?? string.Empty), parentFamilyNameToken, StringComparison.Ordinal))
+					{
+						continue;
+					}
+					TryAddNestedLoadableFamily(result, familyDoc, parentKey, loadedFamily);
 				}
 				bool generateThumbnail = !string.IsNullOrWhiteSpace(previewImagePath);
 				if (generateThumbnail && shouldGenerateThumbnail != null)
@@ -1097,7 +1107,7 @@ public sealed class StandardLibraryRegistrationService
 				{
 					RecordDeepMetadataSignatureFailure(metadata, parentFamily, fingerprintDebugRunFolder, fingerprintDebugContextName, "EditFamily/deep metadata failed: " + ex2.GetType().Name + " - " + ex2.Message);
 				}
-				metadata.NestedLoadableFamilies = result.Values.OrderBy<StandardNestedLoadableFamilySnapshotItem, string>([SpecialName] (StandardNestedLoadableFamilySnapshotItem x) => Normalize(x.CategoryName), StringComparer.Ordinal).ThenBy<StandardNestedLoadableFamilySnapshotItem, string>([SpecialName] (StandardNestedLoadableFamilySnapshotItem x) => Normalize(x.FamilyName), StringComparer.Ordinal).ToList();
+				metadata.NestedLoadableFamilies = result.Values.OrderBy([SpecialName] (StandardNestedLoadableFamilySnapshotItem x) => Normalize(x.CategoryName), StringComparer.Ordinal).ThenBy([SpecialName] (StandardNestedLoadableFamilySnapshotItem x) => Normalize(x.FamilyName), StringComparer.Ordinal).ToList();
 				CaptureLoadableFamilyDeepMetadata = metadata;
 				ProjectData.ClearProjectError();
 				goto IL_02cf;
@@ -1108,7 +1118,7 @@ public sealed class StandardLibraryRegistrationService
 				{
 					try
 					{
-						familyDoc.Close(false);
+						familyDoc.Close(saveModified: false);
 					}
 					catch (Exception projectError2)
 					{
@@ -1117,7 +1127,7 @@ public sealed class StandardLibraryRegistrationService
 					}
 				}
 			}
-			metadata.NestedLoadableFamilies = result.Values.OrderBy<StandardNestedLoadableFamilySnapshotItem, string>([SpecialName] (StandardNestedLoadableFamilySnapshotItem x) => Normalize(x.CategoryName), StringComparer.Ordinal).ThenBy<StandardNestedLoadableFamilySnapshotItem, string>([SpecialName] (StandardNestedLoadableFamilySnapshotItem x) => Normalize(x.FamilyName), StringComparer.Ordinal).ToList();
+			metadata.NestedLoadableFamilies = result.Values.OrderBy([SpecialName] (StandardNestedLoadableFamilySnapshotItem x) => Normalize(x.CategoryName), StringComparer.Ordinal).ThenBy([SpecialName] (StandardNestedLoadableFamilySnapshotItem x) => Normalize(x.FamilyName), StringComparer.Ordinal).ToList();
 			CaptureLoadableFamilyDeepMetadata = metadata;
 		}
 		goto IL_02cf;
@@ -1145,7 +1155,7 @@ public sealed class StandardLibraryRegistrationService
 			LoadableFamilyContentSignatureResult signatureResult = LoadableFamilyContentSignatureService.BuildDiagnosticFailureResult("Precise", reason, parentFamily);
 			metadata.ContentFingerprint = string.Empty;
 			metadata.ContentFingerprintFailureReason = reason ?? string.Empty;
-			metadata.ContentSignatureDebugPath = FingerprintDebugSignatureStore.SaveLoadableSignature(fingerprintDebugRunFolder, "standard", fingerprintDebugContextName, FamilyBrowserFamilyClassificationService.ResolveCategoryName(parentFamily), ((Element)parentFamily).Name ?? string.Empty, metadata.ContentFingerprint, signatureResult);
+			metadata.ContentSignatureDebugPath = FingerprintDebugSignatureStore.SaveLoadableSignature(fingerprintDebugRunFolder, "standard", fingerprintDebugContextName, FamilyBrowserFamilyClassificationService.ResolveCategoryName(parentFamily), parentFamily.Name ?? string.Empty, metadata.ContentFingerprint, signatureResult);
 		}
 	}
 
@@ -1299,21 +1309,7 @@ public sealed class StandardLibraryRegistrationService
 		string ResolveFamilyParameterName;
 		try
 		{
-			object obj;
-			if (familyParameter == null)
-			{
-				obj = null;
-			}
-			else
-			{
-				Definition definition = familyParameter.Definition;
-				obj = ((definition != null) ? definition.Name : null);
-			}
-			if (obj == null)
-			{
-				obj = string.Empty;
-			}
-			ResolveFamilyParameterName = (string)obj;
+			ResolveFamilyParameterName = familyParameter?.Definition?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -1326,12 +1322,10 @@ public sealed class StandardLibraryRegistrationService
 
 	private static string ResolveFamilyParameterStorageTypeName(FamilyParameter familyParameter)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Unknown result type (might be due to invalid IL or missing references)
 		string ResolveFamilyParameterStorageTypeName;
 		try
 		{
-			ResolveFamilyParameterStorageTypeName = ((Enum)familyParameter.StorageType/*cast due to .constrained prefix*/).ToString();
+			ResolveFamilyParameterStorageTypeName = familyParameter.StorageType.ToString();
 		}
 		catch (Exception projectError)
 		{
@@ -1356,7 +1350,7 @@ public sealed class StandardLibraryRegistrationService
 	{
 		try
 		{
-			if (familyParameter != null && familyParameter.Id != null)
+			if (familyParameter != null && (object)familyParameter.Id != null)
 			{
 				return RevitElementIdCompat.CompatIntegerValue(familyParameter.Id);
 			}
@@ -1390,11 +1384,9 @@ public sealed class StandardLibraryRegistrationService
 	{
 		try
 		{
-			Definition obj = ((familyParameter != null) ? familyParameter.Definition : null);
-			ExternalDefinition externalDefinition = (ExternalDefinition)(object)((obj is ExternalDefinition) ? obj : null);
-			if (externalDefinition != null)
+			if (familyParameter?.Definition is ExternalDefinition { GUID: var gUID })
 			{
-				return externalDefinition.GUID.ToString("D");
+				return gUID.ToString("D");
 			}
 		}
 		catch (Exception projectError)
@@ -1416,7 +1408,7 @@ public sealed class StandardLibraryRegistrationService
 		{
 			try
 			{
-				PropertyInfo propertyInfo = ((object)familyParameter).GetType().GetProperty("Formula");
+				PropertyInfo propertyInfo = familyParameter.GetType().GetProperty("Formula");
 				ResolveFamilyParameterFormula = (((object)propertyInfo != null) ? NormalizeMultiline(Convert.ToString(RuntimeHelpers.GetObjectValue(RuntimeHelpers.GetObjectValue(propertyInfo.GetValue(familyParameter, null))), CultureInfo.InvariantCulture)) : string.Empty);
 			}
 			catch (Exception projectError)
@@ -1431,11 +1423,6 @@ public sealed class StandardLibraryRegistrationService
 
 	private static string ResolveFamilyParameterValue(Document familyDoc, FamilyManager manager, FamilyParameter familyParameter)
 	{
-		//IL_0021: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0026: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0027: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0029: Unknown result type (might be due to invalid IL or missing references)
-		//IL_003f: Expected I4, but got Unknown
 		string ResolveFamilyParameterValue;
 		try
 		{
@@ -1446,34 +1433,33 @@ public sealed class StandardLibraryRegistrationService
 			else
 			{
 				FamilyType familyType = manager.CurrentType;
-				StorageType storageType = familyParameter.StorageType;
-				switch (storageType - 1)
+				switch (familyParameter.StorageType)
 				{
-				case 2:
+				case StorageType.String:
 					ResolveFamilyParameterValue = NormalizeMultiline(familyType.AsString(familyParameter));
 					break;
-				case 1:
+				case StorageType.Double:
 				{
 					object valueObject = familyType.AsDouble(familyParameter);
 					ResolveFamilyParameterValue = ((valueObject != null) ? Convert.ToDouble(RuntimeHelpers.GetObjectValue(valueObject), CultureInfo.InvariantCulture).ToString("G17", CultureInfo.InvariantCulture) : string.Empty);
 					break;
 				}
-				case 0:
+				case StorageType.Integer:
 				{
 					object valueObject2 = familyType.AsInteger(familyParameter);
-					ResolveFamilyParameterValue = ((valueObject2 != null) ? Convert.ToInt32(RuntimeHelpers.GetObjectValue(valueObject2), CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture) : string.Empty);
+					ResolveFamilyParameterValue = ((valueObject2 != null) ? FamilyBrowserYesNoParameterFormatter.FormatInteger(familyParameter, Convert.ToInt32(RuntimeHelpers.GetObjectValue(valueObject2), CultureInfo.InvariantCulture)) : string.Empty);
 					break;
 				}
-				case 3:
+				case StorageType.ElementId:
 				{
 					ElementId id = familyType.AsElementId(familyParameter);
-					if (id == null || id == ElementId.InvalidElementId)
+					if ((object)id == null || id == ElementId.InvalidElementId)
 					{
 						ResolveFamilyParameterValue = string.Empty;
 						break;
 					}
-					Element referenced = ((familyDoc == null) ? null : familyDoc.GetElement(id));
-					ResolveFamilyParameterValue = ((referenced == null) ? RevitElementIdCompat.CompatIntegerValue(id).ToString(CultureInfo.InvariantCulture) : (((object)referenced).GetType().Name + ":" + ResolveElementName(referenced)));
+					Element referenced = familyDoc?.GetElement(id);
+					ResolveFamilyParameterValue = ((referenced == null) ? RevitElementIdCompat.CompatIntegerValue(id).ToString(CultureInfo.InvariantCulture) : (referenced.GetType().Name + ":" + ResolveElementName(referenced)));
 					break;
 				}
 				default:
@@ -1491,52 +1477,86 @@ public sealed class StandardLibraryRegistrationService
 		return ResolveFamilyParameterValue;
 	}
 
-	private static string WriteRegistrationDialogDiagnosticReport(string workspaceRoot, string sourceId, IEnumerable<FamilyThumbnailAutoConfirmedDialogRecord> records)
+	private static string ResolveAutoHandledDialogAction(FamilyThumbnailAutoConfirmedDialogRecord record)
 	{
-		List<FamilyThumbnailAutoConfirmedDialogRecord> list = (records ?? Enumerable.Empty<FamilyThumbnailAutoConfirmedDialogRecord>()).Where([SpecialName] (FamilyThumbnailAutoConfirmedDialogRecord x) => x != null).ToList();
-		string WriteRegistrationDialogDiagnosticReport;
-		if (list.Count == 0)
+		if (record == null)
 		{
-			WriteRegistrationDialogDiagnosticReport = string.Empty;
+			return string.Empty;
 		}
-		else
+		if (!string.IsNullOrWhiteSpace(record.ActionTaken))
 		{
-			try
-			{
-				FamilyBrowserStandardPolicyStore.RequireManagedDataRootForWrite(workspaceRoot, T("Save standard scan diagnostics", "표준 스캔 진단 저장"));
-				string snapshotFolder = FamilyBrowserStandardPolicyStore.GetSnapshotFolder(workspaceRoot);
-				Directory.CreateDirectory(snapshotFolder);
-				string reportPath = Path.Combine(snapshotFolder, "standard-scan-dialog-diagnostics-" + SafeFileNameToken(sourceId ?? "standard") + "-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".txt");
-				StringBuilder sb = new StringBuilder();
-				sb.AppendLine("KKY Family Browser Standard RVT Scan Dialog Diagnostics");
-				sb.AppendLine("Created UTC: " + DateTime.UtcNow.ToString("u", CultureInfo.InvariantCulture));
-				sb.AppendLine("Policy: Remove Constraints/Delete Constraints dialogs are cancelled so standard families are not modified. Geometry/constraint warnings that can continue are confirmed with OK and the scan continues.");
-				sb.AppendLine("Auto-handled dialogs: " + list.Count.ToString(CultureInfo.InvariantCulture));
-				sb.AppendLine();
-				foreach (FamilyThumbnailAutoConfirmedDialogRecord record in list)
-				{
-					sb.AppendLine("- " + (string.IsNullOrWhiteSpace(record.CategoryName) ? "-" : record.CategoryName) + " | " + (string.IsNullOrWhiteSpace(record.FamilyName) ? "-" : record.FamilyName) + " | " + (string.IsNullOrWhiteSpace(record.Reason) ? "-" : record.Reason) + " | result=" + (string.IsNullOrWhiteSpace(record.OverrideResult) ? "-" : record.OverrideResult) + " | utc=" + (string.IsNullOrWhiteSpace(record.ConfirmedAtUtc) ? "-" : record.ConfirmedAtUtc));
-					if (!string.IsNullOrWhiteSpace(record.DialogText))
-					{
-						sb.AppendLine("  Dialog: " + CompactDiagnosticText(record.DialogText));
-					}
-				}
-				File.WriteAllText(reportPath, sb.ToString(), Encoding.UTF8);
-				WriteRegistrationDialogDiagnosticReport = reportPath;
-			}
-			catch (Exception projectError)
-			{
-				ProjectData.SetProjectError(projectError);
-				WriteRegistrationDialogDiagnosticReport = string.Empty;
-				ProjectData.ClearProjectError();
-			}
+			return record.ActionTaken;
 		}
-		return WriteRegistrationDialogDiagnosticReport;
+		string result = (record.OverrideResult ?? string.Empty).ToLowerInvariant();
+		if (result.IndexOf("cancel", StringComparison.OrdinalIgnoreCase) >= 0)
+		{
+			return "Cancel";
+		}
+		if (result.IndexOf("ok", StringComparison.OrdinalIgnoreCase) >= 0 || result.IndexOf("idok", StringComparison.OrdinalIgnoreCase) >= 0 || result.IndexOf("continue", StringComparison.OrdinalIgnoreCase) >= 0)
+		{
+			return "OK";
+		}
+		return string.Empty;
+	}
+
+	private static void TryAddNestedLoadableFamily(IDictionary<string, StandardNestedLoadableFamilySnapshotItem> result, Document familyDoc, string parentKey, FamilyInstance instance)
+	{
+		Family nestedFamily = ResolveNestedFamily(instance);
+		if (result == null || familyDoc == null || ShouldIgnoreNestedFamilyReference(nestedFamily))
+		{
+			return;
+		}
+		string categoryName = FamilyBrowserFamilyClassificationService.ResolveCategoryName(nestedFamily);
+		if (string.IsNullOrWhiteSpace(categoryName))
+		{
+			categoryName = ResolveCategoryName(instance);
+		}
+		string categoryId = FamilyBrowserFamilyClassificationService.ResolveCategoryId(nestedFamily);
+		if (string.IsNullOrWhiteSpace(categoryId))
+		{
+			categoryId = ResolveCategoryId(instance);
+		}
+		string categoryGroup = FamilyBrowserFamilyClassificationService.ResolveCategoryGroup(nestedFamily);
+		if (!string.Equals(categoryGroup, "Model", StringComparison.OrdinalIgnoreCase))
+		{
+			categoryGroup = FamilyBrowserFamilyClassificationService.ResolveCategoryGroup(string.Empty, categoryName, categoryId, nestedFamily.Name ?? string.Empty);
+		}
+		string familyName = nestedFamily.Name ?? string.Empty;
+		if (!IsNestedLoadableFamilyCandidate(categoryGroup, categoryName, categoryId, familyName))
+		{
+			return;
+		}
+		if (!string.Equals(categoryGroup, "Model", StringComparison.OrdinalIgnoreCase))
+		{
+			categoryGroup = "Model";
+		}
+		string nestedKey = BuildNestedLoadableKey(categoryId, categoryName, familyName);
+		if (string.IsNullOrWhiteSpace(nestedKey))
+		{
+			nestedKey = BuildNestedLoadableFamilyOnlyKey(familyName);
+		}
+		if (!string.IsNullOrWhiteSpace(nestedKey) && !string.Equals(nestedKey, parentKey, StringComparison.Ordinal) && !result.ContainsKey(nestedKey))
+		{
+			List<string> typeNames = (from id in nestedFamily.GetFamilySymbolIds()
+				select familyDoc.GetElement(id) as ElementType into x
+				where x != null
+				select x.Name ?? string.Empty).OrderBy([SpecialName] (string x) => Normalize(x), StringComparer.Ordinal).ToList();
+			result.Add(nestedKey, new StandardNestedLoadableFamilySnapshotItem
+			{
+				FamilyName = familyName,
+				CategoryName = categoryName,
+				CategoryId = categoryId,
+				CategoryGroup = categoryGroup,
+				TypeCount = typeNames.Count,
+				TypeNames = typeNames,
+				IsShared = ResolveIsShared(nestedFamily)
+			});
+		}
 	}
 
 	private static void TryAddNestedLoadableFamily(IDictionary<string, StandardNestedLoadableFamilySnapshotItem> result, Document familyDoc, string parentKey, Family nestedFamily)
 	{
-		if (result == null || familyDoc == null || ShouldIgnoreNestedFamilyReference(nestedFamily) || !ResolveIsShared(nestedFamily))
+		if (result == null || familyDoc == null || ShouldIgnoreNestedFamilyReference(nestedFamily))
 		{
 			return;
 		}
@@ -1545,19 +1565,28 @@ public sealed class StandardLibraryRegistrationService
 		string categoryGroup = FamilyBrowserFamilyClassificationService.ResolveCategoryGroup(nestedFamily);
 		if (!string.Equals(categoryGroup, "Model", StringComparison.OrdinalIgnoreCase))
 		{
+			categoryGroup = FamilyBrowserFamilyClassificationService.ResolveCategoryGroup(string.Empty, categoryName, categoryId, nestedFamily.Name ?? string.Empty);
+		}
+		string familyName = nestedFamily.Name ?? string.Empty;
+		if (!IsNestedLoadableFamilyCandidate(categoryGroup, categoryName, categoryId, familyName))
+		{
 			return;
 		}
-		string familyName = ((Element)nestedFamily).Name ?? string.Empty;
+		if (!string.Equals(categoryGroup, "Model", StringComparison.OrdinalIgnoreCase))
+		{
+			categoryGroup = "Model";
+		}
 		string nestedKey = BuildNestedLoadableKey(categoryId, categoryName, familyName);
+		if (string.IsNullOrWhiteSpace(nestedKey))
+		{
+			nestedKey = BuildNestedLoadableFamilyOnlyKey(familyName);
+		}
 		if (!string.IsNullOrWhiteSpace(nestedKey) && !string.Equals(nestedKey, parentKey, StringComparison.Ordinal) && !result.ContainsKey(nestedKey))
 		{
-			List<string> typeNames = (from x in nestedFamily.GetFamilySymbolIds().Select([SpecialName] (ElementId id) =>
-				{
-					Element element = familyDoc.GetElement(id);
-					return (ElementType)(object)((element is ElementType) ? element : null);
-				})
+			List<string> typeNames = (from id in nestedFamily.GetFamilySymbolIds()
+				select familyDoc.GetElement(id) as ElementType into x
 				where x != null
-				select ((Element)x).Name ?? string.Empty).OrderBy<string, string>([SpecialName] (string x) => Normalize(x), StringComparer.Ordinal).ToList();
+				select x.Name ?? string.Empty).OrderBy([SpecialName] (string x) => Normalize(x), StringComparer.Ordinal).ToList();
 			result.Add(nestedKey, new StandardNestedLoadableFamilySnapshotItem
 			{
 				FamilyName = familyName,
@@ -1576,8 +1605,7 @@ public sealed class StandardLibraryRegistrationService
 		Family ResolveNestedFamily;
 		try
 		{
-			FamilySymbol symbol = ((instance != null) ? instance.Symbol : null);
-			ResolveNestedFamily = ((symbol != null) ? symbol.Family : null);
+			ResolveNestedFamily = (instance?.Symbol)?.Family;
 		}
 		catch (Exception projectError)
 		{
@@ -1596,7 +1624,7 @@ public sealed class StandardLibraryRegistrationService
 			return "standard";
 		}
 		char[] invalidFileNameChars = Path.GetInvalidFileNameChars();
-		string safe = new string(text.Select([SpecialName] (char ch) => (!Enumerable.Contains(invalidFileNameChars, ch)) ? ch : '_').ToArray()).Trim().TrimEnd('.', ' ');
+		string safe = new string(text.Select([SpecialName] (char ch) => (!invalidFileNameChars.Contains(ch)) ? ch : '_').ToArray()).Trim().TrimEnd('.', ' ');
 		if (string.IsNullOrWhiteSpace(safe))
 		{
 			return "standard";
@@ -1640,7 +1668,124 @@ public sealed class StandardLibraryRegistrationService
 			ProjectData.SetProjectError(projectError);
 			ProjectData.ClearProjectError();
 		}
-		return FamilyBrowserFamilyClassificationService.IsTypeManagedFamilyLike(FamilyBrowserFamilyClassificationService.ResolveCategoryName(family), FamilyBrowserFamilyClassificationService.ResolveCategoryId(family), ((Element)family).Name ?? string.Empty);
+		return FamilyBrowserFamilyClassificationService.IsTypeManagedFamilyLike(FamilyBrowserFamilyClassificationService.ResolveCategoryName(family), FamilyBrowserFamilyClassificationService.ResolveCategoryId(family), family.Name ?? string.Empty);
+	}
+
+	private static Dictionary<int, int> BuildStandaloneInstanceCountsByFamily(Document doc)
+	{
+		Dictionary<int, int> result = new Dictionary<int, int>();
+		if (doc == null || doc.IsFamilyDocument)
+		{
+			return result;
+		}
+		foreach (FamilyInstance instance in new FilteredElementCollector(doc).OfClass(typeof(FamilyInstance)).WhereElementIsNotElementType())
+		{
+			if (instance == null)
+			{
+				continue;
+			}
+			try
+			{
+				if (instance.SuperComponent != null)
+				{
+					continue;
+				}
+			}
+			catch (Exception projectError)
+			{
+				ProjectData.SetProjectError(projectError);
+				ProjectData.ClearProjectError();
+			}
+			Family family = null;
+			try
+			{
+				family = instance.Symbol?.Family;
+			}
+			catch (Exception projectError2)
+			{
+				ProjectData.SetProjectError(projectError2);
+				ProjectData.ClearProjectError();
+			}
+			if (family == null)
+			{
+				continue;
+			}
+			int familyId = RevitElementIdCompat.CompatIntegerValue(family.Id);
+			if (familyId <= 0)
+			{
+				continue;
+			}
+			int count;
+			result.TryGetValue(familyId, out count);
+			result[familyId] = checked(count + 1);
+		}
+		return result;
+	}
+
+	private static int ResolveStandaloneInstanceCount(Family family, IDictionary<int, int> counts)
+	{
+		if (family == null || counts == null)
+		{
+			return 0;
+		}
+		int familyId = RevitElementIdCompat.CompatIntegerValue(family.Id);
+		int count;
+		return familyId > 0 && counts.TryGetValue(familyId, out count) ? count : 0;
+	}
+
+	private static int CountStandaloneFamilyInstances(Document doc, Family family)
+	{
+		return ResolveStandaloneInstanceCount(family, BuildStandaloneInstanceCountsByFamily(doc));
+	}
+
+	private static void RefreshStandalonePlacementUsage(StandardLibrarySnapshot snapshot, Document doc)
+	{
+		if (snapshot == null || snapshot.LoadableFamilies == null || doc == null)
+		{
+			return;
+		}
+		Dictionary<int, int> counts = BuildStandaloneInstanceCountsByFamily(doc);
+		Dictionary<string, Family> familiesByKey = new Dictionary<string, Family>(StringComparer.Ordinal);
+		Dictionary<string, List<Family>> familiesByName = new Dictionary<string, List<Family>>(StringComparer.Ordinal);
+		foreach (Family family in new FilteredElementCollector(doc).OfClass(typeof(Family)))
+		{
+			if (family == null || !FamilyBrowserFamilyClassificationService.IsBrowserLoadableFamily(family))
+			{
+				continue;
+			}
+			string key = BuildNestedLoadableKey(FamilyBrowserFamilyClassificationService.ResolveCategoryId(family), FamilyBrowserFamilyClassificationService.ResolveCategoryName(family), family.Name ?? string.Empty);
+			if (!string.IsNullOrWhiteSpace(key) && !familiesByKey.ContainsKey(key))
+			{
+				familiesByKey.Add(key, family);
+			}
+			string nameKey = Normalize(family.Name);
+			List<Family> sameName;
+			if (!familiesByName.TryGetValue(nameKey, out sameName))
+			{
+				sameName = new List<Family>();
+				familiesByName.Add(nameKey, sameName);
+			}
+			sameName.Add(family);
+		}
+		foreach (StandardLoadableFamilySnapshotItem item in snapshot.LoadableFamilies)
+		{
+			if (item == null)
+			{
+				continue;
+			}
+			Family family;
+			familiesByKey.TryGetValue(BuildNestedLoadableKey(item), out family);
+			if (family == null)
+			{
+				List<Family> sameName;
+				if (familiesByName.TryGetValue(Normalize(item.FamilyName), out sameName) && sameName.Count == 1)
+				{
+					family = sameName[0];
+				}
+			}
+			item.StandalonePlacementUsageCaptured = family != null;
+			item.StandaloneInstanceCount = ResolveStandaloneInstanceCount(family, counts);
+		}
 	}
 
 	private static void MarkNestedLoadableChildren(StandardLibrarySnapshot snapshot)
@@ -1649,7 +1794,6 @@ public sealed class StandardLibraryRegistrationService
 		{
 			return;
 		}
-		HashSet<string> nestedKeys = new HashSet<string>(StringComparer.Ordinal);
 		HashSet<string> nestedFamilyNames = new HashSet<string>(StringComparer.Ordinal);
 		foreach (StandardLoadableFamilySnapshotItem parentItem in snapshot.LoadableFamilies)
 		{
@@ -1659,13 +1803,8 @@ public sealed class StandardLibraryRegistrationService
 			}
 			foreach (StandardNestedLoadableFamilySnapshotItem child in parentItem.NestedLoadableFamilies)
 			{
-				if (child != null && child.IsShared && IsModelNestedLoadableChild(child))
+				if (child != null && IsModelNestedLoadableChild(child))
 				{
-					string key = BuildNestedLoadableKey(child);
-					if (!string.IsNullOrWhiteSpace(key))
-					{
-						nestedKeys.Add(key);
-					}
 					string familyNameKey = Normalize((child == null) ? string.Empty : child.FamilyName);
 					if (!string.IsNullOrWhiteSpace(familyNameKey))
 					{
@@ -1678,7 +1817,7 @@ public sealed class StandardLibraryRegistrationService
 		{
 			if (item != null)
 			{
-				item.IsNestedLoadableChild = item.IsShared && IsModelLoadableFamily(item) && (nestedKeys.Contains(BuildNestedLoadableKey(item)) || nestedFamilyNames.Contains(Normalize(item.FamilyName)));
+				item.IsNestedLoadableChild = nestedFamilyNames.Contains(Normalize(item.FamilyName));
 			}
 		}
 	}
@@ -1707,7 +1846,16 @@ public sealed class StandardLibraryRegistrationService
 		{
 			return false;
 		}
-		return string.Equals(FamilyBrowserFamilyClassificationService.ResolveCategoryGroup(item.CategoryGroup, item.CategoryName, item.CategoryId, item.FamilyName), "Model", StringComparison.OrdinalIgnoreCase);
+		return IsNestedLoadableFamilyCandidate(item.CategoryGroup, item.CategoryName, item.CategoryId, item.FamilyName);
+	}
+
+	private static bool IsNestedLoadableFamilyCandidate(string categoryGroup, string categoryName, string categoryId, string familyName)
+	{
+		if (string.IsNullOrWhiteSpace(familyName))
+		{
+			return false;
+		}
+		return !FamilyBrowserFamilyClassificationService.IsTypeManagedFamilyLike(categoryName, categoryId, familyName);
 	}
 
 	private static bool IsModelLoadableFamily(StandardLoadableFamilySnapshotItem item)
@@ -1734,6 +1882,16 @@ public sealed class StandardLibraryRegistrationService
 		return categoryKey + "|" + familyKey;
 	}
 
+	private static string BuildNestedLoadableFamilyOnlyKey(string familyName)
+	{
+		string familyKey = Normalize(familyName);
+		if (familyKey.Length == 0)
+		{
+			return string.Empty;
+		}
+		return "|" + familyKey;
+	}
+
 	private static bool IsBrowserLoadableFamily(Family family)
 	{
 		if (family == null)
@@ -1752,7 +1910,7 @@ public sealed class StandardLibraryRegistrationService
 			ProjectData.SetProjectError(projectError);
 			ProjectData.ClearProjectError();
 		}
-		return !IsTypeManagedFamilyCategory(ResolveCategoryName(family), ((Element)family).Name ?? string.Empty);
+		return !IsTypeManagedFamilyCategory(ResolveCategoryName(family), family.Name ?? string.Empty);
 	}
 
 	private static bool IsTypeManagedFamilyCategory(string categoryName, string familyName)
@@ -1771,11 +1929,8 @@ public sealed class StandardLibraryRegistrationService
 
 	private static Document FindOpenDocument(Application application, string resolvedPath)
 	{
-		//IL_0014: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001a: Expected O, but got Unknown
-		foreach (Document document in application.Documents)
+		foreach (Document doc in application.Documents)
 		{
-			Document doc = document;
 			if (doc != null && !string.IsNullOrWhiteSpace(doc.PathName))
 			{
 				string candidatePath = string.Empty;
@@ -1793,9 +1948,55 @@ public sealed class StandardLibraryRegistrationService
 				{
 					return doc;
 				}
+				try
+				{
+					if (doc.IsWorkshared)
+					{
+						ModelPath centralModelPath = doc.GetWorksharingCentralModelPath();
+						string centralPath = centralModelPath == null ? string.Empty : ModelPathUtils.ConvertModelPathToUserVisiblePath(centralModelPath);
+						if (!string.IsNullOrWhiteSpace(centralPath) && string.Equals(Path.GetFullPath(centralPath), resolvedPath, StringComparison.OrdinalIgnoreCase))
+						{
+							return doc;
+						}
+					}
+				}
+				catch (Exception projectError2)
+				{
+					ProjectData.SetProjectError(projectError2);
+					ProjectData.ClearProjectError();
+				}
 			}
 		}
 		return null;
+	}
+
+	public static Document FindOpenSelectedStandardRvt(Application application, string selectedPath)
+	{
+		if (application == null || string.IsNullOrWhiteSpace(selectedPath))
+		{
+			return null;
+		}
+		try
+		{
+			return FindOpenDocument(application, Path.GetFullPath(selectedPath));
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+			return null;
+		}
+	}
+
+	private static void EnsureSelectedStandardRvtIsClosed(Application application, string resolvedPath)
+	{
+		Document openDocument = FindOpenDocument(application, resolvedPath);
+		if (openDocument == null)
+		{
+			return;
+		}
+		string openTitle = string.IsNullOrWhiteSpace(openDocument.Title) ? Path.GetFileNameWithoutExtension(resolvedPath) : openDocument.Title;
+		throw new InvalidOperationException("STANDARD_RVT_IS_OPEN: " + T("The selected standard RVT is currently open in Revit. Close it, then register it again.", "선택한 표준 RVT가 현재 Revit에 열려 있습니다. 해당 파일을 닫은 뒤 다시 등록하세요.") + Environment.NewLine + openTitle + Environment.NewLine + resolvedPath);
 	}
 
 	private static string InferSourceKind(string resolvedPath)
@@ -1829,8 +2030,7 @@ public sealed class StandardLibraryRegistrationService
 		string ResolveCategoryName;
 		try
 		{
-			Category category = element.Category;
-			ResolveCategoryName = ((category != null) ? category.Name : null) ?? string.Empty;
+			ResolveCategoryName = element.Category?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -1846,7 +2046,7 @@ public sealed class StandardLibraryRegistrationService
 		string ResolveCategoryId;
 		try
 		{
-			ResolveCategoryId = ((element != null && element.Category != null && element.Category.Id != null) ? RevitElementIdCompat.CompatIntegerValue(element.Category.Id).ToString(CultureInfo.InvariantCulture) : string.Empty);
+			ResolveCategoryId = ((element != null && element.Category != null && (object)element.Category.Id != null) ? RevitElementIdCompat.CompatIntegerValue(element.Category.Id).ToString(CultureInfo.InvariantCulture) : string.Empty);
 		}
 		catch (Exception projectError)
 		{
@@ -1862,8 +2062,7 @@ public sealed class StandardLibraryRegistrationService
 		string ResolveCategoryName;
 		try
 		{
-			Category familyCategory = family.FamilyCategory;
-			ResolveCategoryName = ((familyCategory != null) ? familyCategory.Name : null) ?? string.Empty;
+			ResolveCategoryName = family.FamilyCategory?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -1879,7 +2078,7 @@ public sealed class StandardLibraryRegistrationService
 		string ResolveCategoryId;
 		try
 		{
-			ResolveCategoryId = ((family != null && family.FamilyCategory != null && family.FamilyCategory.Id != null) ? RevitElementIdCompat.CompatIntegerValue(family.FamilyCategory.Id).ToString(CultureInfo.InvariantCulture) : string.Empty);
+			ResolveCategoryId = ((family != null && family.FamilyCategory != null && (object)family.FamilyCategory.Id != null) ? RevitElementIdCompat.CompatIntegerValue(family.FamilyCategory.Id).ToString(CultureInfo.InvariantCulture) : string.Empty);
 		}
 		catch (Exception projectError)
 		{
@@ -1892,24 +2091,15 @@ public sealed class StandardLibraryRegistrationService
 
 	private static string ResolveFamilyCategoryGroup(Family family)
 	{
-		//IL_0019: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0021: Invalid comparison between Unknown and I4
-		//IL_0023: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0025: Invalid comparison between Unknown and I4
 		string ResolveFamilyCategoryGroup;
 		try
 		{
-			if (family == null || family.FamilyCategory == null)
+			ResolveFamilyCategoryGroup = ((family != null && family.FamilyCategory != null) ? (family.FamilyCategory.CategoryType switch
 			{
-				ResolveFamilyCategoryGroup = string.Empty;
-			}
-			else
-			{
-				CategoryType categoryType = family.FamilyCategory.CategoryType;
-				ResolveFamilyCategoryGroup = (((int)categoryType == 1) ? "Model" : (((int)categoryType != 2) ? "Other" : "Annotation"));
-			}
+				CategoryType.Model => "Model",
+				CategoryType.Annotation => "Annotation",
+				_ => "Other",
+			}) : string.Empty);
 		}
 		catch (Exception projectError)
 		{
@@ -1922,12 +2112,10 @@ public sealed class StandardLibraryRegistrationService
 
 	private static bool ResolveIsShared(Family family)
 	{
-		//IL_0011: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0017: Invalid comparison between Unknown and I4
 		try
 		{
-			Parameter parameterValue = ((Element)family)[(BuiltInParameter)(-1012834)];
-			if (parameterValue != null && (int)parameterValue.StorageType == 1)
+			Parameter parameterValue = ((Element)family).get_Parameter(BuiltInParameter.FAMILY_SHARED);
+			if (parameterValue != null && parameterValue.StorageType == StorageType.Integer)
 			{
 				return parameterValue.AsInteger() != 0;
 			}
@@ -1947,24 +2135,22 @@ public sealed class StandardLibraryRegistrationService
 		{
 			return result;
 		}
-		foreach (Parameter parameter in (from Parameter x in (IEnumerable)((Element)family).Parameters
+		foreach (Parameter parameter in (from Parameter x in family.Parameters
 			where ShouldCaptureParameter(x)
-			select x).OrderBy<Parameter, string>([SpecialName] (Parameter x) => Normalize(ResolveParameterName(x)), StringComparer.Ordinal))
+			select x).OrderBy([SpecialName] (Parameter x) => Normalize(ResolveParameterName(x)), StringComparer.Ordinal))
 		{
 			result.Add(BuildParameterSnapshot(doc, parameter, "Family", string.Empty));
 		}
 		foreach (ElementId symbolId in family.GetFamilySymbolIds())
 		{
-			Element element = doc.GetElement(symbolId);
-			FamilySymbol symbol = (FamilySymbol)(object)((element is FamilySymbol) ? element : null);
-			if (symbol == null)
+			if (!(doc.GetElement(symbolId) is FamilySymbol symbol))
 			{
 				continue;
 			}
-			string typeName = ((Element)symbol).Name ?? string.Empty;
-			foreach (Parameter parameter2 in (from Parameter x in (IEnumerable)((Element)symbol).Parameters
+			string typeName = symbol.Name ?? string.Empty;
+			foreach (Parameter parameter2 in (from Parameter x in symbol.Parameters
 				where ShouldCaptureParameter(x)
-				select x).OrderBy<Parameter, string>([SpecialName] (Parameter x) => Normalize(ResolveParameterName(x)), StringComparer.Ordinal))
+				select x).OrderBy([SpecialName] (Parameter x) => Normalize(ResolveParameterName(x)), StringComparer.Ordinal))
 			{
 				result.Add(BuildParameterSnapshot(doc, parameter2, "Type", typeName));
 			}
@@ -1974,7 +2160,7 @@ public sealed class StandardLibraryRegistrationService
 
 	private static List<StandardFamilyParameterSnapshotItem> DeduplicateParameterSnapshots(IEnumerable<StandardFamilyParameterSnapshotItem> parameters)
 	{
-		return FamilyParameterSnapshotNormalizationService.DeduplicateDefinitions(parameters);
+		return FamilyParameterSnapshotNormalizationService.DeduplicateDefinitionsAndTypeValues(parameters);
 	}
 
 	private static string BuildParameterSnapshotIdentityKey(StandardFamilyParameterSnapshotItem item)
@@ -2058,7 +2244,7 @@ public sealed class StandardLibraryRegistrationService
 		{
 			return false;
 		}
-		if (idValue < 0 && !SafeBool([SpecialName] () => parameter.IsShared))
+		if (idValue < 0 && !SafeBool([SpecialName] () => parameter.IsShared) && string.IsNullOrWhiteSpace(ResolveExternalGuid(parameter)))
 		{
 			return false;
 		}
@@ -2070,21 +2256,7 @@ public sealed class StandardLibraryRegistrationService
 		string ResolveParameterName;
 		try
 		{
-			object obj;
-			if (parameter == null)
-			{
-				obj = null;
-			}
-			else
-			{
-				Definition definition = parameter.Definition;
-				obj = ((definition != null) ? definition.Name : null);
-			}
-			if (obj == null)
-			{
-				obj = string.Empty;
-			}
-			ResolveParameterName = (string)obj;
+			ResolveParameterName = parameter?.Definition?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -2097,12 +2269,10 @@ public sealed class StandardLibraryRegistrationService
 
 	private static string ResolveStorageTypeName(Parameter parameter)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Unknown result type (might be due to invalid IL or missing references)
 		string ResolveStorageTypeName;
 		try
 		{
-			ResolveStorageTypeName = ((Enum)parameter.StorageType/*cast due to .constrained prefix*/).ToString();
+			ResolveStorageTypeName = parameter.StorageType.ToString();
 		}
 		catch (Exception projectError)
 		{
@@ -2127,7 +2297,7 @@ public sealed class StandardLibraryRegistrationService
 	{
 		try
 		{
-			if (parameter != null && parameter.Id != null)
+			if (parameter != null && (object)parameter.Id != null)
 			{
 				return RevitElementIdCompat.CompatIntegerValue(parameter.Id);
 			}
@@ -2144,11 +2314,9 @@ public sealed class StandardLibraryRegistrationService
 	{
 		try
 		{
-			Definition obj = ((parameter != null) ? parameter.Definition : null);
-			ExternalDefinition externalDefinition = (ExternalDefinition)(object)((obj is ExternalDefinition) ? obj : null);
-			if (externalDefinition != null)
+			if (parameter?.Definition is ExternalDefinition { GUID: var gUID })
 			{
-				return externalDefinition.GUID.ToString("D");
+				return gUID.ToString("D");
 			}
 		}
 		catch (Exception projectError)
@@ -2161,36 +2329,31 @@ public sealed class StandardLibraryRegistrationService
 
 	private static string ResolveParameterValue(Document doc, Parameter parameter)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0009: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001f: Expected I4, but got Unknown
 		string ResolveParameterValue;
 		try
 		{
-			StorageType storageType = parameter.StorageType;
-			switch (storageType - 1)
+			switch (parameter.StorageType)
 			{
-			case 2:
+			case StorageType.String:
 				ResolveParameterValue = NormalizeMultiline(parameter.AsString());
 				break;
-			case 1:
+			case StorageType.Double:
 			{
 				string formatted2 = parameter.AsValueString();
 				ResolveParameterValue = (string.IsNullOrWhiteSpace(formatted2) ? parameter.AsDouble().ToString("G17", CultureInfo.InvariantCulture) : NormalizeMultiline(formatted2));
 				break;
 			}
-			case 0:
+			case StorageType.Integer:
 			{
+				int integerValue = parameter.AsInteger();
 				string formatted3 = parameter.AsValueString();
-				ResolveParameterValue = (string.IsNullOrWhiteSpace(formatted3) ? parameter.AsInteger().ToString(CultureInfo.InvariantCulture) : NormalizeMultiline(formatted3));
+				ResolveParameterValue = FamilyBrowserYesNoParameterFormatter.FormatInteger(parameter, integerValue, string.IsNullOrWhiteSpace(formatted3) ? string.Empty : NormalizeMultiline(formatted3));
 				break;
 			}
-			case 3:
+			case StorageType.ElementId:
 			{
 				ElementId id = parameter.AsElementId();
-				if (id == null || id == ElementId.InvalidElementId)
+				if ((object)id == null || id == ElementId.InvalidElementId)
 				{
 					ResolveParameterValue = string.Empty;
 				}
@@ -2201,7 +2364,7 @@ public sealed class StandardLibraryRegistrationService
 				}
 				else
 				{
-					Element element = ((doc == null) ? null : doc.GetElement(id));
+					Element element = doc?.GetElement(id);
 					ResolveParameterValue = ((element != null) ? BuildReferencedElementParameterValue(doc, element) : RevitElementIdCompat.CompatIntegerValue(id).ToString(CultureInfo.InvariantCulture));
 				}
 				break;
@@ -2228,7 +2391,7 @@ public sealed class StandardLibraryRegistrationService
 		}
 		List<string> parts = new List<string>
 		{
-			((object)element).GetType().Name,
+			element.GetType().Name,
 			ResolveCategoryName(element),
 			ResolveElementName(element)
 		};
@@ -2250,8 +2413,7 @@ public sealed class StandardLibraryRegistrationService
 		{
 			return result;
 		}
-		HostObjAttributes hostAttributes = (HostObjAttributes)(object)((systemType is HostObjAttributes) ? systemType : null);
-		if (hostAttributes == null)
+		if (!(systemType is HostObjAttributes hostAttributes))
 		{
 			return result;
 		}
@@ -2272,9 +2434,15 @@ public sealed class StandardLibraryRegistrationService
 		}
 		try
 		{
-			int index = 1;
-			foreach (CompoundStructureLayer layer in compound.GetLayers())
+			IList<CompoundStructureLayer> layers = compound.GetLayers();
+			int firstCoreIndex = ResolveCompoundLayerIndex(compound, "GetFirstCoreLayerIndex");
+			int lastCoreIndex = ResolveCompoundLayerIndex(compound, "GetLastCoreLayerIndex");
+			int structuralMaterialIndex = ResolveCompoundLayerIndex(compound, "StructuralMaterialIndex");
+			int variableLayerIndex = ResolveCompoundLayerIndex(compound, "VariableLayerIndex");
+			for (int zeroBasedIndex = 0; zeroBasedIndex < layers.Count; zeroBasedIndex++)
 			{
+				CompoundStructureLayer layer = layers[zeroBasedIndex];
+				int index = zeroBasedIndex + 1;
 				string functionName = SafeLayerFunctionName(layer);
 				string materialName = ResolveLayerMaterialName(doc, layer);
 				if (string.IsNullOrWhiteSpace(materialName))
@@ -2287,9 +2455,11 @@ public sealed class StandardLibraryRegistrationService
 					FunctionName = functionName,
 					MaterialName = materialName,
 					ThicknessFeet = layer.Width,
-					ThicknessDisplay = FormatLayerThickness(layer.Width)
+					ThicknessDisplay = FormatLayerThickness(layer.Width),
+					IsCore = firstCoreIndex >= 0 && lastCoreIndex >= firstCoreIndex && zeroBasedIndex >= firstCoreIndex && zeroBasedIndex <= lastCoreIndex,
+					IsStructuralMaterial = zeroBasedIndex == structuralMaterialIndex,
+					IsVariable = zeroBasedIndex == variableLayerIndex
 				});
-				index = checked(index + 1);
 			}
 		}
 		catch (Exception projectError2)
@@ -2302,12 +2472,10 @@ public sealed class StandardLibraryRegistrationService
 
 	private static string SafeLayerFunctionName(CompoundStructureLayer layer)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Unknown result type (might be due to invalid IL or missing references)
 		string SafeLayerFunctionName;
 		try
 		{
-			SafeLayerFunctionName = ((Enum)layer.Function/*cast due to .constrained prefix*/).ToString();
+			SafeLayerFunctionName = layer.Function.ToString();
 		}
 		catch (Exception projectError)
 		{
@@ -2329,7 +2497,7 @@ public sealed class StandardLibraryRegistrationService
 		{
 			try
 			{
-				ResolveLayerMaterialName = ((layer.MaterialId != null && !(layer.MaterialId == ElementId.InvalidElementId)) ? ResolveElementName(doc.GetElement(layer.MaterialId)) : string.Empty);
+				ResolveLayerMaterialName = (((object)layer.MaterialId != null && !(layer.MaterialId == ElementId.InvalidElementId)) ? ResolveElementName(doc.GetElement(layer.MaterialId)) : string.Empty);
 			}
 			catch (Exception projectError)
 			{
@@ -2353,6 +2521,31 @@ public sealed class StandardLibraryRegistrationService
 			widthMillimeters = 0.0;
 		}
 		return widthMillimeters.ToString("0.###", CultureInfo.InvariantCulture) + " mm";
+	}
+
+	private static int ResolveCompoundLayerIndex(CompoundStructure compound, string memberName)
+	{
+		if (compound == null || string.IsNullOrWhiteSpace(memberName))
+		{
+			return -1;
+		}
+		try
+		{
+			MethodInfo method = compound.GetType().GetMethod(memberName, BindingFlags.Instance | BindingFlags.Public, null, Type.EmptyTypes, null);
+			if (method != null)
+			{
+				return Convert.ToInt32(method.Invoke(compound, null), CultureInfo.InvariantCulture);
+			}
+			PropertyInfo property = compound.GetType().GetProperty(memberName, BindingFlags.Instance | BindingFlags.Public);
+			if (property != null)
+			{
+				return Convert.ToInt32(property.GetValue(compound, null), CultureInfo.InvariantCulture);
+			}
+		}
+		catch
+		{
+		}
+		return -1;
 	}
 
 	private static string ResolveElementName(Element element)

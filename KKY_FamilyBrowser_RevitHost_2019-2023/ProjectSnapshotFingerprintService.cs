@@ -30,22 +30,22 @@ public sealed class ProjectSnapshotFingerprintService
 		return BuildLoadableFingerprintCore(item.CategoryName, item.CategoryGroup, item.FamilyName, item.TypeCount, item.TypeNames, item.IsShared, item.ContentFingerprint, item.Parameters);
 	}
 
-	public static string BuildSystemFingerprint(StandardSystemTypeSnapshotItem item)
+	public static string BuildSystemFingerprint(StandardSystemTypeSnapshotItem item, bool includeDetailedComponents = true)
 	{
 		if (item == null)
 		{
 			return string.Empty;
 		}
-		return BuildSystemFingerprintCore(item.TypeClassName, item.CategoryName, item.TypeName, item.SupportsRoutingDependencies, item.ClassificationCode, item.SegmentName, item.MaterialName, item.Shape, item.RoutingPreferenceSignature, item.CompoundStructureSignature);
+		return BuildSystemFingerprintCore(item.TypeClassName, item.CategoryName, item.TypeName, item.SupportsRoutingDependencies, item.ClassificationCode, item.SegmentName, item.MaterialName, item.Shape, item.RoutingPreferenceSignature, item.CompoundStructureSignature, includeDetailedComponents, item.DetailedComponentsCaptured, item.DetailedComponentSignature, item.DetailedComponents);
 	}
 
-	public static string BuildSystemFingerprint(ProjectSystemTypeSnapshotItem item)
+	public static string BuildSystemFingerprint(ProjectSystemTypeSnapshotItem item, bool includeDetailedComponents = true)
 	{
 		if (item == null)
 		{
 			return string.Empty;
 		}
-		return BuildSystemFingerprintCore(item.TypeClassName, item.CategoryName, item.TypeName, item.SupportsRoutingDependencies, item.ClassificationCode, item.SegmentName, item.MaterialName, item.Shape, item.RoutingPreferenceSignature, item.CompoundStructureSignature);
+		return BuildSystemFingerprintCore(item.TypeClassName, item.CategoryName, item.TypeName, item.SupportsRoutingDependencies, item.ClassificationCode, item.SegmentName, item.MaterialName, item.Shape, item.RoutingPreferenceSignature, item.CompoundStructureSignature, includeDetailedComponents, item.DetailedComponentsCaptured, item.DetailedComponentSignature, item.DetailedComponents);
 	}
 
 	private static string HashString(string value)
@@ -79,11 +79,13 @@ public sealed class ProjectSnapshotFingerprintService
 		return HashString(string.Join("|", parts));
 	}
 
-	private static string BuildSystemFingerprintCore(string typeClassName, string categoryName, string typeName, bool supportsRoutingDependencies, string classificationCode, string segmentName, string materialName, string shape, string routingPreferenceSignature, string compoundStructureSignature)
+	private static string BuildSystemFingerprintCore(string typeClassName, string categoryName, string typeName, bool supportsRoutingDependencies, string classificationCode, string segmentName, string materialName, string shape, string routingPreferenceSignature, string compoundStructureSignature, bool includeDetailedComponents, bool detailedComponentsCaptured, string detailedComponentSignature, IEnumerable<SystemTypeDetailedComponentSnapshotItem> detailedComponents)
 	{
+		bool useDetailedComponents = includeDetailedComponents && detailedComponentsCaptured && SystemTypeDetailedComponentSnapshotService.SupportsDetailedComponents(typeClassName);
+		bool useRequiredCurtainPanelComponents = detailedComponentsCaptured && SystemTypeDetailedComponentSnapshotService.HasRequiredCurtainPanelComponents(detailedComponents);
 		List<string> parts = new List<string>
 		{
-			"system-v3",
+			useRequiredCurtainPanelComponents ? "system-v5" : (useDetailedComponents ? "system-v4" : "system-v3"),
 			Normalize(typeClassName),
 			Normalize(categoryName),
 			Normalize(typeName),
@@ -95,6 +97,15 @@ public sealed class ProjectSnapshotFingerprintService
 			"routing=" + NormalizeRoutingPreferenceSignature(routingPreferenceSignature),
 			"compound=" + Normalize(compoundStructureSignature)
 		};
+		if (useDetailedComponents)
+		{
+			string optionalSignature = SystemTypeDetailedComponentSnapshotService.BuildOptionalDetailedComponentSignature(detailedComponents);
+			parts.Add("detailed-components=" + Normalize(string.IsNullOrWhiteSpace(optionalSignature) ? detailedComponentSignature : optionalSignature));
+		}
+		if (useRequiredCurtainPanelComponents)
+		{
+			parts.Add("curtain-panel-dependencies=" + Normalize(SystemTypeDetailedComponentSnapshotService.BuildRequiredCurtainPanelSignature(detailedComponents)));
+		}
 		return HashString(string.Join("|", parts));
 	}
 

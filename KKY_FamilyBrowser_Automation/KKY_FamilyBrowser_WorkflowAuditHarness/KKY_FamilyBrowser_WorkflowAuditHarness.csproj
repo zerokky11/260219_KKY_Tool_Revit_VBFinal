@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+	<Compile Include="..\..\KKY_FamilyBrowser_SharedUi\FamilyBrowserAtomicFileService.cs" Link="FamilyBrowserAtomicFileService.cs" />
+	<Compile Include="..\..\KKY_FamilyBrowser_SharedUi\FamilyBrowserRequestConcurrencyService.cs" Link="FamilyBrowserRequestConcurrencyService.cs" />
+	<Compile Include="..\..\KKY_FamilyBrowser_SharedUi\FamilyBrowserRequestFileTransactionService.cs" Link="FamilyBrowserRequestFileTransactionService.cs" />
+	<Compile Include="..\..\KKY_FamilyBrowser_SharedUi\FamilyBrowserElementActivityMatcher.cs" Link="FamilyBrowserElementActivityMatcher.cs" />
+	<Compile Include="..\..\KKY_FamilyBrowser_SharedUi\FamilyBrowserElementTrackingScopePolicy.cs" Link="FamilyBrowserElementTrackingScopePolicy.cs" />
+	<Compile Include="..\..\KKY_FamilyBrowser_SharedUi\FamilyBrowserElementTrackingTransitionPolicy.cs" Link="FamilyBrowserElementTrackingTransitionPolicy.cs" />
+	<Compile Include="..\..\KKY_FamilyBrowser_SharedUi\FamilyBrowserElementHistoryProjectionPolicy.cs" Link="FamilyBrowserElementHistoryProjectionPolicy.cs" />
+	<Compile Include="..\..\KKY_FamilyBrowser_SharedUi\FamilyBrowserElementTrackingPolicyDecision.cs" Link="FamilyBrowserElementTrackingPolicyDecision.cs" />
+	<Compile Include="..\..\KKY_FamilyBrowser_SharedUi\FamilyBrowserTrackingCommitOptimizationPolicy.cs" Link="FamilyBrowserTrackingCommitOptimizationPolicy.cs" />
+	<Compile Include="..\..\KKY_FamilyBrowser_SharedUi\FamilyBrowserManagementContextLock.cs" Link="FamilyBrowserManagementContextLock.cs" />
+	<Compile Include="..\..\KKY_FamilyBrowser_SharedUi\FamilyBrowserTrackingPersistenceService.cs" Link="FamilyBrowserTrackingPersistenceService.cs" />
+  </ItemGroup>
+</Project>

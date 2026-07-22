@@ -34,6 +34,31 @@ public sealed class ProjectStandardComparisonService
 		}
 	}
 
+	private class LookupCsvSignatureTableInfo
+	{
+		public string Name { get; set; }
+
+		public int RowCount { get; set; }
+
+		public int ColumnCount { get; set; }
+
+		public bool HasRowCount { get; set; }
+
+		public bool HasColumnCount { get; set; }
+
+		public bool Missing { get; set; }
+
+		public bool HasError { get; set; }
+
+		public string Signature { get; set; }
+
+		public LookupCsvSignatureTableInfo()
+		{
+			Name = string.Empty;
+			Signature = string.Empty;
+		}
+	}
+
 	private class NestedLabelSignatureInfo
 	{
 		public string InstanceKey { get; set; }
@@ -188,7 +213,7 @@ public sealed class ProjectStandardComparisonService
 	{
 	}
 
-	public static ProjectStandardComparisonReport BuildReport(StandardLibraryRegistrationRecord registration, string snapshotPath, StandardLibrarySnapshot standardSnapshot, string projectSnapshotPath, ProjectContentSnapshot projectSnapshot, ProjectTrackingCatalog trackingCatalog = null)
+	public static ProjectStandardComparisonReport BuildReport(StandardLibraryRegistrationRecord registration, string snapshotPath, StandardLibrarySnapshot standardSnapshot, string projectSnapshotPath, ProjectContentSnapshot projectSnapshot, ProjectTrackingCatalog trackingCatalog = null, bool compareDetailedSystemTypeComponents = true)
 	{
 		ProjectTrackingCatalog effectiveTrackingCatalog = trackingCatalog;
 		string trackingState = "NoTrackingCatalog";
@@ -230,7 +255,7 @@ public sealed class ProjectStandardComparisonService
 		};
 		report.ProjectLoadableSignatureFailures = BuildProjectLoadableSignatureFailures(projectSnapshot);
 		report.LoadableFamilies = BuildLoadableFamilyComparisons(standardSnapshot, projectSnapshot, effectiveTrackingCatalog);
-		report.SystemTypes = BuildSystemTypeComparisons(standardSnapshot, projectSnapshot, effectiveTrackingCatalog);
+		report.SystemTypes = BuildSystemTypeComparisons(standardSnapshot, projectSnapshot, effectiveTrackingCatalog, compareDetailedSystemTypeComponents);
 		ProjectStandardComparisonSummary summary = new ProjectStandardComparisonSummary();
 		checked
 		{
@@ -252,6 +277,8 @@ public sealed class ProjectStandardComparisonService
 				case "VersionConflict":
 				case "CategoryMismatch":
 				case "ManualReview":
+				case "NestedMissingFromParent":
+				case "NestedExtraInParent":
 					summary.LoadableDifferentCount++;
 					break;
 				case "ProjectOnly":
@@ -486,17 +513,12 @@ public sealed class ProjectStandardComparisonService
 
 	private static List<LoadableFamilyComparisonItem> BuildLoadableFamilyComparisons(StandardLibrarySnapshot standardSnapshot, ProjectContentSnapshot projectSnapshot, ProjectTrackingCatalog trackingCatalog)
 	{
-		_Closure_0024__9_002D0 arg = default(_Closure_0024__9_002D0);
-		_Closure_0024__9_002D0 CS_0024_003C_003E8__locals3 = new _Closure_0024__9_002D0(arg);
 		List<LoadableFamilyComparisonItem> results = new List<LoadableFamilyComparisonItem>();
-		CS_0024_003C_003E8__locals3._0024VB_0024Local_nestedFamilyNames = BuildNestedLoadableNameSet(standardSnapshot);
 		List<StandardLoadableFamilySnapshotItem> standardLoadableFamilies = (from x in standardSnapshot.LoadableFamilies
 			where !FamilyBrowserFamilyClassificationService.IsTypeManagedFamilyLike(x.CategoryName, x.CategoryId, x.FamilyName)
-			where !IsHiddenNestedLoadableChild(x, CS_0024_003C_003E8__locals3._0024VB_0024Local_nestedFamilyNames)
 			select x).ToList();
 		List<ProjectLoadableFamilySnapshotItem> projectLoadableFamilies = (from x in projectSnapshot.LoadableFamilies
 			where !FamilyBrowserFamilyClassificationService.IsTypeManagedFamilyLike(x.CategoryName, x.CategoryId, x.FamilyName)
-			where !IsHiddenNestedLoadableChild(x, CS_0024_003C_003E8__locals3._0024VB_0024Local_nestedFamilyNames)
 			select x).ToList();
 		Dictionary<string, ProjectLoadableFamilySnapshotItem> projectMap = BuildFirstMap(projectLoadableFamilies, [SpecialName] (ProjectLoadableFamilySnapshotItem x) => BuildLoadableMatchKey(x));
 		Dictionary<string, List<ProjectLoadableFamilySnapshotItem>> projectNameMap = BuildGroupedMap(projectLoadableFamilies, [SpecialName] (ProjectLoadableFamilySnapshotItem x) => Normalize(x.FamilyName));
@@ -555,7 +577,7 @@ public sealed class ProjectStandardComparisonService
 					ExtraTypeNames = extraTypes,
 					ProjectTypeNames = CloneStringList(projectFamily.TypeNames),
 					ProjectParameters = CloneParameterSnapshotItems(projectFamily.Parameters),
-					ProjectNestedLoadableFamilies = BuildNestedLoadableFamiliesFromSignature(projectFamily.ContentSignatureDebugPath),
+					ProjectNestedLoadableFamilies = BuildNestedLoadableFamiliesFromSignature(projectFamily.ContentSignatureDebugPath, projectFamily.FamilyName),
 					Notes = classification.Notes,
 					IsNestedLoadableChild = IsActualNestedLoadableChild(standardFamily),
 					NestedLoadableFamilies = CloneNestedLoadableFamilies(standardFamily.NestedLoadableFamilies)
@@ -586,7 +608,7 @@ public sealed class ProjectStandardComparisonService
 					ProjectTypeNames = categoryMismatches.SelectMany([SpecialName] (ProjectLoadableFamilySnapshotItem x) => x.TypeNames ?? new List<string>()).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase)
 						.ToList(),
 					ProjectParameters = categoryMismatches.SelectMany([SpecialName] (ProjectLoadableFamilySnapshotItem x) => x.Parameters ?? new List<StandardFamilyParameterSnapshotItem>()).ToList(),
-					ProjectNestedLoadableFamilies = categoryMismatches.SelectMany([SpecialName] (ProjectLoadableFamilySnapshotItem x) => BuildNestedLoadableFamiliesFromSignature(x.ContentSignatureDebugPath)).ToList(),
+					ProjectNestedLoadableFamilies = categoryMismatches.SelectMany([SpecialName] (ProjectLoadableFamilySnapshotItem x) => BuildNestedLoadableFamiliesFromSignature(x.ContentSignatureDebugPath, x.FamilyName)).ToList(),
 					Notes = BuildLoadableCategoryMismatchNote(standardFamily, categoryMismatches),
 					IsNestedLoadableChild = IsActualNestedLoadableChild(standardFamily),
 					NestedLoadableFamilies = CloneNestedLoadableFamilies(standardFamily.NestedLoadableFamilies)
@@ -638,7 +660,7 @@ public sealed class ProjectStandardComparisonService
 					ExtraTypeNames = projectFamily2.TypeNames.OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase).ToList(),
 					ProjectTypeNames = CloneStringList(projectFamily2.TypeNames),
 					ProjectParameters = CloneParameterSnapshotItems(projectFamily2.Parameters),
-					ProjectNestedLoadableFamilies = BuildNestedLoadableFamiliesFromSignature(projectFamily2.ContentSignatureDebugPath),
+					ProjectNestedLoadableFamilies = BuildNestedLoadableFamiliesFromSignature(projectFamily2.ContentSignatureDebugPath, projectFamily2.FamilyName),
 					Notes = BuildProjectLoadableCategoryMismatchNote(projectFamily2, standardCategoryMismatches)
 				});
 			}
@@ -659,11 +681,12 @@ public sealed class ProjectStandardComparisonService
 					ExtraTypeNames = projectFamily2.TypeNames.OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase).ToList(),
 					ProjectTypeNames = CloneStringList(projectFamily2.TypeNames),
 					ProjectParameters = CloneParameterSnapshotItems(projectFamily2.Parameters),
-					ProjectNestedLoadableFamilies = BuildNestedLoadableFamiliesFromSignature(projectFamily2.ContentSignatureDebugPath),
+					ProjectNestedLoadableFamilies = BuildNestedLoadableFamiliesFromSignature(projectFamily2.ContentSignatureDebugPath, projectFamily2.FamilyName),
 					Notes = "Project family was not found in the registered standard snapshot."
 				});
 			}
 		}
+		NestedLoadableFamilyDifferencePropagationService.Apply(results);
 		return results;
 	}
 
@@ -1029,6 +1052,15 @@ public sealed class ProjectStandardComparisonService
 					continue;
 				}
 			}
+			if (string.Equals(groupName, "lookup tables", StringComparison.Ordinal))
+			{
+				List<LoadableFingerprintDifferenceDetailItem> lookupCsvDetails = BuildLookupCsvDifferenceDetails(standardGroup, projectGroup);
+				if (lookupCsvDetails.Count > 0)
+				{
+					AppendDifferenceDetails(result, lookupCsvDetails, 14);
+					continue;
+				}
+			}
 			bool isMaterialGroup = IsMaterialSignatureGroup(groupName);
 			if (ShouldBuildPairedSignatureDifferenceDetails(groupName))
 			{
@@ -1061,6 +1093,237 @@ public sealed class ProjectStandardComparisonService
 			AddDifferenceDetail(result, "additional groups", "omitted", "-", "-", checked(groupNames.Count - 8).ToString(CultureInfo.InvariantCulture) + " additional signature difference groups omitted.");
 		}
 		return result;
+	}
+
+	private static List<LoadableFingerprintDifferenceDetailItem> BuildLookupCsvDifferenceDetails(IList<string> standardGroup, IList<string> projectGroup)
+	{
+		List<LoadableFingerprintDifferenceDetailItem> result = new List<LoadableFingerprintDifferenceDetailItem>();
+		Dictionary<string, LookupCsvSignatureTableInfo> standardTables = BuildLookupCsvSignatureTableMap(standardGroup);
+		Dictionary<string, LookupCsvSignatureTableInfo> projectTables = BuildLookupCsvSignatureTableMap(projectGroup);
+		List<string> keys = standardTables.Keys.Union(projectTables.Keys, StringComparer.Ordinal).OrderBy([SpecialName] (string x) => x, StringComparer.Ordinal).ToList();
+		foreach (string key in keys.Take(10))
+		{
+			LookupCsvSignatureTableInfo standardTable = null;
+			LookupCsvSignatureTableInfo projectTable = null;
+			standardTables.TryGetValue(key, out standardTable);
+			projectTables.TryGetValue(key, out projectTable);
+			if (standardTable == null)
+			{
+				AddDifferenceDetail(result, "lookup csv", "project-only", "CSV: no", FormatLookupCsvTableForDiff(projectTable), "Lookup CSV table exists only in the current project scan.");
+			}
+			else if (projectTable == null)
+			{
+				AddDifferenceDetail(result, "lookup csv", "standard-only", FormatLookupCsvTableForDiff(standardTable), "CSV: no", "Lookup CSV table exists only in the standard scan.");
+			}
+			else if (!LookupCsvCountsMatch(standardTable, projectTable))
+			{
+				AddDifferenceDetail(result, "lookup csv", "modified", FormatLookupCsvTableForDiff(standardTable), FormatLookupCsvTableForDiff(projectTable), "Lookup CSV row/column count differs.");
+			}
+			else if (!string.Equals(standardTable.Signature ?? string.Empty, projectTable.Signature ?? string.Empty, StringComparison.Ordinal))
+			{
+				AddDifferenceDetail(result, "lookup csv", "modified", FormatLookupCsvTableForDiff(standardTable), FormatLookupCsvTableForDiff(projectTable), "Lookup CSV content differs.");
+			}
+			if (result.Count >= 10)
+			{
+				break;
+			}
+		}
+		if (result.Count == 0 && !LookupCsvSignatureLineSetsMatch(standardGroup, projectGroup))
+		{
+			AddDifferenceDetail(result, "lookup csv", "signature-source", FormatLookupCsvGroupForDiff(standardGroup), FormatLookupCsvGroupForDiff(projectGroup), "Lookup CSV signature differs.");
+		}
+		return result;
+	}
+
+	private static bool LookupCsvSignatureLineSetsMatch(IEnumerable<string> standardGroup, IEnumerable<string> projectGroup)
+	{
+		List<string> standardLines = NormalizeLookupCsvSignatureLines(standardGroup);
+		List<string> projectLines = NormalizeLookupCsvSignatureLines(projectGroup);
+		return standardLines.SequenceEqual(projectLines, StringComparer.Ordinal);
+	}
+
+	private static List<string> NormalizeLookupCsvSignatureLines(IEnumerable<string> lines)
+	{
+		if (lines == null)
+		{
+			return new List<string>();
+		}
+		return lines.Select([SpecialName] (string x) => NormalizeSignatureLine(x)).Where([SpecialName] (string x) => !string.IsNullOrWhiteSpace(x)).OrderBy([SpecialName] (string x) => x, StringComparer.Ordinal).ToList();
+	}
+
+	private static Dictionary<string, LookupCsvSignatureTableInfo> BuildLookupCsvSignatureTableMap(IEnumerable<string> lines)
+	{
+		Dictionary<string, LookupCsvSignatureTableInfo> result = new Dictionary<string, LookupCsvSignatureTableInfo>(StringComparer.Ordinal);
+		foreach (LookupCsvSignatureTableInfo table in ParseLookupCsvSignatureTables(lines))
+		{
+			if (table == null || string.IsNullOrWhiteSpace(table.Name))
+			{
+				continue;
+			}
+			result[Normalize(table.Name)] = table;
+		}
+		return result;
+	}
+
+	private static List<LookupCsvSignatureTableInfo> ParseLookupCsvSignatureTables(IEnumerable<string> lines)
+	{
+		List<LookupCsvSignatureTableInfo> result = new List<LookupCsvSignatureTableInfo>();
+		if (lines == null)
+		{
+			return result;
+		}
+		foreach (string rawLine in lines)
+		{
+			string line = NormalizeSignatureLine(rawLine);
+			if (string.IsNullOrWhiteSpace(line))
+			{
+				continue;
+			}
+			if (line.StartsWith("lookup-tables=", StringComparison.Ordinal))
+			{
+				line = line.Substring("lookup-tables=".Length).Trim();
+				if (line.Length == 0)
+				{
+					continue;
+				}
+			}
+			if (line.StartsWith("table=", StringComparison.Ordinal))
+			{
+				LookupCsvSignatureTableInfo table = ParseLookupCsvTableLine(line);
+				if (table != null && !string.IsNullOrWhiteSpace(table.Name))
+				{
+					result.Add(table);
+				}
+			}
+			else if (line.StartsWith("lookup-table-error=", StringComparison.Ordinal))
+			{
+				result.Add(new LookupCsvSignatureTableInfo
+				{
+					Name = "lookup-table-error",
+					HasError = true,
+					Signature = line
+				});
+			}
+		}
+		return result;
+	}
+
+	private static LookupCsvSignatureTableInfo ParseLookupCsvTableLine(string line)
+	{
+		string text = NormalizeSignatureLine(line);
+		if (text.StartsWith("lookup-tables=", StringComparison.Ordinal))
+		{
+			text = text.Substring("lookup-tables=".Length).Trim();
+		}
+		if (!text.StartsWith("table=", StringComparison.Ordinal))
+		{
+			return null;
+		}
+		string body = text.Substring("table=".Length);
+		string[] tokens = body.Split('|');
+		if (tokens.Length == 0)
+		{
+			return null;
+		}
+		LookupCsvSignatureTableInfo result = new LookupCsvSignatureTableInfo
+		{
+			Name = (tokens[0] ?? string.Empty).Trim(),
+			Signature = text
+		};
+		foreach (string rawToken in tokens.Skip(1))
+		{
+			string token = (rawToken ?? string.Empty).Trim();
+			if (token.Length == 0)
+			{
+				continue;
+			}
+			if (string.Equals(token, "missing", StringComparison.OrdinalIgnoreCase))
+			{
+				result.Missing = true;
+			}
+			else if (token.StartsWith("error=", StringComparison.OrdinalIgnoreCase))
+			{
+				result.HasError = true;
+			}
+			else if (token.StartsWith("columns=", StringComparison.OrdinalIgnoreCase))
+			{
+				result.ColumnCount = CountLookupCsvColumns(token.Substring("columns=".Length));
+				result.HasColumnCount = true;
+			}
+			else if (token.StartsWith("rows=", StringComparison.OrdinalIgnoreCase))
+			{
+				result.RowCount = CountLookupCsvRows(token.Substring("rows=".Length));
+				result.HasRowCount = true;
+			}
+		}
+		return result;
+	}
+
+	private static int CountLookupCsvColumns(string value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			return 0;
+		}
+		return value.Split(';').Count([SpecialName] (string x) => !string.IsNullOrWhiteSpace(x));
+	}
+
+	private static int CountLookupCsvRows(string value)
+	{
+		if (string.IsNullOrWhiteSpace(value))
+		{
+			return 0;
+		}
+		return value.Split(';').Count([SpecialName] (string x) => !string.IsNullOrWhiteSpace(x));
+	}
+
+	private static bool LookupCsvCountsMatch(LookupCsvSignatureTableInfo standardTable, LookupCsvSignatureTableInfo projectTable)
+	{
+		if (standardTable == null || projectTable == null)
+		{
+			return standardTable == projectTable;
+		}
+		if (standardTable.HasRowCount != projectTable.HasRowCount || standardTable.HasColumnCount != projectTable.HasColumnCount)
+		{
+			return false;
+		}
+		return standardTable.RowCount == projectTable.RowCount && standardTable.ColumnCount == projectTable.ColumnCount && standardTable.Missing == projectTable.Missing && standardTable.HasError == projectTable.HasError;
+	}
+
+	private static string FormatLookupCsvTableForDiff(LookupCsvSignatureTableInfo table)
+	{
+		if (table == null)
+		{
+			return "CSV: no";
+		}
+		List<string> parts = new List<string> { "CSV: yes" };
+		if (!string.IsNullOrWhiteSpace(table.Name))
+		{
+			parts.Add("table=" + table.Name);
+		}
+		if (table.Missing)
+		{
+			parts.Add("missing");
+		}
+		if (table.HasError)
+		{
+			parts.Add("error");
+		}
+		if (table.HasRowCount || table.HasColumnCount)
+		{
+			parts.Add(table.RowCount.ToString(CultureInfo.InvariantCulture) + " rows x " + table.ColumnCount.ToString(CultureInfo.InvariantCulture) + " columns");
+		}
+		return ShortDiffCell(string.Join(" / ", parts), 180);
+	}
+
+	private static string FormatLookupCsvGroupForDiff(IEnumerable<string> lines)
+	{
+		List<LookupCsvSignatureTableInfo> tables = ParseLookupCsvSignatureTables(lines);
+		if (tables.Count == 0)
+		{
+			return "CSV: no";
+		}
+		return ShortDiffCell(string.Join("; ", tables.Take(4).Select([SpecialName] (LookupCsvSignatureTableInfo x) => FormatLookupCsvTableForDiff(x))), 220);
 	}
 
 	private static bool ShouldBuildPairedSignatureDifferenceDetails(string groupName)
@@ -1951,6 +2214,10 @@ public sealed class ProjectStandardComparisonService
 		{
 			return "category";
 		}
+		if (value.StartsWith("lookup-tables=", StringComparison.Ordinal) || value.StartsWith("table=", StringComparison.Ordinal) || value.StartsWith("lookup-table-error=", StringComparison.Ordinal))
+		{
+			return "lookup tables";
+		}
 		string elementGroup = DescribeElementSignatureGroup(value);
 		if (!string.IsNullOrWhiteSpace(elementGroup))
 		{
@@ -2053,20 +2320,21 @@ public sealed class ProjectStandardComparisonService
 		string normalizedGroup = Normalize(groupName);
 		if (normalizedGroup.StartsWith("elements/", StringComparison.Ordinal))
 		{
-			return 6;
+			return 9;
 		}
 		return normalizedGroup switch
 		{
-			"family types" => 0, 
-			"parameters/formulas" => 1, 
-			"nested labels" => 2, 
-			"nested/loadable instances" => 3, 
-			"nested/loadable types" => 4, 
-			"nested/loadable families" => 5, 
-			"connectors" => 6, 
-			"geometry" => 7, 
-			"elements" => 8, 
-			_ => 10, 
+			"family types" => 0,
+			"parameters/formulas" => 1,
+			"lookup tables" => 2,
+			"nested labels" => 3,
+			"nested/loadable instances" => 4,
+			"nested/loadable types" => 5,
+			"nested/loadable families" => 6,
+			"connectors" => 7,
+			"geometry" => 8,
+			"elements" => 9,
+			_ => 10,
 		};
 	}
 
@@ -2182,7 +2450,8 @@ public sealed class ProjectStandardComparisonService
 	{
 		Dictionary<string, StandardNestedLoadableFamilySnapshotItem> result = new Dictionary<string, StandardNestedLoadableFamilySnapshotItem>(StringComparer.Ordinal);
 		List<StandardNestedLoadableFamilySnapshotItem> BuildNestedLoadableFamiliesFromSignature;
-		if (string.IsNullOrWhiteSpace(signaturePath) || !File.Exists(signaturePath))
+		string resolvedSignaturePath = string.IsNullOrWhiteSpace(signaturePath) ? string.Empty : Environment.ExpandEnvironmentVariables(signaturePath.Trim());
+		if (string.IsNullOrWhiteSpace(resolvedSignaturePath) || !File.Exists(resolvedSignaturePath))
 		{
 			BuildNestedLoadableFamiliesFromSignature = new List<StandardNestedLoadableFamilySnapshotItem>();
 		}
@@ -2190,9 +2459,17 @@ public sealed class ProjectStandardComparisonService
 		{
 			try
 			{
+				foreach (StandardNestedLoadableFamilySnapshotItem debugItem in BuildNestedLoadableFamiliesFromSignatureDebug(resolvedSignaturePath))
+				{
+					string debugKey = BuildNestedLoadableSignatureKey(debugItem.CategoryName, debugItem.FamilyName);
+					if (!string.IsNullOrWhiteSpace(debugKey) && !result.ContainsKey(debugKey))
+					{
+						result.Add(debugKey, debugItem);
+					}
+				}
 				bool inSource = false;
 				_Closure_0024__63_002D0 closure_0024__63_002D = default(_Closure_0024__63_002D0);
-				foreach (string rawLine in File.ReadLines(signaturePath))
+				foreach (string rawLine in File.ReadLines(resolvedSignaturePath))
 				{
 					closure_0024__63_002D = new _Closure_0024__63_002D0(closure_0024__63_002D);
 					if (rawLine == null)
@@ -2212,34 +2489,36 @@ public sealed class ProjectStandardComparisonService
 					{
 						break;
 					}
-					if (!line.StartsWith("familyinstance|", StringComparison.OrdinalIgnoreCase))
+					if (!line.StartsWith("familyinstance|", StringComparison.OrdinalIgnoreCase) && !line.StartsWith("familysymbol|", StringComparison.OrdinalIgnoreCase) && !line.StartsWith("family|", StringComparison.OrdinalIgnoreCase))
 					{
 						continue;
 					}
 					List<string> tokens = SplitSignatureTokens(line);
-					string categoryName = GetSignatureToken(tokens, 1);
 					string familyName = GetSignatureToken(tokens, 2);
-					closure_0024__63_002D._0024VB_0024Local_typeName = FirstNonEmptyToken(GetSignatureToken(tokens, 5), GetSignatureToken(tokens, 3));
-					if (!string.IsNullOrWhiteSpace(familyName))
+					if (string.IsNullOrWhiteSpace(familyName))
 					{
-						string key = Normalize(categoryName) + "|" + Normalize(familyName);
-						StandardNestedLoadableFamilySnapshotItem item = null;
-						if (!result.TryGetValue(key, out item) || item == null)
-						{
-							item = (result[key] = new StandardNestedLoadableFamilySnapshotItem
-							{
-								FamilyName = familyName,
-								CategoryName = categoryName,
-								CategoryId = string.Empty,
-								CategoryGroup = FamilyBrowserFamilyClassificationService.ResolveCategoryGroup(string.Empty, categoryName, string.Empty, familyName),
-								IsShared = true
-							});
-						}
-						if (!string.IsNullOrWhiteSpace(closure_0024__63_002D._0024VB_0024Local_typeName) && !item.TypeNames.Any(closure_0024__63_002D._Lambda_0024__0))
-						{
-							item.TypeNames.Add(closure_0024__63_002D._0024VB_0024Local_typeName);
-						}
+						continue;
 					}
+					string categoryName = GetSignatureToken(tokens, 1);
+					string typeName = GetSignatureToken(tokens, 3);
+					string key = BuildNestedLoadableSignatureKey(categoryName, familyName);
+					if (string.IsNullOrWhiteSpace(key) || result.ContainsKey(key))
+					{
+						continue;
+					}
+					StandardNestedLoadableFamilySnapshotItem item = (result[key] = new StandardNestedLoadableFamilySnapshotItem
+					{
+						FamilyName = familyName.Trim(),
+						CategoryName = categoryName.Trim(),
+						CategoryId = string.Empty,
+						CategoryGroup = FamilyBrowserFamilyClassificationService.ResolveCategoryGroup(string.Empty, categoryName, string.Empty, familyName),
+						IsShared = true
+					});
+					if (!string.IsNullOrWhiteSpace(typeName))
+					{
+						item.TypeNames.Add(typeName.Trim());
+					}
+					continue;
 				}
 			}
 			catch (Exception projectError)
@@ -2259,6 +2538,136 @@ public sealed class ProjectStandardComparisonService
 		goto IL_0288;
 		IL_0288:
 		return BuildNestedLoadableFamiliesFromSignature;
+	}
+
+	private static List<StandardNestedLoadableFamilySnapshotItem> BuildNestedLoadableFamiliesFromSignature(string signaturePath, string parentFamilyName)
+	{
+		List<StandardNestedLoadableFamilySnapshotItem> items = BuildNestedLoadableFamiliesFromSignature(signaturePath);
+		string parentToken = Normalize(parentFamilyName);
+		if (items == null || string.IsNullOrWhiteSpace(parentToken))
+		{
+			return items ?? new List<StandardNestedLoadableFamilySnapshotItem>();
+		}
+		return items.Where([SpecialName] (StandardNestedLoadableFamilySnapshotItem x) => x != null && !string.Equals(Normalize(x.FamilyName), parentToken, StringComparison.Ordinal)).ToList();
+	}
+
+	private static List<StandardNestedLoadableFamilySnapshotItem> BuildNestedLoadableFamiliesFromSignatureDebug(string signaturePath)
+	{
+		Dictionary<string, StandardNestedLoadableFamilySnapshotItem> result = new Dictionary<string, StandardNestedLoadableFamilySnapshotItem>(StringComparer.Ordinal);
+		if (string.IsNullOrWhiteSpace(signaturePath) || !File.Exists(signaturePath))
+		{
+			return new List<StandardNestedLoadableFamilySnapshotItem>();
+		}
+		try
+		{
+			bool inDebug = false;
+			foreach (string rawLine in File.ReadLines(signaturePath))
+			{
+				string line = (rawLine ?? string.Empty).Trim();
+				if (!inDebug)
+				{
+					if (string.Equals(line, "----- signature-debug -----", StringComparison.OrdinalIgnoreCase))
+					{
+						inDebug = true;
+					}
+					continue;
+				}
+				if (line.StartsWith("----- ", StringComparison.Ordinal))
+				{
+					break;
+				}
+				if (!line.StartsWith("element\t", StringComparison.OrdinalIgnoreCase))
+				{
+					continue;
+				}
+				string[] parts = line.Split('\t');
+				if (parts.Length < 3)
+				{
+					continue;
+				}
+				string signatureText = parts[1] ?? string.Empty;
+				if (!signatureText.StartsWith("familyinstance|", StringComparison.OrdinalIgnoreCase) && !signatureText.StartsWith("familysymbol|", StringComparison.OrdinalIgnoreCase) && !signatureText.StartsWith("family|", StringComparison.OrdinalIgnoreCase))
+				{
+					continue;
+				}
+				List<string> tokens = SplitSignatureTokens(signatureText);
+				string identity = parts[2] ?? string.Empty;
+				string familyName = FirstNonEmptyToken(ExtractSignatureDebugQuotedValue(identity, "nestedFamily"), ExtractSignatureDebugQuotedValue(identity, "family"), GetSignatureToken(tokens, 2));
+				if (string.IsNullOrWhiteSpace(familyName))
+				{
+					continue;
+				}
+				string categoryName = FirstNonEmptyToken(ExtractSignatureDebugQuotedValue(identity, "category"), GetSignatureToken(tokens, 1));
+				string typeName = FirstNonEmptyToken(ExtractSignatureDebugQuotedValue(identity, "nestedType"), ExtractSignatureDebugQuotedValue(identity, "type"), GetSignatureToken(tokens, 3));
+				string key = BuildNestedLoadableSignatureKey(categoryName, familyName);
+				if (string.IsNullOrWhiteSpace(key))
+				{
+					continue;
+				}
+				StandardNestedLoadableFamilySnapshotItem item = null;
+				if (!result.TryGetValue(key, out item) || item == null)
+				{
+					item = (result[key] = new StandardNestedLoadableFamilySnapshotItem
+					{
+						FamilyName = familyName.Trim(),
+						CategoryName = categoryName.Trim(),
+						CategoryId = string.Empty,
+						CategoryGroup = FamilyBrowserFamilyClassificationService.ResolveCategoryGroup(string.Empty, categoryName, string.Empty, familyName),
+						IsShared = true
+					});
+				}
+				if (!string.IsNullOrWhiteSpace(typeName) && !item.TypeNames.Any((string x) => string.Equals(x, typeName, StringComparison.OrdinalIgnoreCase)))
+				{
+					item.TypeNames.Add(typeName.Trim());
+				}
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		foreach (StandardNestedLoadableFamilySnapshotItem value in result.Values)
+		{
+			value.TypeNames = CloneStringList(value.TypeNames);
+			value.TypeCount = value.TypeNames.Count;
+		}
+		return result.Values.OrderBy<StandardNestedLoadableFamilySnapshotItem, string>((StandardNestedLoadableFamilySnapshotItem x) => Normalize(x.CategoryName), StringComparer.Ordinal).ThenBy<StandardNestedLoadableFamilySnapshotItem, string>((StandardNestedLoadableFamilySnapshotItem x) => Normalize(x.FamilyName), StringComparer.Ordinal).ToList();
+	}
+
+	private static string BuildNestedLoadableSignatureKey(string categoryName, string familyName)
+	{
+		string familyKey = Normalize(familyName);
+		if (string.IsNullOrWhiteSpace(familyKey))
+		{
+			return string.Empty;
+		}
+		return Normalize(categoryName) + "|" + familyKey;
+	}
+
+	private static string ExtractSignatureDebugQuotedValue(string value, string key)
+	{
+		if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(key))
+		{
+			return string.Empty;
+		}
+		string marker = key + "=\"";
+		int start = value.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+		if (start < 0)
+		{
+			return string.Empty;
+		}
+		start += marker.Length;
+		int end = value.IndexOf('"', start);
+		if (end < 0)
+		{
+			end = value.Length;
+		}
+		if (end <= start)
+		{
+			return string.Empty;
+		}
+		return value.Substring(start, end - start).Trim();
 	}
 
 	private static List<string> SplitSignatureTokens(string value)
@@ -2362,7 +2771,7 @@ public sealed class ProjectStandardComparisonService
 		return string.Empty;
 	}
 
-	private static List<SystemTypeComparisonItem> BuildSystemTypeComparisons(StandardLibrarySnapshot standardSnapshot, ProjectContentSnapshot projectSnapshot, ProjectTrackingCatalog trackingCatalog)
+	private static List<SystemTypeComparisonItem> BuildSystemTypeComparisons(StandardLibrarySnapshot standardSnapshot, ProjectContentSnapshot projectSnapshot, ProjectTrackingCatalog trackingCatalog, bool compareDetailedSystemTypeComponents)
 	{
 		List<SystemTypeComparisonItem> results = new List<SystemTypeComparisonItem>();
 		Dictionary<string, ProjectSystemTypeSnapshotItem> projectMap = BuildFirstMap(projectSnapshot.SystemTypes, [SpecialName] (ProjectSystemTypeSnapshotItem x) => BuildSystemMatchKey(x));
@@ -2383,13 +2792,17 @@ public sealed class ProjectStandardComparisonService
 			if (projectType != null)
 			{
 				matchedProjectKeys.Add(BuildSystemMatchKey(projectType));
-				string standardFingerprint = ProjectSnapshotFingerprintService.BuildSystemFingerprint(standardType);
-				string projectFingerprint = ProjectSnapshotFingerprintService.BuildSystemFingerprint(projectType);
+				bool detailedComponentsRequested = compareDetailedSystemTypeComponents && SystemTypeDetailedComponentSnapshotService.SupportsDetailedComponents(standardType.TypeClassName);
+				bool detailedComponentsReady = detailedComponentsRequested && standardType.DetailedComponentsCaptured && projectType.DetailedComponentsCaptured;
+				string standardFingerprint = ProjectSnapshotFingerprintService.BuildSystemFingerprint(standardType, detailedComponentsReady);
+				string projectFingerprint = ProjectSnapshotFingerprintService.BuildSystemFingerprint(projectType, detailedComponentsReady);
 				TrackedSystemTypeState trackedState = null;
 				trackingMap.TryGetValue(key, out trackedState);
 				ComparisonClassificationResult classification = ClassifyTrackedStatus(trackedState?.ApprovedFingerprint, trackedState?.ApprovedStandardStamp, standardFingerprint, standardSnapshot.CapturedAtUtc, projectFingerprint);
-				List<string> differenceSummary = BuildSystemTypeDifferenceSummary(standardType, projectType, standardFingerprint, projectFingerprint);
+				List<string> differenceSummary = BuildSystemTypeDifferenceSummary(standardType, projectType, standardFingerprint, projectFingerprint, detailedComponentsRequested, detailedComponentsReady);
 				classification = OverrideSystemClassificationForRoutingDependencyDifferences(classification, differenceSummary);
+				classification = OverrideSystemClassificationForDetailedComponentDifferences(classification, differenceSummary);
+				classification = OverrideSystemClassificationForCurtainPanelDifferences(classification, differenceSummary);
 				results.Add(new SystemTypeComparisonItem
 				{
 					IdentityKey = key,
@@ -2401,7 +2814,10 @@ public sealed class ProjectStandardComparisonService
 					ProjectFingerprint = projectFingerprint,
 					DifferenceSummary = differenceSummary,
 					SupportsRoutingDependencies = standardType.SupportsRoutingDependencies,
+					StandardRoutingPreferenceSignature = standardType.RoutingPreferenceSignature ?? string.Empty,
+					ProjectRoutingPreferenceSignature = projectType.RoutingPreferenceSignature ?? string.Empty,
 					Notes = CombineSystemTypeNotes(classification.Notes, differenceSummary),
+					DetailSummary = BuildSystemTypeDetailSummary(standardType, projectType, compareDetailedSystemTypeComponents),
 					Layers = CloneSystemTypeLayers(standardType.Layers)
 				});
 				continue;
@@ -2421,7 +2837,10 @@ public sealed class ProjectStandardComparisonService
 					TypeClassName = standardType.TypeClassName,
 					Status = "CategoryMismatch",
 					SupportsRoutingDependencies = standardType.SupportsRoutingDependencies,
+					StandardRoutingPreferenceSignature = standardType.RoutingPreferenceSignature ?? string.Empty,
+					ProjectRoutingPreferenceSignature = categoryMismatches.FirstOrDefault()?.RoutingPreferenceSignature ?? string.Empty,
 					Notes = BuildSystemTypeCategoryMismatchNote(standardType, categoryMismatches),
+					DetailSummary = BuildSystemTypeDetailSummary(standardType, categoryMismatches.FirstOrDefault(), compareDetailedSystemTypeComponents),
 					Layers = CloneSystemTypeLayers(standardType.Layers)
 				});
 			}
@@ -2434,9 +2853,11 @@ public sealed class ProjectStandardComparisonService
 					CategoryName = standardType.CategoryName,
 					TypeClassName = standardType.TypeClassName,
 					Status = "LoadAvailable",
-					StandardFingerprint = ProjectSnapshotFingerprintService.BuildSystemFingerprint(standardType),
+					StandardFingerprint = ProjectSnapshotFingerprintService.BuildSystemFingerprint(standardType, ShouldUseDetailedComponents(standardType, compareDetailedSystemTypeComponents)),
 					SupportsRoutingDependencies = standardType.SupportsRoutingDependencies,
+					StandardRoutingPreferenceSignature = standardType.RoutingPreferenceSignature ?? string.Empty,
 					Notes = "Not loaded in current project.",
+					DetailSummary = BuildSystemTypeDetailSummary(standardType, null, compareDetailedSystemTypeComponents),
 					Layers = CloneSystemTypeLayers(standardType.Layers)
 				});
 			}
@@ -2458,7 +2879,10 @@ public sealed class ProjectStandardComparisonService
 						TypeClassName = projectType2.TypeClassName,
 						Status = "CategoryMismatch",
 						SupportsRoutingDependencies = projectType2.SupportsRoutingDependencies,
+						StandardRoutingPreferenceSignature = standardCategoryMismatches.FirstOrDefault()?.RoutingPreferenceSignature ?? string.Empty,
+						ProjectRoutingPreferenceSignature = projectType2.RoutingPreferenceSignature ?? string.Empty,
 						Notes = BuildProjectSystemTypeCategoryMismatchNote(projectType2, standardCategoryMismatches),
+						DetailSummary = BuildSystemTypeDetailSummary(standardCategoryMismatches.FirstOrDefault(), projectType2, compareDetailedSystemTypeComponents),
 						Layers = CloneSystemTypeLayers(standardCategoryMismatches.FirstOrDefault()?.Layers)
 					});
 				}
@@ -2471,8 +2895,10 @@ public sealed class ProjectStandardComparisonService
 						CategoryName = projectType2.CategoryName,
 						TypeClassName = projectType2.TypeClassName,
 						Status = "ProjectOnly",
-						ProjectFingerprint = ProjectSnapshotFingerprintService.BuildSystemFingerprint(projectType2),
+						ProjectFingerprint = ProjectSnapshotFingerprintService.BuildSystemFingerprint(projectType2, ShouldUseDetailedComponents(projectType2, compareDetailedSystemTypeComponents)),
 						SupportsRoutingDependencies = projectType2.SupportsRoutingDependencies,
+						ProjectRoutingPreferenceSignature = projectType2.RoutingPreferenceSignature ?? string.Empty,
+						DetailSummary = BuildSystemTypeDetailSummary(null, projectType2, compareDetailedSystemTypeComponents),
 						Notes = "Project system type was not found in the registered standard snapshot."
 					});
 				}
@@ -2481,7 +2907,154 @@ public sealed class ProjectStandardComparisonService
 		return results;
 	}
 
-	private static List<string> BuildSystemTypeDifferenceSummary(StandardSystemTypeSnapshotItem standardType, ProjectSystemTypeSnapshotItem projectType, string standardFingerprint, string projectFingerprint)
+	private static string SelectSystemTypeDetailSummary(string standardDetailSummary, string projectDetailSummary)
+	{
+		if (!string.IsNullOrWhiteSpace(standardDetailSummary))
+		{
+			return standardDetailSummary;
+		}
+		return projectDetailSummary ?? string.Empty;
+	}
+
+	private static bool ShouldUseDetailedComponents(StandardSystemTypeSnapshotItem item, bool requested)
+	{
+		return requested && item != null && item.DetailedComponentsCaptured && SystemTypeDetailedComponentSnapshotService.SupportsDetailedComponents(item.TypeClassName);
+	}
+
+	private static bool ShouldUseDetailedComponents(ProjectSystemTypeSnapshotItem item, bool requested)
+	{
+		return requested && item != null && item.DetailedComponentsCaptured && SystemTypeDetailedComponentSnapshotService.SupportsDetailedComponents(item.TypeClassName);
+	}
+
+	private static string BuildSystemTypeDetailSummary(StandardSystemTypeSnapshotItem standardType, ProjectSystemTypeSnapshotItem projectType, bool compareDetailedComponents)
+	{
+		string detail = SelectSystemTypeDetailSummary(standardType?.DetailSummary, projectType?.DetailSummary);
+		string typeClassName = standardType?.TypeClassName ?? projectType?.TypeClassName ?? string.Empty;
+		bool supportsOptionalComponents = compareDetailedComponents && SystemTypeDetailedComponentSnapshotService.SupportsDetailedComponents(typeClassName);
+		bool hasRequiredCurtainPanelComponents = SystemTypeDetailedComponentSnapshotService.HasRequiredCurtainPanelComponents(standardType?.DetailedComponents) || SystemTypeDetailedComponentSnapshotService.HasRequiredCurtainPanelComponents(projectType?.DetailedComponents);
+		if (!supportsOptionalComponents && !hasRequiredCurtainPanelComponents)
+		{
+			return detail;
+		}
+		List<string> lines = new List<string>();
+		if (!string.IsNullOrWhiteSpace(detail))
+		{
+			lines.Add(detail.TrimEnd());
+		}
+		if (hasRequiredCurtainPanelComponents)
+		{
+			lines.Add("@section\tcurtain-component-differences");
+			if (standardType != null && projectType != null)
+			{
+				if (!standardType.DetailedComponentsCaptured || !projectType.DetailedComponentsCaptured)
+				{
+					lines.Add("@row\tcurtain-component-differences\tScan status\tA new precise scan is required before curtain panel dependency comparison.");
+				}
+				else
+				{
+					List<string> curtainRows = BuildDetailedComponentDifferenceRows(
+						(standardType.DetailedComponents ?? new List<SystemTypeDetailedComponentSnapshotItem>()).Where(SystemTypeDetailedComponentSnapshotService.IsRequiredCurtainPanelComponent),
+						(projectType.DetailedComponents ?? new List<SystemTypeDetailedComponentSnapshotItem>()).Where(SystemTypeDetailedComponentSnapshotService.IsRequiredCurtainPanelComponent),
+						100,
+						"curtain-component-differences");
+					if (curtainRows.Count == 0)
+					{
+						lines.Add("@row\tcurtain-component-differences\tComparison\tMatches standard");
+					}
+					else
+					{
+						lines.AddRange(curtainRows);
+					}
+				}
+			}
+		}
+		if (!supportsOptionalComponents)
+		{
+			return string.Join(Environment.NewLine, lines);
+		}
+		lines.Add("@section\tcomponent-differences");
+		if (standardType == null || projectType == null)
+		{
+			return string.Join("\r\n", lines);
+		}
+		if (!standardType.DetailedComponentsCaptured || !projectType.DetailedComponentsCaptured)
+		{
+			lines.Add("@row\tcomponent-differences\tScan status\tA new precise scan is required before detailed component comparison.");
+			return string.Join(Environment.NewLine, lines);
+		}
+		List<string> rows = BuildDetailedComponentDifferenceRows(
+			(standardType.DetailedComponents ?? new List<SystemTypeDetailedComponentSnapshotItem>()).Where(x => !SystemTypeDetailedComponentSnapshotService.IsRequiredCurtainPanelComponent(x)),
+			(projectType.DetailedComponents ?? new List<SystemTypeDetailedComponentSnapshotItem>()).Where(x => !SystemTypeDetailedComponentSnapshotService.IsRequiredCurtainPanelComponent(x)),
+			100);
+		if (rows.Count == 0)
+		{
+			lines.Add("@row\tcomponent-differences\tComparison\tMatches standard");
+		}
+		else
+		{
+			lines.AddRange(rows);
+		}
+		return string.Join(Environment.NewLine, lines);
+	}
+
+	private static List<string> BuildDetailedComponentDifferenceRows(IEnumerable<SystemTypeDetailedComponentSnapshotItem> standardItems, IEnumerable<SystemTypeDetailedComponentSnapshotItem> projectItems, int limit, string sectionName = "component-differences")
+	{
+		Dictionary<string, SystemTypeDetailedComponentSnapshotItem> standardMap = (standardItems ?? Enumerable.Empty<SystemTypeDetailedComponentSnapshotItem>()).Where(x => x != null).GroupBy(SystemTypeDetailedComponentSnapshotService.BuildIdentityKey, StringComparer.Ordinal).ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
+		Dictionary<string, SystemTypeDetailedComponentSnapshotItem> projectMap = (projectItems ?? Enumerable.Empty<SystemTypeDetailedComponentSnapshotItem>()).Where(x => x != null).GroupBy(SystemTypeDetailedComponentSnapshotService.BuildIdentityKey, StringComparer.Ordinal).ToDictionary(x => x.Key, x => x.First(), StringComparer.Ordinal);
+		List<string> output = new List<string>();
+		int omitted = 0;
+		int differenceCount = 0;
+		foreach (string key in standardMap.Keys.Union(projectMap.Keys, StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal))
+		{
+			SystemTypeDetailedComponentSnapshotItem standard = standardMap.ContainsKey(key) ? standardMap[key] : null;
+			SystemTypeDetailedComponentSnapshotItem project = projectMap.ContainsKey(key) ? projectMap[key] : null;
+			if (standard != null && project != null && string.Equals(SystemTypeDetailedComponentSnapshotService.BuildComparableValue(standard), SystemTypeDetailedComponentSnapshotService.BuildComparableValue(project), StringComparison.Ordinal))
+			{
+				continue;
+			}
+			if (differenceCount >= Math.Max(1, limit))
+			{
+				omitted++;
+				continue;
+			}
+			differenceCount++;
+			string role = standard?.RoleName ?? project?.RoleName ?? key;
+			string path = standard?.Path ?? project?.Path ?? string.Empty;
+			string standardValue = standard == null ? "Missing" : SystemTypeDetailedComponentSnapshotService.BuildDisplayValue(standard);
+			string projectValue = project == null ? "Missing" : SystemTypeDetailedComponentSnapshotService.BuildDisplayValue(project);
+			output.Add(BuildStructuredDetailedComponentDifferenceRow(sectionName, role, path, standard, project));
+			output.Add("@row\t" + CleanSystemDetailValue(sectionName) + "\t" + CleanSystemDetailValue(role + " · " + path) + "\t" + CleanSystemDetailValue("Standard: " + standardValue + " | Current: " + projectValue));
+		}
+		if (omitted > 0)
+		{
+			output.Add("@row\t" + CleanSystemDetailValue(sectionName) + "\tMore differences\t" + omitted.ToString(CultureInfo.InvariantCulture) + " additional item(s)");
+		}
+		return output;
+	}
+
+	private static string BuildStructuredDetailedComponentDifferenceRow(string sectionName, string role, string path, SystemTypeDetailedComponentSnapshotItem standard, SystemTypeDetailedComponentSnapshotItem project)
+	{
+		return string.Join("\t", new[]
+		{
+			"@component-diff",
+			CleanSystemDetailValue(sectionName),
+			CleanSystemDetailValue(role),
+			CleanSystemDetailValue(standard?.ValueKind ?? "Missing"),
+			CleanSystemDetailValue(standard?.RawValue),
+			CleanSystemDetailValue(standard == null ? "Missing" : SystemTypeDetailedComponentSnapshotService.BuildDisplayValue(standard)),
+			CleanSystemDetailValue(project?.ValueKind ?? "Missing"),
+			CleanSystemDetailValue(project?.RawValue),
+			CleanSystemDetailValue(project == null ? "Missing" : SystemTypeDetailedComponentSnapshotService.BuildDisplayValue(project)),
+			CleanSystemDetailValue(path)
+		});
+	}
+
+	private static string CleanSystemDetailValue(string value)
+	{
+		return (value ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Replace("\t", " ").Trim();
+	}
+
+	private static List<string> BuildSystemTypeDifferenceSummary(StandardSystemTypeSnapshotItem standardType, ProjectSystemTypeSnapshotItem projectType, string standardFingerprint, string projectFingerprint, bool detailedComponentsRequested, bool detailedComponentsReady)
 	{
 		List<string> result = new List<string>();
 		if (standardType == null || projectType == null)
@@ -2489,6 +3062,16 @@ public sealed class ProjectStandardComparisonService
 			return result;
 		}
 		List<string> dependencyDifferences = BuildRoutingDependencyFingerprintDifferenceSummary(standardType.RoutingPreferenceSignature, projectType.RoutingPreferenceSignature);
+		bool requiredCurtainPanelComparison = SystemTypeDetailedComponentSnapshotService.HasRequiredCurtainPanelComponents(standardType.DetailedComponents) || SystemTypeDetailedComponentSnapshotService.HasRequiredCurtainPanelComponents(projectType.DetailedComponents);
+		bool requiredCurtainPanelReady = requiredCurtainPanelComparison && standardType.DetailedComponentsCaptured && projectType.DetailedComponentsCaptured;
+		if (detailedComponentsRequested && !detailedComponentsReady)
+		{
+			result.Add("Detailed component comparison requires a new precise scan");
+		}
+		if (requiredCurtainPanelComparison && !requiredCurtainPanelReady)
+		{
+			result.Add("Curtain panel dependency comparison requires a new precise scan");
+		}
 		if (string.Equals(standardFingerprint ?? string.Empty, projectFingerprint ?? string.Empty, StringComparison.OrdinalIgnoreCase))
 		{
 			return result;
@@ -2529,11 +3112,107 @@ public sealed class ProjectStandardComparisonService
 		{
 			result.Add("Layer differs");
 		}
+		if (detailedComponentsReady)
+		{
+			result.AddRange(BuildDetailedComponentDifferenceSummary(
+				(standardType.DetailedComponents ?? new List<SystemTypeDetailedComponentSnapshotItem>()).Where(x => !SystemTypeDetailedComponentSnapshotService.IsRequiredCurtainPanelComponent(x)),
+				(projectType.DetailedComponents ?? new List<SystemTypeDetailedComponentSnapshotItem>()).Where(x => !SystemTypeDetailedComponentSnapshotService.IsRequiredCurtainPanelComponent(x))));
+		}
+		if (requiredCurtainPanelReady)
+		{
+			result.AddRange(BuildCurtainPanelDifferenceSummary(standardType.DetailedComponents, projectType.DetailedComponents));
+		}
 		if (result.Count == 0)
 		{
 			result.Add("System Type fingerprint differs");
 		}
 		return result;
+	}
+
+	private static List<string> BuildDetailedComponentDifferenceSummary(IEnumerable<SystemTypeDetailedComponentSnapshotItem> standardItems, IEnumerable<SystemTypeDetailedComponentSnapshotItem> projectItems)
+	{
+		List<string> rows = BuildDetailedComponentDifferenceRows(standardItems, projectItems, 8);
+		return rows.Where(x => x.StartsWith("@component-diff\t", StringComparison.Ordinal)).Select(x =>
+		{
+			string[] parts = x.Split('\t');
+			return parts.Length >= 4 ? "Detailed component differs: " + parts[2] : "Detailed component differs";
+		}).ToList();
+	}
+
+	private static List<string> BuildCurtainPanelDifferenceSummary(IEnumerable<SystemTypeDetailedComponentSnapshotItem> standardItems, IEnumerable<SystemTypeDetailedComponentSnapshotItem> projectItems)
+	{
+		List<string> rows = BuildDetailedComponentDifferenceRows(
+			(standardItems ?? Enumerable.Empty<SystemTypeDetailedComponentSnapshotItem>()).Where(SystemTypeDetailedComponentSnapshotService.IsRequiredCurtainPanelComponent),
+			(projectItems ?? Enumerable.Empty<SystemTypeDetailedComponentSnapshotItem>()).Where(SystemTypeDetailedComponentSnapshotService.IsRequiredCurtainPanelComponent),
+			8,
+			"curtain-component-differences");
+		return rows.Where(x => x.StartsWith("@component-diff\t", StringComparison.Ordinal)).Select(x =>
+		{
+			string[] parts = x.Split('\t');
+			return parts.Length >= 4 ? "Curtain panel dependency differs: " + parts[2] : "Curtain panel dependency differs";
+		}).ToList();
+	}
+
+	private static ComparisonClassificationResult OverrideSystemClassificationForDetailedComponentDifferences(ComparisonClassificationResult classification, IEnumerable<string> differenceSummary)
+	{
+		if (classification == null)
+		{
+			classification = new ComparisonClassificationResult();
+		}
+		List<string> differences = (differenceSummary ?? Enumerable.Empty<string>()).Where(x => Normalize(x).Contains("detailed component")).ToList();
+		if (differences.Count == 0)
+		{
+			return classification;
+		}
+		if (differences.Any(x => Normalize(x).Contains("requires a new precise scan")))
+		{
+			return new ComparisonClassificationResult
+			{
+				Status = "ManualReview",
+				Notes = "Detailed System Type components are enabled, but this Railing/Stair snapshot predates component capture. Run a new precise scan."
+			};
+		}
+		string status = Normalize(classification.Status);
+		if (status == "loadedlatest" || status == "stampnormalizationneeded")
+		{
+			return new ComparisonClassificationResult
+			{
+				Status = "UpdateAvailable",
+				Notes = "Railing/Stair detailed component configuration differs from the current standard."
+			};
+		}
+		return classification;
+	}
+
+	private static ComparisonClassificationResult OverrideSystemClassificationForCurtainPanelDifferences(ComparisonClassificationResult classification, IEnumerable<string> differenceSummary)
+	{
+		if (classification == null)
+		{
+			classification = new ComparisonClassificationResult();
+		}
+		List<string> differences = (differenceSummary ?? Enumerable.Empty<string>()).Where(x => Normalize(x).Contains("curtain panel dependency")).ToList();
+		if (differences.Count == 0)
+		{
+			return classification;
+		}
+		if (differences.Any(x => Normalize(x).Contains("requires a new precise scan")))
+		{
+			return new ComparisonClassificationResult
+			{
+				Status = "ManualReview",
+				Notes = "Curtain panel dependency data is mandatory, but this snapshot predates capture. Run a new precise scan."
+			};
+		}
+		string status = Normalize(classification.Status);
+		if (status == "loadedlatest" || status == "stampnormalizationneeded")
+		{
+			return new ComparisonClassificationResult
+			{
+				Status = "UpdateAvailable",
+				Notes = "Curtain panel family/type dependency differs from the current standard."
+			};
+		}
+		return classification;
 	}
 
 	private static ComparisonClassificationResult OverrideSystemClassificationForRoutingDependencyDifferences(ComparisonClassificationResult classification, IEnumerable<string> differenceSummary)
@@ -2869,7 +3548,10 @@ public sealed class ProjectStandardComparisonService
 					FunctionName = (layer.FunctionName ?? string.Empty),
 					MaterialName = (layer.MaterialName ?? string.Empty),
 					ThicknessDisplay = (layer.ThicknessDisplay ?? string.Empty),
-					ThicknessFeet = layer.ThicknessFeet
+					ThicknessFeet = layer.ThicknessFeet,
+					IsCore = layer.IsCore,
+					IsStructuralMaterial = layer.IsStructuralMaterial,
+					IsVariable = layer.IsVariable
 				});
 			}
 		}
@@ -2949,7 +3631,7 @@ public sealed class ProjectStandardComparisonService
 				return false;
 			}
 		}
-		return item.IsShared && IsModelLoadableFamily(item);
+		return true;
 	}
 
 	private static bool IsHiddenNestedLoadableChild(ProjectLoadableFamilySnapshotItem item, HashSet<string> nestedFamilyNames)
@@ -2958,7 +3640,7 @@ public sealed class ProjectStandardComparisonService
 		{
 			return false;
 		}
-		return item.IsShared && IsModelLoadableFamily(item) && nestedFamilyNames.Contains(Normalize(item.FamilyName));
+		return nestedFamilyNames.Contains(Normalize(item.FamilyName));
 	}
 
 	private static HashSet<string> BuildNestedLoadableNameSet(StandardLibrarySnapshot snapshot)
@@ -2974,7 +3656,18 @@ public sealed class ProjectStandardComparisonService
 			{
 				continue;
 			}
-			if (parentItem.IsNestedLoadableChild && parentItem.IsShared && IsModelLoadableFamily(parentItem))
+			foreach (StandardNestedLoadableFamilySnapshotItem signatureChild in BuildNestedLoadableFamiliesFromSignature(parentItem.ContentSignatureDebugPath, parentItem.FamilyName))
+			{
+				if (signatureChild != null && !string.IsNullOrWhiteSpace(signatureChild.FamilyName))
+				{
+					string signatureFamilyName = Normalize(signatureChild.FamilyName);
+					if (!string.IsNullOrWhiteSpace(signatureFamilyName))
+					{
+						result.Add(signatureFamilyName);
+					}
+				}
+			}
+			if (parentItem.IsNestedLoadableChild)
 			{
 				string nestedFamilyName = Normalize(parentItem.FamilyName);
 				if (!string.IsNullOrWhiteSpace(nestedFamilyName))
@@ -2988,7 +3681,7 @@ public sealed class ProjectStandardComparisonService
 			}
 			foreach (StandardNestedLoadableFamilySnapshotItem child in parentItem.NestedLoadableFamilies)
 			{
-				if (child != null && child.IsShared && IsModelNestedLoadableChild(child))
+				if (child != null && IsModelNestedLoadableChild(child))
 				{
 					string familyName = Normalize((child == null) ? string.Empty : child.FamilyName);
 					if (!string.IsNullOrWhiteSpace(familyName))
@@ -3025,14 +3718,23 @@ public sealed class ProjectStandardComparisonService
 		{
 			return false;
 		}
-		return string.Equals(FamilyBrowserFamilyClassificationService.ResolveCategoryGroup(item.CategoryGroup, item.CategoryName, item.CategoryId, item.FamilyName), "Model", StringComparison.OrdinalIgnoreCase);
+		return IsNestedLoadableFamilyCandidate(item.CategoryGroup, item.CategoryName, item.CategoryId, item.FamilyName);
+	}
+
+	private static bool IsNestedLoadableFamilyCandidate(string categoryGroup, string categoryName, string categoryId, string familyName)
+	{
+		if (string.IsNullOrWhiteSpace(familyName))
+		{
+			return false;
+		}
+		return !FamilyBrowserFamilyClassificationService.IsTypeManagedFamilyLike(categoryName, categoryId, familyName);
 	}
 
 	private static bool IsActualNestedLoadableChild(StandardLoadableFamilySnapshotItem item)
 	{
-		if (item != null && item.IsNestedLoadableChild && item.IsShared)
+		if (item != null && item.IsNestedLoadableChild)
 		{
-			return IsModelLoadableFamily(item);
+			return true;
 		}
 		return false;
 	}
@@ -3046,7 +3748,7 @@ public sealed class ProjectStandardComparisonService
 		}
 		foreach (StandardNestedLoadableFamilySnapshotItem item in items)
 		{
-			if (item != null && item.IsShared && IsModelNestedLoadableChild(item))
+			if (item != null && IsModelNestedLoadableChild(item))
 			{
 				result.Add(new StandardNestedLoadableFamilySnapshotItem
 				{

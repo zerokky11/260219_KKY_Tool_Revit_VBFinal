@@ -148,13 +148,16 @@ public sealed class FamilyBrowserPermissionExcelExportService
 				DecodeUtf8("UlZUIO2MjOydvA=="),
 				DecodeUtf8("7IOB64yAIOqyveuhnA=="),
 				DecodeUtf8("7KSR7JWZIOqyveuhnA=="),
+				"공종",
+				DecodeUtf8("7JqU7IaMIOyDneyEscK37IiY7KCVwrfsgq3soJwg7LaU7KCB"),
 				DecodeUtf8("7Yyo67CA66asIOuhnOuTnC/tjrjsp5Eg7LCo64uo"),
 				DecodeUtf8("7YOA7J6FIOuzgOqyvSDssKjri6g="),
+				DecodeUtf8("7ZWY7JyEIOyghOyaqSDtjKjrsIDrpqwg64uo64+FIOuqqOuNuOungSDquIjsp4A="),
 				DecodeUtf8("66eI7KeA66eJIOyImOyglQ=="),
 				DecodeUtf8("7IiY7KCV7J6Q")
 			};
 		}
-		return new List<string> { "Enabled", "RootFolder", "RvtFileName", "RelativePath", "CentralPath", "BlockFamilyLoadEdit", "BlockTypeChanges", "LastUpdatedUtc", "LastUpdatedBy" };
+		return new List<string> { "Enabled", "RootFolder", "RvtFileName", "RelativePath", "CentralPath", "Discipline", "TrackElementChanges", "BlockFamilyLoadEdit", "BlockTypeChanges", "BlockNestedOnlyStandalonePlacement", "LastUpdatedUtc", "LastUpdatedBy" };
 	}
 
 	private static List<string> BuildTemplateRow(string enabled, string applyFolder, string rvtFileName, string userName, string loadEditFamily, string addDeleteType, string notes)
@@ -195,8 +198,11 @@ public sealed class FamilyBrowserPermissionExcelExportService
 			(target == null) ? string.Empty : (target.FileName ?? string.Empty),
 			(target == null) ? string.Empty : (target.RelativePath ?? string.Empty),
 			(target == null) ? string.Empty : (target.CentralPath ?? string.Empty),
+			(target == null) ? string.Empty : (target.Discipline ?? string.Empty),
+			BoolToken(target?.TrackElementChanges ?? true),
 			BoolToken(target?.BlockFamilyLoadAndEdit ?? false),
 			BoolToken(target?.BlockTypeChanges ?? false),
+			BoolToken(target?.BlockNestedOnlyStandalonePlacement ?? false),
 			(target == null) ? string.Empty : (target.LastUpdatedUtc ?? string.Empty),
 			(target == null) ? string.Empty : (target.LastUpdatedBy ?? string.Empty)
 		};

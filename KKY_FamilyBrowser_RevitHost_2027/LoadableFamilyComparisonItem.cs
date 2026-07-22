@@ -50,6 +50,12 @@ public class LoadableFamilyComparisonItem
 
 	public bool IsNestedLoadableChild { get; set; }
 
+	public bool IsNestedLoadableDifference { get; set; }
+
+	public List<string> NestedParentFamilyNames { get; set; }
+
+	public List<string> NestedDifferenceFamilyNames { get; set; }
+
 	public List<StandardNestedLoadableFamilySnapshotItem> NestedLoadableFamilies { get; set; }
 
 	public LoadableFamilyComparisonItem()
@@ -74,6 +80,8 @@ public class LoadableFamilyComparisonItem
 		ProjectParameters = new List<StandardFamilyParameterSnapshotItem>();
 		ProjectNestedLoadableFamilies = new List<StandardNestedLoadableFamilySnapshotItem>();
 		Notes = string.Empty;
+		NestedParentFamilyNames = new List<string>();
+		NestedDifferenceFamilyNames = new List<string>();
 		NestedLoadableFamilies = new List<StandardNestedLoadableFamilySnapshotItem>();
 	}
 }

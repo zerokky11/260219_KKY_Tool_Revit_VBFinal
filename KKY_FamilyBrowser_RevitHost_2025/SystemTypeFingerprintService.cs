@@ -10,15 +10,17 @@ public sealed class SystemTypeFingerprintService
 	{
 	}
 
-	public static string Compute(SystemTypeSemanticSnapshot snapshot)
+	public static string Compute(SystemTypeSemanticSnapshot snapshot, bool includeDetailedComponents = true)
 	{
 		if (snapshot == null)
 		{
 			throw new ArgumentNullException("snapshot");
 		}
+		bool useDetailedComponents = includeDetailedComponents && snapshot.DetailedComponentsCaptured && SystemTypeDetailedComponentSnapshotService.SupportsDetailedComponents(snapshot.SystemFamilyKind);
+		bool useRequiredCurtainPanelComponents = snapshot.DetailedComponentsCaptured && SystemTypeDetailedComponentSnapshotService.HasRequiredCurtainPanelComponents(snapshot.DetailedComponents);
 		List<string> lines = new List<string>
 		{
-			"SYSFP|v3",
+			useRequiredCurtainPanelComponents ? "SYSFP|v5" : (useDetailedComponents ? "SYSFP|v4" : "SYSFP|v3"),
 			"S1|" + Normalize(snapshot.SystemFamilyKind),
 			"S2|" + Normalize(snapshot.CategoryName),
 			"S3|" + Normalize(snapshot.TypeName),
@@ -29,6 +31,14 @@ public sealed class SystemTypeFingerprintService
 			"S8|" + ProjectSnapshotFingerprintService.NormalizeRoutingPreferenceSignature(snapshot.RoutingPreferenceSignature),
 			"S9|" + Normalize(snapshot.CompoundStructureSignature)
 		};
+		if (useDetailedComponents)
+		{
+			lines.Add("S10|" + Normalize(SystemTypeDetailedComponentSnapshotService.BuildOptionalDetailedComponentSignature(snapshot.DetailedComponents)));
+		}
+		if (useRequiredCurtainPanelComponents)
+		{
+			lines.Add("S11|" + Normalize(SystemTypeDetailedComponentSnapshotService.BuildRequiredCurtainPanelSignature(snapshot.DetailedComponents)));
+		}
 		string canonical = string.Join("\n", lines);
 		return "sha256:" + ComputeSha256(canonical);
 	}

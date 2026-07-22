@@ -1,0 +1,285 @@
+{
+  "version": 4,
+  "workflows": [
+    {
+      "id": "managed-folder-first-run",
+      "area": "startup",
+      "sequence": "open -> homepage path unavailable -> guidance -> TEST folder selection -> reload",
+      "expected": "No silent unconfigured state; TEST data is isolated and persistent.",
+      "automation": "contract+IE",
+      "needsRevit": false
+    },
+    {
+      "id": "managed-folder-homepage-return",
+      "area": "startup",
+      "sequence": "TEST active -> refresh -> homepage path found -> switch or migrate -> restart",
+      "expected": "The active path changes only after user choice and migration never overwrites conflicts.",
+      "automation": "fixture+contract+IE",
+      "needsRevit": false
+    },
+    {
+      "id": "startup-cache-offline",
+      "area": "startup",
+      "sequence": "cold open -> publish V2 index -> warm reopen -> managed folder unavailable -> offline reopen",
+      "expected": "The shell stays responsive, validated local indexes are reused, and offline data is clearly read-only rather than silently current.",
+      "automation": "source-fixture+performance",
+      "needsRevit": true
+    },
+    {
+      "id": "standard-setup-readiness",
+      "area": "standards",
+      "sequence": "add trade -> register RVT -> precise scan -> connect list -> Family/System tabs",
+      "expected": "Each readiness stage has a distinct CTA and rows appear only for the selected ready trade.",
+      "automation": "contract+IE",
+      "needsRevit": true
+    },
+    {
+      "id": "standard-trade-switch",
+      "area": "standards",
+      "sequence": "switch ready trade from Standards or Family/System list",
+      "expected": "Header, tree label, rows, detail source and caches change together without manual refresh.",
+      "automation": "static+contract+IE",
+      "needsRevit": true
+    },
+    {
+      "id": "standard-source-revision-block",
+      "area": "standards",
+      "sequence": "accepted scan -> external RVT change -> open/refresh -> attempt mutation",
+      "expected": "Changed, missing or unverified Standard RVT blocks stale load/apply/check data.",
+      "automation": "fixture+static+contract+IE",
+      "needsRevit": true
+    },
+    {
+      "id": "standard-edit-commit-lifecycle",
+      "area": "tracking",
+      "sequence": "edit registered RVT -> failed save / successful save / sync / Save As",
+      "expected": "Only successful commits to the registered source create immutable history.",
+      "automation": "static+simulation",
+      "needsRevit": true
+    },
+    {
+      "id": "admin-live-state-refresh",
+      "area": "standards",
+      "sequence": "rename trade / change mode / connect or clear list / change policy -> remain on current screen",
+      "expected": "Persisted mutations are visible immediately without top Refresh while tab, filter and scroll state remain stable.",
+      "automation": "static+contract+IE",
+      "needsRevit": true
+    },
+    {
+      "id": "family-list-interaction",
+      "area": "families",
+      "sequence": "search -> filter -> tree -> resize -> page -> select -> detail",
+      "expected": "Controls remain responsive, selection is stable, ellipsis has a title and search keeps focus.",
+      "automation": "contract+IE",
+      "needsRevit": false
+    },
+    {
+      "id": "family-detail-integrity",
+      "area": "families",
+      "sequence": "open detail -> switch type -> inspect parameters / lookup CSV / 3D preview / fingerprint differences",
+      "expected": "Only the selected detail record is loaded and every captured detail renders in structured tables without duplicate parameter sections.",
+      "automation": "contract+IE+static",
+      "needsRevit": true
+    },
+    {
+      "id": "nested-family-propagation",
+      "area": "families",
+      "sequence": "compare parent with added / removed / changed nested children -> review list and detail",
+      "expected": "A nested-child difference appears once, identifies the parent relationship, and marks every affected parent different.",
+      "automation": "source-fixture+static",
+      "needsRevit": true
+    },
+    {
+      "id": "family-load-save-lifecycle",
+      "area": "families",
+      "sequence": "select -> preflight -> load -> undo/no-save/save/sync/close",
+      "expected": "Pending UI is immediate; only items present at successful commit become committed operations.",
+      "automation": "static+simulation",
+      "needsRevit": true
+    },
+    {
+      "id": "family-type-attribution",
+      "area": "tracking",
+      "sequence": "load Family with types -> save -> catalog delta",
+      "expected": "Family and exact Family Type names are attributed; a family-level log never claims an unrelated type.",
+      "automation": "static+simulation",
+      "needsRevit": true
+    },
+    {
+      "id": "system-type-apply-lifecycle",
+      "area": "systems",
+      "sequence": "select -> preflight -> apply one/many -> save/sync -> reopen",
+      "expected": "Authoritative layers, routing and optional components apply without duplicate types/materials.",
+      "automation": "source-fixture+static+contract+IE",
+      "needsRevit": true
+    },
+    {
+      "id": "system-detail-integrity",
+      "area": "systems",
+      "sequence": "open routing / layer / Railing / Stair / Curtain Panel detail -> change unit -> reopen",
+      "expected": "Captured definitions render as Revit-like tables, optional comparison policy persists, mandatory curtain dependencies remain visible, and units persist.",
+      "automation": "contract+IE+static",
+      "needsRevit": true
+    },
+    {
+      "id": "current-model-check-baseline",
+      "area": "model-check",
+      "sequence": "first check -> review/export -> accept project catalog -> later check",
+      "expected": "Detailed comparison and name-only catalog baseline are updated only after a successful check.",
+      "automation": "static+contract+IE",
+      "needsRevit": true
+    },
+    {
+      "id": "external-project-change-detection",
+      "area": "tracking",
+      "sequence": "accept baseline -> modify without Browser -> reopen/refresh",
+      "expected": "Added/removed Family, Family Type and System Type names remain external/untracked until accepted.",
+      "automation": "static+contract+IE",
+      "needsRevit": true
+    },
+    {
+      "id": "project-element-change-ledger",
+      "area": "tracking",
+      "sequence": "admin enables policy -> validated baseline -> create/modify/delete/undo/redo -> reload latest -> save or synchronize -> review/export history -> close/reopen",
+      "expected": "Only successful standalone saves or workshared synchronizations append immutable per-project element changes; cancelled close, failed baselines, failed commits, incoming synchronization or Reload Latest changes and disabled policy do not create false history. Recent committed history is viewable without creating Excel until export is requested.",
+      "automation": "static+source-simulation",
+      "needsRevit": true
+    },
+    {
+      "id": "element-tracking-integrity-recovery",
+      "area": "tracking",
+      "sequence": "offline spool -> managed-root switch or migration -> destination collision/corruption -> reconnect -> history view",
+      "expected": "New operation, standard candidate, element and checkpoint records require a non-empty management destination and stay bound to that environment; only an explicit source-scoped migration with a verified target can rebind them, corrupt or tampered records are rejected without deleting the valid local copy, and recent history is ordered by committed time.",
+      "automation": "source-simulation+static",
+      "needsRevit": false
+    },
+    {
+      "id": "element-tracking-session-recovery",
+      "area": "tracking",
+      "sequence": "workshared edit -> local Save -> close/reopen or Save As -> successful synchronize -> immutable history",
+      "expected": "A successful local Save is protected on the same PC without being published as central history; reopening the same local file restores it, Save As retires the obsolete path checkpoint, and only a successful synchronization promotes it idempotently while retaining separate local-protection and central-publication times.",
+      "automation": "source-simulation+static",
+      "needsRevit": true
+    },
+    {
+      "id": "element-tracking-schema-compatibility",
+      "area": "tracking",
+      "sequence": "read legacy integrity-v1/v2/v3/v4 history and pending-envelope-v1/v2 -> write schema-v6/integrity-v5 element and parameter-binding evidence -> replace central file identity -> corrupt local checkpoint -> review history",
+      "expected": "Valid old history and pending-envelope checksums remain verifiable, stable-path fallback finds history under obsolete file-identity folders, corrupt checkpoints are reported rather than treated as absent, and new records use schema-v6 commits with integrity-v5 protection for coverage gaps plus shared/project parameter GUID, binding, category, group, data type and grid detail metadata while schema-v5/integrity-v4 and older history remain readable.",
+      "automation": "source-simulation+static",
+      "needsRevit": false
+    },
+    {
+      "id": "element-tracking-event-ambiguity",
+      "area": "tracking",
+      "sequence": "late enable -> create/delete -> Undo/Redo -> incoming update overlap -> failed or successful commit",
+      "expected": "Transient creation/deletion is retained, dirty-start coverage is explicit, unmatched Undo/Redo never guesses an arbitrary transaction, overlap lowers attribution confidence, and failed boundaries append no immutable history.",
+      "automation": "static+runtime-fixture",
+      "needsRevit": true
+    },
+    {
+      "id": "tracking-policy-concurrency",
+      "area": "tracking",
+      "sequence": "two administrators read and update shared tracking policy -> one writer holds the shared lock -> atomic policy and registration commit -> audit setting change",
+      "expected": "Cross-PC shared-file locking serializes policy mutations, corrupt policy is never silently replaced, registrations and policy use recoverable atomic promotion, and each successful tracking toggle creates immutable audit evidence.",
+      "automation": "static+build",
+      "needsRevit": true
+    },
+    {
+      "id": "tracking-policy-session-isolation",
+      "area": "tracking",
+      "sequence": "two documents are open -> one has uncommitted evidence -> another administrator disables tracking or the policy path becomes unreadable -> the second document changes",
+      "expected": "Only the document that already owns uncommitted evidence may continue to a successful commit boundary; inactive or newly opened documents cannot start collecting under a disabled, deferred, or stale cached policy, while protected workshared checkpoints remain recovery-only.",
+      "automation": "source-simulation+static",
+      "needsRevit": true
+    },
+    {
+      "id": "offline-tracking-recovery",
+      "area": "tracking",
+      "sequence": "Browser mutation -> save while managed folder unavailable -> reconnect -> observe",
+      "expected": "Local write-ahead spool survives restart and flushes immutable, idempotent records without loss.",
+      "automation": "source-simulation",
+      "needsRevit": true
+    },
+    {
+      "id": "multi-client-tracking",
+      "area": "tracking",
+      "sequence": "two PCs commit different operations concurrently",
+      "expected": "Per-entry immutable files retain both records; daily aggregate is compatibility-only.",
+      "automation": "source-simulation",
+      "needsRevit": true
+    },
+    {
+      "id": "guard-admin-transition",
+      "area": "permissions",
+      "sequence": "configure file Guard -> Admin OFF -> native load/rename/place -> Admin ON",
+      "expected": "Canonical local/central aliases match and restrictions apply immediately without a full rescan.",
+      "automation": "static+contract+IE",
+      "needsRevit": true
+    },
+    {
+      "id": "request-lifecycle",
+      "area": "requests",
+      "sequence": "create -> attach -> save -> review -> status change/delete",
+      "expected": "Permissions, storage and visible counts remain synchronized across tabs.",
+      "automation": "contract+IE",
+      "needsRevit": false
+    },
+    {
+      "id": "request-concurrent-edit",
+      "area": "requests",
+      "sequence": "two PCs render the same request -> first user changes status -> second user changes status or deletes from the stale screen",
+      "expected": "A request-scoped shared lock serializes writers; revision and content tokens reject stale actions without overwriting the first change, then the Browser reloads the latest request list.",
+      "automation": "source-simulation+static",
+      "needsRevit": false
+    },
+    {
+      "id": "request-attachment-and-delete-audit",
+      "area": "requests",
+      "sequence": "create with attachments -> interrupted save/retry -> delete request",
+      "expected": "Attachment copies are content-addressed and idempotent, pre-commit failures roll back new files and metadata, and deletion preserves an immutable full request snapshot before removing active data.",
+      "automation": "source-simulation+static",
+      "needsRevit": false
+    },
+    {
+      "id": "scan-dialog-recovery",
+      "area": "scan",
+      "sequence": "precise scan -> Revit warning with OK or destructive choices -> continue/cancel -> result",
+      "expected": "Safe warnings continue, destructive-only warnings cancel, and diagnostics export only on demand.",
+      "automation": "static+contract",
+      "needsRevit": true
+    },
+    {
+      "id": "language-result-export",
+      "area": "cross-cutting",
+      "sequence": "KO/EN -> run actions -> rich result -> optional XLSX export",
+      "expected": "Language is pure, results are structured HTML, and no diagnostic workbook is created automatically.",
+      "automation": "static+contract+IE",
+      "needsRevit": false
+    },
+    {
+      "id": "large-library-performance",
+      "area": "cross-cutting",
+      "sequence": "load 1000 Family + 1000 System rows -> search / filter / page / reopen cache",
+      "expected": "Only the active 150-row window is rendered, interaction remains responsive, and cache warm/offline paths preserve row counts.",
+      "automation": "performance+IE",
+      "needsRevit": false
+    },
+    {
+      "id": "diagnostics-debug-log",
+      "area": "cross-cutting",
+      "sequence": "run success / warning / failure -> open bottom Debug Log -> inspect support code and managed/local log paths",
+      "expected": "The dock is reachable from the left menu, stays inside the browser bottom edge, and failures retain actionable local diagnostics even when managed storage is unavailable.",
+      "automation": "contract+IE+static",
+      "needsRevit": true
+    },
+    {
+      "id": "close-cancel-and-failure",
+      "area": "cross-cutting",
+      "sequence": "pending mutation -> cancelled save/close or failed event -> continue session",
+      "expected": "Cancelled events neither commit nor discard live pending state; actual close discards only uncommitted memory.",
+      "automation": "static",
+      "needsRevit": true
+    }
+  ]
+}

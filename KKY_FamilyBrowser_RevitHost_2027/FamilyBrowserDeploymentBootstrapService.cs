@@ -216,6 +216,143 @@ public sealed class FamilyBrowserDeploymentBootstrapService
 		}
 	}
 
+	public static FamilyBrowserHomepageManagedFolderProbeResult ProbeHomepageManagedFolder(FamilyBrowserDeploymentProjectIdentity projectIdentity = null)
+	{
+		FamilyBrowserHomepageManagedFolderProbeResult result = new FamilyBrowserHomepageManagedFolderProbeResult
+		{
+			CheckedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture)
+		};
+		try
+		{
+			string bootstrapUrl = ResolveHomepageBootstrapUrlForProbe(projectIdentity);
+			result.BootstrapUrl = bootstrapUrl;
+			if (string.IsNullOrWhiteSpace(bootstrapUrl) || IsBootstrapDisabledValue(bootstrapUrl))
+			{
+				result.Issue = "Homepage deployment bootstrap is disabled.";
+				return result;
+			}
+			string json = FetchText(AddNoCacheQuery(bootstrapUrl));
+			if (string.IsNullOrWhiteSpace(json))
+			{
+				result.Issue = "Homepage deployment bootstrap was not reachable.";
+				return result;
+			}
+			FamilyBrowserDeploymentBootstrap bootstrap = DataContractJsonTextStore.Load<FamilyBrowserDeploymentBootstrap>(json);
+			if (bootstrap == null)
+			{
+				result.Issue = "Homepage deployment bootstrap was empty.";
+				return result;
+			}
+			if (bootstrap.Disabled)
+			{
+				result.Issue = "Homepage deployment bootstrap is disabled.";
+				return result;
+			}
+			FamilyBrowserDeploymentBootstrapResult pathProbe = NewResult();
+			string managedPolicyPath = ResolveManagedPolicyPath(bootstrap, pathProbe);
+			if (string.IsNullOrWhiteSpace(managedPolicyPath))
+			{
+				result.Issue = string.IsNullOrWhiteSpace(pathProbe.ManagedPolicyPathIssue) ? "No reachable homepage management folder was found." : pathProbe.ManagedPolicyPathIssue;
+				return result;
+			}
+			result.Source = bootstrapUrl;
+			result.ManagedPolicyPath = managedPolicyPath;
+			result.ManagedRootPath = ResolveManagedRootFromPolicyPath(managedPolicyPath);
+			result.Available = !string.IsNullOrWhiteSpace(result.ManagedRootPath);
+			if (!result.Available)
+			{
+				result.Issue = "The homepage management-folder root could not be resolved.";
+			}
+		}
+		catch (Exception ex)
+		{
+			result.Available = false;
+			result.Issue = ex.Message;
+		}
+		return result;
+	}
+
+	public static FamilyBrowserDeploymentBootstrapResult TryApplyManagedPathOnly(string workspaceRoot, string currentUser, FamilyBrowserDeploymentProjectIdentity projectIdentity = null)
+	{
+		FamilyBrowserDeploymentBootstrapResult result = NewResult();
+		result.CachePath = GetCachePath();
+		try
+		{
+			string bootstrapUrl = ResolveBootstrapUrl(projectIdentity);
+			result.BootstrapUrl = bootstrapUrl;
+			if (IsBootstrapDisabledValue(bootstrapUrl))
+			{
+				result.Message = "Deployment bootstrap is disabled.";
+				return result;
+			}
+			string json = string.Empty;
+			string source = string.Empty;
+			try
+			{
+				json = FetchText(bootstrapUrl);
+				if (!string.IsNullOrWhiteSpace(json))
+				{
+					source = bootstrapUrl;
+					WriteCache(json);
+				}
+			}
+			catch (Exception projectError)
+			{
+				ProjectData.SetProjectError(projectError);
+				ProjectData.ClearProjectError();
+			}
+			if (string.IsNullOrWhiteSpace(json))
+			{
+				json = ReadCache();
+				if (!string.IsNullOrWhiteSpace(json))
+				{
+					source = result.CachePath;
+					result.UsedCache = true;
+				}
+			}
+			if (string.IsNullOrWhiteSpace(json))
+			{
+				result.Message = "No deployment bootstrap was available.";
+				return result;
+			}
+			FamilyBrowserDeploymentBootstrap bootstrap = DataContractJsonTextStore.Load<FamilyBrowserDeploymentBootstrap>(json);
+			result.Source = source;
+			if (bootstrap == null)
+			{
+				result.Message = "Deployment bootstrap was empty.";
+				return result;
+			}
+			if (bootstrap.Disabled)
+			{
+				result.Message = "Deployment bootstrap is disabled.";
+				return result;
+			}
+			result.RefreshMinutes = ((bootstrap.RefreshMinutes <= 0) ? 30 : bootstrap.RefreshMinutes);
+			string managedPolicyPath = ResolveManagedPolicyPath(bootstrap, result);
+			if (string.IsNullOrWhiteSpace(managedPolicyPath))
+			{
+				result.Message = BootstrapHasManagedPolicyTarget(bootstrap) ? "Managed folder was not reachable." : "No managed folder path was configured.";
+				return result;
+			}
+			FamilyBrowserMachineConfigStore.SetManagedPolicyPath(managedPolicyPath, currentUser);
+			StandardRvtChangeCandidateService.NotifyPolicyChanged();
+			FamilyBrowserNativeCommandGuardService.InvalidatePolicyCacheOnly();
+			PrepareManagedPolicyFolders(managedPolicyPath, bootstrap.RequestStore);
+			result.ManagedPolicyPath = managedPolicyPath;
+			result.Applied = true;
+			result.Message = "Managed folder path refreshed.";
+			return result;
+		}
+		catch (Exception ex)
+		{
+			ProjectData.SetProjectError(ex);
+			Exception ex2 = ex;
+			result.Message = "Managed folder path refresh was skipped: " + ex2.Message;
+			ProjectData.ClearProjectError();
+			return result;
+		}
+	}
+
 	public static FamilyBrowserDeploymentBootstrapSecurityRefreshResult RefreshSecurityFromHomepage(string workspaceRoot, string currentUser, FamilyBrowserDeploymentProjectIdentity projectIdentity = null)
 	{
 		object syncRoot = SyncRoot;
@@ -281,6 +418,7 @@ public sealed class FamilyBrowserDeploymentBootstrapService
 					policy.Security.LastUpdatedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
 					policy.Security.LastUpdatedBy = currentUser ?? string.Empty;
 					FamilyBrowserStandardPolicyStore.Save(workspaceRoot, policy, currentUser);
+					FamilyBrowserNativeCommandGuardService.InvalidatePolicyCacheOnly();
 					result.Message = "Homepage security refreshed.";
 				}
 				else
@@ -410,6 +548,8 @@ public sealed class FamilyBrowserDeploymentBootstrapService
 		if (!string.IsNullOrWhiteSpace(managedPolicyPath))
 		{
 			FamilyBrowserMachineConfigStore.SetManagedPolicyPath(managedPolicyPath, currentUser);
+			StandardRvtChangeCandidateService.NotifyPolicyChanged();
+			FamilyBrowserNativeCommandGuardService.InvalidatePolicyCacheOnly();
 			PrepareManagedPolicyFolders(managedPolicyPath, bootstrap.RequestStore);
 			result.ManagedPolicyPath = managedPolicyPath;
 			result.Applied = true;
@@ -417,7 +557,11 @@ public sealed class FamilyBrowserDeploymentBootstrapService
 		else if (hasManagedPolicyTarget)
 		{
 			FamilyBrowserMachineConfigStore.ClearManagedPolicyPath(currentUser);
-			result.Applied = true;
+			StandardRvtChangeCandidateService.NotifyPolicyChanged();
+			FamilyBrowserNativeCommandGuardService.InvalidatePolicyCacheOnly();
+			result.Applied = false;
+			result.Message = "Managed folder was not reachable.";
+			return;
 		}
 		if (bootstrap.SkipPolicyWrite)
 		{
@@ -500,6 +644,8 @@ public sealed class FamilyBrowserDeploymentBootstrapService
 		if (policyChanged)
 		{
 			FamilyBrowserStandardPolicyStore.Save(workspaceRoot, policy, currentUser);
+			StandardRvtChangeCandidateService.NotifyPolicyChanged();
+			FamilyBrowserNativeCommandGuardService.InvalidatePolicyCacheOnly();
 		}
 		result.Message = BuildAppliedMessage(bootstrap, result, policyValuesChecked: true);
 	}
@@ -771,6 +917,8 @@ public sealed class FamilyBrowserDeploymentBootstrapService
 				Directory.CreateDirectory(Path.Combine(rootFolder.FullName, "Diagnostics"));
 				Directory.CreateDirectory(Path.Combine(rootFolder.FullName, "OperationLogs"));
 				Directory.CreateDirectory(Path.Combine(rootFolder.FullName, "StandardChangeCandidates"));
+				Directory.CreateDirectory(Path.Combine(rootFolder.FullName, "ProjectCatalogs"));
+				Directory.CreateDirectory(Path.Combine(rootFolder.FullName, "StandardRevisionManifests"));
 			}
 			if (requestStore != null)
 			{
@@ -1024,6 +1172,26 @@ public sealed class FamilyBrowserDeploymentBootstrapService
 		if (!string.IsNullOrWhiteSpace(stored))
 		{
 			return stored;
+		}
+		string indexedUrl = ResolveBootstrapUrlFromIndex(projectIdentity);
+		if (!string.IsNullOrWhiteSpace(indexedUrl))
+		{
+			return indexedUrl;
+		}
+		return "https://update.zerokky.com/family-browser/bootstrap.json";
+	}
+
+	private static string ResolveHomepageBootstrapUrlForProbe(FamilyBrowserDeploymentProjectIdentity projectIdentity)
+	{
+		string envValue = Environment.GetEnvironmentVariable("KKY_FAMILY_BROWSER_BOOTSTRAP_URL");
+		if (!string.IsNullOrWhiteSpace(envValue))
+		{
+			return envValue.Trim();
+		}
+		string stored = FamilyBrowserMachineConfigStore.ResolveDeploymentBootstrapUrl();
+		if (!string.IsNullOrWhiteSpace(stored) && !IsBootstrapDisabledValue(stored))
+		{
+			return stored.Trim();
 		}
 		string indexedUrl = ResolveBootstrapUrlFromIndex(projectIdentity);
 		if (!string.IsNullOrWhiteSpace(indexedUrl))

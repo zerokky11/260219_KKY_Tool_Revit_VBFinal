@@ -9,30 +9,25 @@ using Microsoft.VisualBasic.CompilerServices;
 
 namespace KKY_FamilyBrowser_RevitHost_2027;
 
-[Transaction(/*Could not decode attribute arguments.*/)]
-[Regeneration(/*Could not decode attribute arguments.*/)]
+[Transaction(TransactionMode.Manual)]
+[Regeneration(RegenerationOption.Manual)]
 public class CmdRegisterStandardLibrary : IExternalCommand
 {
 	public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
 	{
-		//IL_023c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_021b: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0222: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0010: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0244: Unknown result type (might be due to invalid IL or missing references)
 		Result Execute;
 		try
 		{
 			string selectedPath = PromptForStandardLibraryPath(commandData);
 			if (string.IsNullOrWhiteSpace(selectedPath))
 			{
-				Execute = (Result)1;
+				Execute = Result.Cancelled;
 			}
 			else
 			{
 				StandardLibraryRegistrationResult registrationResult = StandardLibraryRegistrationService.Register(HostWorkspacePathResolver.ResolveRoot(), commandData.Application.Application, selectedPath, Environment.UserName, "Fast", commandData.Application);
-				TaskDialog.Show(T("Standard RVT Connected", K("7ZGc7KSAIFJWVCDsl7DqsrAg7JmE66OM")), T("The approved standard RVT has been connected and snapshotted.", K("7Iq57J2465CcIO2RnOykgCBSVlTrpbwg7Jew6rKw7ZWY6rOgIOyKpOuDheyDt+ydhCDsg53shLHtlojsirXri4jri6Qu")) + "\r\n\r\n" + T("Name", K("7J2066aE")) + ": " + registrationResult.Registration.DisplayName + "\r\n" + T("Source", K("7IaM7Iqk")) + ": " + registrationResult.Registration.SourceKind + "\r\n" + T("Loadable families", K("66Gc642U67iUIO2MqOuwgOumrA==")) + ": " + registrationResult.Snapshot.Summary.LoadableFamilyCount + "\r\n" + T("Loadable types", K("66Gc642U67iUIO2DgOyehQ==")) + ": " + registrationResult.Snapshot.Summary.LoadableTypeCount + "\r\n" + T("System types", K("7Iuc7Iqk7YWcIO2DgOyehQ==")) + ": " + registrationResult.Snapshot.Summary.SystemTypeCount + "\r\n" + T("Registry", K("65Ox66GdIOygleuztA==")) + ": " + registrationResult.RegistrationPath + "\r\n" + T("Snapshot", K("7Iqk64OF7IO3")) + ": " + registrationResult.SnapshotPath);
-				Execute = (Result)0;
+				FamilyBrowserResultDialog.Show(T("Standard RVT Connected", K("7ZGc7KSAIFJWVCDsl7DqsrAg7JmE66OM")), T("The approved standard RVT has been connected and snapshotted.", K("7Iq57J2465CcIO2RnOykgCBSVlTrpbwg7Jew6rKw7ZWY6rOgIOyKpOuDheyDt+ydhCDsg53shLHtlojsirXri4jri6Qu")) + "\r\n\r\n" + T("Name", K("7J2066aE")) + ": " + registrationResult.Registration.DisplayName + "\r\n" + T("Source", K("7IaM7Iqk")) + ": " + registrationResult.Registration.SourceKind + "\r\n" + T("Loadable families", K("66Gc642U67iUIO2MqOuwgOumrA==")) + ": " + registrationResult.Snapshot.Summary.LoadableFamilyCount + "\r\n" + T("Loadable types", K("66Gc642U67iUIO2DgOyehQ==")) + ": " + registrationResult.Snapshot.Summary.LoadableTypeCount + "\r\n" + T("System types", K("7Iuc7Iqk7YWcIO2DgOyehQ==")) + ": " + registrationResult.Snapshot.Summary.SystemTypeCount + "\r\n" + T("Registry", K("65Ox66GdIOygleuztA==")) + ": " + registrationResult.RegistrationPath + "\r\n" + T("Snapshot", K("7Iqk64OF7IO3")) + ": " + registrationResult.SnapshotPath);
+				Execute = Result.Succeeded;
 			}
 		}
 		catch (Exception ex)
@@ -40,10 +35,16 @@ public class CmdRegisterStandardLibrary : IExternalCommand
 			ProjectData.SetProjectError(ex);
 			Exception ex2 = ex;
 			message = FamilyBrowserCommandError.ToExternalCommandMessage("Family Browser", ex2);
-			Execute = (Result)(-1);
+			Execute = Result.Failed;
 			ProjectData.ClearProjectError();
 		}
 		return Execute;
+	}
+
+	Result IExternalCommand.Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+	{
+		//ILSpy generated this explicit interface implementation from .override directive in Execute
+		return this.Execute(commandData, ref message, elements);
 	}
 
 	private static string PromptForStandardLibraryPath(ExternalCommandData commandData)
@@ -54,8 +55,7 @@ public class CmdRegisterStandardLibrary : IExternalCommand
 		dialog.CheckFileExists = true;
 		dialog.Multiselect = false;
 		dialog.RestoreDirectory = true;
-		UIDocument activeUIDocument = commandData.Application.ActiveUIDocument;
-		Document activeDoc = ((activeUIDocument != null) ? activeUIDocument.Document : null);
+		Document activeDoc = commandData.Application.ActiveUIDocument?.Document;
 		if (activeDoc != null && !string.IsNullOrWhiteSpace(activeDoc.PathName))
 		{
 			try

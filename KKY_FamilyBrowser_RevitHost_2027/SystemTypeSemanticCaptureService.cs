@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -7,7 +6,6 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
-using Autodesk.Revit.ApplicationServices;
 using Autodesk.Revit.DB;
 using Microsoft.VisualBasic.CompilerServices;
 
@@ -35,25 +33,25 @@ public sealed class SystemTypeSemanticCaptureService
 		[SpecialName]
 		internal bool _Lambda_0024__3(ElementType x)
 		{
-			return string.Equals(Normalize(((object)x).GetType().Name), Normalize(_0024VB_0024Local_systemFamilyKind), StringComparison.Ordinal);
+			return string.Equals(Normalize(x.GetType().Name), Normalize(_0024VB_0024Local_systemFamilyKind), StringComparison.Ordinal);
 		}
 
 		[SpecialName]
 		internal bool _Lambda_0024__4(ElementType x)
 		{
-			return string.Equals(Normalize(ResolveElementName((Element)(object)x)), Normalize(_0024VB_0024Local_typeName), StringComparison.Ordinal);
+			return string.Equals(Normalize(ResolveElementName(x)), Normalize(_0024VB_0024Local_typeName), StringComparison.Ordinal);
 		}
 
 		[SpecialName]
 		internal bool _Lambda_0024__6(ElementType x)
 		{
-			return CategoryNamesMatch(ResolveCategoryName((Element)(object)x), _0024VB_0024Local_categoryName);
+			return CategoryNamesMatch(ResolveCategoryName(x), _0024VB_0024Local_categoryName);
 		}
 	}
 
-	private static readonly HashSet<string> AllowedSystemTypeNames = new HashSet<string>(new string[20]
+	private static readonly HashSet<string> AllowedSystemTypeNames = new HashSet<string>(new string[22]
 	{
-		"WallType", "FloorType", "RoofType", "CeilingType", "StairsType", "RailingType", "DuctType", "PipeType", "FlexDuctType", "FlexPipeType",
+		"WallType", "FloorType", "RoofType", "CeilingType", "StairsType", "RailingType", "CurtainSystemType", "PanelType", "DuctType", "PipeType", "FlexDuctType", "FlexPipeType",
 		"DuctSystemType", "PipingSystemType", "MechanicalSystemType", "ElectricalSystemType", "CableTrayType", "ConduitType", "WireType", "DuctInsulationType", "PipeInsulationType", "DuctLiningType"
 	}, StringComparer.OrdinalIgnoreCase);
 
@@ -69,17 +67,16 @@ public sealed class SystemTypeSemanticCaptureService
 
 	public static SystemTypeCatalogSnapshot Capture(Document doc, string sourceId, IDictionary<string, string> loadableContentFingerprintCache = null, bool includeDeepLoadableContent = true, Action<int, int, string> progress = null)
 	{
-		//IL_0013: Unknown result type (might be due to invalid IL or missing references)
 		SystemTypeCatalogSnapshot catalog = CreateCatalogShell(doc, sourceId);
 		if (doc == null)
 		{
 			return catalog;
 		}
-		List<ElementType> systemTypes = (from ElementType x in (IEnumerable)new FilteredElementCollector(doc).WhereElementIsElementType()
+		List<ElementType> systemTypes = (from ElementType x in new FilteredElementCollector(doc).WhereElementIsElementType()
 			where x != null
-			where !(x is FamilySymbol)
-			where AllowedSystemTypeNames.Contains(((object)x).GetType().Name)
-			select x).OrderBy<ElementType, string>([SpecialName] (ElementType x) => ((object)x).GetType().Name, StringComparer.Ordinal).ThenBy<ElementType, string>([SpecialName] (ElementType x) => Normalize(ResolveElementName((Element)(object)x)), StringComparer.Ordinal).ToList();
+			where !(x is FamilySymbol) || SystemTypeDetailedComponentSnapshotService.SupportsRequiredCurtainPanelComponents(x.GetType().Name)
+			where AllowedSystemTypeNames.Contains(x.GetType().Name)
+			select x).OrderBy<ElementType, string>([SpecialName] (ElementType x) => x.GetType().Name, StringComparer.Ordinal).ThenBy<ElementType, string>([SpecialName] (ElementType x) => Normalize(ResolveElementName(x)), StringComparer.Ordinal).ToList();
 		int total = Math.Max(1, systemTypes.Count);
 		checked
 		{
@@ -87,7 +84,7 @@ public sealed class SystemTypeSemanticCaptureService
 			for (int index = 0; index <= num; index++)
 			{
 				ElementType systemType = systemTypes[index];
-				ReportProgress(progress, index + 1, total, "Reading system type " + (index + 1).ToString(CultureInfo.InvariantCulture) + "/" + total.ToString(CultureInfo.InvariantCulture) + ": " + ((object)systemType).GetType().Name + " / " + ResolveElementName((Element)(object)systemType));
+				ReportProgress(progress, index + 1, total, "Reading system type " + (index + 1).ToString(CultureInfo.InvariantCulture) + "/" + total.ToString(CultureInfo.InvariantCulture) + ": " + systemType.GetType().Name + " / " + ResolveElementName(systemType));
 				SystemTypeSemanticSnapshot snapshot = BuildSnapshot(doc, systemType, loadableContentFingerprintCache, includeDeepLoadableContent);
 				catalog.Types.Add(snapshot);
 			}
@@ -97,7 +94,6 @@ public sealed class SystemTypeSemanticCaptureService
 
 	public static SystemTypeCatalogSnapshot CaptureSelected(Document doc, string sourceId, string systemFamilyKind, string categoryName, string typeName, IDictionary<string, string> loadableContentFingerprintCache = null, bool includeDeepLoadableContent = false, Action<int, int, string> progress = null)
 	{
-		//IL_004a: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__5_002D0 arg = default(_Closure_0024__5_002D0);
 		_Closure_0024__5_002D0 CS_0024_003C_003E8__locals8 = new _Closure_0024__5_002D0(arg);
 		CS_0024_003C_003E8__locals8._0024VB_0024Local_systemFamilyKind = systemFamilyKind;
@@ -108,14 +104,14 @@ public sealed class SystemTypeSemanticCaptureService
 		{
 			return catalog;
 		}
-		List<ElementType> candidates = (from ElementType x in (IEnumerable)new FilteredElementCollector(doc).WhereElementIsElementType()
+		List<ElementType> candidates = (from ElementType x in new FilteredElementCollector(doc).WhereElementIsElementType()
 			where x != null
-			where !(x is FamilySymbol)
-			where AllowedSystemTypeNames.Contains(((object)x).GetType().Name)
-			where string.Equals(Normalize(((object)x).GetType().Name), Normalize(CS_0024_003C_003E8__locals8._0024VB_0024Local_systemFamilyKind), StringComparison.Ordinal)
-			where string.Equals(Normalize(ResolveElementName((Element)(object)x)), Normalize(CS_0024_003C_003E8__locals8._0024VB_0024Local_typeName), StringComparison.Ordinal)
-			select x).OrderBy<ElementType, string>([SpecialName] (ElementType x) => Normalize(ResolveCategoryName((Element)(object)x)), StringComparer.Ordinal).ToList();
-		List<ElementType> categoryMatches = candidates.Where([SpecialName] (ElementType x) => CategoryNamesMatch(ResolveCategoryName((Element)(object)x), CS_0024_003C_003E8__locals8._0024VB_0024Local_categoryName)).ToList();
+			where !(x is FamilySymbol) || SystemTypeDetailedComponentSnapshotService.SupportsRequiredCurtainPanelComponents(x.GetType().Name)
+			where AllowedSystemTypeNames.Contains(x.GetType().Name)
+			where string.Equals(Normalize(x.GetType().Name), Normalize(CS_0024_003C_003E8__locals8._0024VB_0024Local_systemFamilyKind), StringComparison.Ordinal)
+			where string.Equals(Normalize(ResolveElementName(x)), Normalize(CS_0024_003C_003E8__locals8._0024VB_0024Local_typeName), StringComparison.Ordinal)
+			select x).OrderBy<ElementType, string>([SpecialName] (ElementType x) => Normalize(ResolveCategoryName(x)), StringComparer.Ordinal).ToList();
+		List<ElementType> categoryMatches = candidates.Where([SpecialName] (ElementType x) => CategoryNamesMatch(ResolveCategoryName(x), CS_0024_003C_003E8__locals8._0024VB_0024Local_categoryName)).ToList();
 		if (categoryMatches.Count > 0)
 		{
 			candidates = categoryMatches;
@@ -127,7 +123,7 @@ public sealed class SystemTypeSemanticCaptureService
 			for (int index = 0; index <= num; index++)
 			{
 				ElementType systemType = candidates[index];
-				ReportProgress(progress, index + 1, total, "Reading selected system type " + (index + 1).ToString(CultureInfo.InvariantCulture) + "/" + total.ToString(CultureInfo.InvariantCulture) + ": " + ((object)systemType).GetType().Name + " / " + ResolveElementName((Element)(object)systemType));
+				ReportProgress(progress, index + 1, total, "Reading selected system type " + (index + 1).ToString(CultureInfo.InvariantCulture) + "/" + total.ToString(CultureInfo.InvariantCulture) + ": " + systemType.GetType().Name + " / " + ResolveElementName(systemType));
 				SystemTypeSemanticSnapshot snapshot = BuildSnapshot(doc, systemType, loadableContentFingerprintCache, includeDeepLoadableContent);
 				catalog.Types.Add(snapshot);
 			}
@@ -139,24 +135,10 @@ public sealed class SystemTypeSemanticCaptureService
 	{
 		SystemTypeCatalogSnapshot systemTypeCatalogSnapshot = new SystemTypeCatalogSnapshot();
 		systemTypeCatalogSnapshot.SourceId = sourceId ?? string.Empty;
-		systemTypeCatalogSnapshot.DocumentTitle = ((doc != null) ? doc.Title : null) ?? string.Empty;
-		systemTypeCatalogSnapshot.DocumentPath = ((doc != null) ? doc.PathName : null) ?? string.Empty;
+		systemTypeCatalogSnapshot.DocumentTitle = doc?.Title ?? string.Empty;
+		systemTypeCatalogSnapshot.DocumentPath = doc?.PathName ?? string.Empty;
 		systemTypeCatalogSnapshot.CapturedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
-		object obj;
-		if (doc == null)
-		{
-			obj = null;
-		}
-		else
-		{
-			Application application = doc.Application;
-			obj = ((application != null) ? application.VersionNumber : null);
-		}
-		if (obj == null)
-		{
-			obj = string.Empty;
-		}
-		systemTypeCatalogSnapshot.RevitVersion = (string)obj;
+		systemTypeCatalogSnapshot.RevitVersion = doc?.Application?.VersionNumber ?? string.Empty;
 		return systemTypeCatalogSnapshot;
 	}
 
@@ -183,10 +165,12 @@ public sealed class SystemTypeSemanticCaptureService
 		Dictionary<string, string> parameters = CaptureRelevantParameters(systemType, doc);
 		string routingPreferenceSignature = BuildRoutingPreferenceSignature(doc, systemType, routingDependencies, loadableContentFingerprintCache, includeDeepLoadableContent);
 		string compoundStructureSignature = BuildCompoundStructureSignature(doc, systemType);
+		bool detailedComponentsCaptured;
+		List<SystemTypeDetailedComponentSnapshotItem> detailedComponents = SystemTypeDetailedComponentSnapshotService.Capture(doc, systemType, loadableContentFingerprintCache, includeDeepLoadableContent, out detailedComponentsCaptured);
 		SystemTypeSemanticSnapshot systemTypeSemanticSnapshot = new SystemTypeSemanticSnapshot();
-		systemTypeSemanticSnapshot.SystemFamilyKind = ((object)systemType).GetType().Name;
-		systemTypeSemanticSnapshot.CategoryName = ResolveCategoryName((Element)(object)systemType);
-		systemTypeSemanticSnapshot.TypeName = ResolveElementName((Element)(object)systemType);
+		systemTypeSemanticSnapshot.SystemFamilyKind = systemType.GetType().Name;
+		systemTypeSemanticSnapshot.CategoryName = ResolveCategoryName(systemType);
+		systemTypeSemanticSnapshot.TypeName = ResolveElementName(systemType);
 		systemTypeSemanticSnapshot.ClassificationCode = ResolveParameterCandidate(parameters, "classification", "uniformat", "assembly");
 		systemTypeSemanticSnapshot.SegmentName = ResolveSegmentName(parameters, routingDependencies);
 		systemTypeSemanticSnapshot.MaterialName = ResolveMaterialName(parameters, compoundStructureSignature);
@@ -195,13 +179,17 @@ public sealed class SystemTypeSemanticCaptureService
 		systemTypeSemanticSnapshot.CompoundStructureSignature = compoundStructureSignature;
 		systemTypeSemanticSnapshot.Parameters = parameters;
 		systemTypeSemanticSnapshot.RoutingDependencies = routingDependencies;
+		systemTypeSemanticSnapshot.DetailedComponentsCaptured = detailedComponentsCaptured;
+		systemTypeSemanticSnapshot.DetailedComponents = detailedComponents;
+		systemTypeSemanticSnapshot.DetailedComponentSignature = SystemTypeDetailedComponentSnapshotService.BuildSignature(detailedComponents);
+		systemTypeSemanticSnapshot.DetailSummary = SystemTypeDetailSummaryService.Build(doc, systemType, systemTypeSemanticSnapshot);
 		return systemTypeSemanticSnapshot;
 	}
 
 	private static Dictionary<string, string> CaptureRelevantParameters(ElementType systemType, Document doc)
 	{
 		Dictionary<string, string> result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-		foreach (Parameter parameter in ((IEnumerable)((Element)systemType).Parameters).Cast<Parameter>())
+		foreach (Parameter parameter in systemType.Parameters.Cast<Parameter>())
 		{
 			if (parameter != null && parameter.Definition != null && parameter.HasValue && ShouldCaptureSystemTypeParameter(parameter))
 			{
@@ -241,7 +229,7 @@ public sealed class SystemTypeSemanticCaptureService
 	{
 		try
 		{
-			if (parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) == -1002001)
+			if ((object)parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) == -1002001)
 			{
 				return true;
 			}
@@ -272,7 +260,7 @@ public sealed class SystemTypeSemanticCaptureService
 		}
 		try
 		{
-			IsSharedParameter = ((parameter != null) ? parameter.Definition : null) is ExternalDefinition;
+			IsSharedParameter = parameter?.Definition is ExternalDefinition;
 		}
 		catch (Exception projectError2)
 		{
@@ -287,11 +275,10 @@ public sealed class SystemTypeSemanticCaptureService
 
 	private static string ResolveBuiltInParameterName(Parameter parameter)
 	{
-		//IL_002d: Unknown result type (might be due to invalid IL or missing references)
 		string ResolveBuiltInParameterName;
 		try
 		{
-			ResolveBuiltInParameterName = ((parameter != null && parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) < 0) ? ((Enum)(BuiltInParameter)RevitElementIdCompat.CompatIntegerValue(parameter.Id)/*cast due to .constrained prefix*/).ToString() : string.Empty);
+			ResolveBuiltInParameterName = ((parameter != null && (object)parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) < 0) ? ((BuiltInParameter)RevitElementIdCompat.CompatIntegerValue(parameter.Id)/*cast due to .constrained prefix*/).ToString() : string.Empty);
 		}
 		catch (Exception projectError)
 		{
@@ -322,27 +309,21 @@ public sealed class SystemTypeSemanticCaptureService
 
 	private static string ResolveParameterValue(Parameter parameter, Document doc)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0009: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001f: Expected I4, but got Unknown
 		string ResolveParameterValue;
 		try
 		{
-			StorageType storageType = parameter.StorageType;
-			switch (storageType - 1)
+			switch (parameter.StorageType)
 			{
-			case 2:
+			case StorageType.String:
 				ResolveParameterValue = NormalizeMultiline(parameter.AsString());
 				break;
-			case 1:
+			case StorageType.Double:
 				ResolveParameterValue = parameter.AsDouble().ToString("G17", CultureInfo.InvariantCulture);
 				break;
-			case 0:
-				ResolveParameterValue = parameter.AsInteger().ToString(CultureInfo.InvariantCulture);
+			case StorageType.Integer:
+				ResolveParameterValue = FamilyBrowserYesNoParameterFormatter.FormatInteger(parameter, parameter.AsInteger());
 				break;
-			case 3:
+			case StorageType.ElementId:
 			{
 				ElementId id = parameter.AsElementId();
 				if (id == ElementId.InvalidElementId)
@@ -381,112 +362,107 @@ public sealed class SystemTypeSemanticCaptureService
 		}
 		List<string> parts = new List<string>
 		{
-			((object)referenced).GetType().Name,
+			referenced.GetType().Name,
 			ResolveCategoryName(referenced),
 			ResolveElementName(referenced)
 		};
 		return NormalizeMultiline(string.Join("|", parts));
 	}
 
-	private unsafe static string BuildRoutingPreferenceSignature(Document doc, ElementType systemType, ICollection<RoutingDependencySnapshot> routingDependencies, IDictionary<string, string> loadableContentFingerprintCache, bool includeDeepLoadableContent)
+	private static string BuildRoutingPreferenceSignature(Document doc, ElementType systemType, ICollection<RoutingDependencySnapshot> routingDependencies, IDictionary<string, string> loadableContentFingerprintCache, bool includeDeepLoadableContent)
 	{
-		//IL_00b9: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00be: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00c1: Unknown result type (might be due to invalid IL or missing references)
-		//IL_010f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_021a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0221: Expected O, but got Unknown
-		PropertyInfo managerProperty = ((object)systemType).GetType().GetProperty("RoutingPreferenceManager");
+		PropertyInfo managerProperty = systemType.GetType().GetProperty("RoutingPreferenceManager");
 		if ((object)managerProperty == null)
 		{
 			return string.Empty;
 		}
-		object? value = managerProperty.GetValue(systemType, null);
-		RoutingPreferenceManager manager = (RoutingPreferenceManager)((value is RoutingPreferenceManager) ? value : null);
-		if (manager == null)
+		if (!(managerProperty.GetValue(systemType, null) is RoutingPreferenceManager manager))
 		{
 			return string.Empty;
 		}
 		List<string> lines = new List<string>();
 		IOrderedEnumerable<RoutingPreferenceRuleGroupType> groups = from RoutingPreferenceRuleGroupType x in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType))
-			where (int)x != -1
+			where x != RoutingPreferenceRuleGroupType.Undefined
 			orderby (int)x
 			select x;
-		foreach (RoutingPreferenceRuleGroupType group in groups)
+		checked
 		{
-			int ruleCount;
-			try
+			foreach (RoutingPreferenceRuleGroupType group in groups)
 			{
-				ruleCount = manager.GetNumberOfRules(group);
-			}
-			catch (Exception projectError)
-			{
-				ProjectData.SetProjectError(projectError);
-				lines.Add(Normalize(((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString()) + "|read-error|rule-count");
-				ProjectData.ClearProjectError();
-				continue;
-			}
-			int num = checked(ruleCount - 1);
-			for (int index = 0; index <= num; index = checked(index + 1))
-			{
-				RoutingPreferenceRule rule = null;
+				int ruleCount;
 				try
 				{
-					rule = manager.GetRule(group, index);
+					ruleCount = manager.GetNumberOfRules(group);
 				}
-				catch (Exception projectError2)
+				catch (Exception projectError)
 				{
-					ProjectData.SetProjectError(projectError2);
-					lines.Add(Normalize(((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString()) + "|" + index.ToString(CultureInfo.InvariantCulture) + "|read-error|rule");
+					ProjectData.SetProjectError(projectError);
+					lines.Add(Normalize(group.ToString()) + "|read-error|rule-count");
 					ProjectData.ClearProjectError();
 					continue;
 				}
-				if (rule == null)
+				int num = ruleCount - 1;
+				for (int index = 0; index <= num; index++)
 				{
-					lines.Add(Normalize(((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString()) + "|" + index.ToString(CultureInfo.InvariantCulture) + "|null-rule");
-					continue;
-				}
-				ElementId partId = rule.MEPPartId;
-				if (RoutingRuleHasMappablePart(rule))
-				{
-					Element part = ((partId == null) ? null : doc.GetElement(partId));
-					string partClass = ((part == null) ? string.Empty : ((object)part).GetType().Name);
-					string partCategory = ResolveCategoryName(part);
-					string familyKey = string.Empty;
-					string familyName = string.Empty;
-					string typeName = string.Empty;
-					string familyFingerprint = string.Empty;
-					string typeFingerprint = string.Empty;
-					string partFingerprint = string.Empty;
-					if (part is FamilySymbol)
+					RoutingPreferenceRule rule = null;
+					try
 					{
-						FamilySymbol symbol = (FamilySymbol)part;
-						Family family = symbol.Family;
-						familyName = ((family != null) ? ((Element)family).Name : null) ?? string.Empty;
-						typeName = ResolveElementName((Element)(object)symbol);
-						familyKey = RoutingFamilyCatalogBuilder.BuildFamilyKey(ResolveFamilyCategoryName(family), familyName);
-						familyFingerprint = BuildLoadableFamilyFingerprint(doc, family, loadableContentFingerprintCache, includeDeepLoadableContent);
-						typeFingerprint = SystemTypeFingerprintService.ComputeSimpleTypeFingerprint(familyKey, typeName);
-						routingDependencies.Add(new RoutingDependencySnapshot
+						rule = manager.GetRule(group, index);
+					}
+					catch (Exception projectError2)
+					{
+						ProjectData.SetProjectError(projectError2);
+						lines.Add(Normalize(group.ToString()) + "|" + index.ToString(CultureInfo.InvariantCulture) + "|read-error|rule");
+						ProjectData.ClearProjectError();
+						continue;
+					}
+					if (rule == null)
+					{
+						lines.Add(Normalize(group.ToString()) + "|" + index.ToString(CultureInfo.InvariantCulture) + "|null-rule");
+						continue;
+					}
+					ElementId partId = rule.MEPPartId;
+					if (RoutingRuleHasMappablePart(rule))
+					{
+						Element part = (((object)partId == null) ? null : doc.GetElement(partId));
+						string partClass = ((part == null) ? string.Empty : part.GetType().Name);
+						string partCategory = ResolveCategoryName(part);
+						string familyKey = string.Empty;
+						string familyName = string.Empty;
+						string typeName = string.Empty;
+						string familyFingerprint = string.Empty;
+						string typeFingerprint = string.Empty;
+						string partFingerprint = string.Empty;
+						if (part is FamilySymbol)
 						{
-							DependencyRole = ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString(),
-							LibraryFamilyId = familyKey,
-							FamilyName = familyName,
-							TypeName = typeName,
-							FamilyFingerprint = familyFingerprint,
-							TypeFingerprint = typeFingerprint
-						});
+							FamilySymbol symbol = (FamilySymbol)part;
+							Family family = symbol.Family;
+							familyName = family?.Name ?? string.Empty;
+							typeName = ResolveElementName(symbol);
+							familyKey = RoutingFamilyCatalogBuilder.BuildFamilyKey(ResolveFamilyCategoryName(family), familyName);
+							familyFingerprint = BuildLoadableFamilyFingerprint(doc, family, loadableContentFingerprintCache, includeDeepLoadableContent);
+							typeFingerprint = SystemTypeFingerprintService.ComputeSimpleTypeFingerprint(familyKey, typeName);
+							routingDependencies.Add(new RoutingDependencySnapshot
+							{
+								DependencyRole = group.ToString(),
+								LibraryFamilyId = familyKey,
+								FamilyName = familyName,
+								TypeName = typeName,
+								FamilyFingerprint = familyFingerprint,
+								TypeFingerprint = typeFingerprint
+							});
+						}
+						else
+						{
+							typeName = ResolveElementName(part);
+							partFingerprint = BuildRoutingPartFingerprint(doc, part);
+						}
+						lines.Add(Normalize(group.ToString()) + "|" + index.ToString(CultureInfo.InvariantCulture) + "|" + Normalize(partClass) + "|" + Normalize(partCategory) + "|" + Normalize(familyKey) + "|" + Normalize(familyName) + "|" + Normalize(typeName) + "|" + Normalize(familyFingerprint) + "|" + Normalize(typeFingerprint) + "|" + Normalize(partFingerprint) + "|" + Normalize(BuildRoutingCriteriaSignature(rule)));
 					}
-					else
-					{
-						typeName = ResolveElementName(part);
-						partFingerprint = BuildRoutingPartFingerprint(doc, part);
-					}
-					lines.Add(Normalize(((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString()) + "|" + index.ToString(CultureInfo.InvariantCulture) + "|" + Normalize(partClass) + "|" + Normalize(partCategory) + "|" + Normalize(familyKey) + "|" + Normalize(familyName) + "|" + Normalize(typeName) + "|" + Normalize(familyFingerprint) + "|" + Normalize(typeFingerprint) + "|" + Normalize(partFingerprint) + "|" + Normalize(BuildRoutingCriteriaSignature(rule)));
 				}
 			}
+			return string.Join("\n", lines);
 		}
-		return string.Join("\n", lines);
 	}
 
 	private static string BuildRoutingPartFingerprint(Document doc, Element part)
@@ -529,7 +505,7 @@ public sealed class SystemTypeSemanticCaptureService
 
 	private static bool RoutingRuleHasMappablePart(RoutingPreferenceRule rule)
 	{
-		if (rule == null || rule.MEPPartId == null)
+		if (rule == null || (object)rule.MEPPartId == null)
 		{
 			return false;
 		}
@@ -576,7 +552,7 @@ public sealed class SystemTypeSemanticCaptureService
 
 	private static int TryGetCriterionCount(RoutingPreferenceRule rule)
 	{
-		MethodInfo methodInfo = ((object)rule).GetType().GetMethod("GetNumberOfCriteria", Type.EmptyTypes);
+		MethodInfo methodInfo = rule.GetType().GetMethod("GetNumberOfCriteria", Type.EmptyTypes);
 		if ((object)methodInfo != null)
 		{
 			try
@@ -589,7 +565,7 @@ public sealed class SystemTypeSemanticCaptureService
 				ProjectData.ClearProjectError();
 			}
 		}
-		PropertyInfo propertyInfo = ((object)rule).GetType().GetProperty("NumberOfCriteria");
+		PropertyInfo propertyInfo = rule.GetType().GetProperty("NumberOfCriteria");
 		if ((object)propertyInfo != null)
 		{
 			try
@@ -607,7 +583,7 @@ public sealed class SystemTypeSemanticCaptureService
 
 	private static object TryGetCriterion(RoutingPreferenceRule rule, int index)
 	{
-		MethodInfo methodInfo = ((object)rule).GetType().GetMethod("GetCriterion", new Type[1] { typeof(int) });
+		MethodInfo methodInfo = rule.GetType().GetMethod("GetCriterion", new Type[1] { typeof(int) });
 		object TryGetCriterion;
 		if ((object)methodInfo == null)
 		{
@@ -662,10 +638,7 @@ public sealed class SystemTypeSemanticCaptureService
 
 	private static string BuildCompoundStructureSignature(Document doc, ElementType systemType)
 	{
-		//IL_00cc: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00d1: Unknown result type (might be due to invalid IL or missing references)
-		HostObjAttributes hostAttributes = (HostObjAttributes)(object)((systemType is HostObjAttributes) ? systemType : null);
-		if (hostAttributes == null)
+		if (!(systemType is HostObjAttributes hostAttributes))
 		{
 			return string.Empty;
 		}
@@ -695,7 +668,7 @@ public sealed class SystemTypeSemanticCaptureService
 						materialName = string.Empty;
 						ProjectData.ClearProjectError();
 					}
-					lines.Add(index.ToString(CultureInfo.InvariantCulture) + "|" + Normalize(((Enum)layer.Function/*cast due to .constrained prefix*/).ToString()) + "|" + Normalize(materialName) + "|" + layer.Width.ToString("G17", CultureInfo.InvariantCulture));
+					lines.Add(index.ToString(CultureInfo.InvariantCulture) + "|" + Normalize(layer.Function.ToString()) + "|" + Normalize(materialName) + "|" + layer.Width.ToString("G17", CultureInfo.InvariantCulture));
 				}
 			}
 			catch (Exception projectError2)
@@ -713,23 +686,20 @@ public sealed class SystemTypeSemanticCaptureService
 		{
 			return string.Empty;
 		}
-		List<string> typeNames = (from x in family.GetFamilySymbolIds().Select([SpecialName] (ElementId id) =>
-			{
-				Element element = doc.GetElement(id);
-				return (ElementType)(object)((element is ElementType) ? element : null);
-			})
+		List<string> typeNames = (from id in family.GetFamilySymbolIds()
+			select doc.GetElement(id) as ElementType into x
 			where x != null
-			select ResolveElementName((Element)(object)x)).OrderBy<string, string>([SpecialName] (string x) => Normalize(x), StringComparer.Ordinal).ToList();
+			select ResolveElementName(x)).OrderBy<string, string>([SpecialName] (string x) => Normalize(x), StringComparer.Ordinal).ToList();
 		return ProjectSnapshotFingerprintService.BuildLoadableFingerprint(new ProjectLoadableFamilySnapshotItem
 		{
-			FamilyName = (((Element)family).Name ?? string.Empty),
+			FamilyName = (family.Name ?? string.Empty),
 			CategoryName = ResolveFamilyCategoryName(family),
 			CategoryGroup = ResolveFamilyCategoryGroup(family),
 			TypeCount = typeNames.Count,
 			TypeNames = typeNames,
 			Parameters = CaptureLoadableFamilyParameters(doc, family),
 			ContentFingerprint = LoadableFamilyContentSignatureService.Build(doc, family, loadableContentFingerprintCache, includeDeepLoadableContent),
-			UniqueId = (((Element)family).UniqueId ?? string.Empty),
+			UniqueId = (family.UniqueId ?? string.Empty),
 			IsShared = ResolveIsShared(family)
 		});
 	}
@@ -741,7 +711,7 @@ public sealed class SystemTypeSemanticCaptureService
 		{
 			return result;
 		}
-		foreach (Parameter parameter in (from Parameter x in (IEnumerable)((Element)family).Parameters
+		foreach (Parameter parameter in (from Parameter x in family.Parameters
 			where ShouldCaptureFamilyParameter(x)
 			select x).OrderBy<Parameter, string>([SpecialName] (Parameter x) => Normalize(ResolveParameterName(x)), StringComparer.Ordinal))
 		{
@@ -749,14 +719,12 @@ public sealed class SystemTypeSemanticCaptureService
 		}
 		foreach (ElementId symbolId in family.GetFamilySymbolIds())
 		{
-			Element element = doc.GetElement(symbolId);
-			FamilySymbol symbol = (FamilySymbol)(object)((element is FamilySymbol) ? element : null);
-			if (symbol == null)
+			if (!(doc.GetElement(symbolId) is FamilySymbol symbol))
 			{
 				continue;
 			}
-			string typeName = ResolveElementName((Element)(object)symbol);
-			foreach (Parameter parameter2 in (from Parameter x in (IEnumerable)((Element)symbol).Parameters
+			string typeName = ResolveElementName(symbol);
+			foreach (Parameter parameter2 in (from Parameter x in symbol.Parameters
 				where ShouldCaptureFamilyParameter(x)
 				select x).OrderBy<Parameter, string>([SpecialName] (Parameter x) => Normalize(ResolveParameterName(x)), StringComparer.Ordinal))
 			{
@@ -859,21 +827,7 @@ public sealed class SystemTypeSemanticCaptureService
 		string ResolveParameterName;
 		try
 		{
-			object obj;
-			if (parameter == null)
-			{
-				obj = null;
-			}
-			else
-			{
-				Definition definition = parameter.Definition;
-				obj = ((definition != null) ? definition.Name : null);
-			}
-			if (obj == null)
-			{
-				obj = string.Empty;
-			}
-			ResolveParameterName = (string)obj;
+			ResolveParameterName = parameter?.Definition?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -886,12 +840,10 @@ public sealed class SystemTypeSemanticCaptureService
 
 	private static string ResolveStorageTypeName(Parameter parameter)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Unknown result type (might be due to invalid IL or missing references)
 		string ResolveStorageTypeName;
 		try
 		{
-			ResolveStorageTypeName = ((Enum)parameter.StorageType/*cast due to .constrained prefix*/).ToString();
+			ResolveStorageTypeName = parameter.StorageType.ToString();
 		}
 		catch (Exception projectError)
 		{
@@ -906,7 +858,7 @@ public sealed class SystemTypeSemanticCaptureService
 	{
 		try
 		{
-			if (parameter != null && parameter.Id != null)
+			if (parameter != null && (object)parameter.Id != null)
 			{
 				return RevitElementIdCompat.CompatIntegerValue(parameter.Id).ToString(CultureInfo.InvariantCulture);
 			}
@@ -923,11 +875,9 @@ public sealed class SystemTypeSemanticCaptureService
 	{
 		try
 		{
-			Definition obj = ((parameter != null) ? parameter.Definition : null);
-			ExternalDefinition externalDefinition = (ExternalDefinition)(object)((obj is ExternalDefinition) ? obj : null);
-			if (externalDefinition != null)
+			if (parameter?.Definition is ExternalDefinition { GUID: var gUID })
 			{
-				return externalDefinition.GUID.ToString("D");
+				return gUID.ToString("D");
 			}
 		}
 		catch (Exception projectError)
@@ -999,7 +949,7 @@ public sealed class SystemTypeSemanticCaptureService
 
 	private static string ResolveShape(ElementType systemType, IDictionary<string, string> parameters)
 	{
-		PropertyInfo propertyInfo = ((object)systemType).GetType().GetProperty("Shape");
+		PropertyInfo propertyInfo = systemType.GetType().GetProperty("Shape");
 		if ((object)propertyInfo != null)
 		{
 			try
@@ -1047,8 +997,7 @@ public sealed class SystemTypeSemanticCaptureService
 		string ResolveCategoryName;
 		try
 		{
-			Category category = element.Category;
-			ResolveCategoryName = ((category != null) ? category.Name : null) ?? string.Empty;
+			ResolveCategoryName = element.Category?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -1071,12 +1020,10 @@ public sealed class SystemTypeSemanticCaptureService
 
 	private static bool ResolveIsShared(Family family)
 	{
-		//IL_0011: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0017: Invalid comparison between Unknown and I4
 		try
 		{
-			Parameter parameterValue = ((Element)family)[(BuiltInParameter)(-1012834)];
-			if (parameterValue != null && (int)parameterValue.StorageType == 1)
+			Parameter parameterValue = ((Element)family).get_Parameter(BuiltInParameter.FAMILY_SHARED);
+			if (parameterValue != null && parameterValue.StorageType == StorageType.Integer)
 			{
 				return parameterValue.AsInteger() != 0;
 			}

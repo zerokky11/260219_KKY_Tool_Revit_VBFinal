@@ -9,16 +9,17 @@ public class LoadableFamilyLoadOptions : IFamilyLoadOptions
 		_overwriteParameterValues = overwriteParameterValues;
 	}
 
-	public bool OnFamilyFound(bool familyInUse, ref bool overwriteParameterValues)
+	public bool OnFamilyFound(bool familyInUse, out bool overwriteParameterValues)
 	{
 		overwriteParameterValues = _overwriteParameterValues;
 		return true;
 	}
 
-	public bool OnSharedFamilyFound(Family sharedFamily, bool familyInUse, ref FamilySource source, ref bool overwriteParameterValues)
+	public bool OnSharedFamilyFound(Family sharedFamily, bool familyInUse, out FamilySource source, out bool overwriteParameterValues)
 	{
-		source = (FamilySource)1;
+		source = FamilySource.Family;
 		overwriteParameterValues = _overwriteParameterValues;
 		return true;
 	}
+
 }

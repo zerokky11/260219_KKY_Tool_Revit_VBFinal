@@ -17,11 +17,7 @@ internal sealed class DiagnosticsOutputStore
 		string outputDir = Path.Combine(ResolveWorkspaceRoot(), "Output", "RevitHost");
 		Directory.CreateDirectory(outputDir);
 		string safeDocumentName = MakeSafeFileName(report.DocumentTitle ?? "Untitled");
-		string fileName = "family-browser-diagnostics-" + safeDocumentName + "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".json";
-		string text = Path.Combine(outputDir, fileName);
-		string json = PlainJsonReportWriter.Serialize(report);
-		File.WriteAllText(text, json);
-		return text;
+		return FamilyBrowserUniqueJsonReportStore.Save(outputDir, "family-browser-diagnostics-" + safeDocumentName, report);
 	}
 
 	private static string ResolveWorkspaceRoot()

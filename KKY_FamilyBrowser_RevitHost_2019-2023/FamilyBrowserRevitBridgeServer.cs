@@ -59,7 +59,7 @@ public sealed class FamilyBrowserRevitBridgeServer
 		{
 			try
 			{
-				using NamedPipeServerStream pipe = new NamedPipeServerStream("KKY_FamilyBrowser_RevitBridge", PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.None);
+				using NamedPipeServerStream pipe = new NamedPipeServerStream(FamilyBrowserBridgePipeNames.DefaultPipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.None);
 				pipe.WaitForConnection();
 				if (_stopRequested.WaitOne(0))
 				{
@@ -164,7 +164,7 @@ public sealed class FamilyBrowserRevitBridgeServer
 	{
 		try
 		{
-			using NamedPipeClientStream client = new NamedPipeClientStream(".", "KKY_FamilyBrowser_RevitBridge", PipeDirection.Out);
+			using NamedPipeClientStream client = new NamedPipeClientStream(".", FamilyBrowserBridgePipeNames.DefaultPipeName, PipeDirection.Out);
 			client.Connect(100);
 		}
 		catch (Exception projectError)

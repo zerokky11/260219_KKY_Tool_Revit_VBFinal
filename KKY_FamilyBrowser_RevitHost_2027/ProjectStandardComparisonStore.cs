@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 
 public sealed class ProjectStandardComparisonStore
 {
@@ -17,10 +18,27 @@ public sealed class ProjectStandardComparisonStore
 		Directory.CreateDirectory(outputDir);
 		string safeProjectName = MakeSafeFileName(report.Project.DocumentTitle ?? "Untitled");
 		string safeStandardName = MakeSafeFileName(report.Standard.DisplayName ?? "StandardLibrary");
-		string fileName = "project-vs-standard-" + safeProjectName + "-" + safeStandardName + "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".json";
+		string fileName = "project-vs-standard-" + safeProjectName + "-" + safeStandardName + "-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff", CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".json";
 		string text = Path.Combine(outputDir, fileName);
-		File.WriteAllText(text, PlainJsonReportWriter.Serialize(report));
+		WriteJsonAtomic(text, report);
 		return text;
+	}
+
+	private static void WriteJsonAtomic(string path, object value)
+	{
+		string temporaryPath = FamilyBrowserAtomicFileService.CreateSiblingTemporaryPath(path);
+		try
+		{
+			File.WriteAllText(temporaryPath, PlainJsonReportWriter.Serialize(value), new UTF8Encoding(false));
+			FamilyBrowserAtomicFileService.Promote(temporaryPath, path);
+		}
+		finally
+		{
+			if (File.Exists(temporaryPath))
+			{
+				File.Delete(temporaryPath);
+			}
+		}
 	}
 
 	private static string MakeSafeFileName(string value)

@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -185,7 +184,7 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			if (x != null)
 			{
-				return string.Equals(Normalize(((Element)x).Name), _0024VB_0024Local_normalizedName, StringComparison.Ordinal);
+				return string.Equals(Normalize(x.Name), _0024VB_0024Local_normalizedName, StringComparison.Ordinal);
 			}
 			return false;
 		}
@@ -210,9 +209,9 @@ public sealed class SystemTypeApplyExecutionService
 		[SpecialName]
 		internal bool _Lambda_0024__1(Family x)
 		{
-			if (x != null && ((Element)x).Id != null)
+			if (x != null && (object)x.Id != null)
 			{
-				return !_0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(((Element)x).Id));
+				return !_0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(x.Id));
 			}
 			return false;
 		}
@@ -243,9 +242,9 @@ public sealed class SystemTypeApplyExecutionService
 		[SpecialName]
 		internal bool _Lambda_0024__1(Family x)
 		{
-			if (x != null && ((Element)x).Id != null)
+			if (x != null && (object)x.Id != null)
 			{
-				return !_0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(((Element)x).Id));
+				return !_0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(x.Id));
 			}
 			return false;
 		}
@@ -273,7 +272,7 @@ public sealed class SystemTypeApplyExecutionService
 		[SpecialName]
 		internal bool _Lambda_0024__0(ElementType x)
 		{
-			return string.Equals(((Element)x).Name, _0024VB_0024Local_candidate, StringComparison.OrdinalIgnoreCase);
+			return string.Equals(x.Name, _0024VB_0024Local_candidate, StringComparison.OrdinalIgnoreCase);
 		}
 	}
 
@@ -303,27 +302,27 @@ public sealed class SystemTypeApplyExecutionService
 
 	private const double PipeSegmentSizeTolerance = 1E-09;
 
+	private static readonly HashSet<string> AuthoritativeDetailedRootTypes = new HashSet<string>(new string[2] { "railingtype", "stairstype" }, StringComparer.Ordinal);
+
+	private static readonly HashSet<string> AuthoritativeDetailedNestedTypes = new HashSet<string>(new string[6] { "balusterplacement", "balusterpattern", "balusterinfo", "postpattern", "noncontinuousrailstructure", "noncontinuousrailinfo" }, StringComparer.Ordinal);
+
 	private SystemTypeApplyExecutionService()
 	{
 	}
 
 	public static SystemTypeApplyExecutionReport Execute(Document targetDocument, Document standardDocument, SystemTypePreflightReport preflightReport, string preflightPath, Action<int, int, string> progress = null)
 	{
-		//IL_084f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0856: Expected O, but got Unknown
-		//IL_0858: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0876: Unknown result type (might be due to invalid IL or missing references)
 		if (targetDocument == null)
 		{
-			throw new ArgumentNullException("targetDocument");
+			throw new System.ArgumentNullException("targetDocument");
 		}
 		if (standardDocument == null)
 		{
-			throw new ArgumentNullException("standardDocument");
+			throw new System.ArgumentNullException("standardDocument");
 		}
 		if (preflightReport == null)
 		{
-			throw new ArgumentNullException("preflightReport");
+			throw new System.ArgumentNullException("preflightReport");
 		}
 		SystemTypeApplyExecutionReport report = new SystemTypeApplyExecutionReport
 		{
@@ -441,30 +440,23 @@ public sealed class SystemTypeApplyExecutionService
 							ApplySummarySnapshot summarySnapshot = CaptureApplySummarySnapshot(report.Summary);
 							HashSet<string> refreshedSnapshot = new HashSet<string>(refreshedDependencyFamilies, StringComparer.Ordinal);
 							int dependencyActionCountBefore = resultItem.DependencyActions.Count;
-							TransactionGroup itemGroup = new TransactionGroup(targetDocument, "KKY Family Browser Apply System Type");
+							using TransactionGroup itemGroup = new TransactionGroup(targetDocument, "KKY Family Browser Apply System Type");
+							itemGroup.Start();
 							try
 							{
-								itemGroup.Start();
-								try
-								{
-									ExecutePlannedSystemTypeAction(targetDocument, standardDocument, standardFamilyMap, standardSystemMap, ref targetUsageMap, syncItem, executionPlanItem, dependencyItems, refreshedDependencyFamilies, report, resultItem);
-									itemGroup.Assimilate();
-									resultItem.Messages.Add(T("Atomic system type apply group completed.", "시스템 타입 원자 적용 그룹이 완료되었습니다."));
-								}
-								catch (Exception projectError)
-								{
-									ProjectData.SetProjectError(projectError);
-									TryRollback(itemGroup);
-									RestoreApplySummarySnapshot(report.Summary, summarySnapshot);
-									RestoreRefreshedDependencyFamilies(refreshedDependencyFamilies, refreshedSnapshot);
-									TrimDependencyActions(resultItem, dependencyActionCountBefore);
-									resultItem.Messages.Add(T("Atomic system type apply group was rolled back. Dependency fitting families, non-family routing parts, and the target system type should not remain as a fitting-only partial result.", "시스템 타입 원자 적용 그룹이 롤백되었습니다. 의존 피팅 패밀리, 비패밀리 라우팅 부품, 대상 시스템 타입이 피팅만 적용된 부분 결과로 남지 않아야 합니다."));
-									throw;
-								}
+								ExecutePlannedSystemTypeAction(targetDocument, standardDocument, standardFamilyMap, standardSystemMap, ref targetUsageMap, syncItem, executionPlanItem, dependencyItems, refreshedDependencyFamilies, report, resultItem);
+								itemGroup.Assimilate();
+								resultItem.Messages.Add(T("Atomic system type apply group completed.", "시스템 타입 원자 적용 그룹이 완료되었습니다."));
 							}
-							finally
+							catch (Exception projectError)
 							{
-								((IDisposable)itemGroup)?.Dispose();
+								ProjectData.SetProjectError(projectError);
+								TryRollback(itemGroup);
+								RestoreApplySummarySnapshot(report.Summary, summarySnapshot);
+								RestoreRefreshedDependencyFamilies(refreshedDependencyFamilies, refreshedSnapshot);
+								TrimDependencyActions(resultItem, dependencyActionCountBefore);
+								resultItem.Messages.Add(T("Atomic system type apply group was rolled back. Dependency fitting families, non-family routing parts, and the target system type should not remain as a fitting-only partial result.", "시스템 타입 원자 적용 그룹이 롤백되었습니다. 의존 피팅 패밀리, 비패밀리 라우팅 부품, 대상 시스템 타입이 피팅만 적용된 부분 결과로 남지 않아야 합니다."));
+								throw;
 							}
 						}
 						else
@@ -514,10 +506,6 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void ExecutePlannedSystemTypeAction(Document targetDocument, Document standardDocument, IDictionary<string, Family> standardFamilyMap, IDictionary<string, ElementType> standardSystemMap, ref Dictionary<int, List<ElementId>> targetUsageMap, SystemTypeSyncPlanItem syncItem, SystemSyncExecutionItem executionPlanItem, IEnumerable<RoutingDependencyPreflightItem> dependencyItems, ISet<string> refreshedDependencyFamilies, SystemTypeApplyExecutionReport report, SystemTypeApplyExecutionItem resultItem)
 	{
-		//IL_0128: Unknown result type (might be due to invalid IL or missing references)
-		//IL_012e: Expected O, but got Unknown
-		//IL_012f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0142: Unknown result type (might be due to invalid IL or missing references)
 		string normalizedAction = Normalize(syncItem.Action);
 		bool willMutateSystemType = IsSystemTypeMutationAction(normalizedAction);
 		checked
@@ -545,8 +533,7 @@ public sealed class SystemTypeApplyExecutionService
 			if (SystemTypeSupportPolicyService.RequiresDependencyRefresh(executionPlanItem.SystemFamilyKind) && willMutateSystemType)
 			{
 				AddSystemApplyLog(resultItem, "SystemApply.DependencyEnsure.Start", "action=" + CanonicalSystemTypeActionName(normalizedAction));
-				Transaction tx = new Transaction(targetDocument, "KKY Family Browser Ensure Routing Dependencies");
-				try
+				using (Transaction tx = new Transaction(targetDocument, "KKY Family Browser Ensure Routing Dependencies"))
 				{
 					tx.Start();
 					try
@@ -562,10 +549,6 @@ public sealed class SystemTypeApplyExecutionService
 						throw;
 					}
 				}
-				finally
-				{
-					((IDisposable)tx)?.Dispose();
-				}
 				AddSystemApplyLog(resultItem, "SystemApply.FamilyDependencyLoad.Start", "dependencyActions=" + CountExecutableDependencyActions(dependencyItems).ToString(CultureInfo.InvariantCulture));
 				ApplyDependencyFamilies(targetDocument, standardDocument, standardFamilyMap, dependencyItems, refreshedDependencyFamilies, report, resultItem);
 				RegenerateAfterFamilyLoad(targetDocument, resultItem, "SystemApply.FamilyDependencyLoad.Regenerated");
@@ -573,6 +556,11 @@ public sealed class SystemTypeApplyExecutionService
 				AddSystemApplyLog(resultItem, "SystemApply.RoutingFamilySymbolEnsure.Start", T("Verifying loaded routing FamilySymbol references before the type transaction.", "타입 트랜잭션 전에 로드된 라우팅 FamilySymbol 참조를 확인합니다."));
 				EnsureRoutingFamilySymbolDependencies(targetDocument, standardDocument, standardSystemMap, syncItem, dependencyItems, resultItem);
 				AddSystemApplyLog(resultItem, "SystemApply.RoutingFamilySymbolEnsure.Success", T("Routing family symbols are ready before the type transaction.", "타입 트랜잭션 전에 라우팅 패밀리 심볼이 준비되었습니다."));
+			}
+			if (IsSystemTypeRoutingRebuildAction(normalizedAction))
+			{
+				ElementType sourceType = ResolveStandardSystemType(standardSystemMap, syncItem);
+				PrepareAuthoritativeTypeLoadableDependencies(targetDocument, standardDocument, sourceType, dependencyItems, resultItem);
 			}
 			switch (normalizedAction)
 			{
@@ -619,10 +607,6 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return false;
 		}
-		if (!SystemTypeSupportPolicyService.RequiresDependencyRefresh(executionPlanItem.SystemFamilyKind))
-		{
-			return false;
-		}
 		return IsSystemTypeRoutingRebuildAction(syncItem.Action);
 	}
 
@@ -655,132 +639,128 @@ public sealed class SystemTypeApplyExecutionService
 		return action;
 	}
 
-	private unsafe static bool TargetSystemTypeMatchesStandardRouting(Document targetDocument, Document standardDocument, IDictionary<string, ElementType> standardSystemMap, SystemTypeSyncPlanItem syncItem, SystemTypeApplyExecutionItem resultItem)
+	private static bool TargetSystemTypeMatchesStandardRouting(Document targetDocument, Document standardDocument, IDictionary<string, ElementType> standardSystemMap, SystemTypeSyncPlanItem syncItem, SystemTypeApplyExecutionItem resultItem)
 	{
-		//IL_0119: Unknown result type (might be due to invalid IL or missing references)
-		//IL_011e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0120: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0123: Invalid comparison between Unknown and I4
-		//IL_012c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_013e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_01e8: Unknown result type (might be due to invalid IL or missing references)
-		bool TargetSystemTypeMatchesStandardRouting;
-		if (targetDocument == null || standardDocument == null || syncItem == null)
+		checked
 		{
-			TargetSystemTypeMatchesStandardRouting = false;
-		}
-		else
-		{
-			try
+			bool TargetSystemTypeMatchesStandardRouting;
+			if (targetDocument == null || standardDocument == null || syncItem == null)
 			{
-				ElementType sourceType = ResolveStandardSystemType(standardSystemMap, syncItem);
-				if (sourceType == null)
+				TargetSystemTypeMatchesStandardRouting = false;
+			}
+			else
+			{
+				try
 				{
-					AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", T("The standard system type could not be resolved for live routing comparison.", "실시간 라우팅 비교를 위한 표준 시스템 타입을 확인하지 못했습니다."));
-					TargetSystemTypeMatchesStandardRouting = false;
-				}
-				else
-				{
-					ElementType targetType = null;
-					HashSet<string> requestedKeys = new HashSet<string>(StringComparer.Ordinal) { BuildIdentityKey(syncItem) };
-					BuildSystemTypeMap(targetDocument, requestedKeys).TryGetValue(BuildIdentityKey(syncItem), out targetType);
-					if (targetType == null)
+					ElementType sourceType = ResolveStandardSystemType(standardSystemMap, syncItem);
+					if (sourceType == null)
 					{
-						AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", T("The target system type does not exist for live routing comparison.", "실시간 라우팅 비교를 위한 대상 시스템 타입이 없습니다."));
+						AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", T("The standard system type could not be resolved for live routing comparison.", "실시간 라우팅 비교를 위한 표준 시스템 타입을 확인하지 못했습니다."));
 						TargetSystemTypeMatchesStandardRouting = false;
 					}
 					else
 					{
-						RoutingPreferenceManager sourceManager = TryGetRoutingPreferenceManager(sourceType);
-						RoutingPreferenceManager targetManager = TryGetRoutingPreferenceManager(targetType);
-						if (sourceManager == null && targetManager == null)
+						ElementType targetType = null;
+						HashSet<string> requestedKeys = new HashSet<string>(StringComparer.Ordinal) { BuildIdentityKey(syncItem) };
+						BuildSystemTypeMap(targetDocument, requestedKeys).TryGetValue(BuildIdentityKey(syncItem), out targetType);
+						if (targetType == null)
 						{
-							AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", T("Routing preference manager is unavailable, so the target cannot be proven to match the standard.", "라우팅 환경설정 관리자를 사용할 수 없어 대상이 표준과 일치한다고 증명할 수 없습니다."));
-							TargetSystemTypeMatchesStandardRouting = false;
-						}
-						else if (sourceManager == null || targetManager == null)
-						{
-							AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", T("Routing preference manager availability differs between standard and target.", "표준과 대상의 라우팅 환경설정 관리자 사용 가능 여부가 다릅니다."));
+							AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", T("The target system type does not exist for live routing comparison.", "실시간 라우팅 비교를 위한 대상 시스템 타입이 없습니다."));
 							TargetSystemTypeMatchesStandardRouting = false;
 						}
 						else
 						{
-							foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
+							RoutingPreferenceManager sourceManager = TryGetRoutingPreferenceManager(sourceType);
+							RoutingPreferenceManager targetManager = TryGetRoutingPreferenceManager(targetType);
+							if (sourceManager == null && targetManager == null)
 							{
-								if ((int)group == -1)
+								AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", T("Routing preference manager is unavailable, so the target cannot be proven to match the standard.", "라우팅 환경설정 관리자를 사용할 수 없어 대상이 표준과 일치한다고 증명할 수 없습니다."));
+								TargetSystemTypeMatchesStandardRouting = false;
+							}
+							else if (sourceManager == null || targetManager == null)
+							{
+								AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", T("Routing preference manager availability differs between standard and target.", "표준과 대상의 라우팅 환경설정 관리자 사용 가능 여부가 다릅니다."));
+								TargetSystemTypeMatchesStandardRouting = false;
+							}
+							else
+							{
+								foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
 								{
-									continue;
-								}
-								List<RoutingRuleComparisonItem> expectedRules = BuildExpectedRoutingRulesForComparison(targetDocument, standardDocument, sourceManager, group, resultItem, "SystemApply.KeepDestinationRoutingRuleSkipped");
-								int targetRuleCount = targetManager.GetNumberOfRules(group);
-								if (expectedRules.Count == targetRuleCount)
-								{
-									int num = checked(expectedRules.Count - 1);
-									int index = 0;
-									while (index <= num)
+									if (group == RoutingPreferenceRuleGroupType.Undefined)
 									{
-										RoutingRuleComparisonItem expectedRule = expectedRules[index];
-										RoutingPreferenceRule sourceRule = expectedRule.Rule;
-										RoutingPreferenceRule targetRule = targetManager.GetRule(group, index);
-										if (sourceRule == null || targetRule == null)
+										continue;
+									}
+									List<RoutingRuleComparisonItem> expectedRules = BuildExpectedRoutingRulesForComparison(targetDocument, standardDocument, sourceManager, group, resultItem, "SystemApply.KeepDestinationRoutingRuleSkipped");
+									int targetRuleCount = targetManager.GetNumberOfRules(group);
+									if (expectedRules.Count == targetRuleCount)
+									{
+										int num = expectedRules.Count - 1;
+										int index = 0;
+										while (index <= num)
 										{
-											AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", "A routing rule could not be read. group=" + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " index=" + index.ToString(CultureInfo.InvariantCulture) + " sourceIndex=" + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture));
-											TargetSystemTypeMatchesStandardRouting = false;
-										}
-										else
-										{
-											ElementId expectedTargetPartId = expectedRule.ExpectedTargetPartId;
-											if (!ElementIdsEqual(expectedTargetPartId, targetRule.MEPPartId))
+											RoutingRuleComparisonItem expectedRule = expectedRules[index];
+											RoutingPreferenceRule sourceRule = expectedRule.Rule;
+											RoutingPreferenceRule targetRule = targetManager.GetRule(group, index);
+											if (sourceRule == null || targetRule == null)
 											{
-												AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", "A routing rule mapped part differs. group=" + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " index=" + index.ToString(CultureInfo.InvariantCulture) + " sourceIndex=" + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture) + " expected=" + FormatElementId(expectedTargetPartId) + " actual=" + FormatElementId(targetRule.MEPPartId));
+												AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", "A routing rule could not be read. group=" + group.ToString() + " index=" + index.ToString(CultureInfo.InvariantCulture) + " sourceIndex=" + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture));
 												TargetSystemTypeMatchesStandardRouting = false;
 											}
 											else
 											{
-												Element sourcePart = ((sourceRule.MEPPartId == null || sourceRule.MEPPartId == ElementId.InvalidElementId) ? null : standardDocument.GetElement(sourceRule.MEPPartId));
-												Element targetPart = ((targetRule.MEPPartId == null || targetRule.MEPPartId == ElementId.InvalidElementId) ? null : targetDocument.GetElement(targetRule.MEPPartId));
-												if (sourcePart != null && !RoutingPartDefinitionMatchesForPostCheck(standardDocument, sourcePart, targetDocument, targetPart))
+												ElementId expectedTargetPartId = expectedRule.ExpectedTargetPartId;
+												if (!ElementIdsEqual(expectedTargetPartId, targetRule.MEPPartId))
 												{
-													AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", "A routing part definition differs. group=" + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " index=" + index.ToString(CultureInfo.InvariantCulture) + " sourceIndex=" + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture) + " part=" + ((object)sourcePart).GetType().Name + ":" + ResolveElementName(sourcePart));
+													AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", "A routing rule mapped part differs. group=" + group.ToString() + " index=" + index.ToString(CultureInfo.InvariantCulture) + " sourceIndex=" + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture) + " expected=" + FormatElementId(expectedTargetPartId) + " actual=" + FormatElementId(targetRule.MEPPartId));
 													TargetSystemTypeMatchesStandardRouting = false;
 												}
 												else
 												{
-													if (string.Equals(sourceRule.Description ?? string.Empty, targetRule.Description ?? string.Empty, StringComparison.Ordinal) && ResolveCriterionCount(sourceRule) == ResolveCriterionCount(targetRule))
+													Element sourcePart = (((object)sourceRule.MEPPartId == null || sourceRule.MEPPartId == ElementId.InvalidElementId) ? null : standardDocument.GetElement(sourceRule.MEPPartId));
+													Element targetPart = (((object)targetRule.MEPPartId == null || targetRule.MEPPartId == ElementId.InvalidElementId) ? null : targetDocument.GetElement(targetRule.MEPPartId));
+													if (sourcePart != null && !RoutingPartDefinitionMatchesForPostCheck(standardDocument, sourcePart, targetDocument, targetPart))
 													{
-														index = checked(index + 1);
-														continue;
+														AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", "A routing part definition differs. group=" + group.ToString() + " index=" + index.ToString(CultureInfo.InvariantCulture) + " sourceIndex=" + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture) + " part=" + sourcePart.GetType().Name + ":" + ResolveElementName(sourcePart));
+														TargetSystemTypeMatchesStandardRouting = false;
 													}
-													AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", "Routing rule description or criterion count differs. group=" + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " index=" + index.ToString(CultureInfo.InvariantCulture) + " sourceIndex=" + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture));
-													TargetSystemTypeMatchesStandardRouting = false;
+													else
+													{
+														if (string.Equals(sourceRule.Description ?? string.Empty, targetRule.Description ?? string.Empty, StringComparison.Ordinal) && ResolveCriterionCount(sourceRule) == ResolveCriterionCount(targetRule))
+														{
+															index++;
+															continue;
+														}
+														AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", "Routing rule description or criterion count differs. group=" + group.ToString() + " index=" + index.ToString(CultureInfo.InvariantCulture) + " sourceIndex=" + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture));
+														TargetSystemTypeMatchesStandardRouting = false;
+													}
 												}
 											}
+											goto end_IL_0011;
 										}
-										goto end_IL_0011;
+										continue;
 									}
-									continue;
+									AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", "Effective routing rule count differs. group=" + group.ToString() + " source=" + expectedRules.Count.ToString(CultureInfo.InvariantCulture) + " target=" + targetRuleCount.ToString(CultureInfo.InvariantCulture));
+									TargetSystemTypeMatchesStandardRouting = false;
+									goto end_IL_0011;
 								}
-								AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", "Effective routing rule count differs. group=" + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " source=" + expectedRules.Count.ToString(CultureInfo.InvariantCulture) + " target=" + targetRuleCount.ToString(CultureInfo.InvariantCulture));
-								TargetSystemTypeMatchesStandardRouting = false;
-								goto end_IL_0011;
+								AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationAccepted", T("Live routing preference comparison matched the standard.", "실시간 라우팅 환경설정 비교 결과가 표준과 일치합니다."));
+								TargetSystemTypeMatchesStandardRouting = true;
 							}
-							AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationAccepted", T("Live routing preference comparison matched the standard.", "실시간 라우팅 환경설정 비교 결과가 표준과 일치합니다."));
-							TargetSystemTypeMatchesStandardRouting = true;
 						}
 					}
+					end_IL_0011:;
 				}
-				end_IL_0011:;
+				catch (Exception ex)
+				{
+					ProjectData.SetProjectError(ex);
+					Exception ex2 = ex;
+					AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", T("Live routing comparison failed: ", "실시간 라우팅 비교 실패: ") + ResolveExceptionMessage(ex2));
+					TargetSystemTypeMatchesStandardRouting = false;
+					ProjectData.ClearProjectError();
+				}
 			}
-			catch (Exception ex)
-			{
-				ProjectData.SetProjectError(ex);
-				Exception ex2 = ex;
-				AddSystemApplyLog(resultItem, "SystemApply.KeepDestinationRejected", T("Live routing comparison failed: ", "실시간 라우팅 비교 실패: ") + ResolveExceptionMessage(ex2));
-				TargetSystemTypeMatchesStandardRouting = false;
-				ProjectData.ClearProjectError();
-			}
+			return TargetSystemTypeMatchesStandardRouting;
 		}
-		return TargetSystemTypeMatchesStandardRouting;
 	}
 
 	private static bool IsSystemTypeRoutingRebuildAction(string action)
@@ -854,7 +834,7 @@ public sealed class SystemTypeApplyExecutionService
 				ElementType targetType = null;
 				HashSet<string> requestedKeys = new HashSet<string>(StringComparer.Ordinal) { BuildIdentityKey(syncItem) };
 				BuildSystemTypeMap(targetDocument, requestedKeys).TryGetValue(BuildIdentityKey(syncItem), out targetType);
-				ResolveTargetSystemTypeState = ((targetType != null) ? (((object)targetType).GetType().Name + ":" + ResolveElementName((Element)(object)targetType) + ":" + FormatElementId(((Element)targetType).Id)) : "missing");
+				ResolveTargetSystemTypeState = ((targetType != null) ? (targetType.GetType().Name + ":" + ResolveElementName(targetType) + ":" + FormatElementId(targetType.Id)) : "missing");
 			}
 			catch (Exception ex)
 			{
@@ -887,21 +867,15 @@ public sealed class SystemTypeApplyExecutionService
 				LoadStandardDependencyFamily(targetDocument, standardDocument, standardFamilyMap, dependencyItem, dependencyItemList, loadOptions, refreshedDependencyFamilies, report, resultItem);
 				break;
 			case "manualreviewnameonlymatch":
-				throw new InvalidOperationException(T("A dependency family with the same name exists, but its canonical category identity differs from the standard RVT. Review it before applying the system type: ", "같은 이름의 의존 패밀리가 있지만 표준 RVT의 카테고리 기준과 다릅니다. 시스템 타입 적용 전에 검토하세요: ") + dependencyItem.SourceFamilyName);
+				throw new System.InvalidOperationException(T("A dependency family with the same name exists, but its canonical category identity differs from the standard RVT. Review it before applying the system type: ", "같은 이름의 의존 패밀리가 있지만 표준 RVT의 카테고리 기준과 다릅니다. 시스템 타입 적용 전에 검토하세요: ") + dependencyItem.SourceFamilyName);
 			default:
-				throw new InvalidOperationException(T("Unsupported dependency action was found during system type apply: ", "시스템 타입 적용 중 지원하지 않는 의존 작업이 발견되었습니다: ") + dependencyItem.Action);
+				throw new System.InvalidOperationException(T("Unsupported dependency action was found during system type apply: ", "시스템 타입 적용 중 지원하지 않는 의존 작업이 발견되었습니다: ") + dependencyItem.Action);
 			}
 		}
 	}
 
-	private unsafe static void EnsureNonFamilyRoutingDependencies(Document targetDocument, Document standardDocument, IDictionary<string, ElementType> standardSystemMap, SystemTypeSyncPlanItem syncItem, SystemTypeApplyExecutionItem resultItem)
+	private static void EnsureNonFamilyRoutingDependencies(Document targetDocument, Document standardDocument, IDictionary<string, ElementType> standardSystemMap, SystemTypeSyncPlanItem syncItem, SystemTypeApplyExecutionItem resultItem)
 	{
-		//IL_0099: Unknown result type (might be due to invalid IL or missing references)
-		//IL_009e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a0: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a3: Invalid comparison between Unknown and I4
-		//IL_00aa: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00d6: Unknown result type (might be due to invalid IL or missing references)
 		if (targetDocument == null || standardDocument == null || syncItem == null)
 		{
 			return;
@@ -911,99 +885,31 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return;
 		}
-		RoutingPreferenceManager manager = TryGetRoutingPreferenceManager(ResolveStandardSystemType(standardSystemMap, syncItem) ?? throw new InvalidOperationException(T("The source system type was not found in the registered standard RVT before non-family routing dependency ensure: ", "비패밀리 라우팅 의존성 보정 전에 등록된 표준 RVT에서 원본 시스템 타입을 찾지 못했습니다: ") + syncItem.SourceTypeName));
+		RoutingPreferenceManager manager = TryGetRoutingPreferenceManager(ResolveStandardSystemType(standardSystemMap, syncItem) ?? throw new System.InvalidOperationException(T("The source system type was not found in the registered standard RVT before non-family routing dependency ensure: ", "비패밀리 라우팅 의존성 보정 전에 등록된 표준 RVT에서 원본 시스템 타입을 찾지 못했습니다: ") + syncItem.SourceTypeName));
 		if (manager == null)
 		{
 			return;
 		}
 		HashSet<int> ensuredSegments = new HashSet<int>();
-		foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
+		checked
 		{
-			if ((int)group == -1)
+			foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
 			{
-				continue;
-			}
-			int ruleCount;
-			try
-			{
-				ruleCount = manager.GetNumberOfRules(group);
-			}
-			catch (Exception projectError)
-			{
-				ProjectData.SetProjectError(projectError);
-				ProjectData.ClearProjectError();
-				continue;
-			}
-			int num = checked(ruleCount - 1);
-			for (int index = 0; index <= num; index = checked(index + 1))
-			{
-				RoutingPreferenceRule rule = null;
+				if (group == RoutingPreferenceRuleGroupType.Undefined)
+				{
+					continue;
+				}
+				int ruleCount;
 				try
 				{
-					rule = manager.GetRule(group, index);
+					ruleCount = manager.GetNumberOfRules(group);
 				}
-				catch (Exception projectError2)
+				catch (Exception projectError)
 				{
-					ProjectData.SetProjectError(projectError2);
+					ProjectData.SetProjectError(projectError);
 					ProjectData.ClearProjectError();
 					continue;
 				}
-				Element obj = ((((rule != null) ? rule.MEPPartId : null) == null || rule.MEPPartId == ElementId.InvalidElementId) ? null : standardDocument.GetElement(rule.MEPPartId));
-				PipeSegment sourceSegment = (PipeSegment)(object)((obj is PipeSegment) ? obj : null);
-				if (sourceSegment != null && ((Element)sourceSegment).Id != null && !ensuredSegments.Contains(RevitElementIdCompat.CompatIntegerValue(((Element)sourceSegment).Id)))
-				{
-					ensuredSegments.Add(RevitElementIdCompat.CompatIntegerValue(((Element)sourceSegment).Id));
-					EnsurePipeSegmentAuthoritative(targetDocument, standardDocument, sourceSegment, SystemTypeApplyAuthorityMode.AdminAuthoritative, resultItem);
-					AddResultMessage(resultItem, T("Non-family routing dependency ensured before fitting family load. Rule group: ", "피팅 패밀리 로드 전에 비패밀리 라우팅 의존성을 보정했습니다. 규칙 그룹: ") + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + T(" / Segment: ", " / 세그먼트: ") + ResolveElementName((Element)(object)sourceSegment));
-				}
-			}
-		}
-	}
-
-	private unsafe static void EnsureRoutingFamilySymbolDependencies(Document targetDocument, Document standardDocument, IDictionary<string, ElementType> standardSystemMap, SystemTypeSyncPlanItem syncItem, IEnumerable<RoutingDependencyPreflightItem> dependencyItems, SystemTypeApplyExecutionItem resultItem)
-	{
-		//IL_00b1: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00b6: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00b8: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00bb: Invalid comparison between Unknown and I4
-		//IL_00c2: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00ee: Unknown result type (might be due to invalid IL or missing references)
-		if (targetDocument == null || standardDocument == null || syncItem == null)
-		{
-			return;
-		}
-		string left = Normalize(syncItem.Action);
-		if (Operators.CompareString(left, "createmissingtype", TextCompare: false) != 0 && Operators.CompareString(left, "overwritedestination", TextCompare: false) != 0)
-		{
-			return;
-		}
-		RoutingPreferenceManager manager = TryGetRoutingPreferenceManager(ResolveStandardSystemType(standardSystemMap, syncItem) ?? throw new InvalidOperationException(T("The source system type was not found in the registered standard RVT before routing family ensure: ", "라우팅 패밀리 보정 전에 등록된 표준 RVT에서 원본 시스템 타입을 찾지 못했습니다: ") + syncItem.SourceTypeName));
-		if (manager == null)
-		{
-			AddSystemApplyLog(resultItem, "SystemApply.RoutingFamilySymbolEnsure.Skipped", "The source system type has no readable routing preference manager.");
-			return;
-		}
-		HashSet<string> ensuredSymbols = new HashSet<string>(StringComparer.Ordinal);
-		int inspectedCount = 0;
-		foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
-		{
-			if ((int)group == -1)
-			{
-				continue;
-			}
-			int ruleCount;
-			try
-			{
-				ruleCount = manager.GetNumberOfRules(group);
-			}
-			catch (Exception projectError)
-			{
-				ProjectData.SetProjectError(projectError);
-				ProjectData.ClearProjectError();
-				continue;
-			}
-			checked
-			{
 				int num = ruleCount - 1;
 				for (int index = 0; index <= num; index++)
 				{
@@ -1018,30 +924,84 @@ public sealed class SystemTypeApplyExecutionService
 						ProjectData.ClearProjectError();
 						continue;
 					}
-					Element obj = ((((rule != null) ? rule.MEPPartId : null) == null || rule.MEPPartId == ElementId.InvalidElementId) ? null : standardDocument.GetElement(rule.MEPPartId));
-					FamilySymbol sourceSymbol = (FamilySymbol)(object)((obj is FamilySymbol) ? obj : null);
-					if (sourceSymbol != null)
+					if ((((object)rule?.MEPPartId == null || rule.MEPPartId == ElementId.InvalidElementId) ? null : standardDocument.GetElement(rule.MEPPartId)) is PipeSegment { Id: not null } sourceSegment && !ensuredSegments.Contains(RevitElementIdCompat.CompatIntegerValue(sourceSegment.Id)))
+					{
+						ensuredSegments.Add(RevitElementIdCompat.CompatIntegerValue(sourceSegment.Id));
+						EnsurePipeSegmentAuthoritative(targetDocument, standardDocument, sourceSegment, SystemTypeApplyAuthorityMode.AdminAuthoritative, resultItem);
+						AddResultMessage(resultItem, T("Non-family routing dependency ensured before fitting family load. Rule group: ", "피팅 패밀리 로드 전에 비패밀리 라우팅 의존성을 보정했습니다. 규칙 그룹: ") + group.ToString() + T(" / Segment: ", " / 세그먼트: ") + ResolveElementName(sourceSegment));
+					}
+				}
+			}
+		}
+	}
+
+	private static void EnsureRoutingFamilySymbolDependencies(Document targetDocument, Document standardDocument, IDictionary<string, ElementType> standardSystemMap, SystemTypeSyncPlanItem syncItem, IEnumerable<RoutingDependencyPreflightItem> dependencyItems, SystemTypeApplyExecutionItem resultItem)
+	{
+		if (targetDocument == null || standardDocument == null || syncItem == null)
+		{
+			return;
+		}
+		string left = Normalize(syncItem.Action);
+		if (Operators.CompareString(left, "createmissingtype", TextCompare: false) != 0 && Operators.CompareString(left, "overwritedestination", TextCompare: false) != 0)
+		{
+			return;
+		}
+		RoutingPreferenceManager manager = TryGetRoutingPreferenceManager(ResolveStandardSystemType(standardSystemMap, syncItem) ?? throw new System.InvalidOperationException(T("The source system type was not found in the registered standard RVT before routing family ensure: ", "라우팅 패밀리 보정 전에 등록된 표준 RVT에서 원본 시스템 타입을 찾지 못했습니다: ") + syncItem.SourceTypeName));
+		if (manager == null)
+		{
+			AddSystemApplyLog(resultItem, "SystemApply.RoutingFamilySymbolEnsure.Skipped", "The source system type has no readable routing preference manager.");
+			return;
+		}
+		HashSet<string> ensuredSymbols = new HashSet<string>(StringComparer.Ordinal);
+		int inspectedCount = 0;
+		checked
+		{
+			foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
+			{
+				if (group == RoutingPreferenceRuleGroupType.Undefined)
+				{
+					continue;
+				}
+				int ruleCount;
+				try
+				{
+					ruleCount = manager.GetNumberOfRules(group);
+				}
+				catch (Exception projectError)
+				{
+					ProjectData.SetProjectError(projectError);
+					ProjectData.ClearProjectError();
+					continue;
+				}
+				int num = ruleCount - 1;
+				for (int index = 0; index <= num; index++)
+				{
+					RoutingPreferenceRule rule = null;
+					try
+					{
+						rule = manager.GetRule(group, index);
+					}
+					catch (Exception projectError2)
+					{
+						ProjectData.SetProjectError(projectError2);
+						ProjectData.ClearProjectError();
+						continue;
+					}
+					if ((((object)rule?.MEPPartId == null || rule.MEPPartId == ElementId.InvalidElementId) ? null : standardDocument.GetElement(rule.MEPPartId)) is FamilySymbol sourceSymbol)
 					{
 						string symbolKey = BuildRoutingFamilySymbolKey(sourceSymbol);
 						if (!ensuredSymbols.Contains(symbolKey))
 						{
 							inspectedCount++;
 							ensuredSymbols.Add(symbolKey);
-							string[] obj2 = new string[6] { "family=", null, null, null, null, null };
-							Family family = sourceSymbol.Family;
-							obj2[1] = ((family != null) ? ((Element)family).Name : null) ?? string.Empty;
-							obj2[2] = " type=";
-							obj2[3] = ResolveElementName((Element)(object)sourceSymbol);
-							obj2[4] = " group=";
-							obj2[5] = ((Enum)(*unchecked((RoutingPreferenceRuleGroupType*)(&group)))/*cast due to .constrained prefix*/).ToString();
-							AddSystemApplyLog(resultItem, "SystemApply.RoutingFamilySymbolEnsure.Item", string.Concat(obj2));
+							AddSystemApplyLog(resultItem, "SystemApply.RoutingFamilySymbolEnsure.Item", "family=" + (sourceSymbol.Family?.Name ?? string.Empty) + " type=" + ResolveElementName(sourceSymbol) + " group=" + group);
 							EnsureRoutingFamilySymbolLoaded(targetDocument, standardDocument, sourceSymbol, dependencyItems, resultItem);
 						}
 					}
 				}
 			}
+			AddSystemApplyLog(resultItem, "SystemApply.RoutingFamilySymbolEnsure.Checked", "symbols=" + inspectedCount.ToString(CultureInfo.InvariantCulture));
 		}
-		AddSystemApplyLog(resultItem, "SystemApply.RoutingFamilySymbolEnsure.Checked", "symbols=" + inspectedCount.ToString(CultureInfo.InvariantCulture));
 	}
 
 	private static void LoadStandardDependencyFamily(Document targetDocument, Document standardDocument, IDictionary<string, Family> standardFamilyMap, RoutingDependencyPreflightItem dependencyItem, IEnumerable<RoutingDependencyPreflightItem> selectedDependencyItems, LoadableFamilyLoadOptions loadOptions, ISet<string> refreshedDependencyFamilies, SystemTypeApplyExecutionReport report, SystemTypeApplyExecutionItem resultItem)
@@ -1055,15 +1015,15 @@ public sealed class SystemTypeApplyExecutionService
 		Family standardFamily = ResolveStandardDependencyFamily(standardFamilyMap, dependencyItem);
 		if (standardFamily == null)
 		{
-			throw new InvalidOperationException(T("The required dependency family was not found in the registered standard RVT: ", "필요한 의존 패밀리를 등록된 표준 RVT에서 찾지 못했습니다: ") + dependencyItem.SourceFamilyName);
+			throw new System.InvalidOperationException(T("The required dependency family was not found in the registered standard RVT: ", "필요한 의존 패밀리를 등록된 표준 RVT에서 찾지 못했습니다: ") + dependencyItem.SourceFamilyName);
 		}
 		if (standardFamily.IsInPlace)
 		{
-			throw new InvalidOperationException(T("In-place dependency families cannot be loaded for system type apply: ", "내부 의존 패밀리는 시스템 타입 적용을 위해 로드할 수 없습니다: ") + dependencyItem.SourceFamilyName);
+			throw new System.InvalidOperationException(T("In-place dependency families cannot be loaded for system type apply: ", "내부 의존 패밀리는 시스템 타입 적용을 위해 로드할 수 없습니다: ") + dependencyItem.SourceFamilyName);
 		}
 		if (!standardFamily.IsEditable)
 		{
-			throw new InvalidOperationException(T("The dependency family exists in the standard RVT but is not editable through the Revit API: ", "의존 패밀리가 표준 RVT에 있지만 Revit API로 편집할 수 없습니다: ") + dependencyItem.SourceFamilyName);
+			throw new System.InvalidOperationException(T("The dependency family exists in the standard RVT but is not editable through the Revit API: ", "의존 패밀리가 표준 RVT에 있지만 Revit API로 편집할 수 없습니다: ") + dependencyItem.SourceFamilyName);
 		}
 		EnsureDependencyFamilyCanOverwrite(targetDocument, standardFamily, dependencyItem);
 		Document familyDoc = null;
@@ -1074,10 +1034,10 @@ public sealed class SystemTypeApplyExecutionService
 				ISet<int> familyStateBefore = CaptureFamilyNameState(targetDocument);
 				familyDoc = standardDocument.EditFamily(standardFamily);
 				List<AllowedLoadedFamilyIdentity> allowedLoadedFamilies = BuildAllowedLoadedFamilyIdentities(standardFamily, familyDoc, standardDocument, selectedDependencyItems, new List<string> { dependencyItem.SourceFamilyName });
-				Family loadedFamily = familyDoc.LoadFamily(targetDocument, (IFamilyLoadOptions)(object)loadOptions);
+				Family loadedFamily = familyDoc.LoadFamily(targetDocument, loadOptions);
 				if (loadedFamily == null)
 				{
-					throw new InvalidOperationException(T("Revit returned no family reference after dependency load: ", "의존 패밀리 로드 후 Revit이 패밀리 참조를 반환하지 않았습니다: ") + dependencyItem.SourceFamilyName);
+					throw new System.InvalidOperationException(T("Revit returned no family reference after dependency load: ", "의존 패밀리 로드 후 Revit이 패밀리 참조를 반환하지 않았습니다: ") + dependencyItem.SourceFamilyName);
 				}
 				RegenerateAfterFamilyLoad(targetDocument, resultItem, "DependencyFamilyLoad.Regenerated", dependencyItem.SourceFamilyName);
 				GuardDependencyLoadDidNotCreateDuplicateFamilies(targetDocument, familyStateBefore, standardFamily, dependencyItem, loadedFamily, allowedLoadedFamilies, resultItem);
@@ -1092,7 +1052,7 @@ public sealed class SystemTypeApplyExecutionService
 				{
 					try
 					{
-						familyDoc.Close(false);
+						familyDoc.Close(saveModified: false);
 					}
 					catch (Exception projectError)
 					{
@@ -1106,18 +1066,13 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void ExecuteCreateMissingType(Document targetDocument, Document standardDocument, IDictionary<string, ElementType> standardSystemMap, IDictionary<int, List<ElementId>> targetUsageMap, SystemTypeSyncPlanItem syncItem, IEnumerable<RoutingDependencyPreflightItem> dependencyItems, SystemTypeApplyExecutionItem resultItem, SystemTypeApplyExecutionReport report)
 	{
-		//IL_0029: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002f: Expected O, but got Unknown
-		//IL_0030: Unknown result type (might be due to invalid IL or missing references)
-		//IL_009e: Unknown result type (might be due to invalid IL or missing references)
 		ElementType sourceType = ResolveStandardSystemType(standardSystemMap, syncItem);
 		if (sourceType == null)
 		{
-			throw new InvalidOperationException(T("The source system type was not found in the registered standard RVT.", "등록된 표준 RVT에서 원본 시스템 타입을 찾지 못했습니다."));
+			throw new System.InvalidOperationException(T("The source system type was not found in the registered standard RVT.", "등록된 표준 RVT에서 원본 시스템 타입을 찾지 못했습니다."));
 		}
 		ElementType copiedType = null;
-		Transaction tx = new Transaction(targetDocument, "KKY Family Browser Create System Type");
-		try
+		using (Transaction tx = new Transaction(targetDocument, "KKY Family Browser Create System Type"))
 		{
 			tx.Start();
 			try
@@ -1141,10 +1096,14 @@ public sealed class SystemTypeApplyExecutionService
 				else
 				{
 					copiedType = CopyCanonicalType(targetDocument, standardDocument, syncItem, sourceType, dependencyItems);
+					if (copiedType != null)
+					{
+						ApplyStandardSystemTypeDefinition(targetDocument, standardDocument, sourceType, copiedType, dependencyItems, resultItem);
+					}
 				}
 				if (copiedType == null)
 				{
-					throw new InvalidOperationException(T("The canonical system type was not copied into the target project.", "표준 시스템 타입이 대상 프로젝트로 복사되지 않았습니다."));
+					throw new System.InvalidOperationException(T("The canonical system type was not copied into the target project.", "표준 시스템 타입이 대상 프로젝트로 복사되지 않았습니다."));
 				}
 				tx.Commit();
 			}
@@ -1155,16 +1114,12 @@ public sealed class SystemTypeApplyExecutionService
 				throw;
 			}
 		}
-		finally
-		{
-			((IDisposable)tx)?.Dispose();
-		}
 		if (copiedType == null)
 		{
-			throw new InvalidOperationException(T("The canonical system type was not copied into the target project.", "표준 시스템 타입이 대상 프로젝트로 복사되지 않았습니다."));
+			throw new System.InvalidOperationException(T("The canonical system type was not copied into the target project.", "표준 시스템 타입이 대상 프로젝트로 복사되지 않았습니다."));
 		}
 		resultItem.Outcome = "Created";
-		resultItem.AppliedTypeName = ((Element)copiedType).Name;
+		resultItem.AppliedTypeName = copiedType.Name;
 		resultItem.Details = T("Canonical system type copied from the registered standard RVT.", "등록된 표준 RVT에서 표준 시스템 타입을 복사했습니다.");
 		checked
 		{
@@ -1174,21 +1129,16 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void ExecuteOverwriteDestination(Document targetDocument, Document standardDocument, IDictionary<string, ElementType> standardSystemMap, IDictionary<int, List<ElementId>> targetUsageMap, SystemTypeSyncPlanItem syncItem, IEnumerable<RoutingDependencyPreflightItem> dependencyItems, SystemTypeApplyExecutionItem resultItem, SystemTypeApplyExecutionReport report)
 	{
-		//IL_0034: Unknown result type (might be due to invalid IL or missing references)
-		//IL_003b: Expected O, but got Unknown
-		//IL_003d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0115: Unknown result type (might be due to invalid IL or missing references)
 		ElementType sourceType = ResolveStandardSystemType(standardSystemMap, syncItem);
 		if (sourceType == null)
 		{
-			throw new InvalidOperationException(T("The source system type was not found in the registered standard RVT.", "등록된 표준 RVT에서 원본 시스템 타입을 찾지 못했습니다."));
+			throw new System.InvalidOperationException(T("The source system type was not found in the registered standard RVT.", "등록된 표준 RVT에서 원본 시스템 타입을 찾지 못했습니다."));
 		}
 		ElementType copiedType = null;
 		string backupName = string.Empty;
 		int retypedCount = 0;
 		int deletedCount = 0;
-		Transaction tx = new Transaction(targetDocument, "KKY Family Browser Overwrite System Type");
-		try
+		using (Transaction tx = new Transaction(targetDocument, "KKY Family Browser Overwrite System Type"))
 		{
 			tx.Start();
 			try
@@ -1198,7 +1148,7 @@ public sealed class SystemTypeApplyExecutionService
 				ElementType existingType = null;
 				if (!dictionary.TryGetValue(identityKey, out existingType) || existingType == null)
 				{
-					throw new InvalidOperationException(T("The destination system type was not found for overwrite: ", "덮어쓸 대상 시스템 타입을 찾지 못했습니다: ") + syncItem.SourceTypeName);
+					throw new System.InvalidOperationException(T("The destination system type was not found for overwrite: ", "덮어쓸 대상 시스템 타입을 찾지 못했습니다: ") + syncItem.SourceTypeName);
 				}
 				if (CanRebuildTypeInDestination(sourceType))
 				{
@@ -1211,8 +1161,9 @@ public sealed class SystemTypeApplyExecutionService
 					copiedType = CopyCanonicalType(targetDocument, standardDocument, syncItem, sourceType, dependencyItems);
 					if (copiedType == null)
 					{
-						throw new InvalidOperationException(T("The canonical system type copy did not return a destination type.", "표준 시스템 타입 복사 후 대상 타입이 반환되지 않았습니다."));
+						throw new System.InvalidOperationException(T("The canonical system type copy did not return a destination type.", "표준 시스템 타입 복사 후 대상 타입이 반환되지 않았습니다."));
 					}
+					ApplyStandardSystemTypeDefinition(targetDocument, standardDocument, sourceType, copiedType, dependencyItems, resultItem);
 				}
 				List<ElementType> obsoleteTypes = new List<ElementType> { existingType };
 				if (copiedType == existingType)
@@ -1230,12 +1181,8 @@ public sealed class SystemTypeApplyExecutionService
 				throw;
 			}
 		}
-		finally
-		{
-			((IDisposable)tx)?.Dispose();
-		}
 		resultItem.Outcome = "Overwritten";
-		resultItem.AppliedTypeName = ((copiedType != null) ? ((Element)copiedType).Name : null) ?? syncItem.SourceTypeName;
+		resultItem.AppliedTypeName = copiedType?.Name ?? syncItem.SourceTypeName;
 		resultItem.BackupTypeName = backupName;
 		resultItem.RetypedElementCount = retypedCount;
 		resultItem.DeletedObsoleteTypeCount = deletedCount;
@@ -1250,24 +1197,14 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void ExecuteConsolidateDuplicateTypes(Document targetDocument, IDictionary<int, List<ElementId>> targetUsageMap, SystemTypeSyncPlanItem syncItem, SystemTypeApplyExecutionItem resultItem, SystemTypeApplyExecutionReport report)
 	{
-		//IL_000a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0010: Expected O, but got Unknown
-		//IL_0011: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0023: Expected O, but got Unknown
-		//IL_0024: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0075: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0097: Unknown result type (might be due to invalid IL or missing references)
 		int retypedCount = 0;
 		int deletedCount = 0;
-		TransactionGroup group = new TransactionGroup(targetDocument, "KKY Family Browser Consolidate System Types");
-		try
+		using (TransactionGroup group = new TransactionGroup(targetDocument, "KKY Family Browser Consolidate System Types"))
 		{
 			group.Start();
 			try
 			{
-				Transaction tx = new Transaction(targetDocument, "KKY Family Browser Consolidate System Types");
-				try
+				using (Transaction tx = new Transaction(targetDocument, "KKY Family Browser Consolidate System Types"))
 				{
 					tx.Start();
 					try
@@ -1276,7 +1213,7 @@ public sealed class SystemTypeApplyExecutionService
 						ElementType canonicalType = null;
 						if (!dictionary.TryGetValue(BuildIdentityKey(syncItem), out canonicalType) || canonicalType == null)
 						{
-							throw new InvalidOperationException(T("The canonical destination type was not found for duplicate consolidation.", "중복 타입 정리를 위한 표준 대상 타입을 찾지 못했습니다."));
+							throw new System.InvalidOperationException(T("The canonical destination type was not found for duplicate consolidation.", "중복 타입 정리를 위한 표준 대상 타입을 찾지 못했습니다."));
 						}
 						IEnumerable<ElementType> obsoleteTypes = ResolveDuplicateTypes(targetDocument, syncItem);
 						ConsolidateObsoleteTypes(targetDocument, targetUsageMap, obsoleteTypes, canonicalType, ref retypedCount, ref deletedCount);
@@ -1289,10 +1226,6 @@ public sealed class SystemTypeApplyExecutionService
 						throw;
 					}
 				}
-				finally
-				{
-					((IDisposable)tx)?.Dispose();
-				}
 				group.Assimilate();
 			}
 			catch (Exception projectError2)
@@ -1301,10 +1234,6 @@ public sealed class SystemTypeApplyExecutionService
 				TryRollback(group);
 				throw;
 			}
-		}
-		finally
-		{
-			((IDisposable)group)?.Dispose();
 		}
 		resultItem.Outcome = "Consolidated";
 		resultItem.AppliedTypeName = syncItem.SourceTypeName;
@@ -1321,15 +1250,12 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static ElementType CopyCanonicalType(Document targetDocument, Document standardDocument, SystemTypeSyncPlanItem syncItem, ElementType sourceType, IEnumerable<RoutingDependencyPreflightItem> dependencyItems)
 	{
-		//IL_000d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0013: Expected O, but got Unknown
 		ISet<int> familyStateBefore = CaptureFamilyNameState(targetDocument);
 		List<Element> copiedElements = new List<Element>();
-		CopyPasteOptions options = new CopyPasteOptions();
-		try
+		using (CopyPasteOptions options = new CopyPasteOptions())
 		{
-			options.SetDuplicateTypeNamesHandler((IDuplicateTypeNamesHandler)(object)new CopyPasteUseDestinationTypesHandler());
-			ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(standardDocument, (ICollection<ElementId>)new List<ElementId> { ((Element)sourceType).Id }, targetDocument, Transform.Identity, options);
+			options.SetDuplicateTypeNamesHandler(new CopyPasteUseDestinationTypesHandler());
+			ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(standardDocument, new List<ElementId> { sourceType.Id }, targetDocument, Transform.Identity, options);
 			if (copiedIds != null)
 			{
 				foreach (ElementId copiedId in copiedIds)
@@ -1342,10 +1268,6 @@ public sealed class SystemTypeApplyExecutionService
 				}
 			}
 		}
-		finally
-		{
-			((IDisposable)options)?.Dispose();
-		}
 		targetDocument.Regenerate();
 		GuardAgainstCopiedFamilies(targetDocument, familyStateBefore, dependencyItems);
 		Dictionary<string, ElementType> dictionary = BuildSystemTypeMap(targetDocument);
@@ -1353,11 +1275,11 @@ public sealed class SystemTypeApplyExecutionService
 		dictionary.TryGetValue(BuildIdentityKey(syncItem), out copiedType);
 		if (copiedType == null)
 		{
-			throw new CriticalSystemTypeReferenceException(T("System type copy did not create the exact canonical identity. ", "시스템 타입 복사 후 정확한 표준 식별자가 생성되지 않았습니다. ") + T("The operation was stopped to avoid leaving duplicate or numbered system types. ", "중복 또는 번호가 붙은 시스템 타입이 남지 않도록 작업을 중단했습니다. ") + T("Standard: ", "표준: ") + ((object)sourceType).GetType().Name + " : " + ResolveElementName((Element)(object)sourceType) + T(" / Copied: ", " / 복사됨: ") + BuildCopiedElementSummary(copiedElements));
+			throw new CriticalSystemTypeReferenceException(T("System type copy did not create the exact canonical identity. ", "시스템 타입 복사 후 정확한 표준 식별자가 생성되지 않았습니다. ") + T("The operation was stopped to avoid leaving duplicate or numbered system types. ", "중복 또는 번호가 붙은 시스템 타입이 남지 않도록 작업을 중단했습니다. ") + T("Standard: ", "표준: ") + sourceType.GetType().Name + " : " + ResolveElementName(sourceType) + T(" / Copied: ", " / 복사됨: ") + BuildCopiedElementSummary(copiedElements));
 		}
-		if (!ElementIdentityMatches((Element)(object)copiedType, ((object)sourceType).GetType().Name, ResolveElementName((Element)(object)sourceType), ResolveCategoryName((Element)(object)sourceType)))
+		if (!ElementIdentityMatches(copiedType, sourceType.GetType().Name, ResolveElementName(sourceType), ResolveCategoryName(sourceType)))
 		{
-			throw new CriticalSystemTypeReferenceException(T("System type copy created a different identity than the registered standard. ", "시스템 타입 복사 결과가 등록된 표준과 다른 식별자로 생성되었습니다. ") + T("The operation was stopped to avoid duplicate or suffixed system types. ", "중복 또는 접미사가 붙은 시스템 타입을 피하기 위해 작업을 중단했습니다. ") + T("Standard: ", "표준: ") + ((object)sourceType).GetType().Name + " : " + ResolveElementName((Element)(object)sourceType) + T(" / Created: ", " / 생성됨: ") + ((object)copiedType).GetType().Name + " : " + ResolveElementName((Element)(object)copiedType));
+			throw new CriticalSystemTypeReferenceException(T("System type copy created a different identity than the registered standard. ", "시스템 타입 복사 결과가 등록된 표준과 다른 식별자로 생성되었습니다. ") + T("The operation was stopped to avoid duplicate or suffixed system types. ", "중복 또는 접미사가 붙은 시스템 타입을 피하기 위해 작업을 중단했습니다. ") + T("Standard: ", "표준: ") + sourceType.GetType().Name + " : " + ResolveElementName(sourceType) + T(" / Created: ", " / 생성됨: ") + copiedType.GetType().Name + " : " + ResolveElementName(copiedType));
 		}
 		return copiedType;
 	}
@@ -1375,7 +1297,7 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return existingType;
 		}
-		ElementType template = currentTargetMap.Values.Where([SpecialName] (ElementType x) => x != null).FirstOrDefault([SpecialName] (ElementType x) => string.Equals(((object)x).GetType().Name, syncItem.SystemFamilyKind, StringComparison.OrdinalIgnoreCase) && CategoryNamesMatch(ResolveCategoryName((Element)(object)x), syncItem.CategoryName));
+		ElementType template = currentTargetMap.Values.Where([SpecialName] (ElementType x) => x != null).FirstOrDefault([SpecialName] (ElementType x) => string.Equals(x.GetType().Name, syncItem.SystemFamilyKind, StringComparison.OrdinalIgnoreCase) && CategoryNamesMatch(ResolveCategoryName(x), syncItem.CategoryName));
 		if (template == null)
 		{
 			return null;
@@ -1383,11 +1305,11 @@ public sealed class SystemTypeApplyExecutionService
 		ElementType createdType = template.Duplicate(syncItem.SourceTypeName);
 		if (createdType == null)
 		{
-			throw new InvalidOperationException(T("Revit did not create a destination system type from the existing template: ", "Revit이 기존 템플릿에서 대상 시스템 타입을 만들지 못했습니다: ") + syncItem.SourceTypeName);
+			throw new System.InvalidOperationException(T("Revit did not create a destination system type from the existing template: ", "Revit이 기존 템플릿에서 대상 시스템 타입을 만들지 못했습니다: ") + syncItem.SourceTypeName);
 		}
-		if (!ElementIdentityMatches((Element)(object)createdType, syncItem.SystemFamilyKind, syncItem.SourceTypeName, syncItem.CategoryName))
+		if (!ElementIdentityMatches(createdType, syncItem.SystemFamilyKind, syncItem.SourceTypeName, syncItem.CategoryName))
 		{
-			throw new CriticalSystemTypeReferenceException(T("Revit created a system type with a different identity than requested. ", "Revit이 요청한 것과 다른 식별자의 시스템 타입을 생성했습니다. ") + T("The operation was stopped to avoid duplicate or suffixed system types. ", "중복 또는 접미사가 붙은 시스템 타입을 피하기 위해 작업을 중단했습니다. ") + T("Requested: ", "요청: ") + syncItem.SystemFamilyKind + " : " + syncItem.SourceTypeName + T(" / Created: ", " / 생성됨: ") + ((object)createdType).GetType().Name + " : " + ResolveElementName((Element)(object)createdType));
+			throw new CriticalSystemTypeReferenceException(T("Revit created a system type with a different identity than requested. ", "Revit이 요청한 것과 다른 식별자의 시스템 타입을 생성했습니다. ") + T("The operation was stopped to avoid duplicate or suffixed system types. ", "중복 또는 접미사가 붙은 시스템 타입을 피하기 위해 작업을 중단했습니다. ") + T("Requested: ", "요청: ") + syncItem.SystemFamilyKind + " : " + syncItem.SourceTypeName + T(" / Created: ", " / 생성됨: ") + createdType.GetType().Name + " : " + ResolveElementName(createdType));
 		}
 		return createdType;
 	}
@@ -1396,17 +1318,556 @@ public sealed class SystemTypeApplyExecutionService
 	{
 		if (sourceType == null || targetType == null)
 		{
-			throw new InvalidOperationException(T("System type source or destination could not be resolved.", "시스템 타입 원본 또는 대상을 확인하지 못했습니다."));
+			throw new System.InvalidOperationException(T("System type source or destination could not be resolved.", "시스템 타입 원본 또는 대상을 확인하지 못했습니다."));
 		}
-		CopyWritableTypeParameters(targetDocument, standardDocument, sourceType, targetType);
+		if (SupportsAuthoritativeDetailedApply(sourceType))
+		{
+			ApplyAuthoritativeDetailedSystemTypeDefinition(targetDocument, standardDocument, sourceType, targetType, resultItem);
+		}
+		else
+		{
+			CopyWritableTypeParameters(targetDocument, standardDocument, sourceType, targetType);
+		}
+		ApplyAuthoritativeCompoundStructure(targetDocument, standardDocument, sourceType, targetType, resultItem);
 		ApplyRoutingPreferenceRules(targetDocument, standardDocument, sourceType, targetType, dependencyItems, resultItem);
 		targetDocument.Regenerate();
 		PostCheckSystemTypeAgainstStandard(targetDocument, standardDocument, sourceType, targetType, resultItem);
 	}
 
+	private static bool SupportsAuthoritativeDetailedApply(ElementType elementType)
+	{
+		return elementType != null && AuthoritativeDetailedRootTypes.Contains(Normalize(elementType.GetType().Name));
+	}
+
+	private static bool IsAuthoritativeDetailedNestedObject(object value)
+	{
+		return value != null && AuthoritativeDetailedNestedTypes.Contains(Normalize(value.GetType().Name));
+	}
+
+	private static void PrepareAuthoritativeTypeLoadableDependencies(Document targetDocument, Document standardDocument, ElementType sourceType, IEnumerable<RoutingDependencyPreflightItem> dependencyItems, SystemTypeApplyExecutionItem resultItem)
+	{
+		if (targetDocument == null || standardDocument == null || sourceType == null)
+		{
+			return;
+		}
+		if (!(sourceType is HostObjAttributes) && !SupportsAuthoritativeDetailedApply(sourceType))
+		{
+			return;
+		}
+		List<FamilySymbol> references = new List<FamilySymbol>();
+		HashSet<int> visitedElementIds = new HashSet<int>();
+		if (sourceType is HostObjAttributes)
+		{
+			CollectCompoundStructureFamilySymbols(standardDocument, (HostObjAttributes)sourceType, references);
+		}
+		if (SupportsAuthoritativeDetailedApply(sourceType))
+		{
+			CollectAuthoritativeElementTypeFamilySymbols(standardDocument, sourceType, 0, visitedElementIds, references);
+		}
+		HashSet<int> refreshedFamilyIds = new HashSet<int>();
+		foreach (FamilySymbol sourceSymbol in references.Where([SpecialName] (FamilySymbol x) => x != null && x.Family != null).OrderBy<FamilySymbol, string>([SpecialName] (FamilySymbol x) => Normalize(x.Family.Name), StringComparer.Ordinal).ThenBy<FamilySymbol, string>([SpecialName] (FamilySymbol x) => Normalize(ResolveElementName(x)), StringComparer.Ordinal))
+		{
+			int familyId = RevitElementIdCompat.CompatIntegerValue(sourceSymbol.Family.Id);
+			if (refreshedFamilyIds.Add(familyId))
+			{
+				ReloadAuthoritativeComponentFamily(targetDocument, standardDocument, sourceSymbol, dependencyItems, resultItem);
+			}
+		}
+	}
+
+	private static void CollectCompoundStructureFamilySymbols(Document standardDocument, HostObjAttributes sourceHost, ICollection<FamilySymbol> result)
+	{
+		if (standardDocument == null || sourceHost == null || result == null)
+		{
+			return;
+		}
+		CompoundStructure compound = sourceHost.GetCompoundStructure();
+		if (compound == null)
+		{
+			return;
+		}
+		try
+		{
+			foreach (CompoundStructureLayer layer in compound.GetLayers() ?? new List<CompoundStructureLayer>())
+			{
+				CollectFamilySymbolReference(standardDocument, layer?.DeckProfileId, result);
+			}
+			if (string.Equals(sourceHost.GetType().Name, "WallType", StringComparison.OrdinalIgnoreCase))
+			{
+				foreach (WallSweepType sweepType in Enum.GetValues(typeof(WallSweepType)).Cast<WallSweepType>())
+				{
+					foreach (WallSweepInfo info in compound.GetWallSweepsInfo(sweepType) ?? new List<WallSweepInfo>())
+					{
+						CollectFamilySymbolReference(standardDocument, info?.ProfileId, result);
+					}
+				}
+			}
+		}
+		finally
+		{
+			compound.Dispose();
+		}
+	}
+
+	private static void CollectAuthoritativeElementTypeFamilySymbols(Document standardDocument, ElementType sourceType, int depth, ISet<int> visitedElementIds, ICollection<FamilySymbol> result)
+	{
+		if (standardDocument == null || sourceType == null || depth > 6 || visitedElementIds == null || result == null)
+		{
+			return;
+		}
+		int sourceId = RevitElementIdCompat.CompatIntegerValue(sourceType.Id);
+		if (sourceId > 0 && !visitedElementIds.Add(sourceId))
+		{
+			return;
+		}
+		foreach (Parameter parameter in sourceType.Parameters.Cast<Parameter>())
+		{
+			if (parameter != null && parameter.HasValue && parameter.StorageType == StorageType.ElementId && !ShouldSkipTypeParameter(parameter))
+			{
+				CollectAuthoritativeReferenceFamilySymbols(standardDocument, parameter.AsElementId(), depth, visitedElementIds, result);
+			}
+		}
+		CollectAuthoritativeObjectFamilySymbols(standardDocument, sourceType, depth, visitedElementIds, result);
+	}
+
+	private static void CollectAuthoritativeObjectFamilySymbols(Document standardDocument, object sourceObject, int depth, ISet<int> visitedElementIds, ICollection<FamilySymbol> result)
+	{
+		if (standardDocument == null || sourceObject == null || depth > 6 || result == null)
+		{
+			return;
+		}
+		IEnumerable<PropertyInfo> properties = sourceObject.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public).Where([SpecialName] (PropertyInfo x) => x != null && x.CanRead && x.GetIndexParameters().Length == 0).Where([SpecialName] (PropertyInfo x) => !(sourceObject is ElementType) || (x.DeclaringType != typeof(Element) && x.DeclaringType != typeof(ElementType))).OrderBy<PropertyInfo, string>([SpecialName] (PropertyInfo x) => x.Name, StringComparer.Ordinal);
+		foreach (PropertyInfo property in properties)
+		{
+			object value;
+			try
+			{
+				value = RuntimeHelpers.GetObjectValue(property.GetValue(RuntimeHelpers.GetObjectValue(sourceObject), null));
+			}
+			catch (Exception projectError)
+			{
+				ProjectData.SetProjectError(projectError);
+				ProjectData.ClearProjectError();
+				continue;
+			}
+			if (value is ElementId)
+			{
+				CollectAuthoritativeReferenceFamilySymbols(standardDocument, (ElementId)value, depth, visitedElementIds, result);
+			}
+			else if (value is FamilySymbol)
+			{
+				result.Add((FamilySymbol)value);
+			}
+			else if (value is ElementType)
+			{
+				CollectAuthoritativeElementTypeFamilySymbols(standardDocument, (ElementType)value, checked(depth + 1), visitedElementIds, result);
+			}
+			else if (IsAuthoritativeDetailedNestedObject(value))
+			{
+				CollectAuthoritativeObjectFamilySymbols(standardDocument, RuntimeHelpers.GetObjectValue(value), checked(depth + 1), visitedElementIds, result);
+			}
+		}
+		CollectIndexedAuthoritativeObjectFamilySymbols(standardDocument, sourceObject, "GetBalusterCount", "GetBaluster", depth, visitedElementIds, result);
+		CollectIndexedAuthoritativeObjectFamilySymbols(standardDocument, sourceObject, "GetNonContinuousRailCount", "GetNonContinuousRail", depth, visitedElementIds, result);
+	}
+
+	private static void CollectIndexedAuthoritativeObjectFamilySymbols(Document standardDocument, object sourceObject, string countMethodName, string itemMethodName, int depth, ISet<int> visitedElementIds, ICollection<FamilySymbol> result)
+	{
+		MethodInfo countMethod = sourceObject.GetType().GetMethod(countMethodName, BindingFlags.Instance | BindingFlags.Public, null, Type.EmptyTypes, null);
+		MethodInfo itemMethod = sourceObject.GetType().GetMethod(itemMethodName, BindingFlags.Instance | BindingFlags.Public, null, new Type[1] { typeof(int) }, null);
+		if ((object)countMethod == null || (object)itemMethod == null)
+		{
+			return;
+		}
+		int count;
+		try
+		{
+			count = Math.Max(0, Convert.ToInt32(countMethod.Invoke(RuntimeHelpers.GetObjectValue(sourceObject), null), CultureInfo.InvariantCulture));
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+			return;
+		}
+		for (int index = 0; index < count; index++)
+		{
+			object value;
+			try
+			{
+				value = RuntimeHelpers.GetObjectValue(itemMethod.Invoke(RuntimeHelpers.GetObjectValue(sourceObject), new object[1] { index }));
+			}
+			catch (Exception projectError2)
+			{
+				ProjectData.SetProjectError(projectError2);
+				ProjectData.ClearProjectError();
+				continue;
+			}
+			if (value != null)
+			{
+				CollectAuthoritativeObjectFamilySymbols(standardDocument, RuntimeHelpers.GetObjectValue(value), checked(depth + 1), visitedElementIds, result);
+			}
+		}
+	}
+
+	private static void CollectAuthoritativeReferenceFamilySymbols(Document standardDocument, ElementId sourceReferenceId, int depth, ISet<int> visitedElementIds, ICollection<FamilySymbol> result)
+	{
+		if ((object)sourceReferenceId == null || sourceReferenceId == ElementId.InvalidElementId || RevitElementIdCompat.CompatIntegerValue(sourceReferenceId) <= 0)
+		{
+			return;
+		}
+		Element referenced = standardDocument.GetElement(sourceReferenceId);
+		if (referenced is FamilySymbol)
+		{
+			result.Add((FamilySymbol)referenced);
+		}
+		else if (referenced is ElementType)
+		{
+			CollectAuthoritativeElementTypeFamilySymbols(standardDocument, (ElementType)referenced, checked(depth + 1), visitedElementIds, result);
+		}
+	}
+
+	private static void CollectFamilySymbolReference(Document standardDocument, ElementId sourceReferenceId, ICollection<FamilySymbol> result)
+	{
+		if ((object)sourceReferenceId != null && sourceReferenceId != ElementId.InvalidElementId && RevitElementIdCompat.CompatIntegerValue(sourceReferenceId) > 0 && standardDocument.GetElement(sourceReferenceId) is FamilySymbol symbol)
+		{
+			result.Add(symbol);
+		}
+	}
+
+	private static void ReloadAuthoritativeComponentFamily(Document targetDocument, Document standardDocument, FamilySymbol sourceSymbol, IEnumerable<RoutingDependencyPreflightItem> dependencyItems, SystemTypeApplyExecutionItem resultItem)
+	{
+		Family sourceFamily = sourceSymbol?.Family;
+		if (sourceFamily == null)
+		{
+			throw new System.InvalidOperationException(T("A standard system component has no readable loadable family.", "표준 시스템 구성 요소에서 로더블 패밀리를 확인하지 못했습니다."));
+		}
+		string familyName = sourceFamily.Name ?? string.Empty;
+		FamilySymbol existingTargetSymbol = FindTargetFamilySymbol(targetDocument, sourceSymbol);
+		if (sourceFamily.IsInPlace || !sourceFamily.IsEditable)
+		{
+			if (existingTargetSymbol == null)
+			{
+				throw new System.InvalidOperationException(T("A referenced standard family cannot be loaded through the Revit API: ", "참조된 표준 패밀리를 Revit API로 로드할 수 없습니다: ") + familyName);
+			}
+			return;
+		}
+		string sourceSignature = LoadableFamilyContentSignatureService.Build(standardDocument, sourceFamily, includeDeepContent: false);
+		Document familyDocument = null;
+		try
+		{
+			ISet<int> familyStateBefore = CaptureFamilyNameState(targetDocument);
+			familyDocument = standardDocument.EditFamily(sourceFamily);
+			List<AllowedLoadedFamilyIdentity> allowedFamilies = BuildAllowedLoadedFamilyIdentities(sourceFamily, familyDocument, standardDocument, dependencyItems, new List<string> { familyName });
+			Family loadedFamily = familyDocument.LoadFamily(targetDocument, new LoadableFamilyLoadOptions(overwriteParameterValues: true));
+			if (loadedFamily == null)
+			{
+				throw new System.InvalidOperationException(T("Revit returned no family after authoritative component load: ", "표준 구성 요소 패밀리 로드 후 Revit이 패밀리를 반환하지 않았습니다: ") + familyName);
+			}
+			RegenerateAfterFamilyLoad(targetDocument, resultItem, "AuthoritativeComponentFamilyLoad.Regenerated", familyName);
+			GuardLoadedRoutingFamilyDidNotCreateDuplicateFamilies(targetDocument, familyStateBefore, sourceFamily, loadedFamily, allowedFamilies, resultItem);
+		}
+		finally
+		{
+			if (familyDocument != null)
+			{
+				try
+				{
+					familyDocument.Close(saveModified: false);
+				}
+				catch (Exception projectError)
+				{
+					ProjectData.SetProjectError(projectError);
+					ProjectData.ClearProjectError();
+				}
+			}
+		}
+		FamilySymbol targetSymbol = FindTargetFamilySymbol(targetDocument, sourceSymbol);
+		if (targetSymbol == null || targetSymbol.Family == null)
+		{
+			throw new System.InvalidOperationException(T("The exact standard component family/type was not found after load: ", "로드 후 정확한 표준 구성 요소 패밀리/타입을 찾지 못했습니다: ") + familyName + " : " + ResolveElementName(sourceSymbol));
+		}
+		string targetSignature = LoadableFamilyContentSignatureService.Build(targetDocument, targetSymbol.Family, includeDeepContent: false);
+		if (string.IsNullOrWhiteSpace(sourceSignature) || !string.Equals(Normalize(sourceSignature), Normalize(targetSignature), StringComparison.Ordinal))
+		{
+			throw new System.InvalidOperationException(T("The loaded component family still differs from the registered standard. The system type apply was rolled back: ", "로드된 구성 요소 패밀리가 등록된 표준과 여전히 다릅니다. 시스템 타입 적용을 되돌렸습니다: ") + familyName);
+		}
+		AddResultMessage(resultItem, T("Standard component family refreshed without creating a duplicate: ", "중복 없이 표준 구성 요소 패밀리를 갱신했습니다: ") + familyName);
+	}
+
+	private static void ApplyAuthoritativeCompoundStructure(Document targetDocument, Document standardDocument, ElementType sourceType, ElementType targetType, SystemTypeApplyExecutionItem resultItem)
+	{
+		HostObjAttributes sourceHost = sourceType as HostObjAttributes;
+		HostObjAttributes targetHost = targetType as HostObjAttributes;
+		if (sourceHost == null && targetHost == null)
+		{
+			return;
+		}
+		if (sourceHost == null || targetHost == null)
+		{
+			throw new System.InvalidOperationException(T("Compound structure availability differs between the standard and target system type.", "표준과 대상 시스템 타입의 레이어 구조 지원 상태가 다릅니다."));
+		}
+		CompoundStructure mappedSource = sourceHost.GetCompoundStructure();
+		if (mappedSource == null)
+		{
+			return;
+		}
+		try
+		{
+			int layerCount = mappedSource.LayerCount;
+			for (int index = 0; index < layerCount; index++)
+			{
+				ElementId sourceMaterialId = mappedSource.GetMaterialId(index);
+				if ((object)sourceMaterialId != null && sourceMaterialId != ElementId.InvalidElementId && RevitElementIdCompat.CompatIntegerValue(sourceMaterialId) > 0)
+				{
+					mappedSource.SetMaterialId(index, MapAuthoritativeCompoundReferenceId(targetDocument, standardDocument, sourceMaterialId, resultItem, "layer material"));
+				}
+				ElementId sourceDeckProfileId = mappedSource.GetDeckProfileId(index);
+				if ((object)sourceDeckProfileId != null && sourceDeckProfileId != ElementId.InvalidElementId && RevitElementIdCompat.CompatIntegerValue(sourceDeckProfileId) > 0)
+				{
+					mappedSource.SetDeckProfileId(index, MapAuthoritativeCompoundReferenceId(targetDocument, standardDocument, sourceDeckProfileId, resultItem, "deck profile"));
+				}
+			}
+			if (string.Equals(sourceType.GetType().Name, "WallType", StringComparison.OrdinalIgnoreCase))
+			{
+				RemapAuthoritativeWallSweeps(targetDocument, standardDocument, mappedSource, resultItem);
+			}
+			targetHost.SetCompoundStructure(mappedSource);
+			targetDocument.Regenerate();
+			CompoundStructure applied = targetHost.GetCompoundStructure();
+			try
+			{
+				if (applied == null || !mappedSource.IsEqual(applied))
+				{
+					throw new System.InvalidOperationException(T("Post-check failed because the applied layer composition differs from the registered standard.", "사후 검증 실패: 적용된 레이어 구성이 등록된 표준과 다릅니다."));
+				}
+			}
+			finally
+			{
+				applied?.Dispose();
+			}
+			AddResultMessage(resultItem, T("Post-check passed: layer composition, materials, core boundaries, wrapping, deck data, and wall sweeps match the standard.", "사후 검증 통과: 레이어, 재료, 코어 경계, 감싸기, 데크 및 벽 스윕 구성이 표준과 일치합니다."));
+		}
+		finally
+		{
+			mappedSource.Dispose();
+		}
+	}
+
+	private static ElementId MapAuthoritativeCompoundReferenceId(Document targetDocument, Document standardDocument, ElementId sourceId, SystemTypeApplyExecutionItem resultItem, string role)
+	{
+		if ((object)sourceId == null || sourceId == ElementId.InvalidElementId || RevitElementIdCompat.CompatIntegerValue(sourceId) <= 0)
+		{
+			return sourceId ?? ElementId.InvalidElementId;
+		}
+		Element sourceReference = standardDocument.GetElement(sourceId);
+		if (sourceReference == null)
+		{
+			throw new System.InvalidOperationException(T("A compound structure reference could not be read from the standard RVT: ", "표준 RVT에서 레이어 구성 참조를 읽지 못했습니다: ") + role);
+		}
+		if (sourceReference is Material)
+		{
+			MaterialEnsureResult material = EnsureMaterialForPipeSegment((Material)sourceReference, standardDocument, targetDocument, resultItem);
+			if (!material.ExactSignatureMatch)
+			{
+				throw new System.InvalidOperationException(T("A same-name target material could not be synchronized exactly with the standard, so the system type apply was rolled back: ", "같은 이름의 대상 재료를 표준과 정확히 동기화하지 못해 시스템 타입 적용을 되돌렸습니다: ") + ResolveElementName(sourceReference));
+			}
+			return material.MaterialId;
+		}
+		if (sourceReference is FamilySymbol)
+		{
+			FamilySymbol targetSymbol = FindTargetFamilySymbol(targetDocument, (FamilySymbol)sourceReference);
+			if (targetSymbol == null)
+			{
+				throw new System.InvalidOperationException(T("A standard compound structure profile was not loaded before apply: ", "적용 전에 표준 레이어 프로파일이 로드되지 않았습니다: ") + ResolveElementName(sourceReference));
+			}
+			return targetSymbol.Id;
+		}
+		ElementId mappedId = MapReferenceElementId(targetDocument, standardDocument, sourceId);
+		if ((object)mappedId == null || mappedId == ElementId.InvalidElementId)
+		{
+			throw new System.InvalidOperationException(T("A compound structure reference could not be mapped into the target project: ", "레이어 구성 참조를 대상 프로젝트에 매핑하지 못했습니다: ") + role + " / " + sourceReference.GetType().Name + " : " + ResolveElementName(sourceReference));
+		}
+		return mappedId;
+	}
+
+	private static void RemapAuthoritativeWallSweeps(Document targetDocument, Document standardDocument, CompoundStructure compound, SystemTypeApplyExecutionItem resultItem)
+	{
+		foreach (WallSweepType sweepType in Enum.GetValues(typeof(WallSweepType)).Cast<WallSweepType>())
+		{
+			List<WallSweepInfo> infos = (compound.GetWallSweepsInfo(sweepType) ?? new List<WallSweepInfo>()).Where([SpecialName] (WallSweepInfo x) => x != null).ToList();
+			compound.ClearWallSweeps(sweepType);
+			foreach (WallSweepInfo info in infos)
+			{
+				info.MaterialId = MapAuthoritativeCompoundReferenceId(targetDocument, standardDocument, info.MaterialId, resultItem, "wall sweep material");
+				info.ProfileId = MapAuthoritativeCompoundReferenceId(targetDocument, standardDocument, info.ProfileId, resultItem, "wall sweep profile");
+				compound.AddWallSweep(info);
+			}
+		}
+	}
+
+	private static void ApplyAuthoritativeDetailedSystemTypeDefinition(Document targetDocument, Document standardDocument, ElementType sourceType, ElementType targetType, SystemTypeApplyExecutionItem resultItem)
+	{
+		HashSet<int> synchronizedSourceIds = new HashSet<int>();
+		SynchronizeAuthoritativeDetailedElementType(targetDocument, standardDocument, sourceType, targetType, synchronizedSourceIds, resultItem);
+		targetDocument.Regenerate();
+		bool sourceCaptureCompleted;
+		bool targetCaptureCompleted;
+		List<SystemTypeDetailedComponentSnapshotItem> sourceRows = SystemTypeDetailedComponentSnapshotService.Capture(standardDocument, sourceType, new Dictionary<string, string>(StringComparer.Ordinal), includeDeepLoadableContent: false, out sourceCaptureCompleted);
+		List<SystemTypeDetailedComponentSnapshotItem> targetRows = SystemTypeDetailedComponentSnapshotService.Capture(targetDocument, targetType, new Dictionary<string, string>(StringComparer.Ordinal), includeDeepLoadableContent: false, out targetCaptureCompleted);
+		string sourceSignature = SystemTypeDetailedComponentSnapshotService.BuildOptionalDetailedComponentSignature(sourceRows);
+		string targetSignature = SystemTypeDetailedComponentSnapshotService.BuildOptionalDetailedComponentSignature(targetRows);
+		if (string.IsNullOrWhiteSpace(sourceSignature) || !string.Equals(Normalize(sourceSignature), Normalize(targetSignature), StringComparison.Ordinal))
+		{
+			throw new System.InvalidOperationException(T("Post-check failed because the applied Railing/Stair component configuration differs from the registered standard.", "사후 검증 실패: 적용된 Railing/Stair 구성 요소가 등록된 표준과 다릅니다."));
+		}
+		AddResultMessage(resultItem, T("Post-check passed: Railing/Stair component types and settings match the standard independently of the comparison option.", "사후 검증 통과: 비교 옵션과 무관하게 Railing/Stair 구성 타입과 설정이 표준과 일치합니다."));
+	}
+
+	private static void SynchronizeAuthoritativeDetailedElementType(Document targetDocument, Document standardDocument, ElementType sourceType, ElementType targetType, ISet<int> synchronizedSourceIds, SystemTypeApplyExecutionItem resultItem)
+	{
+		if (sourceType == null || targetType == null)
+		{
+			throw new System.InvalidOperationException(T("A detailed system component type could not be resolved during apply.", "적용 중 상세 시스템 구성 요소 타입을 확인하지 못했습니다."));
+		}
+		if (!ElementIdentityMatches(targetType, sourceType.GetType().Name, ResolveElementName(sourceType), ResolveCategoryName(sourceType)))
+		{
+			throw new System.InvalidOperationException(T("A detailed system component mapped to a different target identity: ", "상세 시스템 구성 요소가 다른 대상 식별자로 매핑되었습니다: ") + sourceType.GetType().Name + " : " + ResolveElementName(sourceType));
+		}
+		int sourceId = RevitElementIdCompat.CompatIntegerValue(sourceType.Id);
+		if (sourceId > 0 && !synchronizedSourceIds.Add(sourceId))
+		{
+			return;
+		}
+		CopyWritableDetailedTypeParameters(targetDocument, standardDocument, sourceType, targetType, synchronizedSourceIds, resultItem);
+		CopyWritableDetailedApiProperties(targetDocument, standardDocument, sourceType, targetType, synchronizedSourceIds, resultItem);
+	}
+
+	private static void CopyWritableDetailedTypeParameters(Document targetDocument, Document standardDocument, ElementType sourceType, ElementType targetType, ISet<int> synchronizedSourceIds, SystemTypeApplyExecutionItem resultItem)
+	{
+		foreach (Parameter sourceParameter in sourceType.Parameters.Cast<Parameter>())
+		{
+			if (sourceParameter == null || sourceParameter.Definition == null || !sourceParameter.HasValue || ShouldSkipTypeParameter(sourceParameter))
+			{
+				continue;
+			}
+			Parameter targetParameter = ResolveWritableParameter(targetType, sourceParameter);
+			if (targetParameter == null)
+			{
+				continue;
+			}
+			if (sourceParameter.StorageType != StorageType.ElementId)
+			{
+				TrySetParameterValue(targetDocument, standardDocument, targetParameter, sourceParameter);
+				continue;
+			}
+			ElementId sourceReferenceId = sourceParameter.AsElementId();
+			ElementId mappedId = MapAuthoritativeDetailedReferenceId(targetDocument, standardDocument, sourceReferenceId, synchronizedSourceIds, resultItem);
+			targetParameter.Set(mappedId);
+		}
+	}
+
+	private static void CopyWritableDetailedApiProperties(Document targetDocument, Document standardDocument, ElementType sourceType, ElementType targetType, ISet<int> synchronizedSourceIds, SystemTypeApplyExecutionItem resultItem)
+	{
+		IEnumerable<PropertyInfo> properties = sourceType.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public).Where([SpecialName] (PropertyInfo x) => x != null && x.CanRead && x.GetIndexParameters().Length == 0 && x.DeclaringType != typeof(Element) && x.DeclaringType != typeof(ElementType)).OrderBy<PropertyInfo, string>([SpecialName] (PropertyInfo x) => x.Name, StringComparer.Ordinal);
+		foreach (PropertyInfo sourceProperty in properties)
+		{
+			PropertyInfo targetProperty = targetType.GetType().GetProperty(sourceProperty.Name, BindingFlags.Instance | BindingFlags.Public);
+			if ((object)targetProperty == null || !targetProperty.CanWrite || targetProperty.PropertyType != sourceProperty.PropertyType)
+			{
+				continue;
+			}
+			Type propertyType = sourceProperty.PropertyType;
+			if (propertyType != typeof(ElementId) && propertyType != typeof(string) && !propertyType.IsValueType)
+			{
+				continue;
+			}
+			try
+			{
+				object sourceValue = RuntimeHelpers.GetObjectValue(sourceProperty.GetValue(sourceType, null));
+				object targetValue = sourceValue;
+				if (sourceValue is ElementId)
+				{
+					targetValue = MapAuthoritativeDetailedReferenceId(targetDocument, standardDocument, (ElementId)sourceValue, synchronizedSourceIds, resultItem);
+				}
+				targetProperty.SetValue(targetType, RuntimeHelpers.GetObjectValue(targetValue), null);
+			}
+			catch (TargetInvocationException ex)
+			{
+				throw new System.InvalidOperationException(T("A detailed system component property could not be synchronized: ", "상세 시스템 구성 요소 속성을 동기화하지 못했습니다: ") + sourceType.GetType().Name + "." + sourceProperty.Name, ex.InnerException ?? ex);
+			}
+			catch (Exception ex2)
+			{
+				throw new System.InvalidOperationException(T("A detailed system component property could not be synchronized: ", "상세 시스템 구성 요소 속성을 동기화하지 못했습니다: ") + sourceType.GetType().Name + "." + sourceProperty.Name, ex2);
+			}
+		}
+	}
+
+	private static ElementId MapAuthoritativeDetailedReferenceId(Document targetDocument, Document standardDocument, ElementId sourceId, ISet<int> synchronizedSourceIds, SystemTypeApplyExecutionItem resultItem)
+	{
+		if ((object)sourceId == null || sourceId == ElementId.InvalidElementId || RevitElementIdCompat.CompatIntegerValue(sourceId) <= 0)
+		{
+			return sourceId ?? ElementId.InvalidElementId;
+		}
+		Element sourceReference = standardDocument.GetElement(sourceId);
+		if (sourceReference == null)
+		{
+			throw new System.InvalidOperationException(T("A detailed system component reference was not found in the standard RVT.", "표준 RVT에서 상세 시스템 구성 요소 참조를 찾지 못했습니다."));
+		}
+		if (sourceReference is FamilySymbol)
+		{
+			FamilySymbol targetSymbol = FindTargetFamilySymbol(targetDocument, (FamilySymbol)sourceReference);
+			if (targetSymbol == null)
+			{
+				throw new System.InvalidOperationException(T("A referenced standard family/type was not loaded before detailed system apply: ", "상세 시스템 적용 전에 참조 표준 패밀리/타입이 로드되지 않았습니다: ") + ((FamilySymbol)sourceReference).Family?.Name + " : " + ResolveElementName(sourceReference));
+			}
+			return targetSymbol.Id;
+		}
+		if (sourceReference is Material)
+		{
+			return EnsureMaterialForPipeSegment((Material)sourceReference, standardDocument, targetDocument, resultItem).MaterialId;
+		}
+		if (sourceReference is ElementType)
+		{
+			ElementType sourceReferenceType = (ElementType)sourceReference;
+			ElementType targetReferenceType = EnsureAuthoritativeDetailedTargetType(targetDocument, standardDocument, sourceReferenceType);
+			SynchronizeAuthoritativeDetailedElementType(targetDocument, standardDocument, sourceReferenceType, targetReferenceType, synchronizedSourceIds, resultItem);
+			return targetReferenceType.Id;
+		}
+		ElementId mappedId = MapReferenceElementId(targetDocument, standardDocument, sourceId);
+		if ((object)mappedId == null || mappedId == ElementId.InvalidElementId)
+		{
+			throw new System.InvalidOperationException(T("A detailed system component reference could not be mapped: ", "상세 시스템 구성 요소 참조를 매핑하지 못했습니다: ") + sourceReference.GetType().Name + " : " + ResolveElementName(sourceReference));
+		}
+		return mappedId;
+	}
+
+	private static ElementType EnsureAuthoritativeDetailedTargetType(Document targetDocument, Document standardDocument, ElementType sourceType)
+	{
+		ElementType targetType = ResolveMatchingTargetElement(targetDocument, sourceType) as ElementType;
+		if (targetType != null)
+		{
+			return targetType;
+		}
+		ISet<int> familyStateBefore = CaptureFamilyNameState(targetDocument);
+		using (CopyPasteOptions options = new CopyPasteOptions())
+		{
+			options.SetDuplicateTypeNamesHandler(new CopyPasteUseDestinationTypesHandler());
+			ElementTransformUtils.CopyElements(standardDocument, new List<ElementId> { sourceType.Id }, targetDocument, Transform.Identity, options);
+		}
+		targetDocument.Regenerate();
+		GuardAgainstCopiedFamilies(targetDocument, familyStateBefore);
+		targetType = ResolveMatchingTargetElement(targetDocument, sourceType) as ElementType;
+		if (targetType == null || !ElementIdentityMatches(targetType, sourceType.GetType().Name, ResolveElementName(sourceType), ResolveCategoryName(sourceType)))
+		{
+			throw new System.InvalidOperationException(T("A referenced system component type was not copied with its exact standard identity: ", "참조 시스템 구성 요소 타입이 정확한 표준 식별자로 복사되지 않았습니다: ") + sourceType.GetType().Name + " : " + ResolveElementName(sourceType));
+		}
+		return targetType;
+	}
+
 	private static void CopyWritableTypeParameters(Document targetDocument, Document standardDocument, ElementType sourceType, ElementType targetType)
 	{
-		foreach (Parameter sourceParameter in ((IEnumerable)((Element)sourceType).Parameters).Cast<Parameter>())
+		foreach (Parameter sourceParameter in sourceType.Parameters.Cast<Parameter>())
 		{
 			if (sourceParameter != null && sourceParameter.Definition != null && sourceParameter.HasValue && !ShouldSkipTypeParameter(sourceParameter))
 			{
@@ -1423,7 +1884,7 @@ public sealed class SystemTypeApplyExecutionService
 	{
 		try
 		{
-			if (parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) == -1002001)
+			if ((object)parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) == -1002001)
 			{
 				return true;
 			}
@@ -1433,22 +1894,18 @@ public sealed class SystemTypeApplyExecutionService
 			ProjectData.SetProjectError(projectError);
 			ProjectData.ClearProjectError();
 		}
-		Definition definition = parameter.Definition;
-		string name = ((definition != null) ? definition.Name : null) ?? string.Empty;
+		string name = parameter.Definition?.Name ?? string.Empty;
 		return string.Equals(Normalize(name), "type name", StringComparison.Ordinal) || string.Equals(Normalize(name), "family name", StringComparison.Ordinal);
 	}
 
 	private static Parameter ResolveWritableParameter(ElementType targetType, Parameter sourceParameter)
 	{
-		//IL_0040: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0046: Unknown result type (might be due to invalid IL or missing references)
-		Definition definition = sourceParameter.Definition;
-		string name = ((definition != null) ? definition.Name : null) ?? string.Empty;
+		string name = sourceParameter.Definition?.Name ?? string.Empty;
 		if (string.IsNullOrWhiteSpace(name))
 		{
 			return null;
 		}
-		Parameter targetParameter = ((Element)targetType).LookupParameter(name);
+		Parameter targetParameter = targetType.LookupParameter(name);
 		if (targetParameter == null || targetParameter.IsReadOnly)
 		{
 			return null;
@@ -1462,29 +1919,23 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void TrySetParameterValue(Document targetDocument, Document standardDocument, Parameter targetParameter, Parameter sourceParameter)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0007: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0009: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001f: Expected I4, but got Unknown
 		try
 		{
-			StorageType storageType = sourceParameter.StorageType;
-			switch (storageType - 1)
+			switch (sourceParameter.StorageType)
 			{
-			case 2:
+			case StorageType.String:
 				targetParameter.Set(sourceParameter.AsString());
 				break;
-			case 1:
+			case StorageType.Double:
 				targetParameter.Set(sourceParameter.AsDouble());
 				break;
-			case 0:
+			case StorageType.Integer:
 				targetParameter.Set(sourceParameter.AsInteger());
 				break;
-			case 3:
+			case StorageType.ElementId:
 			{
 				ElementId sourceId = sourceParameter.AsElementId();
-				if (sourceId == null || sourceId == ElementId.InvalidElementId)
+				if ((object)sourceId == null || sourceId == ElementId.InvalidElementId)
 				{
 					targetParameter.Set(ElementId.InvalidElementId);
 					break;
@@ -1502,9 +1953,9 @@ public sealed class SystemTypeApplyExecutionService
 				if (sourceReference is Material || sourceReference is PipeScheduleType || sourceReference is PipeSegment)
 				{
 					ElementId mappedId = MapReferenceElementId(targetDocument, standardDocument, sourceId);
-					if (mappedId == null || mappedId == ElementId.InvalidElementId)
+					if ((object)mappedId == null || mappedId == ElementId.InvalidElementId)
 					{
-						throw new CriticalSystemTypeReferenceException("A referenced system definition could not be mapped into the current project. The system type apply was stopped to avoid a partial standard type. Parameter: " + ResolveParameterName(sourceParameter) + " / Reference: " + ((object)sourceReference).GetType().Name + " : " + ResolveElementName(sourceReference));
+						throw new CriticalSystemTypeReferenceException("A referenced system definition could not be mapped into the current project. The system type apply was stopped to avoid a partial standard type. Parameter: " + ResolveParameterName(sourceParameter) + " / Reference: " + sourceReference.GetType().Name + " : " + ResolveElementName(sourceReference));
 					}
 					targetParameter.Set(mappedId);
 					break;
@@ -1516,7 +1967,7 @@ public sealed class SystemTypeApplyExecutionService
 				}
 				if (targetReference == null)
 				{
-					throw new CriticalSystemTypeReferenceException("A referenced system definition could not be mapped into the current project. The system type apply was stopped to avoid a partial standard type. Parameter: " + ResolveParameterName(sourceParameter) + " / Reference: " + ((object)sourceReference).GetType().Name + " : " + ResolveElementName(sourceReference));
+					throw new CriticalSystemTypeReferenceException("A referenced system definition could not be mapped into the current project. The system type apply was stopped to avoid a partial standard type. Parameter: " + ResolveParameterName(sourceParameter) + " / Reference: " + sourceReference.GetType().Name + " : " + ResolveElementName(sourceReference));
 				}
 				EnsureMappedElementIdReferenceMatches(targetDocument, standardDocument, sourceReference, targetReference, sourceParameter);
 				targetParameter.Set(targetReference.Id);
@@ -1534,7 +1985,7 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			ProjectData.SetProjectError(ex3);
 			Exception ex4 = ex3;
-			throw new InvalidOperationException("A writable system type parameter could not be copied from the standard RVT. The system type apply was stopped to avoid a partial standard type. Parameter: " + ResolveParameterName(sourceParameter), ex4);
+			throw new System.InvalidOperationException("A writable system type parameter could not be copied from the standard RVT. The system type apply was stopped to avoid a partial standard type. Parameter: " + ResolveParameterName(sourceParameter), ex4);
 		}
 	}
 
@@ -1542,25 +1993,12 @@ public sealed class SystemTypeApplyExecutionService
 	{
 		if (sourceReference != null && targetReference != null && !(sourceReference is FamilySymbol) && !(sourceReference is Material) && !(sourceReference is PipeScheduleType) && !RoutingPartDefinitionsMatch(standardDocument, sourceReference, targetDocument, targetReference))
 		{
-			throw new CriticalSystemTypeReferenceException("A referenced system definition with the same name exists in the current project, but its definition differs from the standard RVT. The system type apply was stopped before using a non-standard reference. Parameter: " + ResolveParameterName(sourceParameter) + " / Reference: " + ((object)sourceReference).GetType().Name + " : " + ResolveElementName(sourceReference));
+			throw new CriticalSystemTypeReferenceException("A referenced system definition with the same name exists in the current project, but its definition differs from the standard RVT. The system type apply was stopped before using a non-standard reference. Parameter: " + ResolveParameterName(sourceParameter) + " / Reference: " + sourceReference.GetType().Name + " : " + ResolveElementName(sourceReference));
 		}
 	}
 
-	private unsafe static void ApplyRoutingPreferenceRules(Document targetDocument, Document standardDocument, ElementType sourceType, ElementType targetType, IEnumerable<RoutingDependencyPreflightItem> dependencyItems, SystemTypeApplyExecutionItem resultItem)
+	private static void ApplyRoutingPreferenceRules(Document targetDocument, Document standardDocument, ElementType sourceType, ElementType targetType, IEnumerable<RoutingDependencyPreflightItem> dependencyItems, SystemTypeApplyExecutionItem resultItem)
 	{
-		//IL_009d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a2: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a3: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a5: Invalid comparison between Unknown and I4
-		//IL_00ac: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00e6: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00fb: Unknown result type (might be due to invalid IL or missing references)
-		//IL_013e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0219: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0277: Unknown result type (might be due to invalid IL or missing references)
-		//IL_027e: Expected O, but got Unknown
-		//IL_0282: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0289: Unknown result type (might be due to invalid IL or missing references)
 		RoutingPreferenceManager sourceManager = TryGetRoutingPreferenceManager(sourceType);
 		RoutingPreferenceManager targetManager = TryGetRoutingPreferenceManager(targetType);
 		if (sourceManager == null && targetManager == null)
@@ -1569,28 +2007,27 @@ public sealed class SystemTypeApplyExecutionService
 		}
 		if (sourceManager == null || targetManager == null)
 		{
-			throw new InvalidOperationException("Routing preference manager availability does not match between the standard RVT and the current project. The system type apply was stopped to avoid creating a partial system type. Standard type: " + ((object)sourceType).GetType().Name + " : " + ResolveElementName((Element)(object)sourceType) + " / Target type: " + ((object)targetType).GetType().Name + " : " + ResolveElementName((Element)(object)targetType));
+			throw new System.InvalidOperationException("Routing preference manager availability does not match between the standard RVT and the current project. The system type apply was stopped to avoid creating a partial system type. Standard type: " + sourceType.GetType().Name + " : " + ResolveElementName(sourceType) + " / Target type: " + targetType.GetType().Name + " : " + ResolveElementName(targetType));
 		}
-		foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
+		checked
 		{
-			if ((int)group == -1)
+			foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
 			{
-				continue;
-			}
-			int targetRuleCount;
-			try
-			{
-				targetRuleCount = targetManager.GetNumberOfRules(group);
-			}
-			catch (Exception ex)
-			{
-				ProjectData.SetProjectError(ex);
-				Exception ex2 = ex;
-				throw new InvalidOperationException("Existing routing preference rules could not be inspected before replacement. The system type apply was stopped to avoid leaving mixed routing rules. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString(), ex2);
-			}
-			int num;
-			checked
-			{
+				if (group == RoutingPreferenceRuleGroupType.Undefined)
+				{
+					continue;
+				}
+				int targetRuleCount;
+				try
+				{
+					targetRuleCount = targetManager.GetNumberOfRules(group);
+				}
+				catch (Exception ex)
+				{
+					ProjectData.SetProjectError(ex);
+					Exception ex2 = ex;
+					throw new System.InvalidOperationException("Existing routing preference rules could not be inspected before replacement. The system type apply was stopped to avoid leaving mixed routing rules. Rule group: " + group, ex2);
+				}
 				for (int index = targetRuleCount - 1; index >= 0; index += -1)
 				{
 					targetManager.RemoveRule(group, index);
@@ -1604,53 +2041,46 @@ public sealed class SystemTypeApplyExecutionService
 				{
 					ProjectData.SetProjectError(ex3);
 					Exception ex4 = ex3;
-					throw new InvalidOperationException("Standard routing preference rules could not be inspected. The system type apply was stopped before rebuilding the target type. Rule group: " + ((Enum)(*unchecked((RoutingPreferenceRuleGroupType*)(&group)))/*cast due to .constrained prefix*/).ToString(), ex4);
+					throw new System.InvalidOperationException("Standard routing preference rules could not be inspected. The system type apply was stopped before rebuilding the target type. Rule group: " + group, ex4);
 				}
-				num = sourceRuleCount - 1;
-			}
-			for (int i = 0; i <= num; i = checked(i + 1))
-			{
-				RoutingPreferenceRule sourceRule = null;
-				try
+				int num = sourceRuleCount - 1;
+				for (int i = 0; i <= num; i++)
 				{
-					sourceRule = sourceManager.GetRule(group, i);
+					RoutingPreferenceRule sourceRule = null;
+					try
+					{
+						sourceRule = sourceManager.GetRule(group, i);
+					}
+					catch (Exception ex5)
+					{
+						ProjectData.SetProjectError(ex5);
+						Exception ex6 = ex5;
+						throw new System.InvalidOperationException("A standard routing preference rule could not be read. The system type apply was stopped before rebuilding the target type. Rule group: " + group.ToString() + " / Rule index: " + i.ToString(CultureInfo.InvariantCulture), ex6);
+					}
+					if (sourceRule == null)
+					{
+						throw new System.InvalidOperationException("A standard routing preference rule returned no data. The system type apply was stopped before rebuilding the target type. Rule group: " + group.ToString() + " / Rule index: " + i.ToString(CultureInfo.InvariantCulture));
+					}
+					if (!RoutingRuleHasMappablePart(sourceRule))
+					{
+						AddSystemApplyLog(resultItem, "SystemApply.RoutingRuleSkipped", "group=" + group.ToString() + " index=" + i.ToString(CultureInfo.InvariantCulture) + " reason=InvalidMEPPartId");
+						continue;
+					}
+					ElementId mappedPartId = MapRoutingPartId(targetDocument, standardDocument, sourceRule.MEPPartId, group, dependencyItems, resultItem);
+					if ((object)mappedPartId == null || mappedPartId == ElementId.InvalidElementId)
+					{
+						throw new System.InvalidOperationException("A standard routing preference rule could not be mapped into the current project. The system type apply was stopped before rebuilding the target type. Rule group: " + group.ToString() + " / Rule index: " + i.ToString(CultureInfo.InvariantCulture));
+					}
+					RoutingPreferenceRule clonedRule = new RoutingPreferenceRule(mappedPartId, sourceRule.Description ?? string.Empty);
+					CopyRoutingCriteria(sourceRule, clonedRule, group);
+					targetManager.AddRule(group, clonedRule);
 				}
-				catch (Exception ex5)
-				{
-					ProjectData.SetProjectError(ex5);
-					Exception ex6 = ex5;
-					throw new InvalidOperationException("A standard routing preference rule could not be read. The system type apply was stopped before rebuilding the target type. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + i.ToString(CultureInfo.InvariantCulture), ex6);
-				}
-				if (sourceRule == null)
-				{
-					throw new InvalidOperationException("A standard routing preference rule returned no data. The system type apply was stopped before rebuilding the target type. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + i.ToString(CultureInfo.InvariantCulture));
-				}
-				if (!RoutingRuleHasMappablePart(sourceRule))
-				{
-					AddSystemApplyLog(resultItem, "SystemApply.RoutingRuleSkipped", "group=" + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " index=" + i.ToString(CultureInfo.InvariantCulture) + " reason=InvalidMEPPartId");
-					continue;
-				}
-				ElementId mappedPartId = MapRoutingPartId(targetDocument, standardDocument, sourceRule.MEPPartId, group, dependencyItems, resultItem);
-				if (mappedPartId == null || mappedPartId == ElementId.InvalidElementId)
-				{
-					throw new InvalidOperationException("A standard routing preference rule could not be mapped into the current project. The system type apply was stopped before rebuilding the target type. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + i.ToString(CultureInfo.InvariantCulture));
-				}
-				RoutingPreferenceRule clonedRule = new RoutingPreferenceRule(mappedPartId, sourceRule.Description ?? string.Empty);
-				CopyRoutingCriteria(sourceRule, clonedRule, group);
-				targetManager.AddRule(group, clonedRule);
 			}
 		}
 	}
 
-	private unsafe static void PostCheckSystemTypeAgainstStandard(Document targetDocument, Document standardDocument, ElementType sourceType, ElementType targetType, SystemTypeApplyExecutionItem resultItem)
+	private static void PostCheckSystemTypeAgainstStandard(Document targetDocument, Document standardDocument, ElementType sourceType, ElementType targetType, SystemTypeApplyExecutionItem resultItem)
 	{
-		//IL_005f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0064: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0065: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0067: Invalid comparison between Unknown and I4
-		//IL_006f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_007f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_011a: Unknown result type (might be due to invalid IL or missing references)
 		RoutingPreferenceManager sourceManager = TryGetRoutingPreferenceManager(sourceType);
 		RoutingPreferenceManager targetManager = TryGetRoutingPreferenceManager(targetType);
 		if (sourceManager == null && targetManager == null)
@@ -1659,94 +2089,98 @@ public sealed class SystemTypeApplyExecutionService
 		}
 		if (sourceManager == null || targetManager == null)
 		{
-			throw new InvalidOperationException("Post-check failed because routing preference manager availability differs after apply. Standard type: " + ResolveElementName((Element)(object)sourceType) + " / Target type: " + ResolveElementName((Element)(object)targetType));
+			throw new System.InvalidOperationException("Post-check failed because routing preference manager availability differs after apply. Standard type: " + ResolveElementName(sourceType) + " / Target type: " + ResolveElementName(targetType));
 		}
-		foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
+		checked
 		{
-			if ((int)group == -1)
+			foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
 			{
-				continue;
+				if (group == RoutingPreferenceRuleGroupType.Undefined)
+				{
+					continue;
+				}
+				List<RoutingRuleComparisonItem> expectedRules = BuildExpectedRoutingRulesForComparison(targetDocument, standardDocument, sourceManager, group, resultItem, "SystemApply.PostCheckRoutingRuleSkipped");
+				int targetRuleCount = targetManager.GetNumberOfRules(group);
+				if (expectedRules.Count != targetRuleCount)
+				{
+					throw new System.InvalidOperationException("Post-check failed because effective routing preference rule count differs from the registered standard. Rule group: " + group.ToString() + " / Standard effective count: " + expectedRules.Count.ToString(CultureInfo.InvariantCulture) + " / Target count: " + targetRuleCount.ToString(CultureInfo.InvariantCulture));
+				}
+				int num = expectedRules.Count - 1;
+				for (int index = 0; index <= num; index++)
+				{
+					RoutingRuleComparisonItem expectedRule = expectedRules[index];
+					RoutingPreferenceRule sourceRule = expectedRule.Rule;
+					RoutingPreferenceRule targetRule = targetManager.GetRule(group, index);
+					if (sourceRule == null || targetRule == null)
+					{
+						throw new System.InvalidOperationException("Post-check failed because a routing preference rule could not be read after apply. Rule group: " + group.ToString() + " / Rule index: " + index.ToString(CultureInfo.InvariantCulture) + " / Standard source index: " + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture));
+					}
+					ElementId expectedTargetPartId = expectedRule.ExpectedTargetPartId;
+					if (!ElementIdsEqual(expectedTargetPartId, targetRule.MEPPartId))
+					{
+						throw new System.InvalidOperationException("Post-check failed because routing preference rule order or mapped part differs from the registered standard. Rule group: " + group.ToString() + " / Rule index: " + index.ToString(CultureInfo.InvariantCulture) + " / Standard source index: " + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture) + " / Expected target part id: " + FormatElementId(expectedTargetPartId) + " / Actual target part id: " + FormatElementId(targetRule.MEPPartId));
+					}
+					Element sourcePart = (((object)sourceRule.MEPPartId == null || sourceRule.MEPPartId == ElementId.InvalidElementId) ? null : standardDocument.GetElement(sourceRule.MEPPartId));
+					Element targetPart = (((object)targetRule.MEPPartId == null || targetRule.MEPPartId == ElementId.InvalidElementId) ? null : targetDocument.GetElement(targetRule.MEPPartId));
+					if (sourcePart != null && !RoutingPartDefinitionMatchesForPostCheck(standardDocument, sourcePart, targetDocument, targetPart))
+					{
+						throw new System.InvalidOperationException(T("Post-check failed because a routing preference part definition differs from the registered standard. ", "사후 검증 실패: 라우팅 환경설정 부품 정의가 등록된 표준과 다릅니다. ") + T("Rule group: ", "규칙 그룹: ") + group.ToString() + T(" / Rule index: ", " / 규칙 인덱스: ") + index.ToString(CultureInfo.InvariantCulture) + T(" / Standard source index: ", " / 표준 원본 인덱스: ") + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture) + T(" / Part: ", " / 부품: ") + sourcePart.GetType().Name + " : " + ResolveElementName(sourcePart));
+					}
+					if (!string.Equals(sourceRule.Description ?? string.Empty, targetRule.Description ?? string.Empty, StringComparison.Ordinal))
+					{
+						throw new System.InvalidOperationException("Post-check failed because a routing preference rule description differs from the registered standard. Rule group: " + group.ToString() + " / Rule index: " + index.ToString(CultureInfo.InvariantCulture) + " / Standard source index: " + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture));
+					}
+					if (ResolveCriterionCount(sourceRule) != ResolveCriterionCount(targetRule))
+					{
+						throw new System.InvalidOperationException("Post-check failed because routing preference criterion count differs from the registered standard. Rule group: " + group.ToString() + " / Rule index: " + index.ToString(CultureInfo.InvariantCulture));
+					}
+				}
 			}
-			List<RoutingRuleComparisonItem> expectedRules = BuildExpectedRoutingRulesForComparison(targetDocument, standardDocument, sourceManager, group, resultItem, "SystemApply.PostCheckRoutingRuleSkipped");
-			int targetRuleCount = targetManager.GetNumberOfRules(group);
-			if (expectedRules.Count != targetRuleCount)
-			{
-				throw new InvalidOperationException("Post-check failed because effective routing preference rule count differs from the registered standard. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Standard effective count: " + expectedRules.Count.ToString(CultureInfo.InvariantCulture) + " / Target count: " + targetRuleCount.ToString(CultureInfo.InvariantCulture));
-			}
-			int num = checked(expectedRules.Count - 1);
-			for (int index = 0; index <= num; index = checked(index + 1))
-			{
-				RoutingRuleComparisonItem expectedRule = expectedRules[index];
-				RoutingPreferenceRule sourceRule = expectedRule.Rule;
-				RoutingPreferenceRule targetRule = targetManager.GetRule(group, index);
-				if (sourceRule == null || targetRule == null)
-				{
-					throw new InvalidOperationException("Post-check failed because a routing preference rule could not be read after apply. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + index.ToString(CultureInfo.InvariantCulture) + " / Standard source index: " + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture));
-				}
-				ElementId expectedTargetPartId = expectedRule.ExpectedTargetPartId;
-				if (!ElementIdsEqual(expectedTargetPartId, targetRule.MEPPartId))
-				{
-					throw new InvalidOperationException("Post-check failed because routing preference rule order or mapped part differs from the registered standard. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + index.ToString(CultureInfo.InvariantCulture) + " / Standard source index: " + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture) + " / Expected target part id: " + FormatElementId(expectedTargetPartId) + " / Actual target part id: " + FormatElementId(targetRule.MEPPartId));
-				}
-				Element sourcePart = ((sourceRule.MEPPartId == null || sourceRule.MEPPartId == ElementId.InvalidElementId) ? null : standardDocument.GetElement(sourceRule.MEPPartId));
-				Element targetPart = ((targetRule.MEPPartId == null || targetRule.MEPPartId == ElementId.InvalidElementId) ? null : targetDocument.GetElement(targetRule.MEPPartId));
-				if (sourcePart != null && !RoutingPartDefinitionMatchesForPostCheck(standardDocument, sourcePart, targetDocument, targetPart))
-				{
-					throw new InvalidOperationException(T("Post-check failed because a routing preference part definition differs from the registered standard. ", "사후 검증 실패: 라우팅 환경설정 부품 정의가 등록된 표준과 다릅니다. ") + T("Rule group: ", "규칙 그룹: ") + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + T(" / Rule index: ", " / 규칙 인덱스: ") + index.ToString(CultureInfo.InvariantCulture) + T(" / Standard source index: ", " / 표준 원본 인덱스: ") + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture) + T(" / Part: ", " / 부품: ") + ((object)sourcePart).GetType().Name + " : " + ResolveElementName(sourcePart));
-				}
-				if (!string.Equals(sourceRule.Description ?? string.Empty, targetRule.Description ?? string.Empty, StringComparison.Ordinal))
-				{
-					throw new InvalidOperationException("Post-check failed because a routing preference rule description differs from the registered standard. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + index.ToString(CultureInfo.InvariantCulture) + " / Standard source index: " + expectedRule.SourceIndex.ToString(CultureInfo.InvariantCulture));
-				}
-				if (ResolveCriterionCount(sourceRule) != ResolveCriterionCount(targetRule))
-				{
-					throw new InvalidOperationException("Post-check failed because routing preference criterion count differs from the registered standard. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + index.ToString(CultureInfo.InvariantCulture));
-				}
-			}
+			AddResultMessage(resultItem, T("Post-check passed: routing preference rules and mapped parts match the registered standard.", "사후 검증 통과: 라우팅 환경설정 규칙과 매핑된 부품이 등록된 표준과 일치합니다."));
 		}
-		AddResultMessage(resultItem, T("Post-check passed: routing preference rules and mapped parts match the registered standard.", "사후 검증 통과: 라우팅 환경설정 규칙과 매핑된 부품이 등록된 표준과 일치합니다."));
 	}
 
-	private unsafe static List<RoutingRuleComparisonItem> BuildExpectedRoutingRulesForComparison(Document targetDocument, Document standardDocument, RoutingPreferenceManager sourceManager, RoutingPreferenceRuleGroupType group, SystemTypeApplyExecutionItem resultItem, string skippedStage)
+	private static List<RoutingRuleComparisonItem> BuildExpectedRoutingRulesForComparison(Document targetDocument, Document standardDocument, RoutingPreferenceManager sourceManager, RoutingPreferenceRuleGroupType group, SystemTypeApplyExecutionItem resultItem, string skippedStage)
 	{
-		//IL_0011: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0022: Unknown result type (might be due to invalid IL or missing references)
 		List<RoutingRuleComparisonItem> result = new List<RoutingRuleComparisonItem>();
 		if (sourceManager == null)
 		{
 			return result;
 		}
-		int num = checked(sourceManager.GetNumberOfRules(group) - 1);
-		for (int sourceIndex = 0; sourceIndex <= num; sourceIndex = checked(sourceIndex + 1))
+		checked
 		{
-			RoutingPreferenceRule sourceRule = sourceManager.GetRule(group, sourceIndex);
-			if (sourceRule == null)
+			int num = sourceManager.GetNumberOfRules(group) - 1;
+			for (int sourceIndex = 0; sourceIndex <= num; sourceIndex++)
 			{
-				throw new InvalidOperationException("A standard routing preference rule returned no data. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + sourceIndex.ToString(CultureInfo.InvariantCulture));
+				RoutingPreferenceRule sourceRule = sourceManager.GetRule(group, sourceIndex);
+				if (sourceRule == null)
+				{
+					throw new System.InvalidOperationException("A standard routing preference rule returned no data. Rule group: " + group.ToString() + " / Rule index: " + sourceIndex.ToString(CultureInfo.InvariantCulture));
+				}
+				if (!RoutingRuleHasMappablePart(sourceRule))
+				{
+					AddSystemApplyLog(resultItem, skippedStage, "group=" + group.ToString() + " sourceIndex=" + sourceIndex.ToString(CultureInfo.InvariantCulture) + " reason=InvalidMEPPartId");
+					continue;
+				}
+				ElementId expectedTargetPartId = ResolveExpectedRoutingPartIdForPostCheck(targetDocument, standardDocument, sourceRule.MEPPartId);
+				if ((object)expectedTargetPartId == null || expectedTargetPartId == ElementId.InvalidElementId)
+				{
+					throw new System.InvalidOperationException("A standard routing preference rule has a valid source part, but it could not be mapped into the current project. Rule group: " + group.ToString() + " / Rule index: " + sourceIndex.ToString(CultureInfo.InvariantCulture) + " / Source part id: " + FormatElementId(sourceRule.MEPPartId));
+				}
+				result.Add(new RoutingRuleComparisonItem
+				{
+					SourceIndex = sourceIndex,
+					Rule = sourceRule,
+					ExpectedTargetPartId = expectedTargetPartId
+				});
 			}
-			if (!RoutingRuleHasMappablePart(sourceRule))
-			{
-				AddSystemApplyLog(resultItem, skippedStage, "group=" + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " sourceIndex=" + sourceIndex.ToString(CultureInfo.InvariantCulture) + " reason=InvalidMEPPartId");
-				continue;
-			}
-			ElementId expectedTargetPartId = ResolveExpectedRoutingPartIdForPostCheck(targetDocument, standardDocument, sourceRule.MEPPartId);
-			if (expectedTargetPartId == null || expectedTargetPartId == ElementId.InvalidElementId)
-			{
-				throw new InvalidOperationException("A standard routing preference rule has a valid source part, but it could not be mapped into the current project. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + sourceIndex.ToString(CultureInfo.InvariantCulture) + " / Source part id: " + FormatElementId(sourceRule.MEPPartId));
-			}
-			result.Add(new RoutingRuleComparisonItem
-			{
-				SourceIndex = sourceIndex,
-				Rule = sourceRule,
-				ExpectedTargetPartId = expectedTargetPartId
-			});
+			return result;
 		}
-		return result;
 	}
 
 	private static bool RoutingRuleHasMappablePart(RoutingPreferenceRule rule)
 	{
-		if (rule == null || rule.MEPPartId == null)
+		if (rule == null || (object)rule.MEPPartId == null)
 		{
 			return false;
 		}
@@ -1763,15 +2197,13 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return targetPart is FamilySymbol;
 		}
-		PipeSegment sourceSegment = (PipeSegment)(object)((sourcePart is PipeSegment) ? sourcePart : null);
-		if (sourceSegment != null)
+		if (sourcePart is PipeSegment sourceSegment)
 		{
-			PipeSegment targetSegment = (PipeSegment)(object)((targetPart is PipeSegment) ? targetPart : null);
-			if (targetSegment == null)
+			if (!(targetPart is PipeSegment targetSegment))
 			{
 				return false;
 			}
-			ReferenceMappingCheck materialCheck = ResolvePotentialMappedReference(targetDocument, sourceDocument, ((Segment)sourceSegment).MaterialId, "pipe segment material");
+			ReferenceMappingCheck materialCheck = ResolvePotentialMappedReference(targetDocument, sourceDocument, sourceSegment.MaterialId, "pipe segment material");
 			ReferenceMappingCheck scheduleCheck = ResolvePotentialMappedReference(targetDocument, sourceDocument, sourceSegment.ScheduleTypeId, "pipe segment schedule type");
 			if (materialCheck.TargetReference == null || scheduleCheck.TargetReference == null)
 			{
@@ -1784,7 +2216,7 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static ElementId ResolveExpectedRoutingPartIdForPostCheck(Document targetDocument, Document standardDocument, ElementId sourcePartId)
 	{
-		if (sourcePartId == null || sourcePartId == ElementId.InvalidElementId)
+		if ((object)sourcePartId == null || sourcePartId == ElementId.InvalidElementId)
 		{
 			return ElementId.InvalidElementId;
 		}
@@ -1793,23 +2225,21 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return ElementId.InvalidElementId;
 		}
-		FamilySymbol sourceSymbol = (FamilySymbol)(object)((sourcePart is FamilySymbol) ? sourcePart : null);
-		if (sourceSymbol != null)
+		if (sourcePart is FamilySymbol sourceSymbol)
 		{
 			FamilySymbol targetSymbol = FindTargetFamilySymbol(targetDocument, sourceSymbol);
-			return (targetSymbol == null) ? ElementId.InvalidElementId : ((Element)targetSymbol).Id;
+			return (targetSymbol == null) ? ElementId.InvalidElementId : targetSymbol.Id;
 		}
-		PipeSegment sourceSegment = (PipeSegment)(object)((sourcePart is PipeSegment) ? sourcePart : null);
-		if (sourceSegment != null)
+		if (sourcePart is PipeSegment sourceSegment)
 		{
-			ReferenceMappingCheck materialCheck = ResolvePotentialMappedReference(targetDocument, standardDocument, ((Segment)sourceSegment).MaterialId, "pipe segment material");
+			ReferenceMappingCheck materialCheck = ResolvePotentialMappedReference(targetDocument, standardDocument, sourceSegment.MaterialId, "pipe segment material");
 			ReferenceMappingCheck scheduleCheck = ResolvePotentialMappedReference(targetDocument, standardDocument, sourceSegment.ScheduleTypeId, "pipe segment schedule type");
 			if (materialCheck.TargetReference != null && scheduleCheck.TargetReference != null)
 			{
 				PipeSegment byCombination = FindPipeSegmentByMaterialAndSchedule(targetDocument, materialCheck.TargetReference.Id, scheduleCheck.TargetReference.Id);
 				if (byCombination != null)
 				{
-					return ((Element)byCombination).Id;
+					return byCombination.Id;
 				}
 			}
 		}
@@ -1842,7 +2272,7 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static string FormatElementId(ElementId id)
 	{
-		if (id == null)
+		if ((object)id == null)
 		{
 			return "(null)";
 		}
@@ -1858,7 +2288,7 @@ public sealed class SystemTypeApplyExecutionService
 		}
 		else
 		{
-			PropertyInfo propertyInfo = ((object)elementType).GetType().GetProperty("RoutingPreferenceManager");
+			PropertyInfo propertyInfo = elementType.GetType().GetProperty("RoutingPreferenceManager");
 			if ((object)propertyInfo == null)
 			{
 				TryGetRoutingPreferenceManager = null;
@@ -1867,8 +2297,7 @@ public sealed class SystemTypeApplyExecutionService
 			{
 				try
 				{
-					object value = propertyInfo.GetValue(elementType, null);
-					TryGetRoutingPreferenceManager = (RoutingPreferenceManager)((value is RoutingPreferenceManager) ? value : null);
+					TryGetRoutingPreferenceManager = propertyInfo.GetValue(elementType, null) as RoutingPreferenceManager;
 				}
 				catch (Exception projectError)
 				{
@@ -1881,28 +2310,22 @@ public sealed class SystemTypeApplyExecutionService
 		return TryGetRoutingPreferenceManager;
 	}
 
-	private unsafe static ElementId MapRoutingPartId(Document targetDocument, Document standardDocument, ElementId sourcePartId, RoutingPreferenceRuleGroupType ruleGroup, IEnumerable<RoutingDependencyPreflightItem> dependencyItems, SystemTypeApplyExecutionItem resultItem)
+	private static ElementId MapRoutingPartId(Document targetDocument, Document standardDocument, ElementId sourcePartId, RoutingPreferenceRuleGroupType ruleGroup, IEnumerable<RoutingDependencyPreflightItem> dependencyItems, SystemTypeApplyExecutionItem resultItem)
 	{
-		//IL_0069: Unknown result type (might be due to invalid IL or missing references)
-		//IL_008b: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a9: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00b0: Expected O, but got Unknown
-		//IL_017d: Unknown result type (might be due to invalid IL or missing references)
-		if (sourcePartId == null || sourcePartId == ElementId.InvalidElementId)
+		if ((object)sourcePartId == null || sourcePartId == ElementId.InvalidElementId)
 		{
 			return ElementId.InvalidElementId;
 		}
 		Element sourcePart = standardDocument.GetElement(sourcePartId);
 		if (sourcePart == null)
 		{
-			throw new InvalidOperationException(T("A routing preference part could not be resolved in the standard RVT: ", "표준 RVT에서 라우팅 환경설정 부품을 확인하지 못했습니다: ") + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&ruleGroup))/*cast due to .constrained prefix*/).ToString());
+			throw new System.InvalidOperationException(T("A routing preference part could not be resolved in the standard RVT: ", "표준 RVT에서 라우팅 환경설정 부품을 확인하지 못했습니다: ") + ruleGroup);
 		}
-		PipeSegment sourcePipeSegment = (PipeSegment)(object)((sourcePart is PipeSegment) ? sourcePart : null);
-		if (sourcePipeSegment != null)
+		if (sourcePart is PipeSegment sourcePipeSegment)
 		{
 			PipeSegment targetPipeSegment = EnsurePipeSegmentAuthoritative(targetDocument, standardDocument, sourcePipeSegment, SystemTypeApplyAuthorityMode.AdminAuthoritative, resultItem);
-			EnsureRoutingPartDefinitionMatches(standardDocument, sourcePart, targetDocument, (Element)(object)targetPipeSegment, ruleGroup);
-			return ((Element)targetPipeSegment).Id;
+			EnsureRoutingPartDefinitionMatches(standardDocument, sourcePart, targetDocument, targetPipeSegment, ruleGroup);
+			return targetPipeSegment.Id;
 		}
 		Element targetPart = ResolveMatchingTargetElement(targetDocument, sourcePart);
 		if (targetPart != null)
@@ -1915,64 +2338,45 @@ public sealed class SystemTypeApplyExecutionService
 			FamilySymbol sourceSymbol = (FamilySymbol)sourcePart;
 			if (targetDocument.IsModifiable)
 			{
-				string[] obj = new string[5]
-				{
-					T("The standard routing dependency family/type was not loaded before the system type transaction. ", "시스템 타입 트랜잭션 전에 표준 라우팅 의존 패밀리/타입이 로드되지 않았습니다. "),
-					T("Family loading must occur before Transaction B. Family: ", "패밀리 로드는 Transaction B 전에 완료되어야 합니다. 패밀리: "),
-					null,
-					null,
-					null
-				};
-				Family family = sourceSymbol.Family;
-				obj[2] = ((family != null) ? ((Element)family).Name : null) ?? string.Empty;
-				obj[3] = T(" / Type: ", " / 타입: ");
-				obj[4] = ResolveElementName((Element)(object)sourceSymbol);
-				throw new InvalidOperationException(string.Concat(obj));
+				throw new System.InvalidOperationException(T("The standard routing dependency family/type was not loaded before the system type transaction. ", "시스템 타입 트랜잭션 전에 표준 라우팅 의존 패밀리/타입이 로드되지 않았습니다. ") + T("Family loading must occur before Transaction B. Family: ", "패밀리 로드는 Transaction B 전에 완료되어야 합니다. 패밀리: ") + (sourceSymbol.Family?.Name ?? string.Empty) + T(" / Type: ", " / 타입: ") + ResolveElementName(sourceSymbol));
 			}
-			return ((Element)EnsureRoutingFamilySymbolLoaded(targetDocument, standardDocument, sourceSymbol, dependencyItems, resultItem)).Id;
+			return EnsureRoutingFamilySymbolLoaded(targetDocument, standardDocument, sourceSymbol, dependencyItems, resultItem).Id;
 		}
 		targetPart = CopyNonFamilyElementToTarget(targetDocument, standardDocument, sourcePart);
 		if (targetPart == null)
 		{
-			throw new InvalidOperationException(T("A routing preference part could not be copied or matched in the target project: ", "대상 프로젝트에서 라우팅 환경설정 부품을 복사하거나 매칭하지 못했습니다: ") + ((object)sourcePart).GetType().Name + " : " + ResolveElementName(sourcePart));
+			throw new System.InvalidOperationException(T("A routing preference part could not be copied or matched in the target project: ", "대상 프로젝트에서 라우팅 환경설정 부품을 복사하거나 매칭하지 못했습니다: ") + sourcePart.GetType().Name + " : " + ResolveElementName(sourcePart));
 		}
 		EnsureRoutingPartDefinitionMatches(standardDocument, sourcePart, targetDocument, targetPart, ruleGroup);
 		return targetPart.Id;
 	}
 
-	private unsafe static void EnsureRoutingPartDefinitionMatches(Document sourceDocument, Element sourcePart, Document targetDocument, Element targetPart, RoutingPreferenceRuleGroupType ruleGroup)
+	private static void EnsureRoutingPartDefinitionMatches(Document sourceDocument, Element sourcePart, Document targetDocument, Element targetPart, RoutingPreferenceRuleGroupType ruleGroup)
 	{
 		if (sourcePart == null || targetPart == null || sourcePart is FamilySymbol)
 		{
 			return;
 		}
-		PipeSegment sourceSegment = (PipeSegment)(object)((sourcePart is PipeSegment) ? sourcePart : null);
-		if (sourceSegment != null)
+		if (sourcePart is PipeSegment sourceSegment)
 		{
-			PipeSegment targetSegment = (PipeSegment)(object)((targetPart is PipeSegment) ? targetPart : null);
-			Element element = sourceDocument.GetElement(((Segment)sourceSegment).MaterialId);
-			Material sourceMaterial = (Material)(object)((element is Material) ? element : null);
-			Element element2 = sourceDocument.GetElement(sourceSegment.ScheduleTypeId);
-			Element sourceSchedule = ((element2 is PipeScheduleType) ? element2 : null);
+			PipeSegment targetSegment = targetPart as PipeSegment;
+			Material sourceMaterial = sourceDocument.GetElement(sourceSegment.MaterialId) as Material;
+			PipeScheduleType sourceSchedule = sourceDocument.GetElement(sourceSegment.ScheduleTypeId) as PipeScheduleType;
 			ElementId targetMaterialId = EnsureMaterialForPipeSegment(sourceMaterial, sourceDocument, targetDocument, null).MaterialId;
-			ElementId targetScheduleId = EnsurePipeScheduleTypeForPipeSegment((PipeScheduleType)(object)sourceSchedule, sourceDocument, targetDocument, null);
+			ElementId targetScheduleId = EnsurePipeScheduleTypeForPipeSegment(sourceSchedule, sourceDocument, targetDocument, null);
 			if (!PipeSegmentDefinitionMatchesForRouting(sourceDocument, sourceSegment, targetDocument, targetSegment, targetMaterialId, targetScheduleId))
 			{
-				throw new InvalidOperationException(T("A routing preference pipe segment exists in the current project, but its material, schedule, size table, or managed routing values differ from the standard RVT. ", "현재 프로젝트에 라우팅 환경설정 배관 세그먼트가 있지만 재료, 스케줄, 사이즈 테이블 또는 관리 라우팅 값이 표준 RVT와 다릅니다. ") + T("Rule group: ", "규칙 그룹: ") + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&ruleGroup))/*cast due to .constrained prefix*/).ToString() + T(" / Segment: ", " / 세그먼트: ") + ResolveElementName((Element)(object)sourceSegment));
+				throw new System.InvalidOperationException(T("A routing preference pipe segment exists in the current project, but its material, schedule, size table, or managed routing values differ from the standard RVT. ", "현재 프로젝트에 라우팅 환경설정 배관 세그먼트가 있지만 재료, 스케줄, 사이즈 테이블 또는 관리 라우팅 값이 표준 RVT와 다릅니다. ") + T("Rule group: ", "규칙 그룹: ") + ruleGroup.ToString() + T(" / Segment: ", " / 세그먼트: ") + ResolveElementName(sourceSegment));
 			}
 		}
 		else if (!RoutingPartDefinitionsMatch(sourceDocument, sourcePart, targetDocument, targetPart))
 		{
-			throw new InvalidOperationException(T("A routing preference part with the same name exists in the current project, but its definition differs from the standard RVT. ", "현재 프로젝트에 같은 이름의 라우팅 환경설정 부품이 있지만 정의가 표준 RVT와 다릅니다. ") + T("Review the segment or routing part before applying this system type. ", "이 시스템 타입을 적용하기 전에 세그먼트 또는 라우팅 부품을 검토하세요. ") + T("Rule group: ", "규칙 그룹: ") + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&ruleGroup))/*cast due to .constrained prefix*/).ToString() + T(" / Part: ", " / 부품: ") + ((object)sourcePart).GetType().Name + " : " + ResolveElementName(sourcePart));
+			throw new System.InvalidOperationException(T("A routing preference part with the same name exists in the current project, but its definition differs from the standard RVT. ", "현재 프로젝트에 같은 이름의 라우팅 환경설정 부품이 있지만 정의가 표준 RVT와 다릅니다. ") + T("Review the segment or routing part before applying this system type. ", "이 시스템 타입을 적용하기 전에 세그먼트 또는 라우팅 부품을 검토하세요. ") + T("Rule group: ", "규칙 그룹: ") + ruleGroup.ToString() + T(" / Part: ", " / 부품: ") + sourcePart.GetType().Name + " : " + ResolveElementName(sourcePart));
 		}
 	}
 
 	private static Element ResolveMatchingTargetElement(Document targetDocument, Element sourceElement)
 	{
-		//IL_0053: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0019: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001f: Expected O, but got Unknown
-		//IL_007c: Unknown result type (might be due to invalid IL or missing references)
 		if (sourceElement == null)
 		{
 			return null;
@@ -1980,38 +2384,25 @@ public sealed class SystemTypeApplyExecutionService
 		if (sourceElement is FamilySymbol)
 		{
 			FamilySymbol sourceSymbol = (FamilySymbol)sourceElement;
-			return (Element)(object)FindTargetFamilySymbol(targetDocument, sourceSymbol);
+			return FindTargetFamilySymbol(targetDocument, sourceSymbol);
 		}
-		string name = ((object)sourceElement).GetType().Name;
+		string name = sourceElement.GetType().Name;
 		string sourceName = ResolveElementName(sourceElement);
 		string sourceCategory = ResolveCategoryName(sourceElement);
-		Element typeMatch = ((IEnumerable)new FilteredElementCollector(targetDocument).WhereElementIsElementType()).Cast<Element>().FirstOrDefault([SpecialName] (Element x) => ElementIdentityMatches(x, name, sourceName, sourceCategory));
+		Element typeMatch = new FilteredElementCollector(targetDocument).WhereElementIsElementType().Cast<Element>().FirstOrDefault([SpecialName] (Element x) => ElementIdentityMatches(x, name, sourceName, sourceCategory));
 		if (typeMatch != null)
 		{
 			return typeMatch;
 		}
-		return ((IEnumerable)new FilteredElementCollector(targetDocument).WhereElementIsNotElementType()).Cast<Element>().FirstOrDefault([SpecialName] (Element x) => ElementIdentityMatches(x, name, sourceName, sourceCategory));
+		return new FilteredElementCollector(targetDocument).WhereElementIsNotElementType().Cast<Element>().FirstOrDefault([SpecialName] (Element x) => ElementIdentityMatches(x, name, sourceName, sourceCategory));
 	}
 
 	private static FamilySymbol FindTargetFamilySymbol(Document targetDocument, FamilySymbol sourceSymbol)
 	{
-		//IL_0040: Unknown result type (might be due to invalid IL or missing references)
-		Family family = sourceSymbol.Family;
-		string value = ((family != null) ? ((Element)family).Name : null) ?? string.Empty;
-		string value2 = ResolveElementName((Element)(object)sourceSymbol);
-		string right = ResolveCategoryName((Element)(object)sourceSymbol);
-		return ((IEnumerable)new FilteredElementCollector(targetDocument).OfClass(typeof(FamilySymbol))).Cast<FamilySymbol>().FirstOrDefault([SpecialName] (FamilySymbol x) =>
-		{
-			if (x != null)
-			{
-				Family family2 = x.Family;
-				if (string.Equals(Normalize(((family2 != null) ? ((Element)family2).Name : null) ?? string.Empty), Normalize(value), StringComparison.Ordinal) && string.Equals(Normalize(ResolveElementName((Element)(object)x)), Normalize(value2), StringComparison.Ordinal))
-				{
-					return CategoryNamesMatch(ResolveCategoryName((Element)(object)x), right);
-				}
-			}
-			return false;
-		});
+		string value = sourceSymbol.Family?.Name ?? string.Empty;
+		string value2 = ResolveElementName(sourceSymbol);
+		string right = ResolveCategoryName(sourceSymbol);
+		return new FilteredElementCollector(targetDocument).OfClass(typeof(FamilySymbol)).Cast<FamilySymbol>().FirstOrDefault([SpecialName] (FamilySymbol x) => x != null && string.Equals(Normalize(x.Family?.Name ?? string.Empty), Normalize(value), StringComparison.Ordinal) && string.Equals(Normalize(ResolveElementName(x)), Normalize(value2), StringComparison.Ordinal) && CategoryNamesMatch(ResolveCategoryName(x), right));
 	}
 
 	private static string BuildRoutingFamilySymbolKey(FamilySymbol sourceSymbol)
@@ -2020,14 +2411,7 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return string.Empty;
 		}
-		string[] array = new string[5];
-		Family family = sourceSymbol.Family;
-		array[0] = Normalize(((family != null) ? ((Element)family).Name : null) ?? string.Empty);
-		array[1] = "|";
-		array[2] = Normalize(ResolveElementName((Element)(object)sourceSymbol));
-		array[3] = "|";
-		array[4] = Normalize(ResolveCategoryName((Element)(object)sourceSymbol));
-		return string.Concat(array);
+		return Normalize(sourceSymbol.Family?.Name ?? string.Empty) + "|" + Normalize(ResolveElementName(sourceSymbol)) + "|" + Normalize(ResolveCategoryName(sourceSymbol));
 	}
 
 	private static bool ElementIdentityMatches(Element element, string sourceClassName, string sourceName, string sourceCategory)
@@ -2036,13 +2420,11 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return false;
 		}
-		return string.Equals(((object)element).GetType().Name, sourceClassName, StringComparison.OrdinalIgnoreCase) && string.Equals(Normalize(ResolveElementName(element)), Normalize(sourceName), StringComparison.Ordinal) && CategoryNamesMatch(ResolveCategoryName(element), sourceCategory);
+		return string.Equals(element.GetType().Name, sourceClassName, StringComparison.OrdinalIgnoreCase) && string.Equals(Normalize(ResolveElementName(element)), Normalize(sourceName), StringComparison.Ordinal) && CategoryNamesMatch(ResolveCategoryName(element), sourceCategory);
 	}
 
 	private static Element CopyNonFamilyElementToTarget(Document targetDocument, Document standardDocument, Element sourceElement)
 	{
-		//IL_001c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0023: Expected O, but got Unknown
 		Element createdPipeSegment = TryCreatePipeSegmentInTarget(targetDocument, standardDocument, sourceElement);
 		if (createdPipeSegment != null)
 		{
@@ -2050,11 +2432,10 @@ public sealed class SystemTypeApplyExecutionService
 		}
 		ISet<int> familyStateBefore = CaptureFamilyNameState(targetDocument);
 		Element firstCopiedElement = null;
-		CopyPasteOptions options = new CopyPasteOptions();
-		try
+		using (CopyPasteOptions options = new CopyPasteOptions())
 		{
-			options.SetDuplicateTypeNamesHandler((IDuplicateTypeNamesHandler)(object)new CopyPasteUseDestinationTypesHandler());
-			ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(standardDocument, (ICollection<ElementId>)new List<ElementId> { sourceElement.Id }, targetDocument, Transform.Identity, options);
+			options.SetDuplicateTypeNamesHandler(new CopyPasteUseDestinationTypesHandler());
+			ICollection<ElementId> copiedIds = ElementTransformUtils.CopyElements(standardDocument, new List<ElementId> { sourceElement.Id }, targetDocument, Transform.Identity, options);
 			if (copiedIds != null)
 			{
 				foreach (ElementId copiedId in copiedIds)
@@ -2067,15 +2448,11 @@ public sealed class SystemTypeApplyExecutionService
 				}
 			}
 		}
-		finally
-		{
-			((IDisposable)options)?.Dispose();
-		}
 		targetDocument.Regenerate();
 		GuardAgainstCopiedFamilies(targetDocument, familyStateBefore);
-		if (firstCopiedElement != null && !ElementIdentityMatches(firstCopiedElement, ((object)sourceElement).GetType().Name, ResolveElementName(sourceElement), ResolveCategoryName(sourceElement)))
+		if (firstCopiedElement != null && !ElementIdentityMatches(firstCopiedElement, sourceElement.GetType().Name, ResolveElementName(sourceElement), ResolveCategoryName(sourceElement)))
 		{
-			throw new CriticalSystemTypeReferenceException(T("A routing preference part was copied with a different identity than the standard RVT. ", "라우팅 환경설정 부품이 표준 RVT와 다른 식별자로 복사되었습니다. ") + T("This can create duplicate or suffixed routing parts, so the system type apply was stopped. ", "중복 또는 접미사 라우팅 부품이 생길 수 있어 시스템 타입 적용을 중단했습니다. ") + T("Standard: ", "표준: ") + ((object)sourceElement).GetType().Name + " : " + ResolveElementName(sourceElement) + T(" / Created: ", " / 생성됨: ") + ((object)firstCopiedElement).GetType().Name + " : " + ResolveElementName(firstCopiedElement));
+			throw new CriticalSystemTypeReferenceException(T("A routing preference part was copied with a different identity than the standard RVT. ", "라우팅 환경설정 부품이 표준 RVT와 다른 식별자로 복사되었습니다. ") + T("This can create duplicate or suffixed routing parts, so the system type apply was stopped. ", "중복 또는 접미사 라우팅 부품이 생길 수 있어 시스템 타입 적용을 중단했습니다. ") + T("Standard: ", "표준: ") + sourceElement.GetType().Name + " : " + ResolveElementName(sourceElement) + T(" / Created: ", " / 생성됨: ") + firstCopiedElement.GetType().Name + " : " + ResolveElementName(firstCopiedElement));
 		}
 		return firstCopiedElement ?? ResolveMatchingTargetElement(targetDocument, sourceElement);
 	}
@@ -2084,7 +2461,7 @@ public sealed class SystemTypeApplyExecutionService
 	{
 		if (sourceSymbol == null)
 		{
-			throw new InvalidOperationException(T("A routing preference fitting symbol could not be resolved in the registered standard RVT.", "등록된 표준 RVT에서 라우팅 환경설정 피팅 심볼을 확인하지 못했습니다."));
+			throw new System.InvalidOperationException(T("A routing preference fitting symbol could not be resolved in the registered standard RVT.", "등록된 표준 RVT에서 라우팅 환경설정 피팅 심볼을 확인하지 못했습니다."));
 		}
 		FamilySymbol targetSymbol = FindTargetFamilySymbol(targetDocument, sourceSymbol);
 		if (targetSymbol != null)
@@ -2092,19 +2469,19 @@ public sealed class SystemTypeApplyExecutionService
 			return targetSymbol;
 		}
 		Family sourceFamily = sourceSymbol.Family;
-		string familyName = ((sourceFamily != null) ? ((Element)sourceFamily).Name : null) ?? string.Empty;
-		string typeName = ResolveElementName((Element)(object)sourceSymbol);
+		string familyName = sourceFamily?.Name ?? string.Empty;
+		string typeName = ResolveElementName(sourceSymbol);
 		if (sourceFamily == null)
 		{
-			throw new InvalidOperationException(T("A routing preference fitting symbol has no readable family in the registered standard RVT: ", "등록된 표준 RVT의 라우팅 환경설정 피팅 심볼에서 패밀리를 읽을 수 없습니다: ") + typeName);
+			throw new System.InvalidOperationException(T("A routing preference fitting symbol has no readable family in the registered standard RVT: ", "등록된 표준 RVT의 라우팅 환경설정 피팅 심볼에서 패밀리를 읽을 수 없습니다: ") + typeName);
 		}
 		if (sourceFamily.IsInPlace)
 		{
-			throw new InvalidOperationException(T("An in-place routing preference family cannot be loaded for system type apply: ", "내부 라우팅 환경설정 패밀리는 시스템 타입 적용을 위해 로드할 수 없습니다: ") + familyName);
+			throw new System.InvalidOperationException(T("An in-place routing preference family cannot be loaded for system type apply: ", "내부 라우팅 환경설정 패밀리는 시스템 타입 적용을 위해 로드할 수 없습니다: ") + familyName);
 		}
 		if (!sourceFamily.IsEditable)
 		{
-			throw new InvalidOperationException(T("The routing preference family exists in the standard RVT but is not editable through the Revit API: ", "라우팅 환경설정 패밀리가 표준 RVT에 있지만 Revit API로 편집할 수 없습니다: ") + familyName);
+			throw new System.InvalidOperationException(T("The routing preference family exists in the standard RVT but is not editable through the Revit API: ", "라우팅 환경설정 패밀리가 표준 RVT에 있지만 Revit API로 편집할 수 없습니다: ") + familyName);
 		}
 		Document familyDoc = null;
 		try
@@ -2112,10 +2489,10 @@ public sealed class SystemTypeApplyExecutionService
 			ISet<int> familyStateBefore = CaptureFamilyNameState(targetDocument);
 			familyDoc = standardDocument.EditFamily(sourceFamily);
 			List<AllowedLoadedFamilyIdentity> allowedLoadedFamilies = BuildAllowedLoadedFamilyIdentities(sourceFamily, familyDoc, standardDocument, selectedDependencyItems, new List<string> { familyName });
-			Family loadedFamily = familyDoc.LoadFamily(targetDocument, (IFamilyLoadOptions)(object)new LoadableFamilyLoadOptions(overwriteParameterValues: true));
+			Family loadedFamily = familyDoc.LoadFamily(targetDocument, new LoadableFamilyLoadOptions(overwriteParameterValues: true));
 			if (loadedFamily == null)
 			{
-				throw new InvalidOperationException(T("Revit returned no family reference after routing dependency load: ", "라우팅 의존 패밀리 로드 후 Revit이 패밀리 참조를 반환하지 않았습니다: ") + familyName);
+				throw new System.InvalidOperationException(T("Revit returned no family reference after routing dependency load: ", "라우팅 의존 패밀리 로드 후 Revit이 패밀리 참조를 반환하지 않았습니다: ") + familyName);
 			}
 			RegenerateAfterFamilyLoad(targetDocument, resultItem, "RoutingFamilyLoad.Regenerated", familyName);
 			GuardLoadedRoutingFamilyDidNotCreateDuplicateFamilies(targetDocument, familyStateBefore, sourceFamily, loadedFamily, allowedLoadedFamilies, resultItem);
@@ -2126,7 +2503,7 @@ public sealed class SystemTypeApplyExecutionService
 			{
 				try
 				{
-					familyDoc.Close(false);
+					familyDoc.Close(saveModified: false);
 				}
 				catch (Exception projectError)
 				{
@@ -2138,7 +2515,7 @@ public sealed class SystemTypeApplyExecutionService
 		targetSymbol = FindTargetFamilySymbol(targetDocument, sourceSymbol);
 		if (targetSymbol == null)
 		{
-			throw new InvalidOperationException("A routing preference fitting family was loaded, but the exact standard family/type could not be resolved in the target project. Family: " + familyName + " / Type: " + typeName + " / Category: " + ResolveCategoryName((Element)(object)sourceSymbol));
+			throw new System.InvalidOperationException("A routing preference fitting family was loaded, but the exact standard family/type could not be resolved in the target project. Family: " + familyName + " / Type: " + typeName + " / Category: " + ResolveCategoryName(sourceSymbol));
 		}
 		AddResultMessage(resultItem, T("Apply-time fallback loaded missing routing family symbol: ", "적용 중 대체 처리로 누락된 라우팅 패밀리 심볼을 로드했습니다: ") + familyName + " : " + typeName);
 		return targetSymbol;
@@ -2146,47 +2523,40 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static Element TryCreatePipeSegmentInTarget(Document targetDocument, Document standardDocument, Element sourceElement)
 	{
-		PipeSegment sourceSegment = (PipeSegment)(object)((sourceElement is PipeSegment) ? sourceElement : null);
-		if (sourceSegment == null)
+		if (!(sourceElement is PipeSegment sourceSegment))
 		{
 			return null;
 		}
-		return (Element)(object)EnsurePipeSegmentAuthoritative(targetDocument, standardDocument, sourceSegment, SystemTypeApplyAuthorityMode.AdminAuthoritative, null);
+		return EnsurePipeSegmentAuthoritative(targetDocument, standardDocument, sourceSegment, SystemTypeApplyAuthorityMode.AdminAuthoritative, null);
 	}
 
 	private static PipeSegment EnsurePipeSegmentAuthoritative(Document targetDocument, Document standardDocument, PipeSegment sourceSegment, SystemTypeApplyAuthorityMode authorityMode, SystemTypeApplyExecutionItem resultItem)
 	{
-		//IL_0265: Unknown result type (might be due to invalid IL or missing references)
-		//IL_026b: Expected O, but got Unknown
-		//IL_026d: Expected O, but got Unknown
 		if (sourceSegment == null)
 		{
 			return null;
 		}
-		List<MEPSize> sizeCopies = CloneSegmentSizes((Segment)(object)sourceSegment);
+		List<MEPSize> sizeCopies = CloneSegmentSizes(sourceSegment);
 		if (sizeCopies.Count == 0)
 		{
-			throw new InvalidOperationException("The standard pipe segment has no readable size table. The system type apply was stopped because pipe segment OD/ID/ND data cannot be verified: " + ResolveElementName((Element)(object)sourceSegment));
+			throw new System.InvalidOperationException("The standard pipe segment has no readable size table. The system type apply was stopped because pipe segment OD/ID/ND data cannot be verified: " + ResolveElementName(sourceSegment));
 		}
 		try
 		{
-			Element element = standardDocument.GetElement(((Segment)sourceSegment).MaterialId);
-			Material sourceMaterial = (Material)(object)((element is Material) ? element : null);
-			Element element2 = standardDocument.GetElement(sourceSegment.ScheduleTypeId);
-			Element sourceSchedule = ((element2 is PipeScheduleType) ? element2 : null);
+			Material sourceMaterial = standardDocument.GetElement(sourceSegment.MaterialId) as Material;
+			PipeScheduleType sourceSchedule = standardDocument.GetElement(sourceSegment.ScheduleTypeId) as PipeScheduleType;
 			ElementId targetMaterialId = EnsureMaterialForPipeSegment(sourceMaterial, standardDocument, targetDocument, resultItem).MaterialId;
-			ElementId targetScheduleTypeId = EnsurePipeScheduleTypeForPipeSegment((PipeScheduleType)(object)sourceSchedule, standardDocument, targetDocument, resultItem);
-			if (targetMaterialId == null || targetMaterialId == ElementId.InvalidElementId)
+			ElementId targetScheduleTypeId = EnsurePipeScheduleTypeForPipeSegment(sourceSchedule, standardDocument, targetDocument, resultItem);
+			if ((object)targetMaterialId == null || targetMaterialId == ElementId.InvalidElementId)
 			{
-				throw new InvalidOperationException("The standard pipe segment material could not be mapped into the current project: " + ResolveElementName((Element)(object)sourceSegment));
+				throw new System.InvalidOperationException("The standard pipe segment material could not be mapped into the current project: " + ResolveElementName(sourceSegment));
 			}
-			if (targetScheduleTypeId == null || targetScheduleTypeId == ElementId.InvalidElementId)
+			if ((object)targetScheduleTypeId == null || targetScheduleTypeId == ElementId.InvalidElementId)
 			{
-				throw new InvalidOperationException("The standard pipe segment schedule type could not be mapped into the current project: " + ResolveElementName((Element)(object)sourceSegment));
+				throw new System.InvalidOperationException("The standard pipe segment schedule type could not be mapped into the current project: " + ResolveElementName(sourceSegment));
 			}
-			Element obj = ResolveMatchingTargetElement(targetDocument, (Element)(object)sourceSegment);
-			PipeSegment targetByName = (PipeSegment)(object)((obj is PipeSegment) ? obj : null);
-			if (targetByName != null && ElementIdsEqual(((Segment)targetByName).MaterialId, targetMaterialId) && ElementIdsEqual(targetByName.ScheduleTypeId, targetScheduleTypeId))
+			PipeSegment targetByName = ResolveMatchingTargetElement(targetDocument, sourceSegment) as PipeSegment;
+			if (targetByName != null && ElementIdsEqual(targetByName.MaterialId, targetMaterialId) && ElementIdsEqual(targetByName.ScheduleTypeId, targetScheduleTypeId))
 			{
 				SynchronizePipeSegmentDefinition(targetDocument, standardDocument, sourceSegment, targetByName, authorityMode, resultItem, targetMaterialId, targetScheduleTypeId);
 				return targetByName;
@@ -2194,7 +2564,7 @@ public sealed class SystemTypeApplyExecutionService
 			PipeSegment existingByMaterialAndSchedule = FindPipeSegmentByMaterialAndSchedule(targetDocument, targetMaterialId, targetScheduleTypeId);
 			if (existingByMaterialAndSchedule != null)
 			{
-				if (targetByName != null && !ElementIdsEqual(((Element)targetByName).Id, ((Element)existingByMaterialAndSchedule).Id))
+				if (targetByName != null && !ElementIdsEqual(targetByName.Id, existingByMaterialAndSchedule.Id))
 				{
 					ReportStalePipeSegment(targetDocument, targetByName, sourceSegment, resultItem);
 				}
@@ -2212,32 +2582,32 @@ public sealed class SystemTypeApplyExecutionService
 					ReportStalePipeSegment(targetDocument, targetByName, sourceSegment, resultItem);
 				}
 			}
-			PipeSegment created = PipeSegment.Create(targetDocument, targetMaterialId, targetScheduleTypeId, (ICollection<MEPSize>)sizeCopies);
+			PipeSegment created = PipeSegment.Create(targetDocument, targetMaterialId, targetScheduleTypeId, sizeCopies);
 			if (created == null)
 			{
-				throw new InvalidOperationException("Revit did not create a pipe segment from the standard size table: " + ResolveElementName((Element)(object)sourceSegment));
+				throw new System.InvalidOperationException("Revit did not create a pipe segment from the standard size table: " + ResolveElementName(sourceSegment));
 			}
 			try
 			{
-				((Element)created).Name = ResolveElementName((Element)(object)sourceSegment);
+				created.Name = ResolveElementName(sourceSegment);
 			}
 			catch (Exception projectError)
 			{
 				ProjectData.SetProjectError(projectError);
 				ProjectData.ClearProjectError();
 			}
-			CopyWritableElementParameters(targetDocument, standardDocument, (Element)(object)sourceSegment, (Element)(object)created);
+			CopyWritableElementParameters(targetDocument, standardDocument, sourceSegment, created);
 			SyncPipeSegmentManagedRoutingValues(sourceSegment, created);
 			targetDocument.Regenerate();
-			if (!string.Equals(Normalize(ResolveElementName((Element)(object)created)), Normalize(ResolveElementName((Element)(object)sourceSegment)), StringComparison.Ordinal))
+			if (!string.Equals(Normalize(ResolveElementName(created)), Normalize(ResolveElementName(sourceSegment)), StringComparison.Ordinal))
 			{
-				AddResultMessage(resultItem, "PipeSegment rename was not exact after create, but routing will use the created segment because material, schedule, and size table are verified. Standard name: " + ResolveElementName((Element)(object)sourceSegment) + " / Created name: " + ResolveElementName((Element)(object)created));
+				AddResultMessage(resultItem, "PipeSegment rename was not exact after create, but routing will use the created segment because material, schedule, and size table are verified. Standard name: " + ResolveElementName(sourceSegment) + " / Created name: " + ResolveElementName(created));
 			}
 			if (!PipeSegmentDefinitionMatchesForRouting(standardDocument, sourceSegment, targetDocument, created, targetMaterialId, targetScheduleTypeId))
 			{
-				throw new InvalidOperationException("The standard pipe segment was created, but its final material, schedule type, size table, or managed routing values do not match the registered standard RVT. The Pipe Type apply was rolled back to avoid a partial standard system. Segment: " + ResolveElementName((Element)(object)sourceSegment));
+				throw new System.InvalidOperationException("The standard pipe segment was created, but its final material, schedule type, size table, or managed routing values do not match the registered standard RVT. The Pipe Type apply was rolled back to avoid a partial standard system. Segment: " + ResolveElementName(sourceSegment));
 			}
-			AddResultMessage(resultItem, T("PipeSegment created from standard: ", "표준에서 배관 세그먼트를 생성했습니다: ") + ResolveElementName((Element)(object)sourceSegment));
+			AddResultMessage(resultItem, T("PipeSegment created from standard: ", "표준에서 배관 세그먼트를 생성했습니다: ") + ResolveElementName(sourceSegment));
 			return created;
 		}
 		catch (CriticalSystemTypeReferenceException ex)
@@ -2248,15 +2618,15 @@ public sealed class SystemTypeApplyExecutionService
 		}
 		catch (DisabledDisciplineException ex3)
 		{
-			ProjectData.SetProjectError((Exception)ex3);
+			ProjectData.SetProjectError(ex3);
 			DisabledDisciplineException ex4 = ex3;
-			throw new InvalidOperationException("This project does not have Mechanical/Electrical/Piping discipline enabled, so Pipe Type creation cannot continue. Segment: " + ResolveElementName((Element)(object)sourceSegment), (Exception)(object)ex4);
+			throw new System.InvalidOperationException("This project does not have Mechanical/Electrical/Piping discipline enabled, so Pipe Type creation cannot continue. Segment: " + ResolveElementName(sourceSegment), ex4);
 		}
 		catch (Exception ex5)
 		{
 			ProjectData.SetProjectError(ex5);
 			Exception ex6 = ex5;
-			throw new InvalidOperationException("The standard pipe segment could not be rebuilt in the current project. The system type apply was stopped before falling back to copy/paste, because pipe segment OD/ID/ND data must stay explicit. Segment: " + ResolveElementName((Element)(object)sourceSegment), ex6);
+			throw new System.InvalidOperationException("The standard pipe segment could not be rebuilt in the current project. The system type apply was stopped before falling back to copy/paste, because pipe segment OD/ID/ND data must stay explicit. Segment: " + ResolveElementName(sourceSegment), ex6);
 		}
 		finally
 		{
@@ -2279,22 +2649,22 @@ public sealed class SystemTypeApplyExecutionService
 	{
 		if (sourceSegment == null || targetSegment == null)
 		{
-			throw new InvalidOperationException(T("Pipe segment synchronization could not resolve the source or target segment.", "배관 세그먼트 동기화에서 원본 또는 대상 세그먼트를 확인하지 못했습니다."));
+			throw new System.InvalidOperationException(T("Pipe segment synchronization could not resolve the source or target segment.", "배관 세그먼트 동기화에서 원본 또는 대상 세그먼트를 확인하지 못했습니다."));
 		}
 		if (authorityMode != SystemTypeApplyAuthorityMode.AdminAuthoritative && !PipeSegmentDefinitionMatchesForRouting(standardDocument, sourceSegment, targetDocument, targetSegment, expectedTargetMaterialId, expectedTargetScheduleId))
 		{
-			throw new InvalidOperationException(T("A project pipe segment uses the standard material/schedule identity, but its definition differs. ", "프로젝트 배관 세그먼트가 표준 재료/스케줄 식별자를 사용하지만 정의가 다릅니다. ") + T("Modeler-safe mode blocks this change until an administrator applies the authoritative standard. Segment: ", "관리자가 권위 표준을 적용하기 전까지 모델러 안전 모드에서 이 변경을 차단합니다. 세그먼트: ") + ResolveElementName((Element)(object)sourceSegment));
+			throw new System.InvalidOperationException(T("A project pipe segment uses the standard material/schedule identity, but its definition differs. ", "프로젝트 배관 세그먼트가 표준 재료/스케줄 식별자를 사용하지만 정의가 다릅니다. ") + T("Modeler-safe mode blocks this change until an administrator applies the authoritative standard. Segment: ", "관리자가 권위 표준을 적용하기 전까지 모델러 안전 모드에서 이 변경을 차단합니다. 세그먼트: ") + ResolveElementName(sourceSegment));
 		}
-		SyncPipeSegmentSizeTable(targetDocument, (Segment)(object)sourceSegment, (Segment)(object)targetSegment, authorityMode, resultItem);
+		SyncPipeSegmentSizeTable(targetDocument, sourceSegment, targetSegment, authorityMode, resultItem);
 		SyncPipeSegmentManagedRoutingValues(sourceSegment, targetSegment);
-		CopyWritableElementParameters(targetDocument, standardDocument, (Element)(object)sourceSegment, (Element)(object)targetSegment);
+		CopyWritableElementParameters(targetDocument, standardDocument, sourceSegment, targetSegment);
 		TryRenamePipeSegmentToStandard(targetDocument, sourceSegment, targetSegment, resultItem);
 		targetDocument.Regenerate();
 		if (!PipeSegmentDefinitionMatchesForRouting(standardDocument, sourceSegment, targetDocument, targetSegment, expectedTargetMaterialId, expectedTargetScheduleId))
 		{
-			throw new InvalidOperationException(T("A project pipe segment was synchronized, but its final material, schedule type, or size table still differs from the standard RVT. ", "프로젝트 배관 세그먼트를 동기화했지만 최종 재료, 스케줄 타입 또는 사이즈 테이블이 여전히 표준 RVT와 다릅니다. ") + T("The Pipe Type apply was rolled back to avoid a partial standard system. ", "부분 표준 시스템이 남지 않도록 배관 타입 적용을 롤백했습니다. ") + T("Standard segment: ", "표준 세그먼트: ") + ResolveElementName((Element)(object)sourceSegment) + T(" / Project segment: ", " / 프로젝트 세그먼트: ") + ResolveElementName((Element)(object)targetSegment));
+			throw new System.InvalidOperationException(T("A project pipe segment was synchronized, but its final material, schedule type, or size table still differs from the standard RVT. ", "프로젝트 배관 세그먼트를 동기화했지만 최종 재료, 스케줄 타입 또는 사이즈 테이블이 여전히 표준 RVT와 다릅니다. ") + T("The Pipe Type apply was rolled back to avoid a partial standard system. ", "부분 표준 시스템이 남지 않도록 배관 타입 적용을 롤백했습니다. ") + T("Standard segment: ", "표준 세그먼트: ") + ResolveElementName(sourceSegment) + T(" / Project segment: ", " / 프로젝트 세그먼트: ") + ResolveElementName(targetSegment));
 		}
-		AddResultMessage(resultItem, T("PipeSegment synchronized from standard: ", "표준에서 배관 세그먼트를 동기화했습니다: ") + ResolveElementName((Element)(object)sourceSegment) + " -> " + ResolveElementName((Element)(object)targetSegment));
+		AddResultMessage(resultItem, T("PipeSegment synchronized from standard: ", "표준에서 배관 세그먼트를 동기화했습니다: ") + ResolveElementName(sourceSegment) + " -> " + ResolveElementName(targetSegment));
 	}
 
 	private static void SyncPipeSegmentSizeTable(Document targetDocument, Segment sourceSegment, Segment targetSegment, SystemTypeApplyAuthorityMode authorityMode, SystemTypeApplyExecutionItem resultItem)
@@ -2308,7 +2678,7 @@ public sealed class SystemTypeApplyExecutionService
 		}
 		if (authorityMode != SystemTypeApplyAuthorityMode.AdminAuthoritative)
 		{
-			throw new InvalidOperationException(T("The target pipe segment size table differs from the registered standard RVT and cannot be changed in modeler-safe mode.", "대상 배관 세그먼트 사이즈 테이블이 등록된 표준 RVT와 다르며 모델러 안전 모드에서는 변경할 수 없습니다."));
+			throw new System.InvalidOperationException(T("The target pipe segment size table differs from the registered standard RVT and cannot be changed in modeler-safe mode.", "대상 배관 세그먼트 사이즈 테이블이 등록된 표준 RVT와 다르며 모델러 안전 모드에서는 변경할 수 없습니다."));
 		}
 		MethodInfo addSizeMethod = FindSegmentAddSizeMethod(targetSegment);
 		MethodInfo removeSizeMethod = FindSegmentRemoveSizeMethod(targetSegment);
@@ -2320,7 +2690,7 @@ public sealed class SystemTypeApplyExecutionService
 				List<string> missingOrDifferent = FindMissingOrDifferentStandardSizes(sourceSizes, targetSegment);
 				if (missingOrDifferent.Count > 0)
 				{
-					throw new InvalidOperationException(T("The target pipe segment is missing or differs from standard sizes, but this Revit API version does not expose AddSize(MEPSize). ", "대상 배관 세그먼트에 표준 사이즈가 없거나 다르지만 이 Revit API 버전은 AddSize(MEPSize)를 제공하지 않습니다. ") + T("The Pipe Type apply was stopped before leaving a partial segment. Missing or different nominal diameters: ", "부분 세그먼트가 남지 않도록 배관 타입 적용을 중단했습니다. 누락 또는 상이한 공칭 직경: ") + string.Join(", ", missingOrDifferent));
+					throw new System.InvalidOperationException(T("The target pipe segment is missing or differs from standard sizes, but this Revit API version does not expose AddSize(MEPSize). ", "대상 배관 세그먼트에 표준 사이즈가 없거나 다르지만 이 Revit API 버전은 AddSize(MEPSize)를 제공하지 않습니다. ") + T("The Pipe Type apply was stopped before leaving a partial segment. Missing or different nominal diameters: ", "부분 세그먼트가 남지 않도록 배관 타입 적용을 중단했습니다. 누락 또는 상이한 공칭 직경: ") + string.Join(", ", missingOrDifferent));
 				}
 			}
 			foreach (MEPSize sourceSize in sourceSizes)
@@ -2336,14 +2706,14 @@ public sealed class SystemTypeApplyExecutionService
 				{
 					if ((object)removeSizeMethod == null)
 					{
-						throw new InvalidOperationException(T("The target pipe segment has a size with the same nominal diameter as the standard, but ID/OD/flags differ and this Revit API version does not expose RemoveSize(Double). ", "대상 배관 세그먼트에 표준과 같은 공칭 직경의 사이즈가 있지만 ID/OD/플래그가 다르고 이 Revit API 버전은 RemoveSize(Double)를 제공하지 않습니다. ") + T("The Pipe Type apply was stopped because the standard size cannot be replaced. Nominal diameter: ", "표준 사이즈를 교체할 수 없어 배관 타입 적용을 중단했습니다. 공칭 직경: ") + sourceNdKey);
+						throw new System.InvalidOperationException(T("The target pipe segment has a size with the same nominal diameter as the standard, but ID/OD/flags differ and this Revit API version does not expose RemoveSize(Double). ", "대상 배관 세그먼트에 표준과 같은 공칭 직경의 사이즈가 있지만 ID/OD/플래그가 다르고 이 Revit API 버전은 RemoveSize(Double)를 제공하지 않습니다. ") + T("The Pipe Type apply was stopped because the standard size cannot be replaced. Nominal diameter: ", "표준 사이즈를 교체할 수 없어 배관 타입 적용을 중단했습니다. 공칭 직경: ") + sourceNdKey);
 					}
 					ReplacePipeSegmentSize(targetDocument, CS_0024_003C_003E8__locals8._0024VB_0024Local_sourceSegment, targetSegment, addSizeMethod, removeSizeMethod, sourceSize, targetSize, resultItem);
 				}
 			}
 			if (!PipeSegmentContainsStandardSizes(CS_0024_003C_003E8__locals8._0024VB_0024Local_sourceSegment, targetSegment))
 			{
-				throw new InvalidOperationException(T("The target pipe segment size table is still missing one or more standard source sizes after add/replace synchronization.", "추가/교체 동기화 후에도 대상 배관 세그먼트 사이즈 테이블에 하나 이상의 표준 원본 사이즈가 없습니다."));
+				throw new System.InvalidOperationException(T("The target pipe segment size table is still missing one or more standard source sizes after add/replace synchronization.", "추가/교체 동기화 후에도 대상 배관 세그먼트 사이즈 테이블에 하나 이상의 표준 원본 사이즈가 없습니다."));
 			}
 			List<MEPSize> extraTargetSizes = (from x in targetSegment.GetSizes()
 				where x != null && !SegmentContainsNominalDiameter(CS_0024_003C_003E8__locals8._0024VB_0024Local_sourceSegment, x.NominalDiameter)
@@ -2352,7 +2722,7 @@ public sealed class SystemTypeApplyExecutionService
 			{
 				if ((object)removeSizeMethod == null)
 				{
-					AddResultMessage(resultItem, "Admin cleanup warning: extra pipe segment sizes remain because this Revit API version does not expose RemoveSize(Double). Segment: " + ResolveElementName((Element)(object)targetSegment) + " / Extra nominal diameter count: " + extraTargetSizes.Count.ToString(CultureInfo.InvariantCulture));
+					AddResultMessage(resultItem, "Admin cleanup warning: extra pipe segment sizes remain because this Revit API version does not expose RemoveSize(Double). Segment: " + ResolveElementName(targetSegment) + " / Extra nominal diameter count: " + extraTargetSizes.Count.ToString(CultureInfo.InvariantCulture));
 				}
 				else
 				{
@@ -2362,7 +2732,7 @@ public sealed class SystemTypeApplyExecutionService
 						Exception removeError = null;
 						if (!TryRemovePipeSegmentSize(targetSegment, removeSizeMethod, targetSize2.NominalDiameter, ref removeError))
 						{
-							AddResultMessage(resultItem, "Admin cleanup warning: an extra pipe segment size could not be removed and will remain for strict cleanup review. Segment: " + ResolveElementName((Element)(object)targetSegment) + " / Nominal diameter: " + targetNdKey + " / Reason: " + ResolveExceptionMessage(removeError));
+							AddResultMessage(resultItem, "Admin cleanup warning: an extra pipe segment size could not be removed and will remain for strict cleanup review. Segment: " + ResolveElementName(targetSegment) + " / Nominal diameter: " + targetNdKey + " / Reason: " + ResolveExceptionMessage(removeError));
 						}
 					}
 					targetDocument.Regenerate();
@@ -2370,25 +2740,25 @@ public sealed class SystemTypeApplyExecutionService
 			}
 			if (!PipeSegmentContainsStandardSizes(CS_0024_003C_003E8__locals8._0024VB_0024Local_sourceSegment, targetSegment))
 			{
-				throw new InvalidOperationException("The target pipe segment size table lost one or more standard source sizes during extra-size cleanup.");
+				throw new System.InvalidOperationException("The target pipe segment size table lost one or more standard source sizes during extra-size cleanup.");
 			}
 			int remainingExtraCount = CountExtraPipeSegmentSizes(CS_0024_003C_003E8__locals8._0024VB_0024Local_sourceSegment, targetSegment);
 			if (remainingExtraCount > 0)
 			{
-				AddResultMessage(resultItem, "Admin cleanup warning: selected Pipe Type apply kept extra pipe segment sizes after ensuring all standard sizes. Strict exact size-table cleanup should be run separately. Segment: " + ResolveElementName((Element)(object)targetSegment) + " / Extra nominal diameter count: " + remainingExtraCount.ToString(CultureInfo.InvariantCulture));
+				AddResultMessage(resultItem, "Admin cleanup warning: selected Pipe Type apply kept extra pipe segment sizes after ensuring all standard sizes. Strict exact size-table cleanup should be run separately. Segment: " + ResolveElementName(targetSegment) + " / Extra nominal diameter count: " + remainingExtraCount.ToString(CultureInfo.InvariantCulture));
 			}
 		}
 		catch (TargetInvocationException ex)
 		{
 			ProjectData.SetProjectError(ex);
 			TargetInvocationException ex2 = ex;
-			throw new InvalidOperationException(T("The target pipe segment size table could not be synchronized.", "대상 배관 세그먼트 사이즈 테이블을 동기화하지 못했습니다."), ex2.InnerException);
+			throw new System.InvalidOperationException(T("The target pipe segment size table could not be synchronized.", "대상 배관 세그먼트 사이즈 테이블을 동기화하지 못했습니다."), ex2.InnerException);
 		}
 		catch (Exception ex3)
 		{
 			ProjectData.SetProjectError(ex3);
 			Exception ex4 = ex3;
-			throw new InvalidOperationException(T("The target pipe segment size table could not be synchronized.", "대상 배관 세그먼트 사이즈 테이블을 동기화하지 못했습니다."), ex4);
+			throw new System.InvalidOperationException(T("The target pipe segment size table could not be synchronized.", "대상 배관 세그먼트 사이즈 테이블을 동기화하지 못했습니다."), ex4);
 		}
 		finally
 		{
@@ -2409,11 +2779,9 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void AddPipeSegmentSize(Segment targetSegment, MethodInfo addSizeMethod, MEPSize sourceSize, string nominalDiameterKey)
 	{
-		//IL_0032: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0038: Expected O, but got Unknown
 		if ((object)addSizeMethod == null)
 		{
-			throw new InvalidOperationException("The target pipe segment is missing a standard size, but this Revit API version does not expose AddSize(MEPSize). Nominal diameter: " + nominalDiameterKey);
+			throw new System.InvalidOperationException("The target pipe segment is missing a standard size, but this Revit API version does not expose AddSize(MEPSize). Nominal diameter: " + nominalDiameterKey);
 		}
 		MEPSize addSize = new MEPSize(sourceSize.NominalDiameter, sourceSize.InnerDiameter, sourceSize.OuterDiameter, sourceSize.UsedInSizeLists, sourceSize.UsedInSizing);
 		try
@@ -2424,13 +2792,13 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			ProjectData.SetProjectError(ex);
 			TargetInvocationException ex2 = ex;
-			throw new InvalidOperationException("The standard pipe segment size could not be added or replaced in the target project. Nominal diameter: " + nominalDiameterKey, ex2.InnerException);
+			throw new System.InvalidOperationException("The standard pipe segment size could not be added or replaced in the target project. Nominal diameter: " + nominalDiameterKey, ex2.InnerException);
 		}
 		catch (Exception ex3)
 		{
 			ProjectData.SetProjectError(ex3);
 			Exception ex4 = ex3;
-			throw new InvalidOperationException("The standard pipe segment size could not be added or replaced in the target project. Nominal diameter: " + nominalDiameterKey, ex4);
+			throw new System.InvalidOperationException("The standard pipe segment size could not be added or replaced in the target project. Nominal diameter: " + nominalDiameterKey, ex4);
 		}
 		finally
 		{
@@ -2451,7 +2819,7 @@ public sealed class SystemTypeApplyExecutionService
 		string sourceNdKey = BuildMEPSizeNominalDiameterKey(sourceSize);
 		if (sourceSize == null || targetSize == null)
 		{
-			throw new InvalidOperationException(T("The target pipe segment standard-size replacement could not resolve the source or target size.", "대상 배관 세그먼트 표준 사이즈 교체에서 원본 또는 대상 사이즈를 확인하지 못했습니다."));
+			throw new System.InvalidOperationException(T("The target pipe segment standard-size replacement could not resolve the source or target size.", "대상 배관 세그먼트 표준 사이즈 교체에서 원본 또는 대상 사이즈를 확인하지 못했습니다."));
 		}
 		double targetNominalDiameter = targetSize.NominalDiameter;
 		MEPSize temporarySize = null;
@@ -2474,7 +2842,7 @@ public sealed class SystemTypeApplyExecutionService
 				Exception removeError = null;
 				if (!TryRemovePipeSegmentSize(targetSegment, removeSizeMethod, temporaryNominalDiameter.Value, ref removeError))
 				{
-					AddResultMessage(resultItem, "Admin cleanup warning: temporary pipe segment size could not be removed after all standard sizes were restored. Selected Pipe Type apply may continue because routing uses the verified standard segment; strict exact size-table cleanup is still required. Segment: " + ResolveElementName((Element)(object)targetSegment) + " / Temporary nominal diameter: " + FormatLength(temporaryNominalDiameter.Value) + " / Reason: " + ResolveExceptionMessage(removeError));
+					AddResultMessage(resultItem, "Admin cleanup warning: temporary pipe segment size could not be removed after all standard sizes were restored. Selected Pipe Type apply may continue because routing uses the verified standard segment; strict exact size-table cleanup is still required. Segment: " + ResolveElementName(targetSegment) + " / Temporary nominal diameter: " + FormatLength(temporaryNominalDiameter.Value) + " / Reason: " + ResolveExceptionMessage(removeError));
 				}
 				else
 				{
@@ -2504,7 +2872,7 @@ public sealed class SystemTypeApplyExecutionService
 		Exception removeError = null;
 		if (!TryRemovePipeSegmentSize(targetSegment, removeSizeMethod, nominalDiameter, ref removeError))
 		{
-			throw new InvalidOperationException(failureMessage, removeError);
+			throw new System.InvalidOperationException(failureMessage, removeError);
 		}
 	}
 
@@ -2513,7 +2881,7 @@ public sealed class SystemTypeApplyExecutionService
 		bool TryRemovePipeSegmentSize;
 		if (targetSegment == null || (object)removeSizeMethod == null)
 		{
-			errorResult = new InvalidOperationException("RemoveSize(Double) is not available for this pipe segment.");
+			errorResult = new System.InvalidOperationException("RemoveSize(Double) is not available for this pipe segment.");
 			TryRemovePipeSegmentSize = false;
 		}
 		else
@@ -2576,11 +2944,9 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static MEPSize BuildTemporaryPipeSegmentSize(MEPSize sourceSize, Segment sourceSegment, Segment targetSegment)
 	{
-		//IL_00f8: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00fe: Expected O, but got Unknown
 		if (sourceSize == null)
 		{
-			throw new InvalidOperationException(T("A temporary pipe segment size could not be created because the source size is unreadable.", "원본 사이즈를 읽을 수 없어 임시 배관 세그먼트 사이즈를 만들지 못했습니다."));
+			throw new System.InvalidOperationException(T("A temporary pipe segment size could not be created because the source size is unreadable.", "원본 사이즈를 읽을 수 없어 임시 배관 세그먼트 사이즈를 만들지 못했습니다."));
 		}
 		double sourceNominalDiameter = ((sourceSize.NominalDiameter > 1E-09) ? sourceSize.NominalDiameter : 0.01);
 		double[] array = new double[12]
@@ -2598,11 +2964,11 @@ public sealed class SystemTypeApplyExecutionService
 				{
 					double candidateInnerDiameter = Math.Max(1E-09, candidateNominalDiameter * 0.8);
 					double candidateOuterDiameter = Math.Max(candidateNominalDiameter * 1.1, candidateInnerDiameter + 1E-09);
-					return new MEPSize(candidateNominalDiameter, candidateInnerDiameter, candidateOuterDiameter, false, false);
+					return new MEPSize(candidateNominalDiameter, candidateInnerDiameter, candidateOuterDiameter, usedInSizeLists: false, usedInSizing: false);
 				}
 			}
 		}
-		throw new InvalidOperationException("A temporary pipe segment size could not be generated because every candidate nominal diameter already exists in the source or target size table.");
+		throw new System.InvalidOperationException("A temporary pipe segment size could not be generated because every candidate nominal diameter already exists in the source or target size table.");
 	}
 
 	private static List<string> FindMissingOrDifferentStandardSizes(IEnumerable<MEPSize> sourceSizes, Segment targetSegment)
@@ -2658,12 +3024,12 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static MethodInfo FindSegmentAddSizeMethod(Segment segment)
 	{
-		return ((object)segment)?.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public).FirstOrDefault([SpecialName] (MethodInfo x) => string.Equals(x.Name, "AddSize", StringComparison.Ordinal) && x.GetParameters().Length == 1 && typeof(MEPSize).IsAssignableFrom(x.GetParameters()[0].ParameterType));
+		return segment?.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public).FirstOrDefault([SpecialName] (MethodInfo x) => string.Equals(x.Name, "AddSize", StringComparison.Ordinal) && x.GetParameters().Length == 1 && typeof(MEPSize).IsAssignableFrom(x.GetParameters()[0].ParameterType));
 	}
 
 	private static MethodInfo FindSegmentRemoveSizeMethod(Segment segment)
 	{
-		return ((object)segment)?.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public).FirstOrDefault([SpecialName] (MethodInfo x) => string.Equals(x.Name, "RemoveSize", StringComparison.Ordinal) && x.GetParameters().Length == 1 && x.GetParameters()[0].ParameterType == typeof(double));
+		return segment?.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public).FirstOrDefault([SpecialName] (MethodInfo x) => string.Equals(x.Name, "RemoveSize", StringComparison.Ordinal) && x.GetParameters().Length == 1 && x.GetParameters()[0].ParameterType == typeof(double));
 	}
 
 	private static void SyncPipeSegmentManagedRoutingValues(PipeSegment sourceSegment, PipeSegment targetSegment)
@@ -2673,27 +3039,25 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void TryRenamePipeSegmentToStandard(Document targetDocument, PipeSegment sourceSegment, PipeSegment targetSegment, SystemTypeApplyExecutionItem resultItem)
 	{
-		string sourceName = ResolveElementName((Element)(object)sourceSegment);
-		if (string.IsNullOrWhiteSpace(sourceName) || string.Equals(Normalize(sourceName), Normalize(ResolveElementName((Element)(object)targetSegment)), StringComparison.Ordinal))
+		string sourceName = ResolveElementName(sourceSegment);
+		if (string.IsNullOrWhiteSpace(sourceName) || string.Equals(Normalize(sourceName), Normalize(ResolveElementName(targetSegment)), StringComparison.Ordinal))
 		{
 			return;
 		}
-		Element obj = ResolveMatchingTargetElement(targetDocument, (Element)(object)sourceSegment);
-		PipeSegment sameNameSegment = (PipeSegment)(object)((obj is PipeSegment) ? obj : null);
-		if (sameNameSegment != null && !ElementIdsEqual(((Element)sameNameSegment).Id, ((Element)targetSegment).Id))
+		if (ResolveMatchingTargetElement(targetDocument, sourceSegment) is PipeSegment sameNameSegment && !ElementIdsEqual(sameNameSegment.Id, targetSegment.Id))
 		{
-			AddResultMessage(resultItem, "Stale pipe segment keeps the standard name, so the material/schedule counterpart was used without renaming. Admin cleanup is required if the stale segment is still referenced. Standard name: " + sourceName + " / Used segment: " + ResolveElementName((Element)(object)targetSegment));
+			AddResultMessage(resultItem, "Stale pipe segment keeps the standard name, so the material/schedule counterpart was used without renaming. Admin cleanup is required if the stale segment is still referenced. Standard name: " + sourceName + " / Used segment: " + ResolveElementName(targetSegment));
 			return;
 		}
 		try
 		{
-			((Element)targetSegment).Name = sourceName;
+			targetSegment.Name = sourceName;
 		}
 		catch (Exception ex)
 		{
 			ProjectData.SetProjectError(ex);
 			Exception ex2 = ex;
-			AddResultMessage(resultItem, "PipeSegment rename was skipped by Revit, but routing was reconnected to the correct material/schedule counterpart. Segment: " + ResolveElementName((Element)(object)targetSegment) + " / Standard name: " + sourceName + " / Reason: " + ex2.Message);
+			AddResultMessage(resultItem, "PipeSegment rename was skipped by Revit, but routing was reconnected to the correct material/schedule counterpart. Segment: " + ResolveElementName(targetSegment) + " / Standard name: " + sourceName + " / Reason: " + ex2.Message);
 			ProjectData.ClearProjectError();
 		}
 	}
@@ -2705,7 +3069,7 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			TryDeleteUnusedStalePipeSegment = false;
 		}
-		else if (IsPipeSegmentReferencedByRoutingPreferences(targetDocument, ((Element)staleSegment).Id))
+		else if (IsPipeSegmentReferencedByRoutingPreferences(targetDocument, staleSegment.Id))
 		{
 			TryDeleteUnusedStalePipeSegment = false;
 		}
@@ -2713,10 +3077,10 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			try
 			{
-				string staleName = ResolveElementName((Element)(object)staleSegment);
-				targetDocument.Delete(((Element)staleSegment).Id);
+				string staleName = ResolveElementName(staleSegment);
+				targetDocument.Delete(staleSegment.Id);
 				targetDocument.Regenerate();
-				AddResultMessage(resultItem, "Unused stale pipe segment deleted before authoritative sync: " + staleName + " / Standard segment: " + ResolveElementName((Element)(object)sourceSegment));
+				AddResultMessage(resultItem, "Unused stale pipe segment deleted before authoritative sync: " + staleName + " / Standard segment: " + ResolveElementName(sourceSegment));
 				TryDeleteUnusedStalePipeSegment = true;
 			}
 			catch (Exception projectError)
@@ -2731,46 +3095,39 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static bool IsPipeSegmentReferencedByRoutingPreferences(Document targetDocument, ElementId segmentId)
 	{
-		//IL_00b8: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00bd: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00bf: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00c2: Invalid comparison between Unknown and I4
-		//IL_001c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00c6: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00ea: Unknown result type (might be due to invalid IL or missing references)
-		if (targetDocument == null || segmentId == null || segmentId == ElementId.InvalidElementId)
+		if (targetDocument == null || (object)segmentId == null || segmentId == ElementId.InvalidElementId)
 		{
 			return false;
 		}
-		foreach (ElementType item in from Element x in (IEnumerable)new FilteredElementCollector(targetDocument).WhereElementIsElementType()
-			select (ElementType)(object)((x is ElementType) ? x : null) into x
-			where x != null
-			select x)
+		checked
 		{
-			RoutingPreferenceManager manager = TryGetRoutingPreferenceManager(item);
-			if (manager == null)
+			foreach (ElementType item in from Element x in new FilteredElementCollector(targetDocument).WhereElementIsElementType()
+				select x as ElementType into x
+				where x != null
+				select x)
 			{
-				continue;
-			}
-			foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
-			{
-				if ((int)group == -1)
+				RoutingPreferenceManager manager = TryGetRoutingPreferenceManager(item);
+				if (manager == null)
 				{
 					continue;
 				}
-				int ruleCount;
-				try
+				foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
 				{
-					ruleCount = manager.GetNumberOfRules(group);
-				}
-				catch (Exception projectError)
-				{
-					ProjectData.SetProjectError(projectError);
-					ProjectData.ClearProjectError();
-					continue;
-				}
-				checked
-				{
+					if (group == RoutingPreferenceRuleGroupType.Undefined)
+					{
+						continue;
+					}
+					int ruleCount;
+					try
+					{
+						ruleCount = manager.GetNumberOfRules(group);
+					}
+					catch (Exception projectError)
+					{
+						ProjectData.SetProjectError(projectError);
+						ProjectData.ClearProjectError();
+						continue;
+					}
 					int num = ruleCount - 1;
 					for (int index = 0; index <= num; index++)
 					{
@@ -2790,23 +3147,21 @@ public sealed class SystemTypeApplyExecutionService
 					}
 				}
 			}
+			return false;
 		}
-		return false;
 	}
 
 	private static void ReportStalePipeSegment(Document targetDocument, PipeSegment staleSegment, PipeSegment sourceSegment, SystemTypeApplyExecutionItem resultItem)
 	{
 		if (staleSegment != null)
 		{
-			string usage = (IsPipeSegmentReferencedByRoutingPreferences(targetDocument, ((Element)staleSegment).Id) ? "referenced" : "unreferenced");
-			AddResultMessage(resultItem, "Stale same-name pipe segment detected and not used for this Pipe Type routing. The authoritative material/schedule counterpart will be used instead. Standard segment: " + ResolveElementName((Element)(object)sourceSegment) + " / Stale project segment: " + ResolveElementName((Element)(object)staleSegment) + " / Stale usage: " + usage);
+			string usage = (IsPipeSegmentReferencedByRoutingPreferences(targetDocument, staleSegment.Id) ? "referenced" : "unreferenced");
+			AddResultMessage(resultItem, "Stale same-name pipe segment detected and not used for this Pipe Type routing. The authoritative material/schedule counterpart will be used instead. Standard segment: " + ResolveElementName(sourceSegment) + " / Stale project segment: " + ResolveElementName(staleSegment) + " / Stale usage: " + usage);
 		}
 	}
 
 	private static List<MEPSize> CloneSegmentSizes(Segment sourceSegment)
 	{
-		//IL_005d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0067: Expected O, but got Unknown
 		List<MEPSize> sizes = new List<MEPSize>();
 		if (sourceSegment == null)
 		{
@@ -2818,7 +3173,7 @@ public sealed class SystemTypeApplyExecutionService
 			{
 				if (sourceSize == null)
 				{
-					throw new InvalidOperationException(T("The pipe segment size table contains an unreadable size row.", "배관 세그먼트 사이즈 테이블에 읽을 수 없는 사이즈 행이 있습니다."));
+					throw new System.InvalidOperationException(T("The pipe segment size table contains an unreadable size row.", "배관 세그먼트 사이즈 테이블에 읽을 수 없는 사이즈 행이 있습니다."));
 				}
 				sizes.Add(new MEPSize(sourceSize.NominalDiameter, sourceSize.InnerDiameter, sourceSize.OuterDiameter, sourceSize.UsedInSizeLists, sourceSize.UsedInSizing));
 			}
@@ -2827,20 +3182,13 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			ProjectData.SetProjectError(ex);
 			Exception ex2 = ex;
-			throw new InvalidOperationException("The standard pipe segment size table could not be read. The system type apply was stopped because OD/ID/ND data cannot be trusted.", ex2);
+			throw new System.InvalidOperationException("The standard pipe segment size table could not be read. The system type apply was stopped because OD/ID/ND data cannot be trusted.", ex2);
 		}
 		return sizes;
 	}
 
 	private static List<NonFamilyRoutingDependencyCheck> ValidateNonFamilyRoutingDependencies(Document targetDocument, Document standardDocument, IDictionary<string, ElementType> standardSystemMap, SystemTypeSyncPlanItem syncItem, SystemSyncExecutionItem executionPlanItem)
 	{
-		//IL_00b2: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00b7: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00b9: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00bc: Invalid comparison between Unknown and I4
-		//IL_00c3: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00e9: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0136: Unknown result type (might be due to invalid IL or missing references)
 		List<NonFamilyRoutingDependencyCheck> result = new List<NonFamilyRoutingDependencyCheck>();
 		if (targetDocument == null || standardDocument == null || syncItem == null || executionPlanItem == null)
 		{
@@ -2862,25 +3210,25 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return result;
 		}
-		foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
+		checked
 		{
-			if ((int)group == -1)
+			foreach (RoutingPreferenceRuleGroupType group in Enum.GetValues(typeof(RoutingPreferenceRuleGroupType)).Cast<RoutingPreferenceRuleGroupType>())
 			{
-				continue;
-			}
-			int ruleCount;
-			try
-			{
-				ruleCount = manager.GetNumberOfRules(group);
-			}
-			catch (Exception projectError)
-			{
-				ProjectData.SetProjectError(projectError);
-				ProjectData.ClearProjectError();
-				continue;
-			}
-			checked
-			{
+				if (group == RoutingPreferenceRuleGroupType.Undefined)
+				{
+					continue;
+				}
+				int ruleCount;
+				try
+				{
+					ruleCount = manager.GetNumberOfRules(group);
+				}
+				catch (Exception projectError)
+				{
+					ProjectData.SetProjectError(projectError);
+					ProjectData.ClearProjectError();
+					continue;
+				}
 				int num = ruleCount - 1;
 				for (int index = 0; index <= num; index++)
 				{
@@ -2895,23 +3243,21 @@ public sealed class SystemTypeApplyExecutionService
 						ProjectData.ClearProjectError();
 						continue;
 					}
-					Element sourcePart = ((((rule != null) ? rule.MEPPartId : null) == null) ? null : standardDocument.GetElement(rule.MEPPartId));
+					Element sourcePart = (((object)rule?.MEPPartId == null) ? null : standardDocument.GetElement(rule.MEPPartId));
 					if (sourcePart != null && !(sourcePart is FamilySymbol))
 					{
 						result.AddRange(BuildNonFamilyRoutingPartChecks(targetDocument, standardDocument, sourcePart, group, index));
 					}
 				}
 			}
+			return result;
 		}
-		return result;
 	}
 
-	private unsafe static IEnumerable<NonFamilyRoutingDependencyCheck> BuildNonFamilyRoutingPartChecks(Document targetDocument, Document standardDocument, Element sourcePart, RoutingPreferenceRuleGroupType group, int ruleIndex)
+	private static IEnumerable<NonFamilyRoutingDependencyCheck> BuildNonFamilyRoutingPartChecks(Document targetDocument, Document standardDocument, Element sourcePart, RoutingPreferenceRuleGroupType group, int ruleIndex)
 	{
-		//IL_0014: Unknown result type (might be due to invalid IL or missing references)
 		List<NonFamilyRoutingDependencyCheck> result = new List<NonFamilyRoutingDependencyCheck>();
-		PipeSegment sourceSegment = (PipeSegment)(object)((sourcePart is PipeSegment) ? sourcePart : null);
-		if (sourceSegment != null)
+		if (sourcePart is PipeSegment sourceSegment)
 		{
 			result.Add(BuildPipeSegmentRoutingPartCheck(targetDocument, standardDocument, sourceSegment, group, ruleIndex));
 			return result;
@@ -2919,62 +3265,62 @@ public sealed class SystemTypeApplyExecutionService
 		Element targetPart = ResolveMatchingTargetElement(targetDocument, sourcePart);
 		if (targetPart == null)
 		{
-			result.Add(NonFamilyRoutingDependencyCheck.Block("MissingRoutingPart", "A non-family routing preference part is missing in the current project and does not yet have an explicit safe ensure path. Apply was stopped before dependency family load. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Part: " + ((object)sourcePart).GetType().Name + " : " + ResolveElementName(sourcePart)));
+			result.Add(NonFamilyRoutingDependencyCheck.Block("MissingRoutingPart", "A non-family routing preference part is missing in the current project and does not yet have an explicit safe ensure path. Apply was stopped before dependency family load. Rule group: " + group.ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Part: " + sourcePart.GetType().Name + " : " + ResolveElementName(sourcePart)));
 			return result;
 		}
 		if (!RoutingPartDefinitionsMatch(standardDocument, sourcePart, targetDocument, targetPart))
 		{
-			result.Add(NonFamilyRoutingDependencyCheck.Block("RoutingPartConflict", "A non-family routing preference part exists in the current project, but its definition differs from the standard RVT. Apply was stopped before dependency family load. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Part: " + ((object)sourcePart).GetType().Name + " : " + ResolveElementName(sourcePart)));
+			result.Add(NonFamilyRoutingDependencyCheck.Block("RoutingPartConflict", "A non-family routing preference part exists in the current project, but its definition differs from the standard RVT. Apply was stopped before dependency family load. Rule group: " + group.ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Part: " + sourcePart.GetType().Name + " : " + ResolveElementName(sourcePart)));
 			return result;
 		}
-		result.Add(NonFamilyRoutingDependencyCheck.Ready("ReuseRoutingPart", "Routing preference part is ready to reuse. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Part: " + ((object)sourcePart).GetType().Name + " : " + ResolveElementName(sourcePart)));
+		result.Add(NonFamilyRoutingDependencyCheck.Ready("ReuseRoutingPart", "Routing preference part is ready to reuse. Rule group: " + group.ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Part: " + sourcePart.GetType().Name + " : " + ResolveElementName(sourcePart)));
 		return result;
 	}
 
-	private unsafe static NonFamilyRoutingDependencyCheck BuildPipeSegmentRoutingPartCheck(Document targetDocument, Document standardDocument, PipeSegment sourceSegment, RoutingPreferenceRuleGroupType group, int ruleIndex)
+	private static NonFamilyRoutingDependencyCheck BuildPipeSegmentRoutingPartCheck(Document targetDocument, Document standardDocument, PipeSegment sourceSegment, RoutingPreferenceRuleGroupType group, int ruleIndex)
 	{
-		if (!PipeSegmentHasReadableSizes((Segment)(object)sourceSegment))
+		if (!PipeSegmentHasReadableSizes(sourceSegment))
 		{
-			return NonFamilyRoutingDependencyCheck.Block("PipeSegmentSizeTableUnreadable", "The standard pipe segment size table could not be read before dependency family load. Apply was stopped because the target segment cannot be verified. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Segment: " + ResolveElementName((Element)(object)sourceSegment));
+			return NonFamilyRoutingDependencyCheck.Block("PipeSegmentSizeTableUnreadable", "The standard pipe segment size table could not be read before dependency family load. Apply was stopped because the target segment cannot be verified. Rule group: " + group.ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Segment: " + ResolveElementName(sourceSegment));
 		}
-		Element targetByName = ResolveMatchingTargetElement(targetDocument, (Element)(object)sourceSegment);
-		if (targetByName != null && RoutingPartDefinitionsMatch(standardDocument, (Element)(object)sourceSegment, targetDocument, targetByName))
+		Element targetByName = ResolveMatchingTargetElement(targetDocument, sourceSegment);
+		if (targetByName != null && RoutingPartDefinitionsMatch(standardDocument, sourceSegment, targetDocument, targetByName))
 		{
-			return NonFamilyRoutingDependencyCheck.Ready("ReusePipeSegment", "Pipe segment is ready to reuse. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Segment: " + ResolveElementName((Element)(object)sourceSegment));
+			return NonFamilyRoutingDependencyCheck.Ready("ReusePipeSegment", "Pipe segment is ready to reuse. Rule group: " + group.ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Segment: " + ResolveElementName(sourceSegment));
 		}
-		ReferenceMappingCheck materialCheck = ResolvePotentialMappedReference(targetDocument, standardDocument, ((Segment)sourceSegment).MaterialId, "pipe segment material");
+		ReferenceMappingCheck materialCheck = ResolvePotentialMappedReference(targetDocument, standardDocument, sourceSegment.MaterialId, "pipe segment material");
 		if (materialCheck.SourceReference == null)
 		{
-			return NonFamilyRoutingDependencyCheck.Block("PipeSegmentMaterialConflict", (materialCheck.Blocker ?? "The standard pipe segment material could not be resolved.") + " Apply was stopped before dependency family load. Segment: " + ResolveElementName((Element)(object)sourceSegment));
+			return NonFamilyRoutingDependencyCheck.Block("PipeSegmentMaterialConflict", (materialCheck.Blocker ?? "The standard pipe segment material could not be resolved.") + " Apply was stopped before dependency family load. Segment: " + ResolveElementName(sourceSegment));
 		}
 		ReferenceMappingCheck scheduleCheck = ResolvePotentialMappedReference(targetDocument, standardDocument, sourceSegment.ScheduleTypeId, "pipe segment schedule type");
 		if (scheduleCheck.SourceReference == null)
 		{
-			return NonFamilyRoutingDependencyCheck.Block("PipeSegmentScheduleConflict", (scheduleCheck.Blocker ?? "The standard pipe segment schedule type could not be resolved.") + " Apply was stopped before dependency family load. Segment: " + ResolveElementName((Element)(object)sourceSegment));
+			return NonFamilyRoutingDependencyCheck.Block("PipeSegmentScheduleConflict", (scheduleCheck.Blocker ?? "The standard pipe segment schedule type could not be resolved.") + " Apply was stopped before dependency family load. Segment: " + ResolveElementName(sourceSegment));
 		}
 		if (materialCheck.TargetReference != null && scheduleCheck.TargetReference != null)
 		{
 			PipeSegment existingByCombination = FindPipeSegmentByMaterialAndSchedule(targetDocument, materialCheck.TargetReference.Id, scheduleCheck.TargetReference.Id);
 			if (existingByCombination != null)
 			{
-				if (RoutingPartDefinitionsMatch(standardDocument, (Element)(object)sourceSegment, targetDocument, (Element)(object)existingByCombination))
+				if (RoutingPartDefinitionsMatch(standardDocument, sourceSegment, targetDocument, existingByCombination))
 				{
-					return NonFamilyRoutingDependencyCheck.Ready("ReusePipeSegmentByMaterialSchedule", "Pipe segment will reuse an existing project segment with matching material, schedule type, and size table. Standard segment: " + ResolveElementName((Element)(object)sourceSegment) + " / Project segment: " + ResolveElementName((Element)(object)existingByCombination));
+					return NonFamilyRoutingDependencyCheck.Ready("ReusePipeSegmentByMaterialSchedule", "Pipe segment will reuse an existing project segment with matching material, schedule type, and size table. Standard segment: " + ResolveElementName(sourceSegment) + " / Project segment: " + ResolveElementName(existingByCombination));
 				}
-				return NonFamilyRoutingDependencyCheck.Ready("SyncPipeSegmentByMaterialSchedule", "A project pipe segment already uses the standard material and schedule type, but its size table or writable definition differs. Admin-authoritative apply will synchronize that existing segment instead of creating a duplicate. Standard segment: " + ResolveElementName((Element)(object)sourceSegment) + " / Project segment: " + ResolveElementName((Element)(object)existingByCombination));
+				return NonFamilyRoutingDependencyCheck.Ready("SyncPipeSegmentByMaterialSchedule", "A project pipe segment already uses the standard material and schedule type, but its size table or writable definition differs. Admin-authoritative apply will synchronize that existing segment instead of creating a duplicate. Standard segment: " + ResolveElementName(sourceSegment) + " / Project segment: " + ResolveElementName(existingByCombination));
 			}
 		}
 		if (targetByName != null)
 		{
-			return NonFamilyRoutingDependencyCheck.Ready("ResolveStalePipeSegmentName", "A same-name pipe segment exists with a non-standard material or schedule definition. Admin-authoritative apply will resolve or create the correct material/schedule counterpart, reconnect routing to it, and report the stale segment for cleanup. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Segment: " + ResolveElementName((Element)(object)sourceSegment));
+			return NonFamilyRoutingDependencyCheck.Ready("ResolveStalePipeSegmentName", "A same-name pipe segment exists with a non-standard material or schedule definition. Admin-authoritative apply will resolve or create the correct material/schedule counterpart, reconnect routing to it, and report the stale segment for cleanup. Rule group: " + group.ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Segment: " + ResolveElementName(sourceSegment));
 		}
-		return NonFamilyRoutingDependencyCheck.Ready("CreatePipeSegment", "Pipe segment can be created during the system type transaction. Dependency families have not been loaded yet. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Segment: " + ResolveElementName((Element)(object)sourceSegment));
+		return NonFamilyRoutingDependencyCheck.Ready("CreatePipeSegment", "Pipe segment can be created during the system type transaction. Dependency families have not been loaded yet. Rule group: " + group.ToString() + " / Rule index: " + ruleIndex.ToString(CultureInfo.InvariantCulture) + " / Segment: " + ResolveElementName(sourceSegment));
 	}
 
 	private static ReferenceMappingCheck ResolveExistingMappedReference(Document targetDocument, Document standardDocument, ElementId sourceId, string referenceLabel)
 	{
 		ReferenceMappingCheck result = new ReferenceMappingCheck();
-		if (sourceId == null || sourceId == ElementId.InvalidElementId || RevitElementIdCompat.CompatIntegerValue(sourceId) < 0)
+		if ((object)sourceId == null || sourceId == ElementId.InvalidElementId || RevitElementIdCompat.CompatIntegerValue(sourceId) < 0)
 		{
 			result.Blocker = "The standard " + referenceLabel + " reference is not valid.";
 			return result;
@@ -2993,7 +3339,7 @@ public sealed class SystemTypeApplyExecutionService
 		}
 		if (!RoutingPartDefinitionsMatch(standardDocument, sourceReference, targetDocument, targetReference))
 		{
-			result.Blocker = "A " + referenceLabel + " with the same name exists in the current project, but its definition differs from the standard RVT. Reference: " + ((object)sourceReference).GetType().Name + " : " + ResolveElementName(sourceReference);
+			result.Blocker = "A " + referenceLabel + " with the same name exists in the current project, but its definition differs from the standard RVT. Reference: " + sourceReference.GetType().Name + " : " + ResolveElementName(sourceReference);
 			return result;
 		}
 		result.TargetReference = targetReference;
@@ -3003,7 +3349,7 @@ public sealed class SystemTypeApplyExecutionService
 	private static ReferenceMappingCheck ResolvePotentialMappedReference(Document targetDocument, Document standardDocument, ElementId sourceId, string referenceLabel)
 	{
 		ReferenceMappingCheck result = new ReferenceMappingCheck();
-		if (sourceId == null || sourceId == ElementId.InvalidElementId || RevitElementIdCompat.CompatIntegerValue(sourceId) < 0)
+		if ((object)sourceId == null || sourceId == ElementId.InvalidElementId || RevitElementIdCompat.CompatIntegerValue(sourceId) < 0)
 		{
 			result.Blocker = "The standard " + referenceLabel + " reference is not valid.";
 			return result;
@@ -3025,15 +3371,15 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return false;
 		}
-		PipeSegment sourceSegment = (PipeSegment)(object)((sourcePart is PipeSegment) ? sourcePart : null);
-		PipeSegment targetSegment = (PipeSegment)(object)((targetPart is PipeSegment) ? targetPart : null);
+		PipeSegment sourceSegment = sourcePart as PipeSegment;
+		PipeSegment targetSegment = targetPart as PipeSegment;
 		if (sourceSegment != null || targetSegment != null)
 		{
 			if (sourceSegment == null || targetSegment == null)
 			{
 				return false;
 			}
-			ReferenceMappingCheck materialCheck = ResolvePotentialMappedReference(targetDocument, sourceDocument, ((Segment)sourceSegment).MaterialId, "pipe segment material");
+			ReferenceMappingCheck materialCheck = ResolvePotentialMappedReference(targetDocument, sourceDocument, sourceSegment.MaterialId, "pipe segment material");
 			ReferenceMappingCheck scheduleCheck = ResolvePotentialMappedReference(targetDocument, sourceDocument, sourceSegment.ScheduleTypeId, "pipe segment schedule type");
 			if (materialCheck.TargetReference == null || scheduleCheck.TargetReference == null)
 			{
@@ -3050,15 +3396,15 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return false;
 		}
-		if (expectedTargetMaterialId == null || expectedTargetMaterialId == ElementId.InvalidElementId || expectedTargetScheduleId == null || expectedTargetScheduleId == ElementId.InvalidElementId)
+		if ((object)expectedTargetMaterialId == null || expectedTargetMaterialId == ElementId.InvalidElementId || (object)expectedTargetScheduleId == null || expectedTargetScheduleId == ElementId.InvalidElementId)
 		{
 			return false;
 		}
-		if (!ElementIdsEqual(((Segment)targetSegment).MaterialId, expectedTargetMaterialId) || !ElementIdsEqual(targetSegment.ScheduleTypeId, expectedTargetScheduleId))
+		if (!ElementIdsEqual(targetSegment.MaterialId, expectedTargetMaterialId) || !ElementIdsEqual(targetSegment.ScheduleTypeId, expectedTargetScheduleId))
 		{
 			return false;
 		}
-		if (!PipeSegmentContainsStandardSizes((Segment)(object)sourceSegment, (Segment)(object)targetSegment))
+		if (!PipeSegmentContainsStandardSizes(sourceSegment, targetSegment))
 		{
 			return false;
 		}
@@ -3193,12 +3539,11 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static PipeSegment FindPipeSegmentByMaterialAndSchedule(Document targetDocument, ElementId materialId, ElementId scheduleTypeId)
 	{
-		//IL_002c: Unknown result type (might be due to invalid IL or missing references)
-		if (targetDocument == null || materialId == null || scheduleTypeId == null)
+		if (targetDocument == null || (object)materialId == null || (object)scheduleTypeId == null)
 		{
 			return null;
 		}
-		return ((IEnumerable)new FilteredElementCollector(targetDocument).OfClass(typeof(PipeSegment))).Cast<PipeSegment>().FirstOrDefault([SpecialName] (PipeSegment x) => x != null && ElementIdsEqual(((Segment)x).MaterialId, materialId) && ElementIdsEqual(x.ScheduleTypeId, scheduleTypeId));
+		return new FilteredElementCollector(targetDocument).OfClass(typeof(PipeSegment)).Cast<PipeSegment>().FirstOrDefault([SpecialName] (PipeSegment x) => x != null && ElementIdsEqual(x.MaterialId, materialId) && ElementIdsEqual(x.ScheduleTypeId, scheduleTypeId));
 	}
 
 	private static string BuildMEPSizeNominalDiameterKey(MEPSize size)
@@ -3248,18 +3593,16 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static bool ElementIdsEqual(ElementId left, ElementId right)
 	{
-		if (left == null || right == null)
+		if ((object)left == null || (object)right == null)
 		{
-			return left == null && right == null;
+			return (object)left == null && (object)right == null;
 		}
 		return RevitElementIdCompat.CompatIntegerValue(left) == RevitElementIdCompat.CompatIntegerValue(right);
 	}
 
 	private static ElementId MapReferenceElementId(Document targetDocument, Document standardDocument, ElementId sourceId)
 	{
-		//IL_004a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0056: Expected O, but got Unknown
-		if (sourceId == null || sourceId == ElementId.InvalidElementId)
+		if ((object)sourceId == null || sourceId == ElementId.InvalidElementId)
 		{
 			return ElementId.InvalidElementId;
 		}
@@ -3276,14 +3619,12 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return EnsureMaterialAuthoritative((Material)sourceReference, standardDocument, targetDocument);
 		}
-		PipeSegment sourcePipeSegment = (PipeSegment)(object)((sourceReference is PipeSegment) ? sourceReference : null);
-		if (sourcePipeSegment != null)
+		if (sourceReference is PipeSegment sourcePipeSegment)
 		{
 			PipeSegment targetPipeSegment = EnsurePipeSegmentAuthoritative(targetDocument, standardDocument, sourcePipeSegment, SystemTypeApplyAuthorityMode.AdminAuthoritative, null);
-			return (targetPipeSegment == null) ? ElementId.InvalidElementId : ((Element)targetPipeSegment).Id;
+			return (targetPipeSegment == null) ? ElementId.InvalidElementId : targetPipeSegment.Id;
 		}
-		PipeScheduleType sourceSchedule = (PipeScheduleType)(object)((sourceReference is PipeScheduleType) ? sourceReference : null);
-		if (sourceSchedule != null)
+		if (sourceReference is PipeScheduleType sourceSchedule)
 		{
 			return EnsurePipeScheduleType(sourceSchedule, standardDocument, targetDocument);
 		}
@@ -3317,10 +3658,10 @@ public sealed class SystemTypeApplyExecutionService
 			result.MaterialId = ElementId.InvalidElementId;
 			return result;
 		}
-		string materialName = ResolveElementName((Element)(object)sourceMaterial);
+		string materialName = ResolveElementName(sourceMaterial);
 		if (string.IsNullOrWhiteSpace(materialName))
 		{
-			throw new InvalidOperationException(T("A standard pipe segment material has no readable name.", "표준 배관 세그먼트 재료 이름을 읽을 수 없습니다."));
+			throw new System.InvalidOperationException(T("A standard pipe segment material has no readable name.", "표준 배관 세그먼트 재료 이름을 읽을 수 없습니다."));
 		}
 		Material targetMaterial = FindMaterialByName(targetDocument, materialName);
 		if (targetMaterial == null)
@@ -3330,17 +3671,16 @@ public sealed class SystemTypeApplyExecutionService
 		if (targetMaterial == null)
 		{
 			ElementId createdId = Material.Create(targetDocument, materialName);
-			Element element = targetDocument.GetElement(createdId);
-			targetMaterial = (Material)(object)((element is Material) ? element : null);
+			targetMaterial = targetDocument.GetElement(createdId) as Material;
 			if (targetMaterial == null)
 			{
-				throw new InvalidOperationException(T("Revit did not create the standard material: ", "Revit이 표준 재료를 만들지 못했습니다: ") + materialName);
+				throw new System.InvalidOperationException(T("Revit did not create the standard material: ", "Revit이 표준 재료를 만들지 못했습니다: ") + materialName);
 			}
 		}
 		SyncBasicMaterialProperties(sourceDocument, targetDocument, sourceMaterial, targetMaterial);
 		CopyWritableMaterialParametersBestEffort(targetDocument, sourceDocument, sourceMaterial, targetMaterial, resultItem);
 		targetDocument.Regenerate();
-		result.MaterialId = ((Element)targetMaterial).Id;
+		result.MaterialId = targetMaterial.Id;
 		result.ExactSignatureMatch = MaterialDefinitionsMatch(sourceDocument, sourceMaterial, targetDocument, targetMaterial);
 		if (!result.ExactSignatureMatch)
 		{
@@ -3352,24 +3692,17 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static Material TryCopyMaterialToTarget(Document sourceDocument, Material sourceMaterial, Document targetDocument, SystemTypeApplyExecutionItem resultItem)
 	{
-		//IL_0017: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001d: Expected O, but got Unknown
 		if (sourceDocument == null || sourceMaterial == null || targetDocument == null)
 		{
 			return null;
 		}
-		string materialName = ResolveElementName((Element)(object)sourceMaterial);
+		string materialName = ResolveElementName(sourceMaterial);
 		try
 		{
-			CopyPasteOptions options = new CopyPasteOptions();
-			try
+			using (CopyPasteOptions options = new CopyPasteOptions())
 			{
-				options.SetDuplicateTypeNamesHandler((IDuplicateTypeNamesHandler)(object)new CopyPasteUseDestinationTypesHandler());
-				ElementTransformUtils.CopyElements(sourceDocument, (ICollection<ElementId>)new List<ElementId> { ((Element)sourceMaterial).Id }, targetDocument, Transform.Identity, options);
-			}
-			finally
-			{
-				((IDisposable)options)?.Dispose();
+				options.SetDuplicateTypeNamesHandler(new CopyPasteUseDestinationTypesHandler());
+				ElementTransformUtils.CopyElements(sourceDocument, new List<ElementId> { sourceMaterial.Id }, targetDocument, Transform.Identity, options);
 			}
 			targetDocument.Regenerate();
 			Material copied = FindMaterialByName(targetDocument, materialName);
@@ -3393,7 +3726,7 @@ public sealed class SystemTypeApplyExecutionService
 		bool MaterialDefinitionsMatch;
 		try
 		{
-			MaterialDefinitionsMatch = RoutingPartSignatureService.Matches(sourceDocument, (Element)(object)sourceMaterial, targetDocument, (Element)(object)targetMaterial);
+			MaterialDefinitionsMatch = RoutingPartSignatureService.Matches(sourceDocument, sourceMaterial, targetDocument, targetMaterial);
 		}
 		catch (Exception projectError)
 		{
@@ -3410,13 +3743,13 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return;
 		}
-		foreach (Parameter sourceParameter in ((IEnumerable)((Element)sourceMaterial).Parameters).Cast<Parameter>())
+		foreach (Parameter sourceParameter in sourceMaterial.Parameters.Cast<Parameter>())
 		{
 			if (sourceParameter == null || sourceParameter.Definition == null || !sourceParameter.HasValue || ShouldSkipTypeParameter(sourceParameter))
 			{
 				continue;
 			}
-			Parameter targetParameter = ResolveWritableElementParameter((Element)(object)targetMaterial, sourceParameter);
+			Parameter targetParameter = ResolveWritableElementParameter(targetMaterial, sourceParameter);
 			if (targetParameter != null)
 			{
 				try
@@ -3427,7 +3760,7 @@ public sealed class SystemTypeApplyExecutionService
 				{
 					ProjectData.SetProjectError(ex);
 					Exception ex2 = ex;
-					AddResultMessage(resultItem, "Material parameter sync warning: a writable material parameter could not be copied, so Pipe Type apply will continue with the resolved material. Material: " + ResolveElementName((Element)(object)sourceMaterial) + " / Parameter: " + ResolveParameterName(sourceParameter) + " / Reason: " + ResolveExceptionMessage(ex2));
+					AddResultMessage(resultItem, "Material parameter sync warning: a writable material parameter could not be copied, so Pipe Type apply will continue with the resolved material. Material: " + ResolveElementName(sourceMaterial) + " / Parameter: " + ResolveParameterName(sourceParameter) + " / Reason: " + ResolveExceptionMessage(ex2));
 					ProjectData.ClearProjectError();
 				}
 			}
@@ -3445,27 +3778,26 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return ElementId.InvalidElementId;
 		}
-		string scheduleName = ResolveElementName((Element)(object)sourceSchedule);
+		string scheduleName = ResolveElementName(sourceSchedule);
 		if (string.IsNullOrWhiteSpace(scheduleName))
 		{
-			throw new InvalidOperationException(T("A standard pipe segment schedule type has no readable name.", "표준 배관 세그먼트 스케줄 타입 이름을 읽을 수 없습니다."));
+			throw new System.InvalidOperationException(T("A standard pipe segment schedule type has no readable name.", "표준 배관 세그먼트 스케줄 타입 이름을 읽을 수 없습니다."));
 		}
 		PipeScheduleType targetSchedule = FindPipeScheduleTypeByName(targetDocument, scheduleName);
 		if (targetSchedule != null)
 		{
-			return ((Element)targetSchedule).Id;
+			return targetSchedule.Id;
 		}
 		ElementId createdId = CreatePipeScheduleType(targetDocument, scheduleName);
-		if (createdId == null || createdId == ElementId.InvalidElementId)
+		if ((object)createdId == null || createdId == ElementId.InvalidElementId)
 		{
-			throw new InvalidOperationException(T("Revit did not create the standard pipe schedule type: ", "Revit이 표준 배관 스케줄 타입을 만들지 못했습니다: ") + scheduleName);
+			throw new System.InvalidOperationException(T("Revit did not create the standard pipe schedule type: ", "Revit이 표준 배관 스케줄 타입을 만들지 못했습니다: ") + scheduleName);
 		}
-		Element element = targetDocument.GetElement(createdId);
-		Element obj = ((element is PipeScheduleType) ? element : null) ?? throw new InvalidOperationException(T("The created pipe schedule type could not be resolved: ", "생성된 배관 스케줄 타입을 확인하지 못했습니다: ") + scheduleName);
+		PipeScheduleType obj = (targetDocument.GetElement(createdId) as PipeScheduleType) ?? throw new System.InvalidOperationException(T("The created pipe schedule type could not be resolved: ", "생성된 배관 스케줄 타입을 확인하지 못했습니다: ") + scheduleName);
 		targetDocument.Regenerate();
 		if (!string.Equals(Normalize(ResolveElementName(obj)), Normalize(scheduleName), StringComparison.Ordinal))
 		{
-			throw new InvalidOperationException("The standard pipe schedule type was created, but Revit returned a different name. The Pipe Type apply was rolled back to avoid a partial standard system. Schedule: " + scheduleName);
+			throw new System.InvalidOperationException("The standard pipe schedule type was created, but Revit returned a different name. The Pipe Type apply was rolled back to avoid a partial standard system. Schedule: " + scheduleName);
 		}
 		AddResultMessage(resultItem, T("PipeScheduleType created from standard: ", "표준에서 배관 스케줄 타입을 생성했습니다: ") + scheduleName);
 		return obj.Id;
@@ -3473,12 +3805,11 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static Material FindMaterialByName(Document targetDocument, string materialName)
 	{
-		//IL_0022: Unknown result type (might be due to invalid IL or missing references)
 		if (targetDocument == null || string.IsNullOrWhiteSpace(materialName))
 		{
 			return null;
 		}
-		return ((IEnumerable)new FilteredElementCollector(targetDocument).OfClass(typeof(Material))).Cast<Material>().FirstOrDefault([SpecialName] (Material x) => x != null && string.Equals(Normalize(ResolveElementName((Element)(object)x)), Normalize(materialName), StringComparison.Ordinal));
+		return new FilteredElementCollector(targetDocument).OfClass(typeof(Material)).Cast<Material>().FirstOrDefault([SpecialName] (Material x) => x != null && string.Equals(Normalize(ResolveElementName(x)), Normalize(materialName), StringComparison.Ordinal));
 	}
 
 	private static void SyncBasicMaterialProperties(Document sourceDocument, Document targetDocument, Material sourceMaterial, Material targetMaterial)
@@ -3489,6 +3820,10 @@ public sealed class SystemTypeApplyExecutionService
 			TryCopyWritableMaterialProperty(sourceDocument, targetDocument, sourceMaterial, targetMaterial, "Transparency");
 			TryCopyWritableMaterialProperty(sourceDocument, targetDocument, sourceMaterial, targetMaterial, "Smoothness");
 			TryCopyWritableMaterialProperty(sourceDocument, targetDocument, sourceMaterial, targetMaterial, "Shininess");
+			TryCopyWritableMaterialProperty(sourceDocument, targetDocument, sourceMaterial, targetMaterial, "UseRenderAppearanceForShading");
+			TryCopyWritableMaterialProperty(sourceDocument, targetDocument, sourceMaterial, targetMaterial, "AppearanceAssetId");
+			TryCopyWritableMaterialProperty(sourceDocument, targetDocument, sourceMaterial, targetMaterial, "StructuralAssetId");
+			TryCopyWritableMaterialProperty(sourceDocument, targetDocument, sourceMaterial, targetMaterial, "ThermalAssetId");
 			TryCopyWritableMaterialProperty(sourceDocument, targetDocument, sourceMaterial, targetMaterial, "SurfaceForegroundPatternId");
 			TryCopyWritableMaterialProperty(sourceDocument, targetDocument, sourceMaterial, targetMaterial, "SurfaceBackgroundPatternId");
 			TryCopyWritableMaterialProperty(sourceDocument, targetDocument, sourceMaterial, targetMaterial, "CutForegroundPatternId");
@@ -3502,8 +3837,6 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void TryCopyWritableMaterialProperty(Document sourceDocument, Document targetDocument, object source, object target, string propertyName)
 	{
-		//IL_0067: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0071: Expected O, but got Unknown
 		if (source == null || target == null || string.IsNullOrWhiteSpace(propertyName))
 		{
 			return;
@@ -3520,7 +3853,7 @@ public sealed class SystemTypeApplyExecutionService
 			if (sourceValue is ElementId)
 			{
 				ElementId mappedId = MapReferenceElementId(targetDocument, sourceDocument, (ElementId)sourceValue);
-				if (mappedId != null && !(mappedId == ElementId.InvalidElementId))
+				if ((object)mappedId != null && !(mappedId == ElementId.InvalidElementId))
 				{
 					targetProperty.SetValue(RuntimeHelpers.GetObjectValue(target), mappedId, null);
 				}
@@ -3561,23 +3894,17 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static PipeScheduleType FindPipeScheduleTypeByName(Document targetDocument, string scheduleName)
 	{
-		//IL_0053: Unknown result type (might be due to invalid IL or missing references)
 		if (targetDocument == null || string.IsNullOrWhiteSpace(scheduleName))
 		{
 			return null;
 		}
 		ElementId scheduleId = TryGetPipeScheduleTypeId(targetDocument, scheduleName);
-		if (scheduleId != null && scheduleId != ElementId.InvalidElementId)
+		if ((object)scheduleId != null && scheduleId != ElementId.InvalidElementId && targetDocument.GetElement(scheduleId) is PipeScheduleType schedule)
 		{
-			Element element = targetDocument.GetElement(scheduleId);
-			PipeScheduleType schedule = (PipeScheduleType)(object)((element is PipeScheduleType) ? element : null);
-			if (schedule != null)
-			{
-				return schedule;
-			}
+			return schedule;
 		}
-		return (from Element x in (IEnumerable)new FilteredElementCollector(targetDocument).WhereElementIsElementType()
-			select (PipeScheduleType)(object)((x is PipeScheduleType) ? x : null)).FirstOrDefault([SpecialName] (PipeScheduleType x) => x != null && string.Equals(Normalize(ResolveElementName((Element)(object)x)), Normalize(scheduleName), StringComparison.Ordinal));
+		return (from Element x in new FilteredElementCollector(targetDocument).WhereElementIsElementType()
+			select x as PipeScheduleType).FirstOrDefault([SpecialName] (PipeScheduleType x) => x != null && string.Equals(Normalize(ResolveElementName(x)), Normalize(scheduleName), StringComparison.Ordinal));
 	}
 
 	private static ElementId TryGetPipeScheduleTypeId(Document targetDocument, string scheduleName)
@@ -3586,15 +3913,7 @@ public sealed class SystemTypeApplyExecutionService
 		try
 		{
 			MethodInfo method = typeof(PipeScheduleType).GetMethods(BindingFlags.Static | BindingFlags.Public).FirstOrDefault([SpecialName] (MethodInfo x) => string.Equals(x.Name, "GetPipeScheduleId", StringComparison.Ordinal) && x.GetParameters().Length == 2);
-			if ((object)method == null)
-			{
-				TryGetPipeScheduleTypeId = ElementId.InvalidElementId;
-			}
-			else
-			{
-				object obj = method.Invoke(null, new object[2] { targetDocument, scheduleName });
-				TryGetPipeScheduleTypeId = (ElementId)((obj is ElementId) ? obj : null);
-			}
+			TryGetPipeScheduleTypeId = (((object)method != null) ? (method.Invoke(null, new object[2] { targetDocument, scheduleName }) as ElementId) : ElementId.InvalidElementId);
 		}
 		catch (Exception projectError)
 		{
@@ -3615,28 +3934,26 @@ public sealed class SystemTypeApplyExecutionService
 				return ElementId.InvalidElementId;
 			}
 			object created = RuntimeHelpers.GetObjectValue(method.Invoke(null, new object[2] { targetDocument, scheduleName }));
-			ElementId createdId = (ElementId)((created is ElementId) ? created : null);
-			if (createdId != null)
+			if (created is ElementId createdId)
 			{
 				return createdId;
 			}
-			Element createdElement = (Element)((created is Element) ? created : null);
-			if (createdElement != null)
+			if (created is Element { Id: var CreatePipeScheduleType })
 			{
-				return createdElement.Id;
+				return CreatePipeScheduleType;
 			}
 		}
 		catch (TargetInvocationException ex)
 		{
 			ProjectData.SetProjectError(ex);
 			TargetInvocationException ex2 = ex;
-			throw new InvalidOperationException(T("The standard pipe schedule type could not be created: ", "표준 배관 스케줄 타입을 만들지 못했습니다: ") + scheduleName, ex2.InnerException);
+			throw new System.InvalidOperationException(T("The standard pipe schedule type could not be created: ", "표준 배관 스케줄 타입을 만들지 못했습니다: ") + scheduleName, ex2.InnerException);
 		}
 		catch (Exception ex3)
 		{
 			ProjectData.SetProjectError(ex3);
 			Exception ex4 = ex3;
-			throw new InvalidOperationException(T("The standard pipe schedule type could not be created: ", "표준 배관 스케줄 타입을 만들지 못했습니다: ") + scheduleName, ex4);
+			throw new System.InvalidOperationException(T("The standard pipe schedule type could not be created: ", "표준 배관 스케줄 타입을 만들지 못했습니다: ") + scheduleName, ex4);
 		}
 		return ElementId.InvalidElementId;
 	}
@@ -3645,7 +3962,7 @@ public sealed class SystemTypeApplyExecutionService
 	{
 		List<string> values = (from x in copiedElements ?? new List<Element>()
 			where x != null
-			select ((object)x).GetType().Name + " : " + ResolveElementName(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase).ToList();
+			select x.GetType().Name + " : " + ResolveElementName(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase).ToList();
 		if (values.Count == 0)
 		{
 			return "(none)";
@@ -3659,7 +3976,7 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return;
 		}
-		foreach (Parameter sourceParameter in ((IEnumerable)sourceElement.Parameters).Cast<Parameter>())
+		foreach (Parameter sourceParameter in sourceElement.Parameters.Cast<Parameter>())
 		{
 			if (sourceParameter != null && sourceParameter.Definition != null && sourceParameter.HasValue && !ShouldSkipTypeParameter(sourceParameter))
 			{
@@ -3674,10 +3991,7 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static Parameter ResolveWritableElementParameter(Element targetElement, Parameter sourceParameter)
 	{
-		//IL_0040: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0046: Unknown result type (might be due to invalid IL or missing references)
-		Definition definition = sourceParameter.Definition;
-		string name = ((definition != null) ? definition.Name : null) ?? string.Empty;
+		string name = sourceParameter.Definition?.Name ?? string.Empty;
 		if (string.IsNullOrWhiteSpace(name))
 		{
 			return null;
@@ -3694,7 +4008,7 @@ public sealed class SystemTypeApplyExecutionService
 		return targetParameter;
 	}
 
-	private unsafe static void CopyRoutingCriteria(RoutingPreferenceRule sourceRule, RoutingPreferenceRule targetRule, RoutingPreferenceRuleGroupType group)
+	private static void CopyRoutingCriteria(RoutingPreferenceRule sourceRule, RoutingPreferenceRule targetRule, RoutingPreferenceRuleGroupType group)
 	{
 		int criterionCount;
 		try
@@ -3705,25 +4019,28 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			ProjectData.SetProjectError(ex);
 			Exception ex2 = ex;
-			throw new InvalidOperationException("Routing preference criteria count could not be read. The system type apply was stopped before rebuilding routing preferences. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString(), ex2);
+			throw new System.InvalidOperationException("Routing preference criteria count could not be read. The system type apply was stopped before rebuilding routing preferences. Rule group: " + group, ex2);
 		}
-		int num = checked(criterionCount - 1);
-		for (int index = 0; index <= num; index = checked(index + 1))
+		checked
 		{
-			try
+			int num = criterionCount - 1;
+			for (int index = 0; index <= num; index++)
 			{
-				RoutingCriterionBase criterion = sourceRule.GetCriterion(index);
-				if (criterion == null)
+				try
 				{
-					throw new InvalidOperationException(T("The routing preference criterion returned no data.", "라우팅 환경설정 조건이 데이터를 반환하지 않았습니다."));
+					RoutingCriterionBase criterion = sourceRule.GetCriterion(index);
+					if (criterion == null)
+					{
+						throw new System.InvalidOperationException(T("The routing preference criterion returned no data.", "라우팅 환경설정 조건이 데이터를 반환하지 않았습니다."));
+					}
+					targetRule.AddCriterion(criterion);
 				}
-				targetRule.AddCriterion(criterion);
-			}
-			catch (Exception ex3)
-			{
-				ProjectData.SetProjectError(ex3);
-				Exception ex4 = ex3;
-				throw new InvalidOperationException("Routing preference criteria could not be copied. The system type apply was stopped before creating a partial routing rule. Rule group: " + ((Enum)(*(RoutingPreferenceRuleGroupType*)(&group))/*cast due to .constrained prefix*/).ToString() + " / Criterion index: " + index.ToString(CultureInfo.InvariantCulture), ex4);
+				catch (Exception ex3)
+				{
+					ProjectData.SetProjectError(ex3);
+					Exception ex4 = ex3;
+					throw new System.InvalidOperationException("Routing preference criteria could not be copied. The system type apply was stopped before creating a partial routing rule. Rule group: " + group.ToString() + " / Criterion index: " + index.ToString(CultureInfo.InvariantCulture), ex4);
+				}
 			}
 		}
 	}
@@ -3745,8 +4062,8 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return;
 		}
-		List<VB_0024AnonymousType_1<Family, string>> categoryMismatches = (from f in FindFamiliesByExactName(targetDocument, familyName)
-			select new VB_0024AnonymousType_1<Family, string>(f, ResolveFamilyCategoryName(f)) into x
+		List<FamilyCategoryInfo> categoryMismatches = (from f in FindFamiliesByExactName(targetDocument, familyName)
+			select new FamilyCategoryInfo(f, ResolveFamilyCategoryName(f)) into x
 			where !string.IsNullOrWhiteSpace(Normalize(x.CategoryName)) && !string.Equals(Normalize(x.CategoryName), text, StringComparison.Ordinal)
 			select x).ToList();
 		if (categoryMismatches.Count != 0)
@@ -3755,38 +4072,33 @@ public sealed class SystemTypeApplyExecutionService
 				select x.CategoryName into x
 				where !string.IsNullOrWhiteSpace(x)
 				select x).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase).ToList();
-			throw new InvalidOperationException("A dependency family with the same name exists in the current project, but its category differs from the standard RVT. Review this family before applying the system type. Family: " + familyName + " / Standard category: " + standardCategoryRaw + " / Project category: " + ((projectCategories.Count == 0) ? string.Empty : string.Join(", ", projectCategories)));
+			throw new System.InvalidOperationException("A dependency family with the same name exists in the current project, but its category differs from the standard RVT. Review this family before applying the system type. Family: " + familyName + " / Standard category: " + standardCategoryRaw + " / Project category: " + ((projectCategories.Count == 0) ? string.Empty : string.Join(", ", projectCategories)));
 		}
 	}
 
 	private static IEnumerable<Family> FindFamiliesByExactName(Document targetDocument, string familyName)
 	{
-		//IL_0013: Unknown result type (might be due to invalid IL or missing references)
 		string b = Normalize(familyName);
-		return from Family x in (IEnumerable)new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
-			where x != null && string.Equals(Normalize(((Element)x).Name), b, StringComparison.Ordinal)
+		return from Family x in new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
+			where x != null && string.Equals(Normalize(x.Name), b, StringComparison.Ordinal)
 			select x;
 	}
 
 	private static ISet<int> CaptureFamilyNameState(Document targetDocument)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		return new HashSet<int>(from Family x in (IEnumerable)new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
-			where x != null && ((Element)x).Id != null
-			select RevitElementIdCompat.CompatIntegerValue(((Element)x).Id));
+		return new HashSet<int>(from Family x in new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
+			where x != null && (object)x.Id != null
+			select RevitElementIdCompat.CompatIntegerValue(x.Id));
 	}
 
 	private static List<AllowedLoadedFamilyIdentity> BuildAllowedLoadedFamilyIdentities(Family sourceFamily, Document familyDocument, Document standardDocument, IEnumerable<RoutingDependencyPreflightItem> selectedDependencyItems, IEnumerable<string> explicitFamilyNames)
 	{
-		//IL_0178: Unknown result type (might be due to invalid IL or missing references)
-		//IL_021b: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00e8: Unknown result type (might be due to invalid IL or missing references)
 		List<AllowedLoadedFamilyIdentity> result = new List<AllowedLoadedFamilyIdentity>();
 		AddAllowedLoadedFamilyIdentity(result, sourceFamily);
 		List<string> requestedNames = new List<string>();
 		if (sourceFamily != null)
 		{
-			requestedNames.Add(((Element)sourceFamily).Name);
+			requestedNames.Add(sourceFamily.Name);
 		}
 		requestedNames.AddRange(explicitFamilyNames ?? new List<string>());
 		requestedNames.AddRange(from x in selectedDependencyItems ?? new List<RoutingDependencyPreflightItem>()
@@ -3804,12 +4116,12 @@ public sealed class SystemTypeApplyExecutionService
 		List<string> nestedFamilyNames = new List<string>();
 		try
 		{
-			foreach (Family nestedFamily in from Family x in (IEnumerable)new FilteredElementCollector(familyDocument).OfClass(typeof(Family))
+			foreach (Family nestedFamily in from Family x in new FilteredElementCollector(familyDocument).OfClass(typeof(Family))
 				where x != null
 				select x)
 			{
 				AddAllowedLoadedFamilyIdentity(result, nestedFamily);
-				nestedFamilyNames.Add(((Element)nestedFamily).Name);
+				nestedFamilyNames.Add(nestedFamily.Name);
 			}
 		}
 		catch (Exception projectError)
@@ -3819,14 +4131,14 @@ public sealed class SystemTypeApplyExecutionService
 		}
 		try
 		{
-			foreach (FamilySymbol symbol in from FamilySymbol x in (IEnumerable)new FilteredElementCollector(familyDocument).OfClass(typeof(FamilySymbol))
+			foreach (FamilySymbol symbol in from FamilySymbol x in new FilteredElementCollector(familyDocument).OfClass(typeof(FamilySymbol))
 				where x != null
 				select x)
 			{
 				AddAllowedLoadedFamilyIdentity(result, symbol.Family);
 				if (symbol.Family != null)
 				{
-					nestedFamilyNames.Add(((Element)symbol.Family).Name);
+					nestedFamilyNames.Add(symbol.Family.Name);
 				}
 			}
 		}
@@ -3837,7 +4149,7 @@ public sealed class SystemTypeApplyExecutionService
 		}
 		try
 		{
-			foreach (FamilyInstance item in from FamilyInstance x in (IEnumerable)new FilteredElementCollector(familyDocument).OfClass(typeof(FamilyInstance))
+			foreach (FamilyInstance item in from FamilyInstance x in new FilteredElementCollector(familyDocument).OfClass(typeof(FamilyInstance))
 				where x != null
 				select x)
 			{
@@ -3847,7 +4159,7 @@ public sealed class SystemTypeApplyExecutionService
 					AddAllowedLoadedFamilyIdentity(result, symbol2.Family);
 					if (symbol2.Family != null)
 					{
-						nestedFamilyNames.Add(((Element)symbol2.Family).Name);
+						nestedFamilyNames.Add(symbol2.Family.Name);
 					}
 				}
 			}
@@ -3866,7 +4178,6 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void AddAllowedLoadedFamilyIdentityByName(IList<AllowedLoadedFamilyIdentity> identities, Document standardDocument, string familyName)
 	{
-		//IL_002b: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__112_002D0 arg = default(_Closure_0024__112_002D0);
 		_Closure_0024__112_002D0 CS_0024_003C_003E8__locals2 = new _Closure_0024__112_002D0(arg);
 		if (identities == null || standardDocument == null || string.IsNullOrWhiteSpace(familyName))
@@ -3876,8 +4187,8 @@ public sealed class SystemTypeApplyExecutionService
 		CS_0024_003C_003E8__locals2._0024VB_0024Local_normalizedName = Normalize(familyName);
 		try
 		{
-			foreach (Family standardFamily in from Family x in (IEnumerable)new FilteredElementCollector(standardDocument).OfClass(typeof(Family))
-				where x != null && string.Equals(Normalize(((Element)x).Name), CS_0024_003C_003E8__locals2._0024VB_0024Local_normalizedName, StringComparison.Ordinal)
+			foreach (Family standardFamily in from Family x in new FilteredElementCollector(standardDocument).OfClass(typeof(Family))
+				where x != null && string.Equals(Normalize(x.Name), CS_0024_003C_003E8__locals2._0024VB_0024Local_normalizedName, StringComparison.Ordinal)
 				select x)
 			{
 				AddAllowedLoadedFamilyIdentity(identities, standardFamily);
@@ -3912,7 +4223,7 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return;
 		}
-		string familyName = (((Element)family).Name ?? string.Empty).Trim();
+		string familyName = (family.Name ?? string.Empty).Trim();
 		if (!string.IsNullOrWhiteSpace(familyName))
 		{
 			string categoryName = ResolveFamilyCategoryName(family);
@@ -3935,7 +4246,7 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return false;
 		}
-		string familyName = ((Element)family).Name ?? string.Empty;
+		string familyName = family.Name ?? string.Empty;
 		string text = Normalize(familyName);
 		if (string.IsNullOrWhiteSpace(text))
 		{
@@ -3983,53 +4294,51 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void GuardAgainstCopiedFamilies(Document targetDocument, ISet<int> familyStateBefore, IEnumerable<RoutingDependencyPreflightItem> dependencyItems = null)
 	{
-		//IL_007a: Unknown result type (might be due to invalid IL or missing references)
 		HashSet<string> hashSet = new HashSet<string>(from x in dependencyItems ?? new List<RoutingDependencyPreflightItem>()
 			select Normalize(x.SourceFamilyName) into x
 			where !string.IsNullOrWhiteSpace(x)
 			select x, StringComparer.Ordinal);
-		List<Family> newFamilies = (from Family x in (IEnumerable)new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
-			where x != null && ((Element)x).Id != null && !familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(((Element)x).Id))
+		List<Family> newFamilies = (from Family x in new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
+			where x != null && (object)x.Id != null && !familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(x.Id))
 			select x).ToList();
 		if (newFamilies.Count != 0)
 		{
 			List<string> unexpected = (from x in newFamilies.Where([SpecialName] (Family x) =>
 				{
-					string value = ((Element)x).Name ?? string.Empty;
+					string value = x.Name ?? string.Empty;
 					string text = Normalize(value);
 					string b = Normalize(RemoveDuplicateSuffix(value));
 					return (!hashSet.Contains(text) || !string.Equals(text, b, StringComparison.Ordinal)) ? true : false;
 				})
-				select ((Element)x).Name ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase).ToList();
+				select x.Name ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase).ToList();
 			if (unexpected.Count > 0)
 			{
-				throw new InvalidOperationException("System type copy tried to create unexpected or duplicate-suffixed loadable families. The transaction was rolled back. Families: " + string.Join(", ", unexpected));
+				throw new System.InvalidOperationException("System type copy tried to create unexpected or duplicate-suffixed loadable families. The transaction was rolled back. Families: " + string.Join(", ", unexpected));
 			}
 		}
 	}
 
 	private static void GuardDependencyLoadDidNotCreateDuplicateFamilies(Document targetDocument, ISet<int> familyStateBefore, Family standardFamily, RoutingDependencyPreflightItem dependencyItem, Family loadedFamily, IEnumerable<AllowedLoadedFamilyIdentity> allowedFamilies, SystemTypeApplyExecutionItem resultItem)
 	{
-		//IL_0063: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__119_002D0 arg = default(_Closure_0024__119_002D0);
 		_Closure_0024__119_002D0 CS_0024_003C_003E8__locals8 = new _Closure_0024__119_002D0(arg);
 		CS_0024_003C_003E8__locals8._0024VB_0024Local_familyStateBefore = familyStateBefore;
 		CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName = (dependencyItem.SourceFamilyName ?? string.Empty).Trim();
 		List<string> allowedFamilyNames = UniqueSortedNames((allowedFamilies ?? new List<AllowedLoadedFamilyIdentity>()).Select([SpecialName] (AllowedLoadedFamilyIdentity x) => x.Name ?? string.Empty));
-		List<Family> newFamilies = (from Family x in (IEnumerable)new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
-			where x != null && ((Element)x).Id != null && !CS_0024_003C_003E8__locals8._0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(((Element)x).Id))
+		List<Family> newFamilies = (from Family x in new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
+			where x != null && (object)x.Id != null && !CS_0024_003C_003E8__locals8._0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(x.Id))
 			select x).ToList();
 		if (newFamilies.Count == 0)
 		{
-			AddFamilyLoadDiagnostic(resultItem, "DependencyFamilyLoad.Guard", CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, ((loadedFamily != null) ? ((Element)loadedFamily).Name : null) ?? string.Empty, allowedFamilyNames, new List<string>(), new List<string>(), new List<string>(), "None");
+			AddFamilyLoadDiagnostic(resultItem, "DependencyFamilyLoad.Guard", CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, loadedFamily?.Name ?? string.Empty, allowedFamilyNames, new List<string>(), new List<string>(), new List<string>(), "None");
 			return;
 		}
-		List<string> newFamilyNames = UniqueSortedNames(newFamilies.Select([SpecialName] (Family x) => ((Element)x).Name ?? string.Empty));
+		List<string> newFamilyNames = UniqueSortedNames(newFamilies.Select([SpecialName] (Family x) => x.Name ?? string.Empty));
 		List<Family> unexpected = new List<Family>();
 		List<string> allowedNewNames = new List<string>();
 		foreach (Family family in newFamilies)
 		{
-			string familyName = ((Element)family).Name ?? string.Empty;
+			string familyName = family.Name ?? string.Empty;
 			if (LoadedFamilyIsAllowed(family, allowedFamilies))
 			{
 				allowedNewNames.Add(familyName);
@@ -4041,7 +4350,7 @@ public sealed class SystemTypeApplyExecutionService
 		}
 		if (unexpected.Count == 0)
 		{
-			AddFamilyLoadDiagnostic(resultItem, "DependencyFamilyLoad.Guard", CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, ((loadedFamily != null) ? ((Element)loadedFamily).Name : null) ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, new List<string>(), "None");
+			AddFamilyLoadDiagnostic(resultItem, "DependencyFamilyLoad.Guard", CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, loadedFamily?.Name ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, new List<string>(), "None");
 			List<string> allowedNestedNames = allowedNewNames.Where([SpecialName] (string x) => !string.Equals(Normalize(x), Normalize(CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName), StringComparison.Ordinal)).ToList();
 			if (allowedNestedNames.Count > 0)
 			{
@@ -4049,16 +4358,15 @@ public sealed class SystemTypeApplyExecutionService
 			}
 			return;
 		}
-		List<string> unexpectedNames = unexpected.Select([SpecialName] (Family x) => ((Element)x).Name ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase)
+		List<string> unexpectedNames = unexpected.Select([SpecialName] (Family x) => x.Name ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase)
 			.ToList();
 		DuplicateCleanupResult cleanup = TryDeleteFamilies(targetDocument, unexpected);
-		AddFamilyLoadDiagnostic(resultItem, "DependencyFamilyLoad.Guard", CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, ((loadedFamily != null) ? ((Element)loadedFamily).Name : null) ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, unexpectedNames, DescribeDuplicateCleanupAction(cleanup));
-		throw new InvalidOperationException(BuildDuplicateCleanupMessage("Dependency family load tried to create duplicate or unexpected families instead of using the standard canonical family.", CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, unexpectedNames, cleanup));
+		AddFamilyLoadDiagnostic(resultItem, "DependencyFamilyLoad.Guard", CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, loadedFamily?.Name ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, unexpectedNames, DescribeDuplicateCleanupAction(cleanup));
+		throw new System.InvalidOperationException(BuildDuplicateCleanupMessage("Dependency family load tried to create duplicate or unexpected families instead of using the standard canonical family.", CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, unexpectedNames, cleanup));
 	}
 
 	private static void GuardLoadedRoutingFamilyDidNotCreateDuplicateFamilies(Document targetDocument, ISet<int> familyStateBefore, Family standardFamily, Family loadedFamily, IEnumerable<AllowedLoadedFamilyIdentity> allowedFamilies, SystemTypeApplyExecutionItem resultItem)
 	{
-		//IL_0075: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__120_002D0 arg = default(_Closure_0024__120_002D0);
 		_Closure_0024__120_002D0 CS_0024_003C_003E8__locals9 = new _Closure_0024__120_002D0(arg);
 		CS_0024_003C_003E8__locals9._0024VB_0024Local_familyStateBefore = familyStateBefore;
@@ -4066,22 +4374,22 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return;
 		}
-		CS_0024_003C_003E8__locals9._0024VB_0024Local_expectedName = ((Element)standardFamily).Name ?? string.Empty;
+		CS_0024_003C_003E8__locals9._0024VB_0024Local_expectedName = standardFamily.Name ?? string.Empty;
 		List<string> allowedFamilyNames = UniqueSortedNames((allowedFamilies ?? new List<AllowedLoadedFamilyIdentity>()).Select([SpecialName] (AllowedLoadedFamilyIdentity x) => x.Name ?? string.Empty));
-		List<Family> newFamilies = (from Family x in (IEnumerable)new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
-			where x != null && ((Element)x).Id != null && !CS_0024_003C_003E8__locals9._0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(((Element)x).Id))
+		List<Family> newFamilies = (from Family x in new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
+			where x != null && (object)x.Id != null && !CS_0024_003C_003E8__locals9._0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(x.Id))
 			select x).ToList();
 		if (newFamilies.Count == 0)
 		{
-			AddFamilyLoadDiagnostic(resultItem, "RoutingFamilyLoad.Guard", CS_0024_003C_003E8__locals9._0024VB_0024Local_expectedName, ((loadedFamily != null) ? ((Element)loadedFamily).Name : null) ?? string.Empty, allowedFamilyNames, new List<string>(), new List<string>(), new List<string>(), "None");
+			AddFamilyLoadDiagnostic(resultItem, "RoutingFamilyLoad.Guard", CS_0024_003C_003E8__locals9._0024VB_0024Local_expectedName, loadedFamily?.Name ?? string.Empty, allowedFamilyNames, new List<string>(), new List<string>(), new List<string>(), "None");
 			return;
 		}
-		List<string> newFamilyNames = UniqueSortedNames(newFamilies.Select([SpecialName] (Family x) => ((Element)x).Name ?? string.Empty));
+		List<string> newFamilyNames = UniqueSortedNames(newFamilies.Select([SpecialName] (Family x) => x.Name ?? string.Empty));
 		List<Family> unexpected = new List<Family>();
 		List<string> allowedNewNames = new List<string>();
 		foreach (Family family in newFamilies)
 		{
-			string familyName = ((Element)family).Name ?? string.Empty;
+			string familyName = family.Name ?? string.Empty;
 			if (LoadedFamilyIsAllowed(family, allowedFamilies))
 			{
 				allowedNewNames.Add(familyName);
@@ -4093,7 +4401,7 @@ public sealed class SystemTypeApplyExecutionService
 		}
 		if (unexpected.Count == 0)
 		{
-			AddFamilyLoadDiagnostic(resultItem, "RoutingFamilyLoad.Guard", CS_0024_003C_003E8__locals9._0024VB_0024Local_expectedName, ((loadedFamily != null) ? ((Element)loadedFamily).Name : null) ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, new List<string>(), "None");
+			AddFamilyLoadDiagnostic(resultItem, "RoutingFamilyLoad.Guard", CS_0024_003C_003E8__locals9._0024VB_0024Local_expectedName, loadedFamily?.Name ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, new List<string>(), "None");
 			List<string> allowedNestedNames = allowedNewNames.Where([SpecialName] (string x) => !string.Equals(Normalize(x), Normalize(CS_0024_003C_003E8__locals9._0024VB_0024Local_expectedName), StringComparison.Ordinal)).ToList();
 			if (allowedNestedNames.Count > 0)
 			{
@@ -4101,11 +4409,11 @@ public sealed class SystemTypeApplyExecutionService
 			}
 			return;
 		}
-		List<string> unexpectedNames = unexpected.Select([SpecialName] (Family x) => ((Element)x).Name ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase)
+		List<string> unexpectedNames = unexpected.Select([SpecialName] (Family x) => x.Name ?? string.Empty).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase)
 			.ToList();
 		DuplicateCleanupResult cleanup = TryDeleteFamilies(targetDocument, unexpected);
-		AddFamilyLoadDiagnostic(resultItem, "RoutingFamilyLoad.Guard", CS_0024_003C_003E8__locals9._0024VB_0024Local_expectedName, ((loadedFamily != null) ? ((Element)loadedFamily).Name : null) ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, unexpectedNames, DescribeDuplicateCleanupAction(cleanup));
-		throw new InvalidOperationException(BuildDuplicateCleanupMessage("Apply-time routing family load tried to create duplicate or unexpected families instead of using the standard canonical family.", CS_0024_003C_003E8__locals9._0024VB_0024Local_expectedName, unexpectedNames, cleanup));
+		AddFamilyLoadDiagnostic(resultItem, "RoutingFamilyLoad.Guard", CS_0024_003C_003E8__locals9._0024VB_0024Local_expectedName, loadedFamily?.Name ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, unexpectedNames, DescribeDuplicateCleanupAction(cleanup));
+		throw new System.InvalidOperationException(BuildDuplicateCleanupMessage("Apply-time routing family load tried to create duplicate or unexpected families instead of using the standard canonical family.", CS_0024_003C_003E8__locals9._0024VB_0024Local_expectedName, unexpectedNames, cleanup));
 	}
 
 	private static void AddFamilyLoadDiagnostic(SystemTypeApplyExecutionItem resultItem, string stage, string expectedFamilyName, string loadedFamilyName, IEnumerable<string> allowedFamilyNames, IEnumerable<string> actualNewFamilyNames, IEnumerable<string> allowedNewFamilyNames, IEnumerable<string> unexpectedFamilyNames, string cleanupAction)
@@ -4151,15 +4459,11 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static DuplicateCleanupResult TryDeleteFamilies(Document targetDocument, IEnumerable<Family> families)
 	{
-		//IL_00b3: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00ba: Expected O, but got Unknown
-		//IL_00bc: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00fa: Unknown result type (might be due to invalid IL or missing references)
 		DuplicateCleanupResult result = new DuplicateCleanupResult();
-		List<VB_0024AnonymousType_0<ElementId, string>> targets = (from x in families ?? new List<Family>()
-			where x != null && ((Element)x).Id != null
-			select new VB_0024AnonymousType_0<ElementId, string>(((Element)x).Id, ((Element)x).Name ?? string.Empty)).ToList();
-		result.AttemptedNames = UniqueSortedNames(targets.Select([SpecialName] (VB_0024AnonymousType_0<ElementId, string> x) => x.Name));
+		List<FamilyDeleteTarget> targets = (from x in families ?? new List<Family>()
+			where x != null && (object)x.Id != null
+			select new FamilyDeleteTarget(x.Id, x.Name ?? string.Empty)).ToList();
+		result.AttemptedNames = UniqueSortedNames(targets.Select((FamilyDeleteTarget x) => x.Name));
 		DuplicateCleanupResult TryDeleteFamilies;
 		if (targets.Count == 0)
 		{
@@ -4169,17 +4473,10 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			try
 			{
-				Transaction tx = new Transaction(targetDocument, "KKY Family Browser Remove Duplicate Families");
-				try
-				{
-					tx.Start();
-					targetDocument.Delete((ICollection<ElementId>)targets.Select([SpecialName] (VB_0024AnonymousType_0<ElementId, string> x) => x.Id).ToList());
-					tx.Commit();
-				}
-				finally
-				{
-					((IDisposable)tx)?.Dispose();
-				}
+				using Transaction tx = new Transaction(targetDocument, "KKY Family Browser Remove Duplicate Families");
+				tx.Start();
+				targetDocument.Delete(targets.Select((FamilyDeleteTarget x) => x.Id).ToList());
+				tx.Commit();
 			}
 			catch (Exception ex)
 			{
@@ -4193,7 +4490,7 @@ public sealed class SystemTypeApplyExecutionService
 			}
 			List<string> deletedNames = new List<string>();
 			List<string> failedNames = new List<string>();
-			foreach (VB_0024AnonymousType_0<ElementId, string> target in targets)
+			foreach (FamilyDeleteTarget target in targets)
 			{
 				if (ElementWasDeleted(targetDocument, target.Id))
 				{
@@ -4310,11 +4607,11 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			foreach (ElementType obsoleteType in obsoleteTypes.Where([SpecialName] (ElementType x) => x != null))
 			{
-				if (((Element)obsoleteType).Id == null || ((Element)obsoleteType).Id == ((Element)canonicalType).Id)
+				if ((object)obsoleteType.Id == null || obsoleteType.Id == canonicalType.Id)
 				{
 					continue;
 				}
-				int obsoleteTypeId = RevitElementIdCompat.CompatIntegerValue(((Element)obsoleteType).Id);
+				int obsoleteTypeId = RevitElementIdCompat.CompatIntegerValue(obsoleteType.Id);
 				if (processedTypeIds.Contains(obsoleteTypeId))
 				{
 					continue;
@@ -4328,12 +4625,12 @@ public sealed class SystemTypeApplyExecutionService
 						Element instanceElement = targetDocument.GetElement(elementId);
 						if (instanceElement != null)
 						{
-							instanceElement.ChangeTypeId(((Element)canonicalType).Id);
+							instanceElement.ChangeTypeId(canonicalType.Id);
 							retypedCount++;
 						}
 					}
 					List<ElementId> canonicalUsage = null;
-					int canonicalTypeId = RevitElementIdCompat.CompatIntegerValue(((Element)canonicalType).Id);
+					int canonicalTypeId = RevitElementIdCompat.CompatIntegerValue(canonicalType.Id);
 					if (!targetUsageMap.TryGetValue(canonicalTypeId, out canonicalUsage))
 					{
 						canonicalUsage = (targetUsageMap[canonicalTypeId] = new List<ElementId>());
@@ -4341,7 +4638,7 @@ public sealed class SystemTypeApplyExecutionService
 					canonicalUsage.AddRange(elementIds);
 					targetUsageMap.Remove(obsoleteTypeId);
 				}
-				targetDocument.Delete(((Element)obsoleteType).Id);
+				targetDocument.Delete(obsoleteType.Id);
 				deletedCount++;
 			}
 		}
@@ -4413,15 +4710,14 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static Dictionary<string, ElementType> BuildSystemTypeMap(Document doc, ISet<string> requestedKeys = null)
 	{
-		//IL_001c: Unknown result type (might be due to invalid IL or missing references)
 		Dictionary<string, ElementType> result = new Dictionary<string, ElementType>(StringComparer.Ordinal);
 		bool hasFilter = requestedKeys != null && requestedKeys.Count > 0;
-		foreach (ElementType elementType in from ElementType x in (IEnumerable)new FilteredElementCollector(doc).WhereElementIsElementType()
+		foreach (ElementType elementType in from ElementType x in new FilteredElementCollector(doc).WhereElementIsElementType()
 			where x != null
-			where !(x is FamilySymbol)
+			where !(x is FamilySymbol) || SystemTypeDetailedComponentSnapshotService.SupportsRequiredCurtainPanelComponents(x.GetType().Name)
 			select x)
 		{
-			string key = SystemTypeIdentityService.BuildKey(((object)elementType).GetType().Name, ResolveCategoryName((Element)(object)elementType), ((Element)elementType).Name);
+			string key = SystemTypeIdentityService.BuildKey(elementType.GetType().Name, ResolveCategoryName(elementType), elementType.Name);
 			if (!hasFilter || requestedKeys.Contains(key))
 			{
 				result[key] = elementType;
@@ -4432,7 +4728,6 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static Dictionary<string, Family> BuildStandardFamilyMap(Document doc, IEnumerable<RoutingDependencyPreflightItem> dependencyItems = null)
 	{
-		//IL_00b1: Unknown result type (might be due to invalid IL or missing references)
 		Dictionary<string, Family> result = new Dictionary<string, Family>(StringComparer.Ordinal);
 		HashSet<string> requestedFamilyIds = new HashSet<string>(StringComparer.Ordinal);
 		HashSet<string> requestedFamilyNames = new HashSet<string>(StringComparer.Ordinal);
@@ -4451,15 +4746,15 @@ public sealed class SystemTypeApplyExecutionService
 			}
 		}
 		bool hasFilter = requestedFamilyIds.Count > 0 || requestedFamilyNames.Count > 0;
-		foreach (Family family in from Family x in (IEnumerable)new FilteredElementCollector(doc).OfClass(typeof(Family))
+		foreach (Family family in from Family x in new FilteredElementCollector(doc).OfClass(typeof(Family))
 			where x != null
 			select x)
 		{
-			string familyId = Normalize(((Element)family).UniqueId ?? string.Empty);
-			string familyName = Normalize(((Element)family).Name ?? string.Empty);
+			string familyId = Normalize(family.UniqueId ?? string.Empty);
+			string familyName = Normalize(family.Name ?? string.Empty);
 			if (!hasFilter || requestedFamilyIds.Contains(familyId) || requestedFamilyNames.Contains(familyName))
 			{
-				result[BuildFamilyKey(ResolveFamilyCategoryName(family), ((Element)family).Name)] = family;
+				result[BuildFamilyKey(ResolveFamilyCategoryName(family), family.Name)] = family;
 				if (!string.IsNullOrWhiteSpace(familyId))
 				{
 					result[familyId] = family;
@@ -4485,28 +4780,27 @@ public sealed class SystemTypeApplyExecutionService
 		{
 			return null;
 		}
-		List<Family> matches = standardFamilyMap.Values.Where([SpecialName] (Family x) => x != null && string.Equals(Normalize(((Element)x).Name), text, StringComparison.Ordinal)).Distinct().ToList();
+		List<Family> matches = standardFamilyMap.Values.Where([SpecialName] (Family x) => x != null && string.Equals(Normalize(x.Name), text, StringComparison.Ordinal)).Distinct().ToList();
 		if (matches.Count == 1)
 		{
 			return matches[0];
 		}
 		if (matches.Count > 1)
 		{
-			throw new InvalidOperationException(T("Multiple standard dependency families share the same name. Use a canonical category identity before system type apply: ", "여러 표준 의존 패밀리가 같은 이름을 사용합니다. 시스템 타입 적용 전에 표준 카테고리 식별자를 정리하세요: ") + dependencyItem.SourceFamilyName);
+			throw new System.InvalidOperationException(T("Multiple standard dependency families share the same name. Use a canonical category identity before system type apply: ", "여러 표준 의존 패밀리가 같은 이름을 사용합니다. 시스템 타입 적용 전에 표준 카테고리 식별자를 정리하세요: ") + dependencyItem.SourceFamilyName);
 		}
 		return null;
 	}
 
 	private static Dictionary<int, List<ElementId>> BuildTypeUsageMap(Document doc)
 	{
-		//IL_0007: Unknown result type (might be due to invalid IL or missing references)
 		Dictionary<int, List<ElementId>> result = new Dictionary<int, List<ElementId>>();
-		foreach (Element instanceElement in from Element x in (IEnumerable)new FilteredElementCollector(doc).WhereElementIsNotElementType()
+		foreach (Element instanceElement in from Element x in new FilteredElementCollector(doc).WhereElementIsNotElementType()
 			where x != null
 			select x)
 		{
 			ElementId typeId = instanceElement.GetTypeId();
-			if (typeId != null && !(typeId == ElementId.InvalidElementId) && RevitElementIdCompat.CompatIntegerValue(typeId) > 0)
+			if ((object)typeId != null && !(typeId == ElementId.InvalidElementId) && RevitElementIdCompat.CompatIntegerValue(typeId) > 0)
 			{
 				List<ElementId> elementIds = null;
 				if (!result.TryGetValue(RevitElementIdCompat.CompatIntegerValue(typeId), out elementIds))
@@ -4561,8 +4855,7 @@ public sealed class SystemTypeApplyExecutionService
 		string ResolveCategoryName;
 		try
 		{
-			Category category = element.Category;
-			ResolveCategoryName = ((category != null) ? category.Name : null) ?? string.Empty;
+			ResolveCategoryName = element.Category?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -4601,21 +4894,7 @@ public sealed class SystemTypeApplyExecutionService
 		string ResolveParameterName;
 		try
 		{
-			object obj;
-			if (parameter == null)
-			{
-				obj = null;
-			}
-			else
-			{
-				Definition definition = parameter.Definition;
-				obj = ((definition != null) ? definition.Name : null);
-			}
-			if (obj == null)
-			{
-				obj = string.Empty;
-			}
-			ResolveParameterName = (string)obj;
+			ResolveParameterName = parameter?.Definition?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -4648,8 +4927,7 @@ public sealed class SystemTypeApplyExecutionService
 		string ResolveFamilyCategoryName;
 		try
 		{
-			Category familyCategory = family.FamilyCategory;
-			ResolveFamilyCategoryName = ((familyCategory != null) ? familyCategory.Name : null) ?? string.Empty;
+			ResolveFamilyCategoryName = family.FamilyCategory?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -4792,16 +5070,13 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void TryRollback(Transaction transaction)
 	{
-		//IL_0005: Unknown result type (might be due to invalid IL or missing references)
-		//IL_000b: Invalid comparison between Unknown and I4
-		//IL_000e: Unknown result type (might be due to invalid IL or missing references)
 		if (transaction == null)
 		{
 			return;
 		}
 		try
 		{
-			if ((int)transaction.GetStatus() == 1)
+			if (transaction.GetStatus() == TransactionStatus.Started)
 			{
 				transaction.RollBack();
 			}
@@ -4815,16 +5090,13 @@ public sealed class SystemTypeApplyExecutionService
 
 	private static void TryRollback(TransactionGroup transactionGroup)
 	{
-		//IL_0005: Unknown result type (might be due to invalid IL or missing references)
-		//IL_000b: Invalid comparison between Unknown and I4
-		//IL_000e: Unknown result type (might be due to invalid IL or missing references)
 		if (transactionGroup == null)
 		{
 			return;
 		}
 		try
 		{
-			if ((int)transactionGroup.GetStatus() == 1)
+			if (transactionGroup.GetStatus() == TransactionStatus.Started)
 			{
 				transactionGroup.RollBack();
 			}
@@ -4839,5 +5111,31 @@ public sealed class SystemTypeApplyExecutionService
 	private static string Normalize(string value)
 	{
 		return SystemTypeIdentityService.Normalize(value);
+	}
+
+	private sealed class FamilyCategoryInfo
+	{
+		internal Family Family { get; }
+
+		internal string CategoryName { get; }
+
+		internal FamilyCategoryInfo(Family family, string categoryName)
+		{
+			Family = family;
+			CategoryName = categoryName ?? string.Empty;
+		}
+	}
+
+	private sealed class FamilyDeleteTarget
+	{
+		internal ElementId Id { get; }
+
+		internal string Name { get; }
+
+		internal FamilyDeleteTarget(ElementId id, string name)
+		{
+			Id = id;
+			Name = name ?? string.Empty;
+		}
 	}
 }

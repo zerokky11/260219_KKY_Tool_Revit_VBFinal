@@ -81,7 +81,7 @@ public sealed class FamilyBrowserDashboardModelessRuntime
 			else
 			{
 				_handler = new FamilyBrowserDashboardExternalEventHandler();
-				_externalEvent = ExternalEvent.Create((IExternalEventHandler)(object)_handler);
+				_externalEvent = ExternalEvent.Create(_handler);
 				formToShow = (_form = new FamilyBrowserDashboardHtmlForm(application, [SpecialName] (string action) => _handler.Request(action, _externalEvent)));
 				_handler.SetForm(formToShow);
 				formToShow.FormClosed += HandleFormClosed;
@@ -183,7 +183,10 @@ public sealed class FamilyBrowserDashboardModelessRuntime
 				Monitor.Exit(syncRoot);
 			}
 		}
-		formToRefresh?.RefreshForActiveDocumentChanged(key);
+		if (formToRefresh != null && !formToRefresh.IsDisposed)
+		{
+			formToRefresh.RefreshForActiveDocumentChanged(key);
+		}
 	}
 
 	public static void NotifyDocumentContentChanged(Document document)
@@ -214,6 +217,39 @@ public sealed class FamilyBrowserDashboardModelessRuntime
 			}
 		}
 		formToNotify?.MarkCurrentProjectContentChanged(key);
+	}
+
+	public static void NotifyDocumentCommitFinalized(Document document, string commitKind)
+	{
+		if (document == null)
+		{
+			return;
+		}
+		string key = BuildDocumentKey(document);
+		FamilyBrowserDashboardHtmlForm formToNotify = null;
+		object syncRoot = SyncRoot;
+		ObjectFlowControl.CheckForSyncLockOnValueType(syncRoot);
+		bool lockTaken = false;
+		try
+		{
+			Monitor.Enter(syncRoot, ref lockTaken);
+			if (_form == null || _form.IsDisposed)
+			{
+				return;
+			}
+			formToNotify = _form;
+		}
+		finally
+		{
+			if (lockTaken)
+			{
+				Monitor.Exit(syncRoot);
+			}
+		}
+		if (formToNotify != null && formToNotify.IsHandleCreated)
+		{
+			formToNotify.BeginInvoke((Action)([SpecialName] () => formToNotify.RefreshAfterDocumentCommit(key, commitKind)));
+		}
 	}
 
 	private static void HandleFormClosed(object sender, FormClosedEventArgs e)
@@ -286,7 +322,7 @@ public sealed class FamilyBrowserDashboardModelessRuntime
 		}
 		try
 		{
-			PropertyInfo propertyInfo = ((object)application).GetType().GetProperty("MainWindowHandle");
+			PropertyInfo propertyInfo = application.GetType().GetProperty("MainWindowHandle");
 			if ((object)propertyInfo == null)
 			{
 				return null;

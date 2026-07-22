@@ -20,7 +20,13 @@ public class SystemTypeComparisonItem
 
 	public bool SupportsRoutingDependencies { get; set; }
 
+	public string StandardRoutingPreferenceSignature { get; set; }
+
+	public string ProjectRoutingPreferenceSignature { get; set; }
+
 	public string Notes { get; set; }
+
+	public string DetailSummary { get; set; }
 
 	public List<StandardSystemTypeLayerSnapshotItem> Layers { get; set; }
 
@@ -34,7 +40,10 @@ public class SystemTypeComparisonItem
 		StandardFingerprint = string.Empty;
 		ProjectFingerprint = string.Empty;
 		DifferenceSummary = new List<string>();
+		StandardRoutingPreferenceSignature = string.Empty;
+		ProjectRoutingPreferenceSignature = string.Empty;
 		Notes = string.Empty;
+		DetailSummary = string.Empty;
 		Layers = new List<StandardSystemTypeLayerSnapshotItem>();
 	}
 }

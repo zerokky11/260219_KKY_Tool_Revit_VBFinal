@@ -12,6 +12,10 @@ public class FamilyThumbnailAutoConfirmedDialogRecord
 
 	public string OverrideResult { get; set; }
 
+	public string ActionTaken { get; set; }
+
+	public string AvailableButtons { get; set; }
+
 	public FamilyThumbnailAutoConfirmedDialogRecord()
 	{
 		ConfirmedAtUtc = string.Empty;
@@ -20,5 +24,7 @@ public class FamilyThumbnailAutoConfirmedDialogRecord
 		Reason = string.Empty;
 		DialogText = string.Empty;
 		OverrideResult = string.Empty;
+		ActionTaken = string.Empty;
+		AvailableButtons = string.Empty;
 	}
 }

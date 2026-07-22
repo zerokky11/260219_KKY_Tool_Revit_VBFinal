@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -71,7 +70,7 @@ public sealed class FamilyThumbnailPreviewService
 		{
 			if (_0024VB_0024Local_selectedNameSet.Count != 0)
 			{
-				return _0024VB_0024Local_selectedNameSet.Contains(Normalize(((Element)x).Name ?? string.Empty));
+				return _0024VB_0024Local_selectedNameSet.Contains(Normalize(x.Name ?? string.Empty));
 			}
 			return true;
 		}
@@ -95,7 +94,7 @@ public sealed class FamilyThumbnailPreviewService
 		{
 			if (_0024VB_0024Local_selectedNameSet.Count != 0)
 			{
-				return _0024VB_0024Local_selectedNameSet.Contains(Normalize(((Element)x).Name ?? string.Empty));
+				return _0024VB_0024Local_selectedNameSet.Contains(Normalize(x.Name ?? string.Empty));
 			}
 			return true;
 		}
@@ -121,11 +120,15 @@ public sealed class FamilyThumbnailPreviewService
 
 	private const int PreviewConnectorSurfaceTransparency = 100;
 
-	private const string PreviewCacheVersionFolderName = "preview-v6-no-section-safe-recenter";
+	private const string PreviewCacheVersionFolderName = "preview-v14-white-background-centered-fit";
 
 	private const int PreviewExportPixelSize = 768;
 
 	private const double PreviewSafeRecenterScale = 0.94;
+
+	private const double PreviewMinimumFrameMarginRatio = 0.08;
+
+	private const double PreviewMinimumFrameMarginPixels = 40.0;
 
 	private const string PreviewTempFileStemPrefix = "kky_thumb_";
 
@@ -135,7 +138,7 @@ public sealed class FamilyThumbnailPreviewService
 
 	public static string GetCacheFolder(string workspaceRoot, string sourceId)
 	{
-		return Path.Combine(FamilyBrowserStandardPolicyStore.GetThumbnailFolder(workspaceRoot), SafeFileName(sourceId), "preview-v6-no-section-safe-recenter");
+		return Path.Combine(FamilyBrowserStandardPolicyStore.GetThumbnailFolder(workspaceRoot), SafeFileName(sourceId), PreviewCacheVersionFolderName);
 	}
 
 	public static string GetCachedImagePath(string workspaceRoot, string sourceId, string categoryName, string familyName)
@@ -145,82 +148,21 @@ public sealed class FamilyThumbnailPreviewService
 
 	public static string ResolveExistingCachedImagePath(string workspaceRoot, string sourceId, string categoryName, string familyName)
 	{
-		string ResolveExistingCachedImagePath;
-		string expected;
 		if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(familyName))
 		{
-			ResolveExistingCachedImagePath = string.Empty;
+			return string.Empty;
 		}
-		else
+		try
 		{
-			try
-			{
-				expected = GetCachedImagePath(workspaceRoot, sourceId, categoryName, familyName);
-			}
-			catch (Exception projectError)
-			{
-				ProjectData.SetProjectError(projectError);
-				ResolveExistingCachedImagePath = string.Empty;
-				ProjectData.ClearProjectError();
-				goto IL_0105;
-			}
-			if (File.Exists(expected))
-			{
-				ResolveExistingCachedImagePath = expected;
-			}
-			else
-			{
-				try
-				{
-					string sourceFolder = Path.Combine(FamilyBrowserStandardPolicyStore.GetThumbnailFolder(workspaceRoot), SafeFileName(sourceId));
-					if (!Directory.Exists(sourceFolder))
-					{
-						ResolveExistingCachedImagePath = expected;
-					}
-					else
-					{
-						string exactFileName = BuildCacheFileName(categoryName, familyName);
-						foreach (string item in Directory.EnumerateDirectories(sourceFolder, "preview-*", SearchOption.TopDirectoryOnly))
-						{
-							string candidate = Path.Combine(item, exactFileName);
-							if (!File.Exists(candidate))
-							{
-								continue;
-							}
-							ResolveExistingCachedImagePath = candidate;
-							goto end_IL_004d;
-						}
-						string familyOnlyMatch = FindCachedImageByMetadata(sourceFolder, sourceId, categoryName, familyName, requireCategoryMatch: true);
-						if (!string.IsNullOrWhiteSpace(familyOnlyMatch))
-						{
-							ResolveExistingCachedImagePath = familyOnlyMatch;
-						}
-						else
-						{
-							familyOnlyMatch = FindCachedImageByMetadata(sourceFolder, sourceId, categoryName, familyName, requireCategoryMatch: false);
-							if (string.IsNullOrWhiteSpace(familyOnlyMatch))
-							{
-								goto IL_0103;
-							}
-							ResolveExistingCachedImagePath = familyOnlyMatch;
-						}
-					}
-					end_IL_004d:;
-				}
-				catch (Exception projectError2)
-				{
-					ProjectData.SetProjectError(projectError2);
-					ProjectData.ClearProjectError();
-					goto IL_0103;
-				}
-			}
+			string expected = GetCachedImagePath(workspaceRoot, sourceId, categoryName, familyName);
+			return FamilyBrowserDataLoader.ResolveThumbnailPath(workspaceRoot, sourceId, categoryName, familyName, expected);
 		}
-		goto IL_0105;
-		IL_0105:
-		return ResolveExistingCachedImagePath;
-		IL_0103:
-		ResolveExistingCachedImagePath = expected;
-		goto IL_0105;
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+			return string.Empty;
+		}
 	}
 
 	public static string GetCachedFailureMessage(string imagePath)
@@ -249,7 +191,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	public static FamilyThumbnailBatchUpdateResult UpdateStandardCache(Document standardDocument, string workspaceRoot, StandardLibraryRegistrationRecord registration, Action<int, int, string> progress, UIApplication uiApplication = null, ISet<string> selectedFamilyNames = null)
 	{
-		//IL_007b: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__19_002D0 arg = default(_Closure_0024__19_002D0);
 		_Closure_0024__19_002D0 CS_0024_003C_003E8__locals3 = new _Closure_0024__19_002D0(arg);
 		if (standardDocument == null)
@@ -268,10 +209,10 @@ public sealed class FamilyThumbnailPreviewService
 		StandardLibrarySnapshot standardSnapshot = LoadStandardSnapshot(registration.LastSnapshotPath);
 		Dictionary<string, StandardLoadableFamilySnapshotItem> snapshotFamilyMap = BuildSnapshotFamilyMap(standardSnapshot);
 		CS_0024_003C_003E8__locals3._0024VB_0024Local_selectedNameSet = NormalizeFamilyNameSet(selectedFamilyNames);
-		List<Family> families = (from Family x in (IEnumerable)new FilteredElementCollector(standardDocument).OfClass(typeof(Family))
+		List<Family> families = (from Family x in new FilteredElementCollector(standardDocument).OfClass(typeof(Family))
 			where x != null && x.FamilyCategory != null
-			where CS_0024_003C_003E8__locals3._0024VB_0024Local_selectedNameSet.Count == 0 || CS_0024_003C_003E8__locals3._0024VB_0024Local_selectedNameSet.Contains(Normalize(((Element)x).Name ?? string.Empty))
-			select x).OrderBy([SpecialName] (Family x) => Normalize(x.FamilyCategory.Name) + "|" + Normalize(((Element)x).Name), StringComparer.Ordinal).ToList();
+			where CS_0024_003C_003E8__locals3._0024VB_0024Local_selectedNameSet.Count == 0 || CS_0024_003C_003E8__locals3._0024VB_0024Local_selectedNameSet.Contains(Normalize(x.Name ?? string.Empty))
+			select x).OrderBy([SpecialName] (Family x) => Normalize(x.FamilyCategory.Name) + "|" + Normalize(x.Name), StringComparer.Ordinal).ToList();
 		int total = families.Count;
 		int current = 0;
 		checked
@@ -282,19 +223,19 @@ public sealed class FamilyThumbnailPreviewService
 				{
 					current++;
 					string categoryName = ((family.FamilyCategory == null) ? string.Empty : family.FamilyCategory.Name);
-					string messageName = categoryName + " / " + ((Element)family).Name;
+					string messageName = categoryName + " / " + family.Name;
 					progress?.Invoke(current, total, messageName);
 					FamilyThumbnailBatchUpdateItem item = new FamilyThumbnailBatchUpdateItem
 					{
-						FamilyName = ((Element)family).Name,
+						FamilyName = family.Name,
 						CategoryName = categoryName,
-						ImagePath = GetCachedImagePath(workspaceRoot, registration.SourceId, categoryName, ((Element)family).Name)
+						ImagePath = GetCachedImagePath(workspaceRoot, registration.SourceId, categoryName, family.Name)
 					};
 					StandardLoadableFamilySnapshotItem snapshotItem = null;
-					snapshotFamilyMap?.TryGetValue(BuildSnapshotFamilyKey(categoryName, ((Element)family).Name), out snapshotItem);
-					string cacheStamp = BuildFamilyThumbnailCacheStamp(registration, standardSnapshot, snapshotItem, categoryName, ((Element)family).Name);
+					snapshotFamilyMap?.TryGetValue(BuildSnapshotFamilyKey(categoryName, family.Name), out snapshotItem);
+					string cacheStamp = BuildFamilyThumbnailCacheStamp(registration, standardSnapshot, snapshotItem, categoryName, family.Name);
 					int dialogRecordStart = dialogGuard.RecordCount;
-					dialogGuard.SetCurrentFamily(categoryName, ((Element)family).Name);
+					dialogGuard.SetCurrentFamily(categoryName, family.Name);
 					try
 					{
 						if (IsCachedThumbnailCurrent(item.ImagePath, cacheStamp))
@@ -315,7 +256,7 @@ public sealed class FamilyThumbnailPreviewService
 							item.Success = true;
 							item.Message = generation.Message;
 							result.SuccessCount++;
-							WriteThumbnailCacheMetadata(item.ImagePath, registration, standardSnapshot, categoryName, ((Element)family).Name, cacheStamp);
+							WriteThumbnailCacheMetadata(item.ImagePath, registration, standardSnapshot, categoryName, family.Name, cacheStamp);
 						}
 					}
 					catch (FamilyThumbnailStageException ex)
@@ -362,14 +303,12 @@ public sealed class FamilyThumbnailPreviewService
 					result.Items.Add(item);
 				}
 			}
-			result.DiagnosticReportPath = WriteBatchDiagnosticReport(result);
 			return result;
 		}
 	}
 
 	public static FamilyThumbnailBatchUpdateResult UpdateProjectCache(Document projectDocument, string workspaceRoot, string projectThumbnailSourceId, ProjectContentSnapshot projectSnapshot, Action<int, int, string> progress, UIApplication uiApplication = null, ISet<string> selectedFamilyNames = null)
 	{
-		//IL_0073: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__20_002D0 arg = default(_Closure_0024__20_002D0);
 		_Closure_0024__20_002D0 CS_0024_003C_003E8__locals3 = new _Closure_0024__20_002D0(arg);
 		if (projectDocument == null)
@@ -387,11 +326,11 @@ public sealed class FamilyThumbnailPreviewService
 		result.OutputFolder = outputFolder;
 		Dictionary<string, ProjectLoadableFamilySnapshotItem> snapshotFamilyMap = BuildProjectSnapshotFamilyMap(projectSnapshot);
 		CS_0024_003C_003E8__locals3._0024VB_0024Local_selectedNameSet = NormalizeFamilyNameSet(selectedFamilyNames);
-		List<Family> families = (from Family x in (IEnumerable)new FilteredElementCollector(projectDocument).OfClass(typeof(Family))
+		List<Family> families = (from Family x in new FilteredElementCollector(projectDocument).OfClass(typeof(Family))
 			where x != null && x.FamilyCategory != null
 			where FamilyBrowserFamilyClassificationService.IsBrowserLoadableFamily(x)
-			where CS_0024_003C_003E8__locals3._0024VB_0024Local_selectedNameSet.Count == 0 || CS_0024_003C_003E8__locals3._0024VB_0024Local_selectedNameSet.Contains(Normalize(((Element)x).Name ?? string.Empty))
-			select x).OrderBy([SpecialName] (Family x) => Normalize(x.FamilyCategory.Name) + "|" + Normalize(((Element)x).Name), StringComparer.Ordinal).ToList();
+			where CS_0024_003C_003E8__locals3._0024VB_0024Local_selectedNameSet.Count == 0 || CS_0024_003C_003E8__locals3._0024VB_0024Local_selectedNameSet.Contains(Normalize(x.Name ?? string.Empty))
+			select x).OrderBy([SpecialName] (Family x) => Normalize(x.FamilyCategory.Name) + "|" + Normalize(x.Name), StringComparer.Ordinal).ToList();
 		int total = families.Count;
 		int current = 0;
 		checked
@@ -402,19 +341,19 @@ public sealed class FamilyThumbnailPreviewService
 				{
 					current++;
 					string categoryName = ((family.FamilyCategory == null) ? string.Empty : family.FamilyCategory.Name);
-					string messageName = categoryName + " / " + ((Element)family).Name;
+					string messageName = categoryName + " / " + family.Name;
 					progress?.Invoke(current, total, messageName);
 					FamilyThumbnailBatchUpdateItem item = new FamilyThumbnailBatchUpdateItem
 					{
-						FamilyName = ((Element)family).Name,
+						FamilyName = family.Name,
 						CategoryName = categoryName,
-						ImagePath = GetCachedImagePath(workspaceRoot, projectThumbnailSourceId, categoryName, ((Element)family).Name)
+						ImagePath = GetCachedImagePath(workspaceRoot, projectThumbnailSourceId, categoryName, family.Name)
 					};
 					ProjectLoadableFamilySnapshotItem snapshotItem = null;
-					snapshotFamilyMap?.TryGetValue(BuildSnapshotFamilyKey(categoryName, ((Element)family).Name), out snapshotItem);
-					string cacheStamp = BuildProjectFamilyThumbnailCacheStamp(projectThumbnailSourceId, projectSnapshot, snapshotItem, categoryName, ((Element)family).Name);
+					snapshotFamilyMap?.TryGetValue(BuildSnapshotFamilyKey(categoryName, family.Name), out snapshotItem);
+					string cacheStamp = BuildProjectFamilyThumbnailCacheStamp(projectThumbnailSourceId, projectSnapshot, snapshotItem, categoryName, family.Name);
 					int dialogRecordStart = dialogGuard.RecordCount;
-					dialogGuard.SetCurrentFamily(categoryName, ((Element)family).Name);
+					dialogGuard.SetCurrentFamily(categoryName, family.Name);
 					try
 					{
 						if (IsCachedThumbnailCurrent(item.ImagePath, cacheStamp))
@@ -435,7 +374,7 @@ public sealed class FamilyThumbnailPreviewService
 							item.Success = true;
 							item.Message = generation.Message;
 							result.SuccessCount++;
-							WriteThumbnailCacheMetadata(item.ImagePath, projectThumbnailSourceId, string.Empty, 0L, "Project", projectSnapshot?.CapturedAtUtc ?? string.Empty, categoryName, ((Element)family).Name, cacheStamp);
+							WriteThumbnailCacheMetadata(item.ImagePath, projectThumbnailSourceId, string.Empty, 0L, "Project", projectSnapshot?.CapturedAtUtc ?? string.Empty, categoryName, family.Name, cacheStamp);
 						}
 					}
 					catch (FamilyThumbnailStageException ex)
@@ -482,7 +421,6 @@ public sealed class FamilyThumbnailPreviewService
 					result.Items.Add(item);
 				}
 			}
-			result.DiagnosticReportPath = WriteBatchDiagnosticReport(result);
 			return result;
 		}
 	}
@@ -578,7 +516,7 @@ public sealed class FamilyThumbnailPreviewService
 	private static string BuildFamilyThumbnailCacheStamp(StandardLibraryRegistrationRecord registration, StandardLibrarySnapshot snapshot, StandardLoadableFamilySnapshotItem snapshotItem, string categoryName, string familyName)
 	{
 		List<string> list = new List<string>();
-		list.Add("thumbnail-cache-stamp-v2-shaded-thinline");
+		list.Add("thumbnail-cache-stamp-v9-white-background-centered-fit");
 		list.Add("source-id=" + Normalize(registration?.SourceId ?? string.Empty));
 		list.Add("snapshot-mode=" + Normalize(snapshot?.SnapshotMode ?? registration?.SnapshotMode));
 		list.Add("category=" + Normalize(categoryName));
@@ -604,7 +542,7 @@ public sealed class FamilyThumbnailPreviewService
 	private static string BuildProjectFamilyThumbnailCacheStamp(string projectThumbnailSourceId, ProjectContentSnapshot snapshot, ProjectLoadableFamilySnapshotItem snapshotItem, string categoryName, string familyName)
 	{
 		List<string> list = new List<string>();
-		list.Add("project-thumbnail-cache-stamp-v1-shaded-thinline");
+		list.Add("project-thumbnail-cache-stamp-v4-white-background-centered-fit");
 		list.Add("source-id=" + Normalize(projectThumbnailSourceId));
 		list.Add("captured-at=" + Normalize(snapshot?.CapturedAtUtc ?? string.Empty));
 		list.Add("document-path=" + Normalize(snapshot?.DocumentPath ?? string.Empty));
@@ -760,7 +698,26 @@ public sealed class FamilyThumbnailPreviewService
 				};
 				string path = BuildThumbnailMetadataPath(imagePath);
 				Directory.CreateDirectory(Path.GetDirectoryName(path));
-				File.WriteAllText(path, PlainJsonReportWriter.Serialize(metadata), Encoding.UTF8);
+				string temporaryPath = FamilyBrowserAtomicFileService.CreateSiblingTemporaryPath(path);
+				try
+				{
+					using (FileStream stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+					using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)))
+					{
+						writer.Write(PlainJsonReportWriter.Serialize(metadata));
+						writer.Flush();
+						stream.Flush(true);
+					}
+					FamilyBrowserAtomicFileService.Promote(temporaryPath, path);
+					temporaryPath = string.Empty;
+				}
+				finally
+				{
+					if (!string.IsNullOrWhiteSpace(temporaryPath) && File.Exists(temporaryPath))
+					{
+						File.Delete(temporaryPath);
+					}
+				}
 			}
 			catch (Exception projectError)
 			{
@@ -860,49 +817,35 @@ public sealed class FamilyThumbnailPreviewService
 		PreviewBoundsResult previewBoundsResult = null;
 		RunPreviewStage(generation, "Create new 3D preview view", [SpecialName] () =>
 		{
-			//IL_000b: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0011: Expected O, but got Unknown
-			//IL_0012: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0073: Unknown result type (might be due to invalid IL or missing references)
-			//IL_0079: Invalid comparison between Unknown and I4
-			//IL_0065: Unknown result type (might be due to invalid IL or missing references)
-			//IL_007c: Unknown result type (might be due to invalid IL or missing references)
-			Transaction val = new Transaction(familyDocument, "KKY Family Browser Preview View");
+			using Transaction transaction = new Transaction(familyDocument, "KKY Family Browser Preview View");
+			transaction.Start();
 			try
 			{
-				val.Start();
+				FailureHandlingOptions failureHandlingOptions = transaction.GetFailureHandlingOptions();
+				failureHandlingOptions.SetFailuresPreprocessor(new FamilyThumbnailPreviewFailuresPreprocessor());
+				failureHandlingOptions.SetClearAfterRollback(bFlag: true);
+				transaction.SetFailureHandlingOptions(failureHandlingOptions);
+				View3D view3D = CreatePreviewView(familyDocument);
+				previewBoundsResult = PreparePreviewView(familyDocument, view3D);
+				viewId = view3D.Id;
+				transaction.Commit();
+			}
+			catch (Exception projectError2)
+			{
+				ProjectData.SetProjectError(projectError2);
 				try
 				{
-					FailureHandlingOptions failureHandlingOptions = val.GetFailureHandlingOptions();
-					failureHandlingOptions.SetFailuresPreprocessor((IFailuresPreprocessor)(object)new FamilyThumbnailPreviewFailuresPreprocessor());
-					failureHandlingOptions.SetClearAfterRollback(true);
-					val.SetFailureHandlingOptions(failureHandlingOptions);
-					View3D val2 = CreatePreviewView(familyDocument);
-					previewBoundsResult = PreparePreviewView(familyDocument, val2);
-					viewId = ((Element)val2).Id;
-					val.Commit();
+					if (transaction.GetStatus() == TransactionStatus.Started)
+					{
+						transaction.RollBack();
+					}
 				}
-				catch (Exception projectError2)
+				catch (Exception projectError3)
 				{
-					ProjectData.SetProjectError(projectError2);
-					try
-					{
-						if ((int)val.GetStatus() == 1)
-						{
-							val.RollBack();
-						}
-					}
-					catch (Exception projectError3)
-					{
-						ProjectData.SetProjectError(projectError3);
-						ProjectData.ClearProjectError();
-					}
-					throw;
+					ProjectData.SetProjectError(projectError3);
+					ProjectData.ClearProjectError();
 				}
-			}
-			finally
-			{
-				((IDisposable)val)?.Dispose();
+				throw;
 			}
 		});
 		if (previewBoundsResult != null && previewBoundsResult.ConnectorExtentsClamped)
@@ -934,9 +877,9 @@ public sealed class FamilyThumbnailPreviewService
 				throw new InvalidOperationException(BuildMissingExportDiagnostic(directoryName, text, null, exportStartedUtc));
 			}
 		});
-		RunPreviewStage(generation, "Save centered thumbnail cache file", [SpecialName] () =>
+		RunPreviewStage(generation, "Save centered white-background thumbnail cache file", [SpecialName] () =>
 		{
-			if (!SaveCenteredPreviewImage(text2, targetImagePath))
+			if (!SaveWhiteBackgroundPreviewImage(text2, targetImagePath))
 			{
 				File.Copy(text2, targetImagePath, overwrite: true);
 			}
@@ -951,7 +894,7 @@ public sealed class FamilyThumbnailPreviewService
 			ProjectData.ClearProjectError();
 		}
 		generation.Success = true;
-		generation.Message = "Snapshot OK: new 3D view, shaded/fine, preview visibility on, annotations/reference datum hidden, connector graphics shown with thin/transparent overrides, element/category thin lines, safe padded section box, low-DPI export for thinner connector strokes, focused home view, robust PNG export, centered thumbnail content.";
+		generation.Message = "Snapshot OK: new 3D view, shaded/fine, preview visibility on, annotations/reference datum hidden, connector graphics shown with thin/transparent overrides, element/category thin lines, low-DPI export for thinner connector strokes, focused home view, robust PNG export, centered safety margin restored, white background normalized.";
 		if (generation.ConnectorExtentsClamped)
 		{
 			generation.Message += " Connector extents were clamped to keep the family geometry readable.";
@@ -961,22 +904,22 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static FamilyThumbnailGenerationResult GenerateAccurate3DPreview(Document projectDocument, Family family, string targetImagePath)
 	{
-		Document val = null;
+		Document document = null;
 		try
 		{
 			RunPreviewStage(new FamilyThumbnailGenerationResult(), "Open family in background", [SpecialName] () =>
 			{
-				val = projectDocument.EditFamily(family);
+				document = projectDocument.EditFamily(family);
 			});
-			return GenerateFromOpenFamilyDocument(val, targetImagePath);
+			return GenerateFromOpenFamilyDocument(document, targetImagePath);
 		}
 		finally
 		{
-			if (val != null)
+			if (document != null)
 			{
 				try
 				{
-					val.Close(false);
+					document.Close(saveModified: false);
 				}
 				catch (Exception projectError)
 				{
@@ -997,7 +940,7 @@ public sealed class FamilyThumbnailPreviewService
 				return bitmap;
 			}
 		}
-		return TryGetPreviewImage((Element)(object)family);
+		return TryGetPreviewImage(family);
 	}
 
 	private static Bitmap TryGetPreviewImage(Element element)
@@ -1007,25 +950,21 @@ public sealed class FamilyThumbnailPreviewService
 		{
 			TryGetPreviewImage = null;
 		}
+		else if (!(element is ElementType elementType))
+		{
+			TryGetPreviewImage = null;
+		}
 		else
 		{
-			ElementType elementType = (ElementType)(object)((element is ElementType) ? element : null);
-			if (elementType == null)
+			try
 			{
-				TryGetPreviewImage = null;
+				TryGetPreviewImage = elementType.GetPreviewImage(new Size(512, 512));
 			}
-			else
+			catch (Exception projectError)
 			{
-				try
-				{
-					TryGetPreviewImage = elementType.GetPreviewImage(new Size(512, 512));
-				}
-				catch (Exception projectError)
-				{
-					ProjectData.SetProjectError(projectError);
-					TryGetPreviewImage = null;
-					ProjectData.ClearProjectError();
-				}
+				ProjectData.SetProjectError(projectError);
+				TryGetPreviewImage = null;
+				ProjectData.ClearProjectError();
 			}
 		}
 		return TryGetPreviewImage;
@@ -1033,15 +972,11 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static Family FindFamily(Document projectDocument, string familyName, string categoryName)
 	{
-		//IL_000f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0031: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0038: Expected O, but got Unknown
 		string normalizedFamilyName = Normalize(familyName);
 		string normalizedCategoryName = Normalize(categoryName);
-		foreach (Family item in new FilteredElementCollector(projectDocument).OfClass(typeof(Family)))
+		foreach (Family family in new FilteredElementCollector(projectDocument).OfClass(typeof(Family)))
 		{
-			Family family = item;
-			if (string.Equals(Normalize(((Element)family).Name), normalizedFamilyName, StringComparison.Ordinal))
+			if (string.Equals(Normalize(family.Name), normalizedFamilyName, StringComparison.Ordinal))
 			{
 				if (normalizedCategoryName.Length == 0)
 				{
@@ -1058,16 +993,15 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static View3D CreatePreviewView(Document familyDocument)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		ViewFamilyType viewType = ((IEnumerable)new FilteredElementCollector(familyDocument).OfClass(typeof(ViewFamilyType))).Cast<ViewFamilyType>().FirstOrDefault([SpecialName] (ViewFamilyType x) => (int)x.ViewFamily == 102);
+		ViewFamilyType viewType = new FilteredElementCollector(familyDocument).OfClass(typeof(ViewFamilyType)).Cast<ViewFamilyType>().FirstOrDefault([SpecialName] (ViewFamilyType x) => x.ViewFamily == ViewFamily.ThreeDimensional);
 		if (viewType == null)
 		{
 			throw new InvalidOperationException(FamilyBrowserLanguageService.Text("No 3D view family type was found in the family document.", "패밀리 문서에서 3D 뷰 패밀리 타입을 찾지 못했습니다."));
 		}
-		View3D view = View3D.CreateIsometric(familyDocument, ((Element)viewType).Id);
+		View3D view = View3D.CreateIsometric(familyDocument, viewType.Id);
 		try
 		{
-			((Element)view).Name = "KKY Family Browser Preview 3D " + DateTime.UtcNow.ToString("HHmmssfff", CultureInfo.InvariantCulture);
+			view.Name = "KKY Family Browser Preview 3D " + DateTime.UtcNow.ToString("HHmmssfff", CultureInfo.InvariantCulture);
 		}
 		catch (Exception projectError)
 		{
@@ -1085,7 +1019,7 @@ public sealed class FamilyThumbnailPreviewService
 		}
 		try
 		{
-			((View)view).DetailLevel = (ViewDetailLevel)3;
+			view.DetailLevel = ViewDetailLevel.Fine;
 		}
 		catch (Exception projectError)
 		{
@@ -1095,7 +1029,7 @@ public sealed class FamilyThumbnailPreviewService
 		SetPreviewDisplayStyle(view, "Shading", "ShadingWithEdges", "Realistic", "HLR", "HiddenLine", "Wireframe");
 		try
 		{
-			((View)view).Scale = 1;
+			view.Scale = 1;
 		}
 		catch (Exception projectError2)
 		{
@@ -1104,7 +1038,7 @@ public sealed class FamilyThumbnailPreviewService
 		}
 		try
 		{
-			((View)view).AreAnnotationCategoriesHidden = true;
+			view.AreAnnotationCategoriesHidden = true;
 		}
 		catch (Exception projectError3)
 		{
@@ -1120,12 +1054,9 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static void ConfigurePreviewCategories(Document familyDocument, View3D view)
 	{
-		//IL_0020: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0026: Expected O, but got Unknown
 		HideReferenceDatumCategories(familyDocument, view);
-		foreach (Category category2 in familyDocument.Settings.Categories)
+		foreach (Category category in familyDocument.Settings.Categories)
 		{
-			Category category = category2;
 			ConfigurePreviewCategory(view, category);
 		}
 		ApplyThinLineOverridesToModelElements(familyDocument, view);
@@ -1133,11 +1064,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static void EnablePreviewVisibilityParameters(Document familyDocument)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0043: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0049: Expected O, but got Unknown
-		//IL_0055: Unknown result type (might be due to invalid IL or missing references)
-		//IL_005b: Invalid comparison between Unknown and I4
 		try
 		{
 			foreach (Element element in new FilteredElementCollector(familyDocument).WhereElementIsNotElementType())
@@ -1146,12 +1072,11 @@ public sealed class FamilyThumbnailPreviewService
 				{
 					continue;
 				}
-				foreach (Parameter parameter2 in element.Parameters)
+				foreach (Parameter parameter in element.Parameters)
 				{
-					Parameter parameter = parameter2;
 					try
 					{
-						if (parameter != null && !parameter.IsReadOnly && (int)parameter.StorageType == 1 && IsPreviewVisibilityParameterName((parameter.Definition == null) ? string.Empty : parameter.Definition.Name))
+						if (parameter != null && !parameter.IsReadOnly && parameter.StorageType == StorageType.Integer && IsPreviewVisibilityParameterName((parameter.Definition == null) ? string.Empty : parameter.Definition.Name))
 						{
 							parameter.Set(1);
 						}
@@ -1183,15 +1108,11 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static void ConfigurePreviewCategory(View3D view, Category category)
 	{
-		//IL_0007: Unknown result type (might be due to invalid IL or missing references)
-		//IL_000d: Invalid comparison between Unknown and I4
-		//IL_0054: Unknown result type (might be due to invalid IL or missing references)
-		//IL_005a: Expected O, but got Unknown
 		if (category == null)
 		{
 			return;
 		}
-		if ((int)category.CategoryType == 2 || IsReferenceDatumCategory(category))
+		if (category.CategoryType == CategoryType.Annotation || IsReferenceDatumCategory(category))
 		{
 			HideCategory(view, category);
 		}
@@ -1209,9 +1130,8 @@ public sealed class FamilyThumbnailPreviewService
 		}
 		try
 		{
-			foreach (Category subCategory2 in category.SubCategories)
+			foreach (Category subCategory in category.SubCategories)
 			{
-				Category subCategory = subCategory2;
 				ConfigurePreviewCategory(view, subCategory);
 			}
 		}
@@ -1230,14 +1150,14 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static void HideElementClassCategories<T>(Document familyDocument, View3D view) where T : Element
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
 		try
 		{
-			foreach (T element in new FilteredElementCollector(familyDocument).OfClass(typeof(T)))
+			foreach (T item in new FilteredElementCollector(familyDocument).OfClass(typeof(T)))
 			{
+				T element = item;
 				if (element != null)
 				{
-					HideCategory(view, ((Element)element).Category);
+					HideCategory(view, element.Category);
 				}
 			}
 		}
@@ -1256,9 +1176,9 @@ public sealed class FamilyThumbnailPreviewService
 		}
 		try
 		{
-			if (((View)view).CanCategoryBeHidden(category.Id))
+			if (view.CanCategoryBeHidden(category.Id))
 			{
-				((View)view).SetCategoryHidden(category.Id, true);
+				view.SetCategoryHidden(category.Id, hide: true);
 			}
 		}
 		catch (Exception projectError)
@@ -1276,9 +1196,9 @@ public sealed class FamilyThumbnailPreviewService
 		}
 		try
 		{
-			if (((View)view).CanCategoryBeHidden(category.Id))
+			if (view.CanCategoryBeHidden(category.Id))
 			{
-				((View)view).SetCategoryHidden(category.Id, false);
+				view.SetCategoryHidden(category.Id, hide: false);
 			}
 		}
 		catch (Exception projectError)
@@ -1294,7 +1214,7 @@ public sealed class FamilyThumbnailPreviewService
 		{
 			try
 			{
-				((View)view).SetCategoryOverrides(category.Id, CreateThinLineOverride());
+				view.SetCategoryOverrides(category.Id, CreateThinLineOverride());
 			}
 			catch (Exception projectError)
 			{
@@ -1306,8 +1226,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static OverrideGraphicSettings CreateThinLineOverride()
 	{
-		//IL_0000: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Expected O, but got Unknown
 		OverrideGraphicSettings graphicsOverride = new OverrideGraphicSettings();
 		try
 		{
@@ -1344,7 +1262,7 @@ public sealed class FamilyThumbnailPreviewService
 		}
 		try
 		{
-			graphicsOverride.SetHalftone(true);
+			graphicsOverride.SetHalftone(halftone: true);
 		}
 		catch (Exception projectError2)
 		{
@@ -1360,7 +1278,7 @@ public sealed class FamilyThumbnailPreviewService
 		{
 			try
 			{
-				((View)view).SetCategoryOverrides(category.Id, CreateConnectorThinLineOverride());
+				view.SetCategoryOverrides(category.Id, CreateConnectorThinLineOverride());
 			}
 			catch (Exception projectError)
 			{
@@ -1372,7 +1290,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static void SetPreviewDisplayStyle(View3D view, params string[] preferredStyleNames)
 	{
-		//IL_002b: Unknown result type (might be due to invalid IL or missing references)
 		if (view == null || preferredStyleNames == null)
 		{
 			return;
@@ -1383,7 +1300,7 @@ public sealed class FamilyThumbnailPreviewService
 			{
 				try
 				{
-					((View)view).DisplayStyle = (DisplayStyle)Enum.Parse(typeof(DisplayStyle), styleName, ignoreCase: true);
+					view.DisplayStyle = (DisplayStyle)Enum.Parse(typeof(DisplayStyle), styleName, ignoreCase: true);
 					break;
 				}
 				catch (Exception projectError)
@@ -1397,9 +1314,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static void ApplyThinLineOverridesToModelElements(Document familyDocument, View3D view)
 	{
-		//IL_001a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0044: Unknown result type (might be due to invalid IL or missing references)
-		//IL_004a: Invalid comparison between Unknown and I4
 		if (familyDocument == null || view == null)
 		{
 			return;
@@ -1410,7 +1324,7 @@ public sealed class FamilyThumbnailPreviewService
 			OverrideGraphicSettings connectorGraphicsOverride = CreateConnectorThinLineOverride();
 			foreach (Element element in new FilteredElementCollector(familyDocument).WhereElementIsNotElementType())
 			{
-				if (element == null || element.Category == null || (int)element.Category.CategoryType != 1 || element is View || element is ReferencePlane || element is Level)
+				if (element == null || element.Category == null || element.Category.CategoryType != CategoryType.Model || element is View || element is ReferencePlane || element is Level)
 				{
 					continue;
 				}
@@ -1418,11 +1332,11 @@ public sealed class FamilyThumbnailPreviewService
 				{
 					if (IsConnectorElement(element))
 					{
-						((View)view).SetElementOverrides(element.Id, connectorGraphicsOverride);
+						view.SetElementOverrides(element.Id, connectorGraphicsOverride);
 					}
 					else
 					{
-						((View)view).SetElementOverrides(element.Id, graphicsOverride);
+						view.SetElementOverrides(element.Id, graphicsOverride);
 					}
 				}
 				catch (Exception projectError)
@@ -1441,16 +1355,13 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static PreviewBoundsResult BuildPreviewBounds(Document familyDocument)
 	{
-		//IL_000a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_003d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0043: Invalid comparison between Unknown and I4
 		BoundingBoxXYZ physicalBounds = null;
 		BoundingBoxXYZ connectorBounds = null;
 		BoundingBoxXYZ fallbackModelBounds = null;
 		BoundingBoxXYZ geometryBounds = null;
 		foreach (Element element in new FilteredElementCollector(familyDocument).WhereElementIsNotElementType())
 		{
-			if (element == null || element.Category == null || (int)element.Category.CategoryType != 1)
+			if (element == null || element.Category == null || element.Category.CategoryType != CategoryType.Model)
 			{
 				continue;
 			}
@@ -1512,7 +1423,7 @@ public sealed class FamilyThumbnailPreviewService
 	{
 		try
 		{
-			BoundingBoxXYZ bounds = element[(View)null];
+			BoundingBoxXYZ bounds = element.get_BoundingBox((View)null);
 			if (IsUsableBounds(bounds))
 			{
 				return NormalizeBoundsToModelCoordinates(bounds);
@@ -1528,10 +1439,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static BoundingBoxXYZ GetUsableElementGeometryBounds(Element element)
 	{
-		//IL_0008: Unknown result type (might be due to invalid IL or missing references)
-		//IL_000d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0014: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001c: Expected O, but got Unknown
 		BoundingBoxXYZ GetUsableElementGeometryBounds;
 		if (element == null)
 		{
@@ -1546,7 +1453,7 @@ public sealed class FamilyThumbnailPreviewService
 					ComputeReferences = false,
 					IncludeNonVisibleObjects = false
 				};
-				GetUsableElementGeometryBounds = BuildGeometryBounds(element[options], Transform.Identity);
+				GetUsableElementGeometryBounds = BuildGeometryBounds(element.get_Geometry(options), Transform.Identity);
 			}
 			catch (Exception projectError)
 			{
@@ -1560,7 +1467,7 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static BoundingBoxXYZ BuildGeometryBounds(GeometryElement geometry, Transform transform)
 	{
-		if (geometry == null)
+		if ((object)geometry == null)
 		{
 			return null;
 		}
@@ -1574,15 +1481,14 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static BoundingBoxXYZ BuildGeometryObjectBounds(GeometryObject geometryObject, Transform transform)
 	{
-		if (geometryObject == null)
+		if ((object)geometryObject == null)
 		{
 			return null;
 		}
 		Transform activeTransform = transform ?? Transform.Identity;
 		try
 		{
-			GeometryInstance instance = (GeometryInstance)(object)((geometryObject is GeometryInstance) ? geometryObject : null);
-			if (instance != null)
+			if (geometryObject is GeometryInstance instance)
 			{
 				Transform instanceTransform = activeTransform.Multiply(instance.Transform);
 				return BuildGeometryBounds(instance.GetInstanceGeometry(), instanceTransform);
@@ -1595,8 +1501,7 @@ public sealed class FamilyThumbnailPreviewService
 		}
 		try
 		{
-			Solid solid = (Solid)(object)((geometryObject is Solid) ? geometryObject : null);
-			if (solid != null && solid.Faces != null && solid.Faces.Size > 0)
+			if (geometryObject is Solid { Faces: not null } solid && solid.Faces.Size > 0)
 			{
 				return TransformBounds(NormalizeBoundsToModelCoordinates(solid.GetBoundingBox()), activeTransform);
 			}
@@ -1608,8 +1513,7 @@ public sealed class FamilyThumbnailPreviewService
 		}
 		try
 		{
-			Curve curve = (Curve)(object)((geometryObject is Curve) ? geometryObject : null);
-			if (curve != null)
+			if (geometryObject is Curve curve)
 			{
 				return TransformBounds(BuildCurveBounds(curve), activeTransform);
 			}
@@ -1621,8 +1525,7 @@ public sealed class FamilyThumbnailPreviewService
 		}
 		try
 		{
-			Mesh mesh = (Mesh)(object)((geometryObject is Mesh) ? geometryObject : null);
-			if (mesh != null && mesh.NumTriangles > 0)
+			if (geometryObject is Mesh { NumTriangles: >0 } mesh)
 			{
 				return TransformBounds(BuildMeshBounds(mesh), activeTransform);
 			}
@@ -1637,7 +1540,7 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static BoundingBoxXYZ BuildCurveBounds(Curve curve)
 	{
-		if (curve == null)
+		if ((object)curve == null)
 		{
 			return null;
 		}
@@ -1659,14 +1562,14 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static BoundingBoxXYZ BuildMeshBounds(Mesh mesh)
 	{
-		if (mesh == null)
+		if ((object)mesh == null)
 		{
 			return null;
 		}
 		BoundingBoxXYZ result = null;
 		try
 		{
-			PropertyInfo verticesProperty = ((object)mesh).GetType().GetProperty("Vertices", BindingFlags.Instance | BindingFlags.Public);
+			PropertyInfo verticesProperty = mesh.GetType().GetProperty("Vertices", BindingFlags.Instance | BindingFlags.Public);
 			if ((object)verticesProperty != null && verticesProperty.GetValue(mesh, null) is IEnumerable<XYZ> vertices)
 			{
 				foreach (XYZ point in vertices)
@@ -1688,10 +1591,10 @@ public sealed class FamilyThumbnailPreviewService
 		{
 			try
 			{
-				MethodInfo triangleMethod = ((object)mesh).GetType().GetMethod("get_Triangle", BindingFlags.Instance | BindingFlags.Public);
+				MethodInfo triangleMethod = mesh.GetType().GetMethod("get_Triangle", BindingFlags.Instance | BindingFlags.Public);
 				if ((object)triangleMethod == null)
 				{
-					triangleMethod = ((object)mesh).GetType().GetMethod("Triangle", BindingFlags.Instance | BindingFlags.Public);
+					triangleMethod = mesh.GetType().GetMethod("Triangle", BindingFlags.Instance | BindingFlags.Public);
 				}
 				if ((object)triangleMethod != null)
 				{
@@ -1713,8 +1616,7 @@ public sealed class FamilyThumbnailPreviewService
 							int vertexIndex = 0;
 							do
 							{
-								object obj = vertexMethod.Invoke(RuntimeHelpers.GetObjectValue(triangle), new object[1] { vertexIndex });
-								XYZ point2 = (XYZ)((obj is XYZ) ? obj : null);
+								XYZ point2 = vertexMethod.Invoke(RuntimeHelpers.GetObjectValue(triangle), new object[1] { vertexIndex }) as XYZ;
 								result = UnionPoint(result, point2);
 								vertexIndex++;
 							}
@@ -1734,22 +1636,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static BoundingBoxXYZ TransformBounds(BoundingBoxXYZ bounds, Transform transform)
 	{
-		//IL_0045: Unknown result type (might be due to invalid IL or missing references)
-		//IL_004b: Expected O, but got Unknown
-		//IL_005f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0065: Expected O, but got Unknown
-		//IL_0079: Unknown result type (might be due to invalid IL or missing references)
-		//IL_007f: Expected O, but got Unknown
-		//IL_0093: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0099: Expected O, but got Unknown
-		//IL_00ad: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00b3: Expected O, but got Unknown
-		//IL_00c7: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00cd: Expected O, but got Unknown
-		//IL_00e1: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00e7: Expected O, but got Unknown
-		//IL_00fb: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0101: Expected O, but got Unknown
 		if (bounds == null || !IsUsableBounds(bounds))
 		{
 			return null;
@@ -1769,7 +1655,7 @@ public sealed class FamilyThumbnailPreviewService
 			new XYZ(max.X, max.Y, max.Z)
 		};
 		BoundingBoxXYZ result = null;
-		XYZ[] array = (XYZ[])(object)obj;
+		XYZ[] array = obj;
 		foreach (XYZ point in array)
 		{
 			result = UnionPoint(result, activeTransform.OfPoint(point));
@@ -1800,7 +1686,7 @@ public sealed class FamilyThumbnailPreviewService
 		{
 			return false;
 		}
-		if (((object)element).GetType().Name.IndexOf("Connector", StringComparison.OrdinalIgnoreCase) >= 0)
+		if (element.GetType().Name.IndexOf("Connector", StringComparison.OrdinalIgnoreCase) >= 0)
 		{
 			return true;
 		}
@@ -1828,7 +1714,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static bool IsBuiltInCategoryName(Category category, params string[] builtInNames)
 	{
-		//IL_0022: Unknown result type (might be due to invalid IL or missing references)
 		bool IsBuiltInCategoryName;
 		if (category == null || builtInNames == null || builtInNames.Length == 0)
 		{
@@ -1838,7 +1723,7 @@ public sealed class FamilyThumbnailPreviewService
 		{
 			try
 			{
-				string a = ((Enum)(BuiltInCategory)RevitElementIdCompat.CompatIntegerValue(category.Id)/*cast due to .constrained prefix*/).ToString();
+				string a = ((BuiltInCategory)RevitElementIdCompat.CompatIntegerValue(category.Id)/*cast due to .constrained prefix*/).ToString();
 				IsBuiltInCategoryName = builtInNames.Any([SpecialName] (string x) => string.Equals(a, x, StringComparison.OrdinalIgnoreCase));
 			}
 			catch (Exception projectError)
@@ -1862,14 +1747,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static BoundingBoxXYZ CloneBounds(BoundingBoxXYZ bounds)
 	{
-		//IL_0007: Unknown result type (might be due to invalid IL or missing references)
-		//IL_000c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0038: Expected O, but got Unknown
-		//IL_0038: Unknown result type (might be due to invalid IL or missing references)
-		//IL_005a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0064: Expected O, but got Unknown
-		//IL_0065: Expected O, but got Unknown
 		if (bounds == null)
 		{
 			return null;
@@ -1883,22 +1760,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static BoundingBoxXYZ NormalizeBoundsToModelCoordinates(BoundingBoxXYZ bounds)
 	{
-		//IL_0063: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0069: Expected O, but got Unknown
-		//IL_007d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0083: Expected O, but got Unknown
-		//IL_0097: Unknown result type (might be due to invalid IL or missing references)
-		//IL_009d: Expected O, but got Unknown
-		//IL_00b1: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00b7: Expected O, but got Unknown
-		//IL_00cb: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00d1: Expected O, but got Unknown
-		//IL_00e5: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00eb: Expected O, but got Unknown
-		//IL_00ff: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0105: Expected O, but got Unknown
-		//IL_0119: Unknown result type (might be due to invalid IL or missing references)
-		//IL_011f: Expected O, but got Unknown
 		BoundingBoxXYZ NormalizeBoundsToModelCoordinates;
 		if (bounds == null || !IsUsableBounds(bounds))
 		{
@@ -1939,7 +1800,7 @@ public sealed class FamilyThumbnailPreviewService
 						new XYZ(max.X, max.Y, max.Z)
 					};
 					BoundingBoxXYZ normalized = null;
-					XYZ[] array = (XYZ[])(object)obj;
+					XYZ[] array = obj;
 					foreach (XYZ point in array)
 					{
 						normalized = UnionPoint(normalized, transform.OfPoint(point));
@@ -1959,22 +1820,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static BoundingBoxXYZ UnionPoint(BoundingBoxXYZ bounds, XYZ point)
 	{
-		//IL_0052: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0057: Unknown result type (might be due to invalid IL or missing references)
-		//IL_009a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a4: Expected O, but got Unknown
-		//IL_00a4: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00e7: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00f1: Expected O, but got Unknown
-		//IL_00f2: Expected O, but got Unknown
-		//IL_000d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0012: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0025: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002f: Expected O, but got Unknown
-		//IL_002f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0042: Unknown result type (might be due to invalid IL or missing references)
-		//IL_004c: Expected O, but got Unknown
-		//IL_004d: Expected O, but got Unknown
 		if (point == null)
 		{
 			return bounds;
@@ -1996,14 +1841,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static BoundingBoxXYZ UnionBounds(BoundingBoxXYZ first, BoundingBoxXYZ second)
 	{
-		//IL_001e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0023: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0075: Unknown result type (might be due to invalid IL or missing references)
-		//IL_007f: Expected O, but got Unknown
-		//IL_007f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00d1: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00db: Expected O, but got Unknown
-		//IL_00dc: Expected O, but got Unknown
 		if (first == null)
 		{
 			return CloneBounds(second);
@@ -2021,16 +1858,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static BoundingBoxXYZ ExpandBounds(BoundingBoxXYZ bounds)
 	{
-		//IL_00b3: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00ba: Expected O, but got Unknown
-		//IL_00e3: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00e8: Unknown result type (might be due to invalid IL or missing references)
-		//IL_012d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0137: Expected O, but got Unknown
-		//IL_0137: Unknown result type (might be due to invalid IL or missing references)
-		//IL_017c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0186: Expected O, but got Unknown
-		//IL_0187: Expected O, but got Unknown
 		if (bounds == null)
 		{
 			return null;
@@ -2074,7 +1901,7 @@ public sealed class FamilyThumbnailPreviewService
 		}
 		try
 		{
-			((View)view).CropBoxActive = false;
+			view.CropBoxActive = false;
 		}
 		catch (Exception projectError2)
 		{
@@ -2094,16 +1921,6 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static void SetDefaultIsometricOrientation(View3D view, BoundingBoxXYZ previewBounds)
 	{
-		//IL_001b: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0021: Expected O, but got Unknown
-		//IL_013c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0142: Expected O, but got Unknown
-		//IL_016a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0171: Expected O, but got Unknown
-		//IL_0190: Unknown result type (might be due to invalid IL or missing references)
-		//IL_019a: Expected O, but got Unknown
-		//IL_009f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00a5: Expected O, but got Unknown
 		XYZ target = new XYZ(0.0, 0.0, 0.0);
 		double distance = 10.0;
 		if (previewBounds != null && IsUsableBounds(previewBounds))
@@ -2124,40 +1941,88 @@ public sealed class FamilyThumbnailPreviewService
 
 	private static void ExportViewImage(Document familyDocument, ElementId viewId, string basePath)
 	{
-		//IL_000d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0012: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0019: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0020: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0027: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0035: Unknown result type (might be due to invalid IL or missing references)
-		//IL_003f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_004a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0051: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0059: Expected O, but got Unknown
+		ExportViewImage(familyDocument, viewId, basePath, FitDirectionType.Horizontal);
+	}
+
+	private static void ExportViewImage(Document familyDocument, ElementId viewId, string basePath, FitDirectionType fitDirection)
+	{
 		List<ElementId> viewIds = new List<ElementId> { viewId };
 		ImageExportOptions options = new ImageExportOptions
 		{
-			ExportRange = (ExportRange)2,
+			ExportRange = ExportRange.SetOfViews,
 			FilePath = basePath,
-			FitDirection = (FitDirectionType)0,
-			HLRandWFViewsFileType = (ImageFileType)4,
-			ImageResolution = ResolveImageResolution("DPI_72", (ImageResolution)0),
+			FitDirection = fitDirection,
+			HLRandWFViewsFileType = ImageFileType.PNG,
+			ImageResolution = ResolveImageResolution("DPI_72", ImageResolution.DPI_72),
 			PixelSize = 768,
-			ShadowViewsFileType = (ImageFileType)4,
-			ZoomType = (ZoomFitType)0
+			ShadowViewsFileType = ImageFileType.PNG,
+			ZoomType = ZoomFitType.FitToPage
 		};
-		options.SetViewsAndSheets((IList<ElementId>)viewIds);
-		familyDocument.ExportImage(options);
+		options.SetViewsAndSheets(viewIds);
+		Autodesk.Revit.DB.Color originalBackground;
+		bool backgroundChanged = TrySetRevitApplicationBackground(familyDocument, new Autodesk.Revit.DB.Color(byte.MaxValue, byte.MaxValue, byte.MaxValue), out originalBackground);
+		try
+		{
+			familyDocument.ExportImage(options);
+		}
+		finally
+		{
+			if (backgroundChanged)
+			{
+				TryRestoreRevitApplicationBackground(familyDocument, originalBackground);
+			}
+		}
+	}
+
+	private static bool TrySetRevitApplicationBackground(Document document, Autodesk.Revit.DB.Color color, out Autodesk.Revit.DB.Color originalBackground)
+	{
+		originalBackground = null;
+		if (document == null || color == null)
+		{
+			return false;
+		}
+		try
+		{
+			Autodesk.Revit.ApplicationServices.Application application = document.Application;
+			if (application == null)
+			{
+				return false;
+			}
+			originalBackground = application.BackgroundColor;
+			application.BackgroundColor = color;
+			return true;
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		return false;
+	}
+
+	private static void TryRestoreRevitApplicationBackground(Document document, Autodesk.Revit.DB.Color originalBackground)
+	{
+		if (document == null || originalBackground == null)
+		{
+			return;
+		}
+		try
+		{
+			Autodesk.Revit.ApplicationServices.Application application = document.Application;
+			if (application != null)
+			{
+				application.BackgroundColor = originalBackground;
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
 	}
 
 	private static ImageResolution ResolveImageResolution(string preferredName, ImageResolution fallback)
 	{
-		//IL_002d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0019: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001e: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002f: Unknown result type (might be due to invalid IL or missing references)
 		if (!string.IsNullOrWhiteSpace(preferredName))
 		{
 			try
@@ -2173,14 +2038,14 @@ public sealed class FamilyThumbnailPreviewService
 		return fallback;
 	}
 
-	private static bool SaveCenteredPreviewImage(string sourcePath, string targetPath)
+	private static bool SaveWhiteBackgroundPreviewImage(string sourcePath, string targetPath)
 	{
 		checked
 		{
-			bool SaveCenteredPreviewImage;
+			bool SaveWhiteBackgroundPreviewImage;
 			if (string.IsNullOrWhiteSpace(sourcePath) || string.IsNullOrWhiteSpace(targetPath))
 			{
-				SaveCenteredPreviewImage = false;
+				SaveWhiteBackgroundPreviewImage = false;
 			}
 			else
 			{
@@ -2188,58 +2053,31 @@ public sealed class FamilyThumbnailPreviewService
 				{
 					using (Bitmap source = new Bitmap(sourcePath))
 					{
-						Rectangle contentBounds = FindPreviewContentBounds(source);
 						int canvasWidth = source.Width;
 						int canvasHeight = source.Height;
 						if (canvasWidth > 0 && canvasHeight > 0)
 						{
-							double scale = Math.Min(1.0, Math.Max(0.75, 0.94));
-							int drawWidth = Math.Max(1, (int)Math.Round((double)canvasWidth * scale));
-							int drawHeight = Math.Max(1, (int)Math.Round((double)canvasHeight * scale));
-							double baseX = (double)(canvasWidth - drawWidth) / 2.0;
-							double baseY = (double)(canvasHeight - drawHeight) / 2.0;
-							double shiftX = 0.0;
-							double shiftY = 0.0;
-							if (contentBounds.Width > 0 && contentBounds.Height > 0)
+							using (Bitmap normalizedSource = CreateCenteredWhiteBackgroundPreviewBitmap(source))
 							{
-								double contentCenterX = (double)contentBounds.Left + (double)contentBounds.Width / 2.0;
-								double contentCenterY = (double)contentBounds.Top + (double)contentBounds.Height / 2.0;
-								shiftX = (double)canvasWidth / 2.0 - (baseX + contentCenterX * scale);
-								shiftY = (double)canvasHeight / 2.0 - (baseY + contentCenterY * scale);
-								shiftX = ClampDouble(shiftX, 0.0 - baseX, baseX);
-								shiftY = ClampDouble(shiftY, 0.0 - baseY, baseY);
-							}
-							int drawX = (int)Math.Round(baseX + shiftX);
-							int drawY = (int)Math.Round(baseY + shiftY);
-							using (Bitmap output = new Bitmap(canvasWidth, canvasHeight, PixelFormat.Format32bppArgb))
-							{
-								using (Graphics graphics = Graphics.FromImage(output))
-								{
-									graphics.Clear(EstimatePreviewBackgroundColor(source));
-									graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
-									graphics.SmoothingMode = SmoothingMode.HighQuality;
-									graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
-									graphics.DrawImage(source, new Rectangle(drawX, drawY, drawWidth, drawHeight), new Rectangle(0, 0, canvasWidth, canvasHeight), GraphicsUnit.Pixel);
-								}
-								output.Save(targetPath, ImageFormat.Png);
+								normalizedSource.Save(targetPath, ImageFormat.Png);
 							}
 							goto end_IL_001f;
 						}
-						SaveCenteredPreviewImage = false;
+						SaveWhiteBackgroundPreviewImage = false;
 						goto end_IL_0018;
 						end_IL_001f:;
 					}
-					SaveCenteredPreviewImage = true;
+					SaveWhiteBackgroundPreviewImage = true;
 					end_IL_0018:;
 				}
 				catch (Exception projectError)
 				{
 					ProjectData.SetProjectError(projectError);
-					SaveCenteredPreviewImage = false;
+					SaveWhiteBackgroundPreviewImage = false;
 					ProjectData.ClearProjectError();
 				}
 			}
-			return SaveCenteredPreviewImage;
+			return SaveWhiteBackgroundPreviewImage;
 		}
 	}
 
@@ -2254,13 +2092,156 @@ public sealed class FamilyThumbnailPreviewService
 		return Math.Max(minimum, Math.Min(maximum, value));
 	}
 
-	private static Rectangle FindPreviewContentBounds(Bitmap image)
+	private static bool PreviewImageTouchesEdge(string imagePath)
+	{
+		if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+		{
+			return false;
+		}
+		try
+		{
+			using Bitmap image = new Bitmap(imagePath);
+			return PreviewContentTouchesImageEdge(FindPreviewContentBounds(image), image.Width, image.Height);
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		return false;
+	}
+
+	private static double ComputePreviewFrameMargin(string imagePath)
+	{
+		if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+		{
+			return -1.0;
+		}
+		try
+		{
+			using Bitmap image = new Bitmap(imagePath);
+			System.Drawing.Rectangle contentBounds = FindPreviewContentBounds(image);
+			if (contentBounds.IsEmpty)
+			{
+				return -1.0;
+			}
+			double left = contentBounds.Left;
+			double top = contentBounds.Top;
+			double right = image.Width - contentBounds.Right;
+			double bottom = image.Height - contentBounds.Bottom;
+			return Math.Min(Math.Min(left, top), Math.Min(right, bottom));
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		return -1.0;
+	}
+
+	private static double ComputePreviewFrameMargin(System.Drawing.Rectangle contentBounds, int imageWidth, int imageHeight)
+	{
+		if (contentBounds.IsEmpty || imageWidth <= 0 || imageHeight <= 0)
+		{
+			return -1.0;
+		}
+		double left = contentBounds.Left;
+		double top = contentBounds.Top;
+		double right = imageWidth - contentBounds.Right;
+		double bottom = imageHeight - contentBounds.Bottom;
+		return Math.Min(Math.Min(left, top), Math.Min(right, bottom));
+	}
+
+	private static double ComputeRequiredPreviewFrameMargin(string imagePath)
+	{
+		if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+		{
+			return PreviewMinimumFrameMarginPixels;
+		}
+		try
+		{
+			using Bitmap image = new Bitmap(imagePath);
+			return ComputeRequiredPreviewFrameMargin(image.Width, image.Height);
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		return PreviewMinimumFrameMarginPixels;
+	}
+
+	private static double ComputeRequiredPreviewFrameMargin(int imageWidth, int imageHeight)
+	{
+		if (imageWidth <= 0 || imageHeight <= 0)
+		{
+			return PreviewMinimumFrameMarginPixels;
+		}
+		return Math.Max(PreviewMinimumFrameMarginPixels, (double)Math.Min(imageWidth, imageHeight) * PreviewMinimumFrameMarginRatio);
+	}
+
+	private static void TryDeletePreviewFile(string imagePath)
+	{
+		if (string.IsNullOrWhiteSpace(imagePath))
+		{
+			return;
+		}
+		try
+		{
+			if (File.Exists(imagePath))
+			{
+				File.Delete(imagePath);
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+	}
+
+	private static Bitmap CreateCenteredWhiteBackgroundPreviewBitmap(Bitmap source)
+	{
+		int canvasWidth = source.Width;
+		int canvasHeight = source.Height;
+		System.Drawing.Rectangle contentBounds = FindPreviewContentBounds(source);
+		double scale = 0.94;
+		int drawWidth = Math.Max(1, (int)Math.Round((double)canvasWidth * scale));
+		int drawHeight = Math.Max(1, (int)Math.Round((double)canvasHeight * scale));
+		double baseX = (double)(canvasWidth - drawWidth) / 2.0;
+		double baseY = (double)(canvasHeight - drawHeight) / 2.0;
+		double shiftX = 0.0;
+		double shiftY = 0.0;
+		if (contentBounds.Width > 0 && contentBounds.Height > 0)
+		{
+			double contentCenterX = (double)contentBounds.Left + (double)contentBounds.Width / 2.0;
+			double contentCenterY = (double)contentBounds.Top + (double)contentBounds.Height / 2.0;
+			shiftX = (double)canvasWidth / 2.0 - (baseX + contentCenterX * scale);
+			shiftY = (double)canvasHeight / 2.0 - (baseY + contentCenterY * scale);
+			shiftX = ClampDouble(shiftX, 0.0 - baseX, baseX);
+			shiftY = ClampDouble(shiftY, 0.0 - baseY, baseY);
+		}
+		int drawX = (int)Math.Round(baseX + shiftX);
+		int drawY = (int)Math.Round(baseY + shiftY);
+		Bitmap normalized = new Bitmap(canvasWidth, canvasHeight, PixelFormat.Format32bppArgb);
+		using (Graphics graphics = Graphics.FromImage(normalized))
+		{
+			graphics.Clear(System.Drawing.Color.White);
+			graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+			graphics.SmoothingMode = SmoothingMode.HighQuality;
+			graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+			graphics.DrawImage(source, new System.Drawing.Rectangle(drawX, drawY, drawWidth, drawHeight), new System.Drawing.Rectangle(0, 0, canvasWidth, canvasHeight), GraphicsUnit.Pixel);
+		}
+		return normalized;
+	}
+
+	private static System.Drawing.Rectangle FindPreviewContentBounds(Bitmap image)
 	{
 		if (image == null || image.Width <= 0 || image.Height <= 0)
 		{
-			return Rectangle.Empty;
+			return System.Drawing.Rectangle.Empty;
 		}
-		Color background = EstimatePreviewBackgroundColor(image);
+		System.Drawing.Color background = EstimatePreviewBackgroundColor(image);
 		int left = image.Width;
 		int top = image.Height;
 		int right = -1;
@@ -2276,7 +2257,7 @@ public sealed class FamilyThumbnailPreviewService
 				BitmapData data = null;
 				try
 				{
-					Rectangle rect = new Rectangle(0, 0, scanImage.Width, scanImage.Height);
+					System.Drawing.Rectangle rect = new System.Drawing.Rectangle(0, 0, scanImage.Width, scanImage.Height);
 					data = scanImage.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
 					int stride = Math.Abs(data.Stride);
 					byte[] bytes = new byte[stride * scanImage.Height - 1 + 1];
@@ -2289,7 +2270,7 @@ public sealed class FamilyThumbnailPreviewService
 						for (int x = 0; x <= num2; x++)
 						{
 							int offset = rowOffset + x * 4;
-							if (IsPreviewContentPixel(Color.FromArgb(bytes[offset + 3], bytes[offset + 2], bytes[offset + 1], bytes[offset]), background))
+							if (IsPreviewContentPixel(System.Drawing.Color.FromArgb(bytes[offset + 3], bytes[offset + 2], bytes[offset + 1], bytes[offset]), background))
 							{
 								if (x < left)
 								{
@@ -2329,18 +2310,18 @@ public sealed class FamilyThumbnailPreviewService
 			}
 			if (right < left || bottom < top)
 			{
-				return Rectangle.Empty;
+				return System.Drawing.Rectangle.Empty;
 			}
 			int inflate = Math.Max(24, (int)Math.Round((double)Math.Min(image.Width, image.Height) * 0.1));
 			left = Math.Max(0, left - inflate);
 			top = Math.Max(0, top - inflate);
 			right = Math.Min(image.Width - 1, right + inflate);
 			bottom = Math.Min(image.Height - 1, bottom + inflate);
-			return Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
+			return System.Drawing.Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
 		}
 	}
 
-	private static bool PreviewContentTouchesImageEdge(Rectangle contentBounds, int imageWidth, int imageHeight)
+	private static bool PreviewContentTouchesImageEdge(System.Drawing.Rectangle contentBounds, int imageWidth, int imageHeight)
 	{
 		if (imageWidth <= 0 || imageHeight <= 0 || contentBounds.IsEmpty)
 		{
@@ -2353,30 +2334,72 @@ public sealed class FamilyThumbnailPreviewService
 		}
 	}
 
-	private static Color EstimatePreviewBackgroundColor(Bitmap image)
+	private static System.Drawing.Color EstimatePreviewBackgroundColor(Bitmap image)
 	{
 		if (image == null || image.Width <= 0 || image.Height <= 0)
 		{
-			return Color.White;
+			return System.Drawing.Color.White;
 		}
-		checked
+		try
 		{
-			Color[] source = new Color[4]
+			Dictionary<int, int> histogram = new Dictionary<int, int>();
+			int step = Math.Max(1, Math.Min(image.Width, image.Height) / 160);
+			for (int x = 0; x < image.Width; x += step)
 			{
-				image.GetPixel(0, 0),
-				image.GetPixel(image.Width - 1, 0),
-				image.GetPixel(0, image.Height - 1),
-				image.GetPixel(image.Width - 1, image.Height - 1)
-			};
-			int a = (int)Math.Round(source.Average([SpecialName] (Color c) => c.A));
-			int r = (int)Math.Round(source.Average([SpecialName] (Color c) => c.R));
-			int g = (int)Math.Round(source.Average([SpecialName] (Color c) => c.G));
-			int b = (int)Math.Round(source.Average([SpecialName] (Color c) => c.B));
-			return Color.FromArgb(a, r, g, b);
+				AddPreviewBackgroundSample(histogram, image.GetPixel(x, 0));
+				AddPreviewBackgroundSample(histogram, image.GetPixel(x, image.Height - 1));
+			}
+			for (int y = 0; y < image.Height; y += step)
+			{
+				AddPreviewBackgroundSample(histogram, image.GetPixel(0, y));
+				AddPreviewBackgroundSample(histogram, image.GetPixel(image.Width - 1, y));
+			}
+			if (histogram.Count > 0)
+			{
+				int key = histogram.OrderByDescending([SpecialName] (KeyValuePair<int, int> x) => x.Value).First().Key;
+				return ColorFromPreviewBackgroundKey(key);
+			}
 		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		return System.Drawing.Color.White;
 	}
 
-	private static bool IsPreviewContentPixel(Color pixel, Color background)
+	private static void AddPreviewBackgroundSample(Dictionary<int, int> histogram, System.Drawing.Color color)
+	{
+		if (histogram == null || color.A <= 12)
+		{
+			return;
+		}
+		int a = QuantizePreviewColorChannel(color.A);
+		int r = QuantizePreviewColorChannel(color.R);
+		int g = QuantizePreviewColorChannel(color.G);
+		int b = QuantizePreviewColorChannel(color.B);
+		int key = unchecked((a << 24) | (r << 16) | (g << 8) | b);
+		int count;
+		histogram.TryGetValue(key, out count);
+		histogram[key] = count + 1;
+	}
+
+	private static int QuantizePreviewColorChannel(int value)
+	{
+		value = Math.Max(0, Math.Min(255, value));
+		return Math.Max(0, Math.Min(255, value / 16 * 16));
+	}
+
+	private static System.Drawing.Color ColorFromPreviewBackgroundKey(int key)
+	{
+		int a = (key >> 24) & 0xFF;
+		int r = (key >> 16) & 0xFF;
+		int g = (key >> 8) & 0xFF;
+		int b = key & 0xFF;
+		return System.Drawing.Color.FromArgb(a, r, g, b);
+	}
+
+	private static bool IsPreviewContentPixel(System.Drawing.Color pixel, System.Drawing.Color background)
 	{
 		if (pixel.A <= 12)
 		{
@@ -2579,32 +2602,6 @@ public sealed class FamilyThumbnailPreviewService
 			return string.Empty;
 		}
 		return (string.IsNullOrWhiteSpace(record.Reason) ? "RevitWarning" : record.Reason) + " / result=" + (string.IsNullOrWhiteSpace(record.OverrideResult) ? "-" : record.OverrideResult);
-	}
-
-	private static string WriteBatchDiagnosticReport(FamilyThumbnailBatchUpdateResult result)
-	{
-		string WriteBatchDiagnosticReport;
-		try
-		{
-			if (result == null || string.IsNullOrWhiteSpace(result.OutputFolder))
-			{
-				WriteBatchDiagnosticReport = string.Empty;
-			}
-			else
-			{
-				Directory.CreateDirectory(result.OutputFolder);
-				string text = Path.Combine(result.OutputFolder, "thumbnail-diagnostics-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".txt");
-				File.WriteAllText(text, BuildBatchDiagnosticText(result), Encoding.UTF8);
-				WriteBatchDiagnosticReport = text;
-			}
-		}
-		catch (Exception projectError)
-		{
-			ProjectData.SetProjectError(projectError);
-			WriteBatchDiagnosticReport = string.Empty;
-			ProjectData.ClearProjectError();
-		}
-		return WriteBatchDiagnosticReport;
 	}
 
 	public static string SaveBatchDiagnosticReport(FamilyThumbnailBatchUpdateResult result, string outputPath)

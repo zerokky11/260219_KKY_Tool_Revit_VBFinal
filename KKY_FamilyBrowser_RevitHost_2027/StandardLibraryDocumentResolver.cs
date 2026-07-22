@@ -25,27 +25,44 @@ public sealed class StandardLibraryDocumentResolver
 			throw new InvalidOperationException(FamilyBrowserLanguageService.Text("The registered standard RVT path is empty.", "등록된 표준 RVT 경로가 비어 있습니다."));
 		}
 		string resolvedPath = Path.GetFullPath(registration.ResolvedPath);
-		if (!File.Exists(resolvedPath))
-		{
-			throw new FileNotFoundException(FamilyBrowserLanguageService.Text("Registered standard RVT was not found.", "등록된 표준 RVT를 찾지 못했습니다."), resolvedPath);
-		}
 		Document standardDoc = FindOpenDocument(application, resolvedPath);
 		if (standardDoc != null)
 		{
 			openedForCommand = false;
 			return standardDoc;
 		}
+		if (!File.Exists(resolvedPath))
+		{
+			throw new FileNotFoundException(FamilyBrowserLanguageService.Text("Registered standard RVT was not found.", "등록된 표준 RVT를 찾지 못했습니다."), resolvedPath);
+		}
 		openedForCommand = true;
 		return application.OpenDocumentFile(resolvedPath);
 	}
 
+	public static Document FindOpenRegisteredDocument(Application application, StandardLibraryRegistrationRecord registration)
+	{
+		if (application == null || registration == null || string.IsNullOrWhiteSpace(registration.ResolvedPath))
+		{
+			return null;
+		}
+		string resolvedPath = string.Empty;
+		try
+		{
+			resolvedPath = Path.GetFullPath(registration.ResolvedPath);
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+			return null;
+		}
+		return FindOpenDocument(application, resolvedPath);
+	}
+
 	private static Document FindOpenDocument(Application application, string resolvedPath)
 	{
-		//IL_0014: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001a: Expected O, but got Unknown
-		foreach (Document document in application.Documents)
+		foreach (Document doc in application.Documents)
 		{
-			Document doc = document;
 			if (doc != null && !string.IsNullOrWhiteSpace(doc.PathName))
 			{
 				string candidatePath = string.Empty;
@@ -63,6 +80,18 @@ public sealed class StandardLibraryDocumentResolver
 				{
 					return doc;
 				}
+			}
+		}
+		string resolvedIdentity = FamilyBrowserPathIdentityService.GetStablePathIdentity(resolvedPath);
+		if (string.IsNullOrWhiteSpace(resolvedIdentity))
+		{
+			return null;
+		}
+		foreach (Document doc in application.Documents)
+		{
+			if (doc != null && !string.IsNullOrWhiteSpace(doc.PathName) && string.Equals(FamilyBrowserPathIdentityService.GetStablePathIdentity(doc.PathName), resolvedIdentity, StringComparison.OrdinalIgnoreCase))
+			{
+				return doc;
 			}
 		}
 		return null;

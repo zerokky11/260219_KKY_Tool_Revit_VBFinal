@@ -24,6 +24,8 @@ public class StandardLibrarySnapshot
 
 	public string RevitVersion { get; set; }
 
+	public string BrowserManifestSourceKey { get; set; }
+
 	public StandardLibrarySnapshotSummary Summary { get; set; }
 
 	public List<StandardLoadableFamilySnapshotItem> LoadableFamilies { get; set; }
@@ -32,7 +34,7 @@ public class StandardLibrarySnapshot
 
 	public StandardLibrarySnapshot()
 	{
-		SnapshotSchemaVersion = 5;
+		SnapshotSchemaVersion = 9;
 		SourceId = string.Empty;
 		DisplayName = string.Empty;
 		SourceKind = string.Empty;
@@ -42,6 +44,7 @@ public class StandardLibrarySnapshot
 		SourceFileLastWriteUtc = string.Empty;
 		CapturedAtUtc = string.Empty;
 		RevitVersion = string.Empty;
+		BrowserManifestSourceKey = string.Empty;
 		Summary = new StandardLibrarySnapshotSummary();
 		LoadableFamilies = new List<StandardLoadableFamilySnapshotItem>();
 		SystemTypes = new List<StandardSystemTypeSnapshotItem>();

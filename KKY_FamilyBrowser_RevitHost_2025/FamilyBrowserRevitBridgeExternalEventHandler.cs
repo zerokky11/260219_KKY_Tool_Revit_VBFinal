@@ -35,11 +35,8 @@ public sealed class FamilyBrowserRevitBridgeExternalEventHandler : IExternalEven
 		_syncRoot = RuntimeHelpers.GetObjectValue(new object());
 	}
 
-	public unsafe FamilyBrowserBridgeResponse ExecuteRequest(FamilyBrowserBridgeRequest request, ExternalEvent externalEvent, int timeoutMilliseconds)
+	public FamilyBrowserBridgeResponse ExecuteRequest(FamilyBrowserBridgeRequest request, ExternalEvent externalEvent, int timeoutMilliseconds)
 	{
-		//IL_005d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0062: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0063: Unknown result type (might be due to invalid IL or missing references)
 		if (request == null)
 		{
 			throw new ArgumentNullException("request");
@@ -65,10 +62,10 @@ public sealed class FamilyBrowserRevitBridgeExternalEventHandler : IExternalEven
 			}
 		}
 		ExternalEventRequest raiseResult = externalEvent.Raise();
-		if ((int)raiseResult != 0)
+		if (raiseResult != ExternalEventRequest.Accepted)
 		{
 			ClearPending(pending);
-			return CreateResponse(request, success: false, "Revit is not ready to process the bridge command: " + ((Enum)(*(ExternalEventRequest*)(&raiseResult))/*cast due to .constrained prefix*/).ToString());
+			return CreateResponse(request, success: false, "Revit is not ready to process the bridge command: " + raiseResult);
 		}
 		if (!pending.Completed.WaitOne(Math.Max(1000, timeoutMilliseconds)))
 		{
@@ -123,9 +120,21 @@ public sealed class FamilyBrowserRevitBridgeExternalEventHandler : IExternalEven
 		}
 	}
 
+	void IExternalEventHandler.Execute(UIApplication app)
+	{
+		//ILSpy generated this explicit interface implementation from .override directive in Execute
+		this.Execute(app);
+	}
+
 	public string GetName()
 	{
 		return "KKY Family Browser Desktop Bridge";
+	}
+
+	string IExternalEventHandler.GetName()
+	{
+		//ILSpy generated this explicit interface implementation from .override directive in GetName
+		return this.GetName();
 	}
 
 	private FamilyBrowserBridgeResponse HandleRequest(UIApplication app, FamilyBrowserBridgeRequest request)
@@ -191,7 +200,8 @@ public sealed class FamilyBrowserRevitBridgeExternalEventHandler : IExternalEven
 		ProjectContentSnapshot projectSnapshot = ProjectSnapshotCaptureService.Capture(document);
 		string projectSnapshotPath = ProjectSnapshotStore.Save(workspaceRoot, projectSnapshot, document);
 		ProjectTrackingCatalog trackingCatalog = ProjectTrackingStoreService.Load(document);
-		ProjectStandardComparisonReport report = ProjectStandardComparisonService.BuildReport(registration, registration.LastSnapshotPath, standardSnapshot, projectSnapshotPath, projectSnapshot, trackingCatalog);
+		bool compareDetailedSystemTypeComponents = FamilyBrowserUserSettingsStore.ResolveDetailedSystemTypeComparisonEnabled(FamilyBrowserStandardPolicyStore.LoadOrCreate(workspaceRoot, FamilyBrowserSecurityPolicyService.ResolveCurrentUserIdentity()));
+		ProjectStandardComparisonReport report = ProjectStandardComparisonService.BuildReport(registration, registration.LastSnapshotPath, standardSnapshot, projectSnapshotPath, projectSnapshot, trackingCatalog, compareDetailedSystemTypeComponents);
 		ProjectStandardComparisonStore.Save(workspaceRoot, report);
 		checked
 		{
@@ -230,7 +240,7 @@ public sealed class FamilyBrowserRevitBridgeExternalEventHandler : IExternalEven
 			{
 				try
 				{
-					standardDoc.Close(false);
+					standardDoc.Close(saveModified: false);
 				}
 				catch (Exception projectError)
 				{
@@ -243,7 +253,8 @@ public sealed class FamilyBrowserRevitBridgeExternalEventHandler : IExternalEven
 
 	private static StandardLibraryRegistrationRecord LoadActiveRegistration(string workspaceRoot)
 	{
-		string path = Path.Combine(FamilyBrowserStandardPolicyStore.GetRegistryFolder(workspaceRoot), "active-standard-library.json");
+		FamilyBrowserStandardPolicy policy = FamilyBrowserStandardPolicyStore.LoadOrCreate(workspaceRoot, FamilyBrowserSecurityPolicyService.ResolveCurrentUserIdentity());
+		string path = FamilyBrowserStandardPolicyStore.ResolveEffectiveRegistrationPath(workspaceRoot, policy);
 		if (!File.Exists(path))
 		{
 			throw new InvalidOperationException(T("No registered standard RVT was found. Register the standard RVT first.", "등록된 표준 RVT가 없습니다. 먼저 표준 RVT를 등록하세요."));
@@ -281,15 +292,12 @@ public sealed class FamilyBrowserRevitBridgeExternalEventHandler : IExternalEven
 
 	private static string ResolveDocumentPath(UIApplication app, string targetDocumentId)
 	{
-		//IL_002d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0033: Expected O, but got Unknown
 		if (app == null || string.IsNullOrWhiteSpace(targetDocumentId))
 		{
 			return string.Empty;
 		}
-		foreach (Document document2 in app.Application.Documents)
+		foreach (Document document in app.Application.Documents)
 		{
-			Document document = document2;
 			if (string.Equals(BuildDocumentId(document), targetDocumentId, StringComparison.OrdinalIgnoreCase) || string.Equals(document.PathName, targetDocumentId, StringComparison.OrdinalIgnoreCase))
 			{
 				return document.PathName;
@@ -317,17 +325,14 @@ public sealed class FamilyBrowserRevitBridgeExternalEventHandler : IExternalEven
 
 	private static List<FamilyBrowserBridgeDocumentInfo> ListDocuments(UIApplication app)
 	{
-		//IL_0030: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0037: Expected O, but got Unknown
 		List<FamilyBrowserBridgeDocumentInfo> documents = new List<FamilyBrowserBridgeDocumentInfo>();
 		if (app == null)
 		{
 			return documents;
 		}
 		Document activeDocument = ResolveActiveDocument(app);
-		foreach (Document document2 in app.Application.Documents)
+		foreach (Document document in app.Application.Documents)
 		{
-			Document document = document2;
 			documents.Add(new FamilyBrowserBridgeDocumentInfo
 			{
 				DocumentId = BuildDocumentId(document),

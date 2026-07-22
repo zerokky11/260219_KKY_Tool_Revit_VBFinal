@@ -125,7 +125,11 @@ public sealed class FamilyBrowserSecurityPolicyService
 		}
 		if (security == null || !HasConfiguredAdmin(security))
 		{
-			return "Admin";
+			if (security != null && security.AllowUnlistedUsersAsModelers)
+			{
+				return "Modeler";
+			}
+			return "ReadOnly";
 		}
 		if (MatchesAnyUser(security.ReadOnlyUsers, currentUser))
 		{
@@ -431,7 +435,8 @@ public sealed class FamilyBrowserSecurityPolicyService
 	private static FamilyBrowserFileGuardPermissionDecision ResolveFileGuardPermission(FamilyBrowserStandardPolicy policy, string permission, FamilyBrowserProjectPolicyContext context)
 	{
 		FamilyBrowserFileGuardPermissionDecision decision = new FamilyBrowserFileGuardPermissionDecision();
-		if (!FamilyBrowserPermissionExcelPolicyService.IsNativeGuardPermission(permission))
+		if (!FamilyBrowserPermissionExcelPolicyService.IsNativeGuardPermission(permission) &&
+			!string.Equals(permission, "LoadFamilies", StringComparison.OrdinalIgnoreCase))
 		{
 			return decision;
 		}
@@ -447,7 +452,7 @@ public sealed class FamilyBrowserSecurityPolicyService
 		{
 			return decision;
 		}
-		if (string.Equals(permission, "EditFamilies", StringComparison.OrdinalIgnoreCase))
+		if (string.Equals(permission, "LoadFamilies", StringComparison.OrdinalIgnoreCase) || string.Equals(permission, "EditFamilies", StringComparison.OrdinalIgnoreCase))
 		{
 			decision.Allowed = !target.BlockFamilyLoadAndEdit;
 		}
@@ -458,42 +463,27 @@ public sealed class FamilyBrowserSecurityPolicyService
 		return decision;
 	}
 
-	private static FamilyBrowserFileGuardTarget FindMatchingFileGuardTarget(FamilyBrowserFileGuardPolicy fileGuard, FamilyBrowserProjectPolicyContext context)
+	public static bool IsProjectElementTrackingScopeEnabled(FamilyBrowserStandardPolicy policy, FamilyBrowserProjectPolicyContext context)
 	{
-		_Closure_0024__17_002D0 arg = default(_Closure_0024__17_002D0);
-		_Closure_0024__17_002D0 CS_0024_003C_003E8__locals6 = new _Closure_0024__17_002D0(arg);
-		if (fileGuard == null || fileGuard.Targets == null || context == null)
+		FamilyBrowserFileGuardPolicy fileGuard = policy?.FileGuard;
+		if (fileGuard == null || !fileGuard.Enabled)
 		{
-			return null;
+			return false;
 		}
-		List<FamilyBrowserFileGuardTarget> enabledTargets = fileGuard.Targets.Where([SpecialName] (FamilyBrowserFileGuardTarget x) => x?.Enabled ?? false).ToList();
+		List<FamilyBrowserFileGuardTarget> enabledTargets = (fileGuard.Targets ?? new List<FamilyBrowserFileGuardTarget>())
+			.Where([SpecialName] (FamilyBrowserFileGuardTarget target) => target != null && target.Enabled)
+			.ToList();
 		if (enabledTargets.Count == 0)
 		{
-			return null;
+			return false;
 		}
-		CS_0024_003C_003E8__locals6._0024VB_0024Local_contextPaths = BuildContextPathCandidates(context);
-		foreach (FamilyBrowserFileGuardTarget target in enabledTargets)
-		{
-			if (BuildTargetPathCandidates(fileGuard, target).Any([SpecialName] (string targetPath) =>
-			{
-				_Closure_0024__17_002D1 arg2 = default(_Closure_0024__17_002D1);
-				_Closure_0024__17_002D1 CS_0024_003C_003E8__locals7 = new _Closure_0024__17_002D1(arg2);
-				CS_0024_003C_003E8__locals7._0024VB_0024Local_targetPath = targetPath;
-				return CS_0024_003C_003E8__locals6._0024VB_0024Local_contextPaths.Any([SpecialName] (string contextPath) => SamePath(contextPath, CS_0024_003C_003E8__locals7._0024VB_0024Local_targetPath));
-			}))
-			{
-				return target;
-			}
-		}
-		CS_0024_003C_003E8__locals6._0024VB_0024Local_contextNames = BuildContextFileNameCandidates(context);
-		foreach (FamilyBrowserFileGuardTarget target2 in enabledTargets)
-		{
-			if (BuildTargetFileNameCandidates(target2).Any([SpecialName] (string targetName) => CS_0024_003C_003E8__locals6._0024VB_0024Local_contextNames.Contains(NormalizeDetachedFileBase(targetName))))
-			{
-				return target2;
-			}
-		}
-		return null;
+		FamilyBrowserFileGuardTarget matchingTarget = FindMatchingFileGuardTarget(fileGuard, context);
+		return matchingTarget != null && matchingTarget.TrackElementChanges;
+	}
+
+	private static FamilyBrowserFileGuardTarget FindMatchingFileGuardTarget(FamilyBrowserFileGuardPolicy fileGuard, FamilyBrowserProjectPolicyContext context)
+	{
+		return FamilyBrowserFileGuardPathMatcher.FindMatchingTarget(fileGuard, context);
 	}
 
 	private static List<string> BuildContextPathCandidates(FamilyBrowserProjectPolicyContext context)
@@ -587,7 +577,7 @@ public sealed class FamilyBrowserSecurityPolicyService
 
 	private static bool SamePath(string leftValue, string rightValue)
 	{
-		return string.Equals(NormalizePathForCompare(leftValue), NormalizePathForCompare(rightValue), StringComparison.OrdinalIgnoreCase);
+		return FamilyBrowserFileGuardPathMatcher.PathsReferToSameFile(leftValue, rightValue);
 	}
 
 	private static string NormalizePathForCompare(string value)

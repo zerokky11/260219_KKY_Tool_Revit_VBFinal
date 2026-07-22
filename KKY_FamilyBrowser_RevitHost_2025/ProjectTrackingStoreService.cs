@@ -33,7 +33,7 @@ public sealed class ProjectTrackingStoreService
 		{
 			return null;
 		}
-		Entity entity = ((Element)storage).GetEntity(trackingSchema);
+		Entity entity = storage.GetEntity(trackingSchema);
 		if (!entity.IsValid())
 		{
 			return null;
@@ -53,8 +53,6 @@ public sealed class ProjectTrackingStoreService
 
 	public static void Save(Document doc, ProjectTrackingCatalog catalog)
 	{
-		//IL_0019: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001f: Expected O, but got Unknown
 		Schema trackingSchema = EnsureSchema();
 		DataStorage storage = FindStorage(doc, trackingSchema);
 		if (storage == null)
@@ -62,8 +60,8 @@ public sealed class ProjectTrackingStoreService
 			storage = DataStorage.Create(doc);
 		}
 		Entity entity = new Entity(trackingSchema);
-		entity.Set<string>(trackingSchema.GetField("CatalogJson"), PlainJsonReportWriter.Serialize(catalog));
-		((Element)storage).SetEntity(entity);
+		entity.Set(trackingSchema.GetField("CatalogJson"), PlainJsonReportWriter.Serialize(catalog));
+		storage.SetEntity(entity);
 	}
 
 	public static void MarkCurrentModelCheckRequired(Document doc, string currentUser, string reason, IEnumerable<ProjectTrackingDirtyItem> items)
@@ -72,20 +70,29 @@ public sealed class ProjectTrackingStoreService
 		{
 			try
 			{
+				string path = BuildDirtyMarkerPath(doc);
+				if (string.IsNullOrWhiteSpace(path))
+				{
+					return;
+				}
+				Directory.CreateDirectory(Path.GetDirectoryName(path));
+				using (FileStream mutationLock = AcquireDirtyMarkerMutationLock(path))
+				{
+					ProjectTrackingDirtyMarker existing = LoadMarkerCore(path);
 				ProjectTrackingDirtyMarker marker = new ProjectTrackingDirtyMarker
 				{
+					MarkerId = Guid.NewGuid().ToString("N"),
 					DetectedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
 					User = (currentUser ?? string.Empty),
 					DocumentTitle = (doc.Title ?? string.Empty),
 					DocumentPath = ProjectSnapshotStore.ResolveProjectIdentityPath(doc),
 					State = "NeedsAdminRestoreFromStandard",
 					RequiredAction = "CurrentModelCheckRequired",
-					Reason = (reason ?? string.Empty),
-					Items = (items ?? new List<ProjectTrackingDirtyItem>()).ToList()
+					Reason = MergeDirtyMarkerReasons(existing == null ? string.Empty : existing.Reason, reason),
+					Items = MergeDirtyMarkerItems(existing == null ? null : existing.Items, items)
 				};
-				string path = BuildDirtyMarkerPath(doc);
-				Directory.CreateDirectory(Path.GetDirectoryName(path));
-				File.WriteAllText(path, PlainJsonReportWriter.Serialize(marker), Encoding.UTF8);
+					WriteMarkerAtomic(path, marker);
+				}
 			}
 			catch (Exception projectError)
 			{
@@ -107,7 +114,7 @@ public sealed class ProjectTrackingStoreService
 			try
 			{
 				string markerPath = BuildDirtyMarkerPath(doc);
-				LoadCurrentModelCheckMarker = (File.Exists(markerPath) ? DataContractJsonFileStore.Load<ProjectTrackingDirtyMarker>(markerPath) : null);
+				LoadCurrentModelCheckMarker = LoadMarkerCore(markerPath);
 			}
 			catch (Exception projectError)
 			{
@@ -119,56 +126,174 @@ public sealed class ProjectTrackingStoreService
 		return LoadCurrentModelCheckMarker;
 	}
 
-	public static void ClearCurrentModelCheckRequired(Document doc)
+	public static bool ClearCurrentModelCheckRequired(Document doc, ProjectTrackingDirtyMarker expectedMarker)
 	{
-		if (doc == null)
+		if (doc == null || expectedMarker == null)
 		{
-			return;
+			return false;
 		}
 		try
 		{
 			string markerPath = BuildDirtyMarkerPath(doc);
-			if (File.Exists(markerPath))
+			if (string.IsNullOrWhiteSpace(markerPath))
 			{
-				File.Delete(markerPath);
+				return false;
+			}
+			using (FileStream mutationLock = AcquireDirtyMarkerMutationLock(markerPath))
+			{
+				ProjectTrackingDirtyMarker current = LoadMarkerCore(markerPath);
+				if (!DirtyMarkerIdentityMatches(current, expectedMarker))
+				{
+					return false;
+				}
+				if (File.Exists(markerPath))
+				{
+					File.Delete(markerPath);
+				}
+				return true;
 			}
 		}
 		catch (Exception projectError)
 		{
 			ProjectData.SetProjectError(projectError);
 			ProjectData.ClearProjectError();
+			return false;
 		}
+	}
+
+	private static FileStream AcquireDirtyMarkerMutationLock(string markerPath)
+	{
+		string lockPath = markerPath + ".lock";
+		DateTime deadlineUtc = DateTime.UtcNow.AddSeconds(5.0);
+		while (true)
+		{
+			try
+			{
+				return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.WriteThrough);
+			}
+			catch (IOException)
+			{
+				if (DateTime.UtcNow >= deadlineUtc)
+				{
+					throw;
+				}
+				System.Threading.Thread.Sleep(50);
+			}
+		}
+	}
+
+	private static ProjectTrackingDirtyMarker LoadMarkerCore(string path)
+	{
+		if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+		{
+			return null;
+		}
+		return DataContractJsonFileStore.Load<ProjectTrackingDirtyMarker>(path);
+	}
+
+	private static void WriteMarkerAtomic(string path, ProjectTrackingDirtyMarker marker)
+	{
+		string temporaryPath = FamilyBrowserAtomicFileService.CreateSiblingTemporaryPath(path);
+		try
+		{
+			byte[] payload = new UTF8Encoding(false).GetBytes(PlainJsonReportWriter.Serialize(marker));
+			using (FileStream stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+			{
+				stream.Write(payload, 0, payload.Length);
+				stream.Flush(true);
+			}
+			FamilyBrowserAtomicFileService.Promote(temporaryPath, path);
+		}
+		finally
+		{
+			try
+			{
+				if (File.Exists(temporaryPath))
+				{
+					File.Delete(temporaryPath);
+				}
+			}
+			catch
+			{
+			}
+		}
+	}
+
+	private static bool DirtyMarkerIdentityMatches(ProjectTrackingDirtyMarker current, ProjectTrackingDirtyMarker expected)
+	{
+		if (current == null || expected == null)
+		{
+			return false;
+		}
+		if (!string.IsNullOrWhiteSpace(current.MarkerId) || !string.IsNullOrWhiteSpace(expected.MarkerId))
+		{
+			return !string.IsNullOrWhiteSpace(current.MarkerId)
+				&& !string.IsNullOrWhiteSpace(expected.MarkerId)
+				&& string.Equals(current.MarkerId, expected.MarkerId, StringComparison.OrdinalIgnoreCase);
+		}
+		return string.Equals(current.DetectedAtUtc ?? string.Empty, expected.DetectedAtUtc ?? string.Empty, StringComparison.Ordinal)
+			&& string.Equals(current.User ?? string.Empty, expected.User ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+			&& string.Equals(current.Reason ?? string.Empty, expected.Reason ?? string.Empty, StringComparison.Ordinal);
+	}
+
+	private static List<ProjectTrackingDirtyItem> MergeDirtyMarkerItems(IEnumerable<ProjectTrackingDirtyItem> existing, IEnumerable<ProjectTrackingDirtyItem> incoming)
+	{
+		return (existing ?? Enumerable.Empty<ProjectTrackingDirtyItem>())
+			.Concat(incoming ?? Enumerable.Empty<ProjectTrackingDirtyItem>())
+			.Where(x => x != null)
+			.GroupBy(BuildDirtyItemIdentity, StringComparer.OrdinalIgnoreCase)
+			.Select(x => x.Last())
+			.Take(1000)
+			.ToList();
+	}
+
+	private static string BuildDirtyItemIdentity(ProjectTrackingDirtyItem item)
+	{
+		if (item == null)
+		{
+			return string.Empty;
+		}
+		return string.Join("|", new[]
+		{
+			item.Action ?? string.Empty,
+			item.Kind ?? string.Empty,
+			item.Name ?? string.Empty,
+			item.CategoryName ?? string.Empty,
+			item.ElementIdText ?? string.Empty,
+			item.State ?? string.Empty,
+			item.RequiredAction ?? string.Empty
+		});
+	}
+
+	private static string MergeDirtyMarkerReasons(string existing, string incoming)
+	{
+		return string.Join(" | ", new[] { existing, incoming }
+			.Where(x => !string.IsNullOrWhiteSpace(x))
+			.Select(x => x.Trim())
+			.Distinct(StringComparer.OrdinalIgnoreCase));
 	}
 
 	private static Schema EnsureSchema()
 	{
-		//IL_0017: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0028: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0030: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0038: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0044: Unknown result type (might be due to invalid IL or missing references)
 		Schema trackingSchema = Schema.Lookup(TrackingSchemaGuid);
 		if (trackingSchema != null)
 		{
 			return trackingSchema;
 		}
-		SchemaBuilder val = new SchemaBuilder(TrackingSchemaGuid);
-		val.SetSchemaName("KKYFamilyBrowserProjectTracking");
-		val.SetReadAccessLevel((AccessLevel)1);
-		val.SetWriteAccessLevel((AccessLevel)1);
-		val.SetDocumentation("KKY Family Browser tracked project state catalog.");
-		val.AddSimpleField("CatalogJson", typeof(string));
-		return val.Finish();
+		SchemaBuilder schemaBuilder = new SchemaBuilder(TrackingSchemaGuid);
+		schemaBuilder.SetSchemaName("KKYFamilyBrowserProjectTracking");
+		schemaBuilder.SetReadAccessLevel(AccessLevel.Public);
+		schemaBuilder.SetWriteAccessLevel(AccessLevel.Public);
+		schemaBuilder.SetDocumentation("KKY Family Browser tracked project state catalog.");
+		schemaBuilder.AddSimpleField("CatalogJson", typeof(string));
+		return schemaBuilder.Finish();
 	}
 
 	private static DataStorage FindStorage(Document doc, Schema schema)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
 		foreach (Element item in new FilteredElementCollector(doc).OfClass(typeof(DataStorage)))
 		{
-			DataStorage storage = (DataStorage)(object)((item is DataStorage) ? item : null);
-			if (storage != null && ((Element)storage).GetEntity(schema).IsValid())
+			if (item is DataStorage storage && storage.GetEntity(schema).IsValid())
 			{
 				return storage;
 			}

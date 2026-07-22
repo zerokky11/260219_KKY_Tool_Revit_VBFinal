@@ -1,4 +1,4 @@
-/* KKY Family Browser dashboard shell asset. TEST. */
+/* KKY Family Browser dashboard shell asset. */
 /* IE WebBrowser note: render only the active pane, then keep layout ownership simple. */
 
 html,
@@ -153,6 +153,12 @@ body.fb-shell-20260507 .long-operation-title {
   white-space: nowrap !important;
   overflow: hidden !important;
   text-overflow: ellipsis !important;
+}
+
+body.fb-shell-20260507 .rail-title.rail-manage-title {
+  margin-left: 18px !important;
+  border-left: 1px solid #2a6253 !important;
+  padding-left: 18px !important;
 }
 
 body.fb-shell-20260507 .long-operation-count {
@@ -533,9 +539,9 @@ body.fb-shell-20260507 #selectionDetailPanel .preview-image-cell {
 body.fb-shell-20260507 #selectionDetailPanel .preview-image-wrap img {
   display: block !important;
   position: absolute !important;
-  left: 50% !important;
-  top: 50% !important;
-  transform: translate(-50%, -50%) !important;
+  left: 0 !important;
+  top: 0 !important;
+  transform: none !important;
   max-width: 100% !important;
   max-height: 100% !important;
   width: auto !important;
@@ -562,8 +568,7 @@ body.fb-shell-20260507.fb-workflow #mainCenter {
   bottom: 12px !important;
   width: auto !important;
   height: auto !important;
-  overflow-x: auto !important;
-  overflow-y: hidden !important;
+  overflow: hidden !important;
   background: #fff !important;
   border: 1px solid #d8e4df !important;
   border-radius: 8px !important;
@@ -617,6 +622,7 @@ body.fb-shell-20260507.fb-browser .statusbar {
 
 body.fb-shell-20260507 #familiesPane,
 body.fb-shell-20260507 #systemsPane,
+body.fb-shell-20260507 #homePane,
 body.fb-shell-20260507 #requestsPane,
 body.fb-shell-20260507 #auditPane,
 body.fb-shell-20260507 #unregisteredFamiliesPane,
@@ -649,6 +655,7 @@ body.fb-shell-20260507.fb-tab-systems #systemsPane {
   top: 124px !important;
 }
 
+body.fb-shell-20260507.fb-tab-home #homePane,
 body.fb-shell-20260507.fb-tab-requests #requestsPane,
 body.fb-shell-20260507.fb-tab-audit #auditPane,
 body.fb-shell-20260507.fb-tab-unregisteredfamilies #unregisteredFamiliesPane,
@@ -658,14 +665,15 @@ body.fb-shell-20260507.fb-tab-admin #adminPane,
 body.fb-shell-20260507.fb-tab-help #helpPane,
 body.fb-shell-20260507.fb-tab-settings #settingsPane {
   display: block !important;
-  position: relative !important;
-  left: auto !important;
-  right: auto !important;
-  top: auto !important;
-  bottom: auto !important;
+  position: absolute !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
   width: auto !important;
-  min-height: 560px !important;
-  overflow: visible !important;
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: auto !important;
   background: #fff !important;
   box-sizing: border-box !important;
   padding: 22px !important;
@@ -680,7 +688,7 @@ body.fb-shell-20260507.fb-workflow .request-pane-scroll {
   bottom: auto !important;
   width: auto !important;
   height: auto !important;
-  min-height: 520px !important;
+  min-height: 0 !important;
   overflow: visible !important;
   padding: 0 !important;
   background: #fff !important;
@@ -704,6 +712,312 @@ body.fb-shell-20260507.fb-workflow .pane-head {
   border-bottom: 1px solid #d8e4df !important;
   padding: 0 0 14px 0 !important;
   box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507 .home-dashboard-scroll {
+  min-height: 100% !important;
+  padding: 0 !important;
+  background: #f5faf7 !important;
+  box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507 .home-hero {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  border: 1px solid #d6e4de;
+  border-radius: 7px;
+  background: #ffffff;
+  box-sizing: border-box;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+body.fb-shell-20260507 .home-hero-copy,
+body.fb-shell-20260507 .home-hero-status {
+  display: table-cell;
+  vertical-align: middle;
+  padding: 18px 22px;
+  box-sizing: border-box;
+}
+
+body.fb-shell-20260507 .home-hero-copy span {
+  display: block;
+  color: #18724f;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+body.fb-shell-20260507 .home-hero-copy strong {
+  display: block;
+  margin-top: 6px;
+  color: #102d24;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+body.fb-shell-20260507 .home-hero-copy em {
+  display: block;
+  margin-top: 7px;
+  color: #566960;
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1.45;
+  word-break: keep-all;
+}
+
+body.fb-shell-20260507 .home-hero-status {
+  width: 310px;
+  border-left: 1px solid #e0ebe6;
+  background: #fbfdfb;
+}
+
+body.fb-shell-20260507 .home-hero-status .badge {
+  display: inline-block;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+body.fb-shell-20260507 .home-hero-status span:last-child {
+  display: block;
+  margin-top: 10px;
+  color: #40544c;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+body.fb-shell-20260507 .home-metric-strip {
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0 0 16px 0;
+  padding-bottom: 2px;
+}
+
+body.fb-shell-20260507 .home-metric {
+  display: inline-block;
+  vertical-align: top;
+  width: 19%;
+  min-width: 190px;
+  min-height: 108px;
+  margin: 0 8px 0 0;
+  padding: 14px 15px;
+  border: 1px solid #d4e1dc;
+  border-top: 4px solid #8fb8a7;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #17231f;
+  text-decoration: none;
+  box-sizing: border-box;
+  white-space: normal;
+}
+
+body.fb-shell-20260507 .home-metric.good { border-top-color: #1d8a62; }
+body.fb-shell-20260507 .home-metric.warn { border-top-color: #d49a00; }
+body.fb-shell-20260507 .home-metric.bad { border-top-color: #d33b2f; }
+body.fb-shell-20260507 .home-metric.info { border-top-color: #40839a; }
+
+body.fb-shell-20260507 .home-metric span {
+  display: block;
+  color: #52635c;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+body.fb-shell-20260507 .home-metric strong {
+  display: block;
+  margin-top: 7px;
+  color: #102d24;
+  font-size: 27px;
+  font-weight: 900;
+  line-height: 1.05;
+}
+
+body.fb-shell-20260507 .home-metric em {
+  display: block;
+  margin-top: 9px;
+  color: #566960;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+body.fb-shell-20260507 .home-board {
+  border: 1px solid #d4e1dc;
+  border-radius: 7px;
+  background: #ffffff;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  box-sizing: border-box;
+}
+
+body.fb-shell-20260507 .home-board-head {
+  display: block;
+  margin-bottom: 13px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e0e9e5;
+}
+
+body.fb-shell-20260507 .home-board-head strong {
+  display: block;
+  color: #102d24;
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+body.fb-shell-20260507 .home-board-head span {
+  display: block;
+  margin-top: 4px;
+  color: #607068;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+body.fb-shell-20260507 .home-discipline-table {
+  min-width: 860px;
+}
+
+body.fb-shell-20260507 .home-discipline-table th {
+  position: static !important;
+  padding: 10px 11px !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  line-height: 1.25 !important;
+}
+
+body.fb-shell-20260507 .home-discipline-table td {
+  padding: 11px !important;
+  font-size: 13px !important;
+  line-height: 1.3 !important;
+}
+
+body.fb-shell-20260507 .home-progress-count {
+  display: inline-block;
+  min-width: 28px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #eef7f2;
+  color: #126144;
+  font-weight: 900;
+  text-align: center;
+}
+
+body.fb-shell-20260507 .home-two-col {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+  border-spacing: 14px 0;
+  margin: 0 -14px;
+}
+
+body.fb-shell-20260507 .home-two-col .home-board {
+  display: table-cell;
+  width: 50%;
+  vertical-align: top;
+  margin-bottom: 0;
+}
+
+body.fb-shell-20260507 .home-recent-item {
+  border-left: 4px solid #8fb8a7;
+  padding: 10px 0 10px 12px;
+  border-bottom: 1px solid #edf3f0;
+}
+
+body.fb-shell-20260507 .home-recent-item:last-child {
+  border-bottom: 0;
+}
+
+body.fb-shell-20260507 .home-recent-item.good { border-left-color: #1d8a62; }
+body.fb-shell-20260507 .home-recent-item.warn { border-left-color: #d49a00; }
+body.fb-shell-20260507 .home-recent-item.bad { border-left-color: #d33b2f; }
+body.fb-shell-20260507 .home-recent-item.info { border-left-color: #40839a; }
+
+body.fb-shell-20260507 .home-recent-item strong,
+body.fb-shell-20260507 .home-recent-item span,
+body.fb-shell-20260507 .home-recent-item em {
+  display: block;
+}
+
+body.fb-shell-20260507 .home-recent-item strong {
+  color: #102d24;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+body.fb-shell-20260507 .home-recent-item span {
+  margin-top: 4px;
+  color: #20372f;
+  font-size: 13px;
+  font-weight: 800;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+body.fb-shell-20260507 .home-recent-item em {
+  margin-top: 3px;
+  color: #607068;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+body.fb-shell-20260507 .home-action {
+  display: block;
+  text-decoration: none;
+  border: 1px solid #d7e4de;
+  border-radius: 7px;
+  background: #fbfdfb;
+  color: #17231f;
+  padding: 11px 12px;
+  margin-bottom: 9px;
+  box-sizing: border-box;
+}
+
+body.fb-shell-20260507 .home-action:hover {
+  border-color: #1d8a62;
+  background: #f0faf5;
+}
+
+body.fb-shell-20260507 .home-action strong {
+  display: block;
+  color: #102d24;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+body.fb-shell-20260507 .home-action span {
+  display: block;
+  margin-top: 4px;
+  color: #607068;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+@media screen and (max-width: 1350px) {
+  body.fb-shell-20260507 .home-hero,
+  body.fb-shell-20260507 .home-hero-copy,
+  body.fb-shell-20260507 .home-hero-status,
+  body.fb-shell-20260507 .home-two-col,
+  body.fb-shell-20260507 .home-two-col .home-board {
+    display: block;
+    width: auto;
+  }
+  body.fb-shell-20260507 .home-hero-status {
+    border-left: 0;
+    border-top: 1px solid #e0ebe6;
+  }
+  body.fb-shell-20260507 .home-two-col {
+    margin: 0;
+  }
+  body.fb-shell-20260507 .home-two-col .home-board {
+    margin-bottom: 14px;
+  }
 }
 
 body.fb-shell-20260507.fb-browser .pane-head {
@@ -1095,19 +1409,24 @@ body.fb-shell-20260507 .chip {
 
 body.fb-shell-20260507 .filterbar {
   margin-top: 5px !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
 }
 
 body.fb-shell-20260507 .filterbar a.filter,
 body.fb-shell-20260507 .disciplinebar a.filter {
   min-width: 74px !important;
-  max-width: 152px !important;
+  max-width: none !important;
   padding: 5px 8px !important;
   margin: 0 5px 4px 0 !important;
   font-size: 12px !important;
   line-height: 1.18 !important;
   border-radius: 5px !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
 }
 
 body.fb-shell-20260507 .filterbar a.filter .count,
@@ -1117,8 +1436,11 @@ body.fb-shell-20260507 .disciplinebar a.filter .count {
 
 body.fb-shell-20260507 .disciplinebar {
   margin-top: 2px !important;
-  white-space: nowrap !important;
-  overflow: hidden !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
 }
 
 body.fb-shell-20260507 .disciplinebar .discipline-label {
@@ -1907,6 +2229,229 @@ body.fb-shell-20260507 .settings-card {
   box-sizing: border-box !important;
 }
 
+body.fb-shell-20260507.fb-tab-admin #adminPane > .request-pane-scroll > .section {
+  margin: 0 0 6px 0 !important;
+  font-size: 18px !important;
+  line-height: 1.2 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane > .request-pane-scroll > .settings-note.compact {
+  margin: 0 0 8px 0 !important;
+  padding: 7px 10px !important;
+  font-size: 11px !important;
+  line-height: 1.3 !important;
+  max-height: 31px !important;
+  overflow: hidden !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-flow {
+  margin: 0 0 8px 0 !important;
+  white-space: normal !important;
+  overflow: visible !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-flow-step {
+  width: 49.2% !important;
+  min-width: 0 !important;
+  min-height: 50px !important;
+  margin: 0 0.8% 5px 0 !important;
+  padding: 7px 10px 7px 34px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-flow-number {
+  left: 9px !important;
+  top: 9px !important;
+  width: 20px !important;
+  height: 20px !important;
+  line-height: 20px !important;
+  font-size: 11px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-flow-title {
+  font-size: 11px !important;
+  margin-bottom: 3px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-flow-value {
+  font-size: 10px !important;
+  line-height: 1.25 !important;
+  max-height: 25px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #standardRegistrationSection {
+  margin: 0 !important;
+  padding: 10px 12px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #standardRegistrationSection > .section {
+  font-size: 15px !important;
+  margin: 0 0 6px 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #standardRegistrationSection > .admin-guide.compact {
+  padding: 6px 8px !important;
+  margin: 0 0 7px 0 !important;
+  font-size: 11px !important;
+  line-height: 1.28 !important;
+  max-height: 31px !important;
+  overflow: hidden !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-main {
+  white-space: nowrap !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-status,
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-actions {
+  display: inline-block !important;
+  vertical-align: top !important;
+  box-sizing: border-box !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-status {
+  width: 50.5% !important;
+  padding-right: 12px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-actions {
+  width: 49% !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-row {
+  display: table !important;
+  width: 100% !important;
+  table-layout: fixed !important;
+  margin: 0 0 5px 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-row .label {
+  display: table-cell !important;
+  width: 122px !important;
+  padding-right: 8px !important;
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+  vertical-align: top !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-row .value {
+  display: table-cell !important;
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+  max-height: 28px !important;
+  overflow: hidden !important;
+  vertical-align: top !important;
+  word-break: keep-all !important;
+  overflow-wrap: break-word !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .label {
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+  margin: 5px 0 3px 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .selector {
+  margin: 3px 0 6px 0 !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .selector a {
+  font-size: 11px !important;
+  line-height: 1.15 !important;
+  padding: 6px 8px !important;
+  margin: 0 4px 5px 0 !important;
+  max-width: 136px !important;
+  border-radius: 5px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .settings-action-grid {
+  margin: 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .settings-action-group {
+  width: 49% !important;
+  min-height: 0 !important;
+  margin: 0 1% 8px 0 !important;
+  padding: 9px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .settings-action-title {
+  font-size: 13px !important;
+  line-height: 1.25 !important;
+  margin-bottom: 7px !important;
+  max-height: 33px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .settings-action-body {
+  display: none !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-actions.compact {
+  margin-top: 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-actions.compact a.tool,
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-actions.compact span.tool {
+  font-size: 12px !important;
+  line-height: 1.15 !important;
+  padding: 7px 9px !important;
+  margin: 0 4px 5px 0 !important;
+  max-width: 190px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-layout {
+  display: grid !important;
+  gap: 7px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-row {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  align-items: stretch !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-row.single-row {
+  grid-template-columns: 1fr !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-row.trade-row {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-caption {
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+  font-weight: 900 !important;
+  color: #52635c !important;
+  margin: 1px 0 -2px 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-actions.compact a.standard-action-link {
+  display: block !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 8px 9px !important;
+  text-align: center !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #standardRvtManagerPanel {
+  margin-top: 8px !important;
+  padding: 10px 12px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #standardRvtManagerPanel .settings-action-group {
+  width: 32.2% !important;
+  min-height: 0 !important;
+}
+
 @media screen and (max-width: 1500px) {
   body.fb-shell-20260507 .top {
     height: 90px !important;
@@ -2055,5 +2600,1418 @@ body.fb-shell-20260507 .settings-card {
   body.fb-shell-20260507 #fbDebugFab {
     top: 154px !important;
     right: 12px !important;
+  }
+}
+
+/* Detached detail mode: only Family Load / System Type Load use this body class. */
+body.fb-shell-20260507.fb-browser.fb-detached-detail #mainCenter {
+  border-right: 0 !important;
+  border-radius: 8px 0 0 8px !important;
+}
+
+body.fb-shell-20260507.fb-browser.fb-detached-detail #selectionDetailPanel {
+  display: block !important;
+  visibility: visible !important;
+  overflow: auto !important;
+  border-left: 0 !important;
+  border-radius: 0 8px 8px 0 !important;
+}
+
+@media screen and (max-width: 1500px) {
+  body.fb-shell-20260507.fb-browser.fb-detached-detail #mainCenter {
+    border-radius: 6px 0 0 6px !important;
+  }
+
+  body.fb-shell-20260507.fb-browser.fb-detached-detail #selectionDetailPanel {
+    border-radius: 0 6px 6px 0 !important;
+  }
+}
+
+/* Family Browser 1.0 shell: left workflow rail + command surface. */
+body.fb-shell-20260507 .top {
+  height: 148px !important;
+  padding: 14px 18px 12px 228px !important;
+  background: #fbfdfc !important;
+  border-bottom: 1px solid #d7e3dd !important;
+  box-shadow: 0 4px 18px rgba(25, 48, 40, .07) !important;
+}
+
+body.fb-shell-20260507 .top:before {
+  width: 0 !important;
+}
+
+body.fb-shell-20260507 .kicker {
+  color: #427064 !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+  text-transform: uppercase !important;
+}
+
+body.fb-shell-20260507 .title {
+  color: #10261f !important;
+  font-size: 24px !important;
+  line-height: 1.15 !important;
+}
+
+body.fb-shell-20260507 .sub {
+  color: #52655e !important;
+  font-size: 13px !important;
+  max-width: 860px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.fb-shell-20260507 .pills {
+  left: 228px !important;
+  top: 78px !important;
+  right: 18px !important;
+  max-width: none !important;
+  max-height: 60px !important;
+  overflow: hidden !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507 .pill {
+  max-width: 230px !important;
+  min-height: 27px !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+}
+
+body.fb-shell-20260507 .toolbar.fb-nav-10 {
+  left: 0 !important;
+  right: auto !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: 204px !important;
+  height: auto !important;
+  padding: 14px 12px !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  background: #122d27 !important;
+  border-right: 1px solid #0b211c !important;
+  border-bottom: 0 !important;
+  white-space: normal !important;
+  z-index: 40 !important;
+}
+
+body.fb-shell-20260507 .toolbar.fb-nav-10 .rail-kicker {
+  display: block !important;
+  margin: 0 0 16px 0 !important;
+  color: #dff4ed !important;
+  font-size: 18px !important;
+  font-weight: 900 !important;
+  line-height: 1.15 !important;
+}
+
+body.fb-shell-20260507 .toolbar.fb-nav-10 .rail-title {
+  display: block !important;
+  margin: 16px 0 7px 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  color: #87b6a9 !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  line-height: 1.2 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0 !important;
+}
+
+body.fb-shell-20260507 .toolbar.fb-nav-10 .rail-title.rail-manage-title {
+  margin-left: 0 !important;
+  border-left: 0 !important;
+  padding-left: 0 !important;
+}
+
+body.fb-shell-20260507 .toolbar.fb-nav-10 a.tool,
+body.fb-shell-20260507 .toolbar.fb-nav-10 span.tool {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: auto !important;
+  min-height: 36px !important;
+  margin: 0 0 5px 0 !important;
+  padding: 9px 10px !important;
+  border: 1px solid transparent !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  color: #e8f5f0 !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  text-align: left !important;
+  white-space: normal !important;
+  box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507 .toolbar.fb-nav-10 a.tool.primary,
+body.fb-shell-20260507 .toolbar.fb-nav-10 a.tool.active {
+  border-color: #52bf94 !important;
+  background: #e8f7f0 !important;
+  color: #102d24 !important;
+  box-shadow: inset 4px 0 0 #22a875 !important;
+}
+
+body.fb-shell-20260507 .toolbar.fb-nav-10 .tool.disabled {
+  opacity: .45 !important;
+}
+
+body.fb-shell-20260507 .fb10-command-strip {
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  position: absolute !important;
+  left: 228px !important;
+  right: 16px !important;
+  bottom: 7px !important;
+  height: 44px !important;
+  box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507 .fb10-command-copy {
+  flex: 1 1 360px !important;
+  min-width: 210px !important;
+  max-width: 560px !important;
+  padding: 6px 10px !important;
+  border: 1px solid #dbe6e1 !important;
+  border-radius: 7px !important;
+  background: #f8fbfa !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+body.fb-shell-20260507 .fb10-command-copy span,
+body.fb-shell-20260507 .fb10-metric span {
+  display: block !important;
+  color: #597168 !important;
+  font-size: 10px !important;
+  font-weight: 900 !important;
+  line-height: 1.1 !important;
+  text-transform: uppercase !important;
+}
+
+body.fb-shell-20260507 .fb10-command-copy strong {
+  display: block !important;
+  color: #0f2f26 !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  line-height: 1.18 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.fb-shell-20260507 .fb10-command-copy em,
+body.fb-shell-20260507 .fb10-metric em {
+  display: block !important;
+  color: #63756e !important;
+  font-size: 10px !important;
+  font-style: normal !important;
+  line-height: 1.15 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.fb-shell-20260507 .fb10-command-metrics {
+  display: flex !important;
+  flex: 1 1 560px !important;
+  gap: 6px !important;
+  min-width: 430px !important;
+}
+
+body.fb-shell-20260507 .fb10-metric {
+  flex: 1 1 0 !important;
+  min-width: 78px !important;
+  padding: 5px 8px !important;
+  border: 1px solid #dbe6e1 !important;
+  border-left: 4px solid #8aa098 !important;
+  border-radius: 7px !important;
+  background: #fff !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+body.fb-shell-20260507 .fb10-metric strong {
+  display: block !important;
+  color: #122d25 !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  line-height: 1.05 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.fb-shell-20260507 .fb10-metric.good {
+  border-left-color: #28a06e !important;
+}
+
+body.fb-shell-20260507 .fb10-metric.warn {
+  border-left-color: #d69b21 !important;
+}
+
+body.fb-shell-20260507 .fb10-metric.bad {
+  border-left-color: #cf5548 !important;
+}
+
+body.fb-shell-20260507 .fb10-metric.info {
+  border-left-color: #3b82a0 !important;
+}
+
+body.fb-shell-20260507 .fb10-command-actions {
+  display: none !important;
+  flex: 0 0 auto !important;
+  align-items: stretch !important;
+  gap: 6px !important;
+  max-width: 520px !important;
+  overflow: hidden !important;
+}
+
+body.fb-shell-20260507 .fb10-action {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  min-width: 74px !important;
+  max-width: 120px !important;
+  padding: 0 9px !important;
+  border: 1px solid #c6d7cf !important;
+  border-radius: 7px !important;
+  background: #fff !important;
+  color: #17362c !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  line-height: 1.15 !important;
+  text-align: center !important;
+  text-decoration: none !important;
+  white-space: normal !important;
+  box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507 .fb10-action.primary {
+  background: #176b54 !important;
+  border-color: #176b54 !important;
+  color: #fff !important;
+}
+
+body.fb-shell-20260507 .fb10-action.disabled {
+  opacity: .45 !important;
+}
+
+body.fb-shell-20260507 .fb10-intake-grid {
+  display: block !important;
+  margin: 0 0 14px 0 !important;
+  padding: 0 !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507 .fb10-intake-grid .request-card {
+  display: inline-block !important;
+  vertical-align: top !important;
+  width: 32% !important;
+  min-height: 126px !important;
+  margin: 0 1% 12px 0 !important;
+  padding: 14px 15px !important;
+  border-radius: 7px !important;
+  box-shadow: 0 1px 0 rgba(27,47,39,.05) !important;
+}
+
+body.fb-shell-20260507 .fb10-intake-grid .request-card strong {
+  font-size: 15px !important;
+  line-height: 1.2 !important;
+  margin-bottom: 7px !important;
+}
+
+body.fb-shell-20260507 .fb10-intake-grid .request-card span {
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+  min-height: 34px !important;
+}
+
+body.fb-shell-20260507 .fb10-intake-grid .request-card a {
+  margin-top: 10px !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+}
+
+body.fb-shell-20260507.fb-workflow #auditPane .admin-box + .section,
+body.fb-shell-20260507.fb-workflow #auditPane table + .section {
+  margin-top: 18px !important;
+}
+
+body.fb-shell-20260507.fb-workflow #auditPane #auditTable,
+body.fb-shell-20260507.fb-workflow #auditPane #dirtyTable {
+  margin-bottom: 20px !important;
+}
+
+body.fb-shell-20260507 .tabs {
+  display: none !important;
+}
+
+body.fb-shell-20260507 .layout {
+  left: 212px !important;
+  top: 148px !important;
+  background: #eef4f1 !important;
+}
+
+body.fb-shell-20260507 .long-operation-progress {
+  left: 228px !important;
+  top: 156px !important;
+}
+
+body.fb-shell-20260507 #fbDebugFab {
+  top: 156px !important;
+  right: 14px !important;
+}
+
+@media screen and (max-width: 1500px) {
+  body.fb-shell-20260507 .top {
+    height: 136px !important;
+    padding-left: 212px !important;
+  }
+
+  body.fb-shell-20260507 .title {
+    font-size: 22px !important;
+  }
+
+  body.fb-shell-20260507 .sub {
+    max-width: 620px !important;
+  }
+
+  body.fb-shell-20260507 .pills {
+    left: 212px !important;
+    top: 74px !important;
+    max-height: 54px !important;
+  }
+
+  body.fb-shell-20260507 .pill {
+    max-width: 200px !important;
+    min-height: 25px !important;
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+  }
+
+  body.fb-shell-20260507 .toolbar.fb-nav-10 {
+    width: 188px !important;
+    padding: 12px 10px !important;
+  }
+
+  body.fb-shell-20260507 .toolbar.fb-nav-10 .rail-kicker {
+    font-size: 16px !important;
+  }
+
+  body.fb-shell-20260507 .toolbar.fb-nav-10 a.tool,
+  body.fb-shell-20260507 .toolbar.fb-nav-10 span.tool {
+    min-height: 34px !important;
+    padding: 8px 9px !important;
+    font-size: 11px !important;
+  }
+
+  body.fb-shell-20260507 .fb10-command-strip {
+    left: 212px !important;
+    height: 42px !important;
+  }
+
+  body.fb-shell-20260507 .fb10-command-copy {
+    max-width: 410px !important;
+  }
+
+  body.fb-shell-20260507 .fb10-command-metrics {
+    min-width: 360px !important;
+  }
+
+  body.fb-shell-20260507 .fb10-action {
+    min-width: 64px !important;
+    max-width: 94px !important;
+    padding: 0 7px !important;
+    font-size: 10px !important;
+  }
+
+  body.fb-shell-20260507 .fb10-intake-grid .request-card {
+    width: 31.8% !important;
+    min-height: 116px !important;
+    padding: 12px !important;
+  }
+
+  body.fb-shell-20260507 .layout {
+    left: 196px !important;
+    top: 136px !important;
+  }
+}
+
+/* Final 1.0 shell ownership. Keep body panes out from under the left rail. */
+body.fb-shell-20260507 .fb10-command-strip,
+body.fb-shell-20260507 .fb10-command-actions {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+body.fb-shell-20260507 .top {
+  height: 148px !important;
+  padding: 14px 18px 12px 228px !important;
+}
+
+body.fb-shell-20260507 .pills {
+  display: block !important;
+  position: absolute !important;
+  left: 228px !important;
+  right: 18px !important;
+  top: 78px !important;
+  max-width: none !important;
+  max-height: 62px !important;
+  overflow: hidden !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507 .pill {
+  margin: 0 6px 6px 0 !important;
+  padding: 6px 10px !important;
+  max-width: 232px !important;
+  min-height: 27px !important;
+  font-size: 12px !important;
+  line-height: 1.18 !important;
+}
+
+body.fb-shell-20260507 .toolbar.fb-nav-10 {
+  width: 204px !important;
+}
+
+body.fb-shell-20260507 .layout {
+  position: fixed !important;
+  left: 212px !important;
+  right: 0 !important;
+  top: 148px !important;
+  bottom: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+body.fb-shell-20260507.fb-workflow #mainCenter {
+  display: block !important;
+  visibility: visible !important;
+  position: fixed !important;
+  left: 212px !important;
+  right: 0 !important;
+  top: 148px !important;
+  bottom: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  overflow: auto !important;
+  background: #fff !important;
+  border: 0 !important;
+  border-left: 1px solid #d8e4df !important;
+  border-top: 1px solid #d8e4df !important;
+  border-radius: 0 !important;
+  box-sizing: border-box !important;
+  z-index: 10 !important;
+}
+
+body.fb-shell-20260507.fb-workflow #homePane,
+body.fb-shell-20260507.fb-workflow #requestsPane,
+body.fb-shell-20260507.fb-workflow #auditPane,
+body.fb-shell-20260507.fb-workflow #unregisteredFamiliesPane,
+body.fb-shell-20260507.fb-workflow #unregisteredSystemsPane,
+body.fb-shell-20260507.fb-workflow #permissionsPane,
+body.fb-shell-20260507.fb-workflow #adminPane,
+body.fb-shell-20260507.fb-workflow #helpPane,
+body.fb-shell-20260507.fb-workflow #settingsPane {
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+}
+
+body.fb-shell-20260507.fb-workflow .home-dashboard-scroll,
+body.fb-shell-20260507.fb-workflow .request-pane-scroll {
+  width: auto !important;
+  max-width: none !important;
+}
+
+body.fb-shell-20260507.fb-browser #mainCenter {
+  left: 212px !important;
+}
+
+@media screen and (max-width: 1500px) {
+  body.fb-shell-20260507 .top {
+    height: 136px !important;
+    padding-left: 212px !important;
+  }
+
+  body.fb-shell-20260507 .pills {
+    left: 212px !important;
+    top: 74px !important;
+    max-height: 54px !important;
+  }
+
+  body.fb-shell-20260507 .toolbar.fb-nav-10 {
+    width: 188px !important;
+  }
+
+  body.fb-shell-20260507 .layout,
+  body.fb-shell-20260507.fb-workflow #mainCenter {
+    left: 196px !important;
+    top: 136px !important;
+  }
+
+  body.fb-shell-20260507.fb-browser #mainCenter {
+    left: 196px !important;
+  }
+}
+
+/* Header file context: keep actions top-right, file names stacked on the right, status below. */
+body.fb-shell-20260507 .top {
+  height: 178px !important;
+  padding: 16px 18px 14px 228px !important;
+}
+
+body.fb-shell-20260507 .kicker,
+body.fb-shell-20260507 .title {
+  max-width: calc(100% - 560px) !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.fb-shell-20260507 .top-actions {
+  display: block !important;
+  position: absolute !important;
+  right: 18px !important;
+  top: 12px !important;
+  text-align: right !important;
+  white-space: nowrap !important;
+  z-index: 42 !important;
+}
+
+body.fb-shell-20260507 .top-actions .pill {
+  margin: 0 0 0 6px !important;
+  padding: 7px 12px !important;
+  max-width: 150px !important;
+  min-height: 0 !important;
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+}
+
+body.fb-shell-20260507 .project-context {
+  position: absolute !important;
+  right: 18px !important;
+  top: 48px !important;
+  width: 480px !important;
+  max-width: 42% !important;
+  text-align: right !important;
+  color: #52655e !important;
+  font-size: 12px !important;
+  line-height: 1.35 !important;
+  overflow: hidden !important;
+  z-index: 41 !important;
+}
+
+body.fb-shell-20260507 .project-file-stack,
+body.fb-shell-20260507 .project-subtitle {
+  display: block !important;
+  width: 100% !important;
+  white-space: normal !important;
+  overflow: hidden !important;
+}
+
+body.fb-shell-20260507 .project-file-row {
+  display: block !important;
+  margin: 0 0 4px 0 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.fb-shell-20260507 .project-file-row .project-label {
+  display: inline-block !important;
+  min-width: 54px !important;
+  margin-right: 8px !important;
+  color: #177451 !important;
+  font-weight: 900 !important;
+  text-align: right !important;
+}
+
+body.fb-shell-20260507 .project-file-row.central .project-label {
+  color: #2f7180 !important;
+}
+
+body.fb-shell-20260507 .project-file-row .project-name {
+  display: inline-block !important;
+  max-width: calc(100% - 70px) !important;
+  vertical-align: bottom !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+body.fb-shell-20260507 .pills.status-pills,
+body.fb-shell-20260507 .pills {
+  display: block !important;
+  position: absolute !important;
+  left: 228px !important;
+  right: 18px !important;
+  top: 118px !important;
+  max-width: none !important;
+  max-height: 54px !important;
+  overflow: hidden !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507 .status-pills .pill {
+  margin: 0 6px 6px 0 !important;
+}
+
+body.fb-shell-20260507 .layout {
+  top: 178px !important;
+}
+
+body.fb-shell-20260507.fb-workflow #mainCenter {
+  top: 178px !important;
+}
+
+@media screen and (max-width: 1500px) {
+  body.fb-shell-20260507 .top {
+    height: 166px !important;
+    padding-left: 212px !important;
+  }
+
+  body.fb-shell-20260507 .kicker,
+  body.fb-shell-20260507 .title {
+    max-width: calc(100% - 460px) !important;
+  }
+
+  body.fb-shell-20260507 .top-actions {
+    right: 12px !important;
+    top: 10px !important;
+  }
+
+  body.fb-shell-20260507 .top-actions .pill {
+    padding: 6px 9px !important;
+    max-width: 126px !important;
+    font-size: 11px !important;
+  }
+
+  body.fb-shell-20260507 .project-context {
+    right: 12px !important;
+    top: 44px !important;
+    width: 390px !important;
+    max-width: 40% !important;
+    font-size: 11px !important;
+  }
+
+  body.fb-shell-20260507 .pills.status-pills,
+  body.fb-shell-20260507 .pills {
+    left: 212px !important;
+    right: 12px !important;
+    top: 110px !important;
+    max-height: 50px !important;
+  }
+
+  body.fb-shell-20260507 .layout,
+  body.fb-shell-20260507.fb-workflow #mainCenter {
+    top: 166px !important;
+  }
+}
+
+/* Family/type detail is rendered in a detached window; keep the in-page panel as a hidden HTML source only. */
+body.fb-shell-20260507.fb-browser #selectionDetailPanel,
+body.fb-shell-20260507.fb-browser.fb-detached-detail #selectionDetailPanel {
+  display: none !important;
+  visibility: hidden !important;
+  position: absolute !important;
+  left: -99999px !important;
+  right: auto !important;
+  top: -99999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
+
+body.fb-shell-20260507.fb-browser #mainCenter,
+body.fb-shell-20260507.fb-browser.fb-detached-detail #mainCenter {
+  left: 222px !important;
+  right: 10px !important;
+  width: auto !important;
+  border-right: 1px solid #d8e4df !important;
+  border-radius: 6px !important;
+}
+
+@media screen and (max-width: 1500px) {
+  body.fb-shell-20260507.fb-browser #mainCenter,
+  body.fb-shell-20260507.fb-browser.fb-detached-detail #mainCenter {
+    left: 206px !important;
+  }
+}
+
+/* Filter buttons must wrap after a scan; status/trade labels should not be clipped with ellipsis. */
+body.fb-shell-20260507 .filterbar,
+body.fb-shell-20260507 .disciplinebar {
+  white-space: normal !important;
+  overflow: visible !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+}
+
+body.fb-shell-20260507 .filterbar {
+  gap: 0 5px !important;
+}
+
+body.fb-shell-20260507 .disciplinebar {
+  gap: 0 5px !important;
+}
+
+body.fb-shell-20260507 .disciplinebar .discipline-label {
+  flex: 0 0 auto !important;
+}
+
+body.fb-shell-20260507 .filterbar a.filter,
+body.fb-shell-20260507 .disciplinebar a.filter {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-main {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px) !important;
+  gap: 12px !important;
+  align-items: start !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-status {
+  display: block !important;
+  width: auto !important;
+  min-width: 0 !important;
+  padding: 0 4px 0 0 !important;
+  margin: 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-actions {
+  display: block !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-actions .settings-action-grid {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 8px !important;
+  margin: 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-actions .settings-action-group {
+  display: block !important;
+  width: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 10px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-actions .settings-action-title {
+  max-height: none !important;
+  font-size: 13px !important;
+  margin-bottom: 6px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-layout {
+  display: block !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-row {
+  display: flex !important;
+  grid-template-columns: none !important;
+  flex-wrap: wrap !important;
+  gap: 6px !important;
+  margin-bottom: 6px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-actions.compact a.standard-action-link {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 1 1 124px !important;
+  min-width: 112px !important;
+  min-height: 32px !important;
+  width: auto !important;
+  max-width: none !important;
+  padding: 7px 9px !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-row.trade-row a.standard-action-link {
+  flex-basis: 84px !important;
+  min-width: 76px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-caption {
+  margin: 3px 0 4px 0 !important;
+}
+
+body.fb-shell-20260507 .nested-child-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  table-layout: fixed !important;
+  background: #ffffff !important;
+  margin-top: 8px !important;
+}
+
+body.fb-shell-20260507 .nested-child-table th,
+body.fb-shell-20260507 .nested-child-table td {
+  border-top: 1px solid #e8eeeb !important;
+  padding: 8px 10px !important;
+  text-align: left !important;
+  vertical-align: top !important;
+  font-size: 13px !important;
+  word-break: keep-all !important;
+  overflow-wrap: anywhere !important;
+}
+
+body.fb-shell-20260507 .nested-child-table th {
+  background: #eef6f2 !important;
+  color: #3f534b !important;
+  font-weight: 900 !important;
+  border-top: 0 !important;
+}
+
+body.fb-shell-20260507 .family-type-panel {
+  border: 1px solid #cfe5da !important;
+  background: #f8fcfa !important;
+  border-radius: 8px !important;
+  padding: 10px 12px !important;
+  color: #143c2e !important;
+  line-height: 1.45 !important;
+}
+
+body.fb-shell-20260507 .family-type-panel b {
+  display: block !important;
+  margin: 0 0 7px 0 !important;
+  color: #176044 !important;
+  font-size: 13px !important;
+}
+
+body.fb-shell-20260507 .family-type-empty {
+  border: 1px solid #e0ece6 !important;
+  background: #ffffff !important;
+  border-radius: 7px !important;
+  padding: 10px !important;
+  color: #64766e !important;
+  font-size: 13px !important;
+}
+
+body.fb-shell-20260507 .family-type-table-wrap {
+  max-width: 100% !important;
+  max-height: 300px !important;
+  overflow: auto !important;
+  border: 1px solid #d8e7df !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+}
+
+body.fb-shell-20260507 .family-type-table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  table-layout: fixed !important;
+  background: #ffffff !important;
+}
+
+body.fb-shell-20260507 .family-type-table th,
+body.fb-shell-20260507 .family-type-table td {
+  border-top: 1px solid #e8eeeb !important;
+  padding: 8px 10px !important;
+  text-align: left !important;
+  vertical-align: top !important;
+  font-size: 13px !important;
+  word-break: keep-all !important;
+  overflow-wrap: anywhere !important;
+}
+
+body.fb-shell-20260507 .family-type-table th {
+  border-top: 0 !important;
+  background: #eef6f2 !important;
+  color: #3f534b !important;
+  font-weight: 900 !important;
+  white-space: nowrap !important;
+}
+
+body.fb-shell-20260507 .family-type-table .num {
+  width: 56px !important;
+  text-align: center !important;
+  color: #52635c !important;
+  font-weight: 900 !important;
+}
+
+body.fb-shell-20260507 .preview-open-chip {
+  cursor: pointer !important;
+  text-decoration: none !important;
+}
+
+@media screen and (max-width: 1180px) {
+  body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-main {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Inline action status filters sit beside load/apply buttons and must wrap instead of ellipsizing. */
+body.fb-shell-20260507.fb-browser .pane-head.action-head {
+  display: -ms-flexbox !important;
+  display: flex !important;
+  -ms-flex-wrap: wrap !important;
+  flex-wrap: wrap !important;
+  -ms-flex-align: center !important;
+  align-items: center !important;
+  height: auto !important;
+  min-height: 58px !important;
+  overflow: visible !important;
+  white-space: normal !important;
+  padding-bottom: 5px !important;
+}
+
+body.fb-shell-20260507.fb-browser .pane-head.action-head a.tool,
+body.fb-shell-20260507.fb-browser .pane-head.action-head span.tool,
+body.fb-shell-20260507.fb-browser .pane-head.action-head .batch-count {
+  -ms-flex: 0 0 auto !important;
+  flex: 0 0 auto !important;
+  margin-bottom: 4px !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+body.fb-shell-20260507.fb-browser .pane-head.action-head .family-kind-toggle,
+body.fb-shell-20260507.fb-browser .pane-head.action-head .inline-status-toggle {
+  display: -ms-inline-flexbox !important;
+  display: inline-flex !important;
+  -ms-flex-wrap: wrap !important;
+  flex-wrap: wrap !important;
+  -ms-flex-align: center !important;
+  align-items: center !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 0 4px 6px !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507.fb-browser .pane-head.action-head .kind-label,
+body.fb-shell-20260507.fb-browser .pane-head.action-head .family-kind-toggle a,
+body.fb-shell-20260507.fb-browser .pane-head.action-head .inline-status-toggle a.inline-status-filter {
+  -ms-flex: 0 0 auto !important;
+  flex: 0 0 auto !important;
+  max-width: none !important;
+  margin: 0 4px 4px 0 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+/* Admin standard/audit action cards: IE-safe two-column wrap. */
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-main {
+  display: block !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-status {
+  display: block !important;
+  width: 100% !important;
+  padding: 0 !important;
+  margin: 0 0 10px 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-actions {
+  display: block !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-action-grid,
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-action-grid {
+  display: block !important;
+  white-space: normal !important;
+  margin: 0 !important;
+  max-width: none !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-action-grid {
+  margin-top: 12px !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-action-grid:after {
+  content: "" !important;
+  display: block !important;
+  clear: both !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-action-grid .settings-action-group,
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-action-grid .settings-action-group {
+  display: inline-block !important;
+  vertical-align: top !important;
+  width: 48.6% !important;
+  min-height: 0 !important;
+  margin: 0 1.2% 12px 0 !important;
+  padding: 10px !important;
+  box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-action-grid .settings-action-group {
+  min-height: 166px !important;
+  padding: 16px !important;
+  float: left !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-action-grid .settings-action-group:nth-child(2n+1) {
+  clear: left !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-action-grid .settings-action-body {
+  display: none !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-action-grid .settings-action-title {
+  max-height: none !important;
+  font-size: 13px !important;
+  margin-bottom: 6px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-layout,
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-row {
+  display: block !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-row {
+  margin-bottom: 6px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-actions.compact a.standard-action-link {
+  display: inline-block !important;
+  vertical-align: top !important;
+  width: auto !important;
+  min-width: 112px !important;
+  max-width: 210px !important;
+  min-height: 30px !important;
+  margin: 0 5px 6px 0 !important;
+  padding: 7px 10px !important;
+  box-sizing: border-box !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-row.primary-row a.standard-action-link {
+  min-width: 136px !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .standard-action-row.trade-row a.standard-action-link {
+  min-width: 72px !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-action-grid .admin-actions.compact {
+  display: block !important;
+  white-space: normal !important;
+  overflow: visible !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-action-grid .admin-actions.compact a.tool,
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-action-grid .admin-actions.compact span.tool {
+  display: inline-block !important;
+  vertical-align: top !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 156px !important;
+  margin: 0 6px 7px 0 !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-target-selector {
+  display: block !important;
+  margin: 10px 0 14px 0 !important;
+  padding: 10px 12px !important;
+  border: 1px solid #cfe3d9 !important;
+  border-left: 5px solid #22b47f !important;
+  border-radius: 8px !important;
+  background: #f8fcfa !important;
+  box-sizing: border-box !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-target-title {
+  display: inline-block !important;
+  vertical-align: top !important;
+  min-width: 86px !important;
+  margin: 6px 10px 4px 0 !important;
+  color: #103a30 !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  line-height: 1.2 !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-target-actions {
+  display: inline-block !important;
+  vertical-align: top !important;
+  max-width: calc(100% - 110px) !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane a.audit-target-chip {
+  display: inline-block !important;
+  vertical-align: top !important;
+  margin: 0 6px 6px 0 !important;
+  padding: 7px 10px !important;
+  border: 1px solid #b9d4c8 !important;
+  border-radius: 999px !important;
+  background: #ffffff !important;
+  color: #17382d !important;
+  font-size: 12px !important;
+  font-weight: 900 !important;
+  line-height: 1.15 !important;
+  text-decoration: none !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  max-width: 220px !important;
+  box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane a.audit-target-chip.active {
+  background: #18734f !important;
+  border-color: #18734f !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 10px rgba(24,115,79,.16) !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane a.audit-target-chip.missing {
+  border-color: #dec27a !important;
+  background: #fffaf0 !important;
+  color: #694a00 !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane a.audit-target-chip.active.missing {
+  background: #8a6500 !important;
+  border-color: #8a6500 !important;
+  color: #ffffff !important;
+}
+
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-target-current,
+body.fb-shell-20260507.fb-tab-audit #auditPane .audit-target-missing {
+  display: inline-block !important;
+  margin-left: 6px !important;
+  padding: 2px 5px !important;
+  border-radius: 999px !important;
+  background: rgba(255,255,255,.78) !important;
+  color: inherit !important;
+  font-size: 10px !important;
+  line-height: 1.1 !important;
+  font-weight: 900 !important;
+}
+
+@media screen and (max-width: 1180px) {
+  body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-action-grid .settings-action-group {
+    display: block !important;
+    width: 100% !important;
+    margin-right: 0 !important;
+  }
+
+  body.fb-shell-20260507.fb-tab-audit #auditPane .audit-target-title,
+  body.fb-shell-20260507.fb-tab-audit #auditPane .audit-target-actions {
+    display: block !important;
+    max-width: none !important;
+  }
+}
+
+@media screen and (max-width: 900px) {
+  body.fb-shell-20260507.fb-tab-audit #auditPane .audit-action-grid .settings-action-group {
+    display: block !important;
+    float: none !important;
+    clear: none !important;
+    width: 100% !important;
+    margin-right: 0 !important;
+  }
+}
+
+/* Debug log is opened from the left menu only and docks like a bottom console. */
+body.fb-shell-20260507 #fbDebugFab {
+  display: none !important;
+}
+
+body.fb-shell-20260507 #fbDebug {
+  display: none !important;
+  position: fixed !important;
+  left: 212px !important;
+  right: 0 !important;
+  top: auto !important;
+  bottom: 0 !important;
+  width: auto !important;
+  height: 320px !important;
+  z-index: 999999 !important;
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-radius: 8px 0 0 0 !important;
+  box-shadow: 0 -16px 45px rgba(0,0,0,.32) !important;
+}
+
+body.fb-shell-20260507.fb-debug-on #fbDebug {
+  display: block !important;
+}
+
+@media screen and (max-width: 1500px) {
+  body.fb-shell-20260507 #fbDebug {
+    left: 196px !important;
+    height: 300px !important;
+  }
+}
++
+
+/* Admin target controls stay together, and both standard action cards use one button matrix. */
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-control {
+  display: block !important;
+  width: 100% !important;
+  margin: 4px 0 8px 0 !important;
+  padding: 4px 0 2px 0 !important;
+  box-sizing: border-box !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-selector {
+  display: inline-block !important;
+  vertical-align: bottom !important;
+  width: calc(100% - 326px) !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-management {
+  display: inline-block !important;
+  vertical-align: bottom !important;
+  width: 316px !important;
+  margin: 0 0 5px 10px !important;
+  box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-management-label {
+  margin: 0 0 4px 0 !important;
+  color: #52635c !important;
+  font-size: 11px !important;
+  font-weight: 900 !important;
+  line-height: 1.2 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-management-actions {
+  display: -ms-flexbox !important;
+  display: flex !important;
+  width: 100% !important;
+  margin: 0 !important;
+  white-space: normal !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-management-actions a.standard-action-link {
+  display: -ms-flexbox !important;
+  display: flex !important;
+  -ms-flex: 1 1 0 !important;
+  flex: 1 1 0 !important;
+  -ms-flex-align: center !important;
+  align-items: center !important;
+  -ms-flex-pack: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 32px !important;
+  margin: 0 5px 0 0 !important;
+  padding: 7px 8px !important;
+  text-align: center !important;
+  box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-management-actions a.standard-action-link:last-child {
+  margin-right: 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-selector .selector a.active {
+  background: #0f503d !important;
+  border-color: #0f503d !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,.18), 0 3px 8px rgba(15,80,61,.16) !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-action-grid .standard-action-row {
+  display: -ms-flexbox !important;
+  display: flex !important;
+  -ms-flex-align: stretch !important;
+  align-items: stretch !important;
+  width: 100% !important;
+  margin: 0 0 7px 0 !important;
+  white-space: normal !important;
+  box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-action-grid .standard-action-row:last-child {
+  margin-bottom: 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-action-grid .standard-action-row a.standard-action-link {
+  display: -ms-flexbox !important;
+  display: flex !important;
+  -ms-flex: 1 1 0 !important;
+  flex: 1 1 0 !important;
+  -ms-flex-align: center !important;
+  align-items: center !important;
+  -ms-flex-pack: center !important;
+  justify-content: center !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 36px !important;
+  margin: 0 7px 0 0 !important;
+  padding: 8px 10px !important;
+  font-size: 12px !important;
+  line-height: 1.2 !important;
+  text-align: center !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: break-word !important;
+  box-sizing: border-box !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-action-grid .standard-action-row a.standard-action-link:last-child {
+  margin-right: 0 !important;
+}
+
+body.fb-shell-20260507.fb-tab-admin #adminPane .admin-standard-action-grid .standard-action-row.single-row a.standard-action-link {
+  -ms-flex-preferred-size: 100% !important;
+  flex-basis: 100% !important;
+  width: 100% !important;
+}
+
+@media screen and (max-width: 1050px) {
+  body.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-selector,
+  body.fb-shell-20260507.fb-tab-admin #adminPane .admin-trade-management {
+    display: block !important;
+    width: 100% !important;
+    margin-left: 0 !important;
   }
 }

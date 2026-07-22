@@ -35,42 +35,64 @@ public sealed class FamilyDocumentParameterCaptureService
 
 	public static List<StandardFamilyParameterSnapshotItem> Capture(Document familyDoc)
 	{
-		//IL_004a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0054: Expected O, but got Unknown
 		List<StandardFamilyParameterSnapshotItem> result = new List<StandardFamilyParameterSnapshotItem>();
 		if (familyDoc == null || familyDoc.FamilyManager == null)
 		{
 			return result;
 		}
 		FamilyManager manager = familyDoc.FamilyManager;
-		string currentTypeName = ResolveCurrentFamilyTypeName(manager);
 		try
 		{
+			List<FamilyParameter> parameters = CaptureFamilyParameters(manager);
+			List<FamilyType> familyTypes = CaptureFamilyTypes(manager);
+			foreach (FamilyParameter familyParameter in parameters)
+			{
+				if (!ShouldCaptureFamilyManagerParameter(familyParameter))
+				{
+					continue;
+				}
+				bool isInstance = SafeBool(() => familyParameter.IsInstance);
+				if (isInstance || familyTypes.Count == 0)
+				{
+					result.Add(BuildParameterSnapshot(familyDoc, manager, manager.CurrentType, familyParameter, isInstance, isInstance ? string.Empty : ResolveCurrentFamilyTypeName(manager)));
+					continue;
+				}
+				foreach (FamilyType familyType in familyTypes)
+				{
+					string typeName = ResolveFamilyTypeName(familyType);
+					if (string.IsNullOrWhiteSpace(typeName))
+					{
+						continue;
+					}
+					result.Add(BuildParameterSnapshot(familyDoc, manager, familyType, familyParameter, isInstance, typeName));
+				}
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		return FamilyParameterSnapshotNormalizationService.DeduplicateDefinitionsAndTypeValues(result);
+	}
+
+	private static List<FamilyParameter> CaptureFamilyParameters(FamilyManager manager)
+	{
+		List<FamilyParameter> result = new List<FamilyParameter>();
+		try
+		{
+			if (manager == null || manager.Parameters == null)
+			{
+				return result;
+			}
 			IEnumerator enumerator = manager.Parameters.GetEnumerator();
 			try
 			{
-				_Closure_0024__1_002D0 closure_0024__1_002D = default(_Closure_0024__1_002D0);
 				while (enumerator.MoveNext())
 				{
-					closure_0024__1_002D = new _Closure_0024__1_002D0(closure_0024__1_002D);
-					closure_0024__1_002D._0024VB_0024Local_familyParameter = (FamilyParameter)enumerator.Current;
-					if (ShouldCaptureFamilyManagerParameter(closure_0024__1_002D._0024VB_0024Local_familyParameter))
+					if (enumerator.Current is FamilyParameter familyParameter)
 					{
-						bool isInstance = SafeBool(closure_0024__1_002D._Lambda_0024__0);
-						result.Add(new StandardFamilyParameterSnapshotItem
-						{
-							Scope = (isInstance ? "Instance" : "Type"),
-							TypeName = (isInstance ? string.Empty : currentTypeName),
-							Name = ResolveFamilyParameterName(closure_0024__1_002D._0024VB_0024Local_familyParameter),
-							StorageType = ResolveFamilyParameterStorageTypeName(closure_0024__1_002D._0024VB_0024Local_familyParameter),
-							ValuePreview = ResolveFamilyParameterValue(familyDoc, manager, closure_0024__1_002D._0024VB_0024Local_familyParameter),
-							Formula = ResolveFamilyParameterFormula(closure_0024__1_002D._0024VB_0024Local_familyParameter),
-							IsInstance = isInstance,
-							IsReadOnly = false,
-							IsShared = IsSharedFamilyParameter(closure_0024__1_002D._0024VB_0024Local_familyParameter),
-							ParameterId = ResolveFamilyParameterId(closure_0024__1_002D._0024VB_0024Local_familyParameter),
-							ExternalGuid = ResolveFamilyParameterExternalGuid(closure_0024__1_002D._0024VB_0024Local_familyParameter)
-						});
+						result.Add(familyParameter);
 					}
 				}
 			}
@@ -88,7 +110,62 @@ public sealed class FamilyDocumentParameterCaptureService
 			ProjectData.SetProjectError(projectError);
 			ProjectData.ClearProjectError();
 		}
-		return FamilyParameterSnapshotNormalizationService.DeduplicateDefinitions(result);
+		return result;
+	}
+
+	private static List<FamilyType> CaptureFamilyTypes(FamilyManager manager)
+	{
+		List<FamilyType> result = new List<FamilyType>();
+		try
+		{
+			if (manager == null || manager.Types == null)
+			{
+				return result;
+			}
+			IEnumerator enumerator = manager.Types.GetEnumerator();
+			try
+			{
+				while (enumerator.MoveNext())
+				{
+					if (enumerator.Current is FamilyType familyType)
+					{
+						result.Add(familyType);
+					}
+				}
+			}
+			finally
+			{
+				IDisposable disposable = enumerator as IDisposable;
+				if (disposable != null)
+				{
+					disposable.Dispose();
+				}
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		return result;
+	}
+
+	private static StandardFamilyParameterSnapshotItem BuildParameterSnapshot(Document familyDoc, FamilyManager manager, FamilyType familyType, FamilyParameter familyParameter, bool isInstance, string typeName)
+	{
+		return new StandardFamilyParameterSnapshotItem
+		{
+			Scope = (isInstance ? "Instance" : "Type"),
+			TypeName = (isInstance ? string.Empty : (typeName ?? string.Empty)),
+			Name = ResolveFamilyParameterName(familyParameter),
+			StorageType = ResolveFamilyParameterStorageTypeName(familyParameter),
+			ValuePreview = ResolveFamilyParameterValue(familyDoc, manager, familyType, familyParameter),
+			Formula = ResolveFamilyParameterFormula(familyParameter),
+			IsInstance = isInstance,
+			IsReadOnly = false,
+			IsShared = IsSharedFamilyParameter(familyParameter),
+			ParameterId = ResolveFamilyParameterId(familyParameter),
+			ExternalGuid = ResolveFamilyParameterExternalGuid(familyParameter)
+		};
 	}
 
 	private static bool ShouldCaptureFamilyManagerParameter(FamilyParameter familyParameter)
@@ -130,26 +207,29 @@ public sealed class FamilyDocumentParameterCaptureService
 		return string.Empty;
 	}
 
+	private static string ResolveFamilyTypeName(FamilyType familyType)
+	{
+		try
+		{
+			if (familyType != null)
+			{
+				return familyType.Name ?? string.Empty;
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		return string.Empty;
+	}
+
 	private static string ResolveFamilyParameterName(FamilyParameter familyParameter)
 	{
 		string ResolveFamilyParameterName;
 		try
 		{
-			object obj;
-			if (familyParameter == null)
-			{
-				obj = null;
-			}
-			else
-			{
-				Definition definition = familyParameter.Definition;
-				obj = ((definition != null) ? definition.Name : null);
-			}
-			if (obj == null)
-			{
-				obj = string.Empty;
-			}
-			ResolveFamilyParameterName = (string)obj;
+			ResolveFamilyParameterName = familyParameter?.Definition?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -162,12 +242,10 @@ public sealed class FamilyDocumentParameterCaptureService
 
 	private static string ResolveFamilyParameterStorageTypeName(FamilyParameter familyParameter)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Unknown result type (might be due to invalid IL or missing references)
 		string ResolveFamilyParameterStorageTypeName;
 		try
 		{
-			ResolveFamilyParameterStorageTypeName = ((Enum)familyParameter.StorageType/*cast due to .constrained prefix*/).ToString();
+			ResolveFamilyParameterStorageTypeName = familyParameter.StorageType.ToString();
 		}
 		catch (Exception projectError)
 		{
@@ -192,7 +270,7 @@ public sealed class FamilyDocumentParameterCaptureService
 	{
 		try
 		{
-			if (familyParameter != null && familyParameter.Id != null)
+			if (familyParameter != null && (object)familyParameter.Id != null)
 			{
 				return RevitElementIdCompat.CompatIntegerValue(familyParameter.Id);
 			}
@@ -226,11 +304,9 @@ public sealed class FamilyDocumentParameterCaptureService
 	{
 		try
 		{
-			Definition obj = ((familyParameter != null) ? familyParameter.Definition : null);
-			ExternalDefinition externalDefinition = (ExternalDefinition)(object)((obj is ExternalDefinition) ? obj : null);
-			if (externalDefinition != null)
+			if (familyParameter?.Definition is ExternalDefinition { GUID: var gUID })
 			{
-				return externalDefinition.GUID.ToString("D");
+				return gUID.ToString("D");
 			}
 		}
 		catch (Exception projectError)
@@ -252,7 +328,7 @@ public sealed class FamilyDocumentParameterCaptureService
 		{
 			try
 			{
-				PropertyInfo propertyInfo = ((object)familyParameter).GetType().GetProperty("Formula");
+				PropertyInfo propertyInfo = familyParameter.GetType().GetProperty("Formula");
 				ResolveFamilyParameterFormula = (((object)propertyInfo != null) ? NormalizeMultiline(Convert.ToString(RuntimeHelpers.GetObjectValue(RuntimeHelpers.GetObjectValue(propertyInfo.GetValue(familyParameter, null))), CultureInfo.InvariantCulture)) : string.Empty);
 			}
 			catch (Exception projectError)
@@ -265,51 +341,45 @@ public sealed class FamilyDocumentParameterCaptureService
 		return ResolveFamilyParameterFormula;
 	}
 
-	private static string ResolveFamilyParameterValue(Document familyDoc, FamilyManager manager, FamilyParameter familyParameter)
+	private static string ResolveFamilyParameterValue(Document familyDoc, FamilyManager manager, FamilyType familyType, FamilyParameter familyParameter)
 	{
-		//IL_0021: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0026: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0027: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0029: Unknown result type (might be due to invalid IL or missing references)
-		//IL_003f: Expected I4, but got Unknown
 		string ResolveFamilyParameterValue;
 		try
 		{
-			if (manager == null || manager.CurrentType == null || familyParameter == null)
+			FamilyType effectiveType = familyType ?? manager?.CurrentType;
+			if (effectiveType == null || familyParameter == null)
 			{
 				ResolveFamilyParameterValue = string.Empty;
 			}
 			else
 			{
-				FamilyType familyType = manager.CurrentType;
-				StorageType storageType = familyParameter.StorageType;
-				switch (storageType - 1)
+				switch (familyParameter.StorageType)
 				{
-				case 2:
-					ResolveFamilyParameterValue = NormalizeMultiline(familyType.AsString(familyParameter));
+				case StorageType.String:
+					ResolveFamilyParameterValue = NormalizeMultiline(effectiveType.AsString(familyParameter));
 					break;
-				case 1:
+				case StorageType.Double:
 				{
-					object valueObject = familyType.AsDouble(familyParameter);
+					object valueObject = effectiveType.AsDouble(familyParameter);
 					ResolveFamilyParameterValue = ((valueObject != null) ? Convert.ToDouble(RuntimeHelpers.GetObjectValue(valueObject), CultureInfo.InvariantCulture).ToString("G17", CultureInfo.InvariantCulture) : string.Empty);
 					break;
 				}
-				case 0:
+				case StorageType.Integer:
 				{
-					object valueObject2 = familyType.AsInteger(familyParameter);
-					ResolveFamilyParameterValue = ((valueObject2 != null) ? Convert.ToInt32(RuntimeHelpers.GetObjectValue(valueObject2), CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture) : string.Empty);
+					object valueObject2 = effectiveType.AsInteger(familyParameter);
+					ResolveFamilyParameterValue = ((valueObject2 != null) ? FamilyBrowserYesNoParameterFormatter.FormatInteger(familyParameter, Convert.ToInt32(RuntimeHelpers.GetObjectValue(valueObject2), CultureInfo.InvariantCulture)) : string.Empty);
 					break;
 				}
-				case 3:
+				case StorageType.ElementId:
 				{
-					ElementId id = familyType.AsElementId(familyParameter);
-					if (id == null || id == ElementId.InvalidElementId)
+					ElementId id = effectiveType.AsElementId(familyParameter);
+					if ((object)id == null || id == ElementId.InvalidElementId)
 					{
 						ResolveFamilyParameterValue = string.Empty;
 						break;
 					}
-					Element referenced = ((familyDoc == null) ? null : familyDoc.GetElement(id));
-					ResolveFamilyParameterValue = ((referenced == null) ? RevitElementIdCompat.CompatIntegerValue(id).ToString(CultureInfo.InvariantCulture) : (((object)referenced).GetType().Name + ":" + ResolveElementName(referenced)));
+					Element referenced = familyDoc?.GetElement(id);
+					ResolveFamilyParameterValue = ((referenced == null) ? RevitElementIdCompat.CompatIntegerValue(id).ToString(CultureInfo.InvariantCulture) : (referenced.GetType().Name + ":" + ResolveElementName(referenced)));
 					break;
 				}
 				default:

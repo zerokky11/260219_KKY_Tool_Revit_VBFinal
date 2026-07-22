@@ -7,26 +7,20 @@ public sealed class FamilyThumbnailPreviewFailuresPreprocessor : IFailuresPrepro
 {
 	public FailureProcessingResult PreprocessFailures(FailuresAccessor failuresAccessor)
 	{
-		//IL_0004: Unknown result type (might be due to invalid IL or missing references)
-		//IL_006b: Unknown result type (might be due to invalid IL or missing references)
-		//IL_006c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0013: Unknown result type (might be due to invalid IL or missing references)
-		//IL_002b: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0031: Invalid comparison between Unknown and I4
 		if (failuresAccessor == null)
 		{
-			return (FailureProcessingResult)0;
+			return FailureProcessingResult.Continue;
 		}
 		try
 		{
 			IList<FailureMessageAccessor> messages = failuresAccessor.GetFailureMessages();
 			if (messages == null)
 			{
-				return (FailureProcessingResult)0;
+				return FailureProcessingResult.Continue;
 			}
 			foreach (FailureMessageAccessor message in messages)
 			{
-				if (message != null && (int)message.GetSeverity() == 1)
+				if (message != null && message.GetSeverity() == FailureSeverity.Warning)
 				{
 					try
 					{
@@ -45,6 +39,12 @@ public sealed class FamilyThumbnailPreviewFailuresPreprocessor : IFailuresPrepro
 			ProjectData.SetProjectError(projectError2);
 			ProjectData.ClearProjectError();
 		}
-		return (FailureProcessingResult)0;
+		return FailureProcessingResult.Continue;
+	}
+
+	FailureProcessingResult IFailuresPreprocessor.PreprocessFailures(FailuresAccessor failuresAccessor)
+	{
+		//ILSpy generated this explicit interface implementation from .override directive in PreprocessFailures
+		return this.PreprocessFailures(failuresAccessor);
 	}
 }

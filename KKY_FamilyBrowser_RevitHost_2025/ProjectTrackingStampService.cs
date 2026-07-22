@@ -10,7 +10,7 @@ public sealed class ProjectTrackingStampService
 	{
 	}
 
-	public static ProjectTrackingCatalog BuildCatalog(StandardLibraryRegistrationRecord registration, StandardLibrarySnapshot standardSnapshot, ProjectContentSnapshot projectSnapshot)
+	public static ProjectTrackingCatalog BuildCatalog(StandardLibraryRegistrationRecord registration, StandardLibrarySnapshot standardSnapshot, ProjectContentSnapshot projectSnapshot, bool compareDetailedSystemTypeComponents = true)
 	{
 		ProjectTrackingCatalog catalog = new ProjectTrackingCatalog
 		{
@@ -51,8 +51,9 @@ public sealed class ProjectTrackingStampService
 			ProjectSystemTypeSnapshotItem projectType = null;
 			if (projectSystemMap.TryGetValue(key2, out projectType))
 			{
-				string standardFingerprint2 = ProjectSnapshotFingerprintService.BuildSystemFingerprint(standardType);
-				string projectFingerprint2 = ProjectSnapshotFingerprintService.BuildSystemFingerprint(projectType);
+				bool useDetailedComponents = compareDetailedSystemTypeComponents && standardType.DetailedComponentsCaptured && projectType.DetailedComponentsCaptured && SystemTypeDetailedComponentSnapshotService.SupportsDetailedComponents(standardType.TypeClassName);
+				string standardFingerprint2 = ProjectSnapshotFingerprintService.BuildSystemFingerprint(standardType, useDetailedComponents);
+				string projectFingerprint2 = ProjectSnapshotFingerprintService.BuildSystemFingerprint(projectType, useDetailedComponents);
 				if (string.Equals(standardFingerprint2, projectFingerprint2, StringComparison.Ordinal))
 				{
 					catalog.SystemTypes.Add(new TrackedSystemTypeState

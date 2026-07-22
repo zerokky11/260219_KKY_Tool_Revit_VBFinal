@@ -57,28 +57,7 @@ public sealed class FamilyBrowserFamilyClassificationService
 		string ResolveCategoryName;
 		try
 		{
-			if (family != null && family.FamilyCategory != null)
-			{
-				ResolveCategoryName = family.FamilyCategory.Name ?? string.Empty;
-			}
-			else
-			{
-				object obj;
-				if (family == null)
-				{
-					obj = null;
-				}
-				else
-				{
-					Category category = ((Element)family).Category;
-					obj = ((category != null) ? category.Name : null);
-				}
-				if (obj == null)
-				{
-					obj = string.Empty;
-				}
-				ResolveCategoryName = (string)obj;
-			}
+			ResolveCategoryName = ((family == null || family.FamilyCategory == null) ? (family?.Category?.Name ?? string.Empty) : (family.FamilyCategory.Name ?? string.Empty));
 		}
 		catch (Exception projectError)
 		{
@@ -93,13 +72,13 @@ public sealed class FamilyBrowserFamilyClassificationService
 	{
 		try
 		{
-			if (family != null && family.FamilyCategory != null && family.FamilyCategory.Id != null)
+			if (family != null && family.FamilyCategory != null && (object)family.FamilyCategory.Id != null)
 			{
 				return RevitElementIdCompat.CompatIntegerValue(family.FamilyCategory.Id).ToString(CultureInfo.InvariantCulture);
 			}
-			if (family != null && ((Element)family).Category != null && ((Element)family).Category.Id != null)
+			if (family != null && family.Category != null && (object)family.Category.Id != null)
 			{
-				return RevitElementIdCompat.CompatIntegerValue(((Element)family).Category.Id).ToString(CultureInfo.InvariantCulture);
+				return RevitElementIdCompat.CompatIntegerValue(family.Category.Id).ToString(CultureInfo.InvariantCulture);
 			}
 		}
 		catch (Exception projectError)
@@ -112,12 +91,6 @@ public sealed class FamilyBrowserFamilyClassificationService
 
 	public static string ResolveCategoryGroup(Family family)
 	{
-		//IL_0050: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0055: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0056: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0058: Invalid comparison between Unknown and I4
-		//IL_005a: Unknown result type (might be due to invalid IL or missing references)
-		//IL_005c: Invalid comparison between Unknown and I4
 		string ResolveCategoryGroup;
 		if (family == null)
 		{
@@ -135,16 +108,13 @@ public sealed class FamilyBrowserFamilyClassificationService
 				{
 					string categoryName = ResolveCategoryName(family);
 					string categoryId = ResolveCategoryId(family);
-					string familyName = ((Element)family).Name ?? string.Empty;
-					if (IsAnnotationCategoryLike(categoryName, categoryId, familyName))
+					string familyName = family.Name ?? string.Empty;
+					ResolveCategoryGroup = (IsAnnotationCategoryLike(categoryName, categoryId, familyName) ? "Annotation" : (family.FamilyCategory.CategoryType switch
 					{
-						ResolveCategoryGroup = "Annotation";
-					}
-					else
-					{
-						CategoryType categoryType = family.FamilyCategory.CategoryType;
-						ResolveCategoryGroup = (((int)categoryType == 1) ? "Model" : (((int)categoryType != 2) ? "Other" : "Annotation"));
-					}
+						CategoryType.Model => "Model",
+						CategoryType.Annotation => "Annotation",
+						_ => "Other",
+					}));
 				}
 			}
 			catch (Exception projectError)
@@ -232,7 +202,7 @@ public sealed class FamilyBrowserFamilyClassificationService
 	{
 		try
 		{
-			PropertyInfo prop = ((object)family).GetType().GetProperty("IsEditable", BindingFlags.Instance | BindingFlags.Public);
+			PropertyInfo prop = family.GetType().GetProperty("IsEditable", BindingFlags.Instance | BindingFlags.Public);
 			if ((object)prop != null && (object)prop.PropertyType == typeof(bool))
 			{
 				return Conversions.ToBoolean(prop.GetValue(family, null));
@@ -248,7 +218,7 @@ public sealed class FamilyBrowserFamilyClassificationService
 
 	private static bool IsTypeManagedFamilyCategory(Family family)
 	{
-		return IsTypeManagedFamilyLike(ResolveCategoryName(family), ResolveCategoryId(family), ((family != null) ? ((Element)family).Name : null) ?? string.Empty);
+		return IsTypeManagedFamilyLike(ResolveCategoryName(family), ResolveCategoryId(family), family?.Name ?? string.Empty);
 	}
 
 	private static bool IsTypeManagedFamilyName(string categoryName, string familyName)
@@ -291,13 +261,13 @@ public sealed class FamilyBrowserFamilyClassificationService
 	{
 		try
 		{
-			if (family != null && family.FamilyCategory != null && family.FamilyCategory.Id != null)
+			if (family != null && family.FamilyCategory != null && (object)family.FamilyCategory.Id != null)
 			{
 				return RevitElementIdCompat.CompatIntegerValue(family.FamilyCategory.Id);
 			}
-			if (family != null && ((Element)family).Category != null && ((Element)family).Category.Id != null)
+			if (family != null && family.Category != null && (object)family.Category.Id != null)
 			{
-				return RevitElementIdCompat.CompatIntegerValue(((Element)family).Category.Id);
+				return RevitElementIdCompat.CompatIntegerValue(family.Category.Id);
 			}
 		}
 		catch (Exception projectError)
@@ -310,9 +280,6 @@ public sealed class FamilyBrowserFamilyClassificationService
 
 	private static HashSet<int> BuildCategoryIdSet(params string[] names)
 	{
-		//IL_0021: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0026: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0029: Unknown result type (might be due to invalid IL or missing references)
 		HashSet<int> result = new HashSet<int>();
 		foreach (string name in names)
 		{

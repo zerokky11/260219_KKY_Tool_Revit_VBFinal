@@ -72,6 +72,8 @@ public sealed class FamilyBrowserTestRootSetupService
 	{
 		FamilyBrowserDeploymentBootstrapService.DisableBootstrap(currentUser);
 		FamilyBrowserMachineConfigStore.ClearManagedPolicyPath(currentUser);
+		StandardRvtChangeCandidateService.NotifyPolicyChanged();
+		FamilyBrowserNativeCommandGuardService.NotifyPolicyChanged();
 	}
 
 	public static FamilyBrowserTestRootSetupResult Configure(string workspaceRoot, string selectedRoot, FamilyBrowserStandardPolicy sourcePolicy, string currentUser)

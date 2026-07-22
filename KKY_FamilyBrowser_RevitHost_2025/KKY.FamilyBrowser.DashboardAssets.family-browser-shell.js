@@ -1,10 +1,10 @@
-/* KKY Family Browser dashboard shell asset. TEST. */
+/* KKY Family Browser dashboard shell asset. */
 /* Single-pane shell owner for Revit 2019 IE WebBrowser. */
 
 (function () {
-  var shellStamp = 'TEST';
-  var tabs = ['families', 'systems', 'requests', 'audit', 'unregisteredfamilies', 'unregisteredsystems', 'permissions', 'admin', 'help', 'settings'];
-  var panes = ['familiesPane', 'systemsPane', 'requestsPane', 'auditPane', 'unregisteredFamiliesPane', 'unregisteredSystemsPane', 'permissionsPane', 'adminPane', 'helpPane', 'settingsPane'];
+  var shellStamp = '20260630-admin-scroll-layout';
+  var tabs = ['home', 'families', 'systems', 'requests', 'audit', 'unregisteredfamilies', 'unregisteredsystems', 'permissions', 'admin', 'help', 'settings'];
+  var panes = ['homePane', 'familiesPane', 'systemsPane', 'requestsPane', 'auditPane', 'unregisteredFamiliesPane', 'unregisteredSystemsPane', 'permissionsPane', 'adminPane', 'helpPane', 'settingsPane'];
 
   function trimClass(value) {
     return (value || '').replace(/^\s+|\s+$/g, '').replace(/\s+/g, ' ');
@@ -54,6 +54,7 @@
   }
 
   function paneId(tab) {
+    if (tab === 'home') return 'homePane';
     if (tab === 'families') return 'familiesPane';
     if (tab === 'systems') return 'systemsPane';
     if (tab === 'requests') return 'requestsPane';
@@ -64,7 +65,7 @@
     if (tab === 'admin') return 'adminPane';
     if (tab === 'help') return 'helpPane';
     if (tab === 'settings') return 'settingsPane';
-    return 'familiesPane';
+    return 'homePane';
   }
 
   function isBrowser(tab) {
@@ -95,9 +96,10 @@
 
   function removeShellClasses(value) {
     return trimClass((value || '')
-      .replace(/(^|\s)fb-tab-(families|systems|requests|audit|unregisteredfamilies|unregisteredsystems|permissions|admin|help|settings)(?=\s|$)/g, ' ')
+      .replace(/(^|\s)fb-tab-(home|families|systems|requests|audit|unregisteredfamilies|unregisteredsystems|permissions|admin|help|settings)(?=\s|$)/g, ' ')
       .replace(/(^|\s)fb-browser(?=\s|$)/g, ' ')
       .replace(/(^|\s)fb-workflow(?=\s|$)/g, ' ')
+      .replace(/(^|\s)fb-detached-detail(?=\s|$)/g, ' ')
       .replace(/(^|\s)fb-single-pane(?=\s|$)/g, ' ')
       .replace(/(^|\s)fb-ui-lock-20260507(?=\s|$)/g, ' ')
       .replace(/(^|\s)fb-shell-20260507(?=\s|$)/g, ' '));
@@ -106,7 +108,7 @@
   function setBody(tab) {
     var body = document.body;
     if (!body) return;
-    body.className = trimClass(removeShellClasses(body.className) + ' fb-shell-20260507 fb-tab-' + tab + (isBrowser(tab) ? ' fb-browser' : ' fb-workflow'));
+    body.className = trimClass(removeShellClasses(body.className) + ' fb-shell-20260507 fb-tab-' + tab + (isBrowser(tab) ? ' fb-browser fb-detached-detail' : ' fb-workflow'));
   }
 
   function setNav(tab) {
@@ -124,15 +126,31 @@
   }
 
   function shellTop() {
-    var y = 154;
+    var y = 88;
     var top = byClass('top');
     var bar = byClass('toolbar');
     try {
       if (top) y = Math.max(y, top.offsetTop + top.offsetHeight);
-      if (bar) y = Math.max(y, bar.offsetTop + bar.offsetHeight);
+      if (bar && (' ' + (bar.className || '') + ' ').indexOf(' fb-nav-10 ') < 0) y = Math.max(y, bar.offsetTop + bar.offsetHeight);
     } catch (e) {
     }
     return y;
+  }
+
+  function shellLeft() {
+    var bar = byClass('toolbar');
+    try {
+      if (bar && (' ' + (bar.className || '') + ' ').indexOf(' fb-nav-10 ') >= 0) {
+        var expected = vp().w < 1500 ? 188 : 204;
+        return Math.max(expected, bar.offsetWidth || 0);
+      }
+    } catch (e) {
+    }
+    return 0;
+  }
+
+  function shellGap() {
+    return shellLeft() > 0 ? 8 : 0;
   }
 
   function hidePane(id) {
@@ -150,10 +168,13 @@
   function baseLayoutBox(topPx) {
     var size = vp();
     var layout = byClass('layout');
+    var navW = shellLeft();
+    var gap = shellGap();
+    var left = navW + gap;
     if (document.body) {
       css(document.body, 'margin:0 !important;overflow:hidden !important;width:' + size.w + 'px !important;height:' + size.h + 'px !important;background:#eef5f2 !important;');
     }
-    css(layout, 'display:block !important;position:fixed !important;left:0 !important;top:' + topPx + 'px !important;width:' + size.w + 'px !important;height:' + Math.max(340, size.h - topPx) + 'px !important;padding:0 !important;overflow:hidden !important;background:#eef5f2 !important;box-sizing:border-box !important;');
+    css(layout, 'display:block !important;position:fixed !important;left:' + left + 'px !important;right:0 !important;top:' + topPx + 'px !important;bottom:0 !important;width:auto !important;height:auto !important;min-width:' + Math.max(320, size.w - left) + 'px !important;min-height:' + Math.max(340, size.h - topPx) + 'px !important;padding:0 !important;overflow:hidden !important;background:#eef5f2 !important;box-sizing:border-box !important;');
     return size;
   }
 
@@ -210,21 +231,43 @@
 
   function styleBrowserPane(pane, tab, searchH, statusH) {
     if (!pane) return;
-    var headH = tab === 'families' ? 58 : 56;
+    var headBaseH = tab === 'families' ? 58 : 56;
     css(pane, 'display:block !important;visibility:visible !important;position:absolute !important;left:0 !important;right:0 !important;top:' + searchH + 'px !important;bottom:' + statusH + 'px !important;width:auto !important;height:auto !important;overflow:hidden !important;background:#fff !important;box-sizing:border-box !important;z-index:2 !important;');
 
     var head = findClass(pane, 'pane-head');
     var headText = findClass(head, 'pane-head-text');
     var kindToggle = findClass(head, 'family-kind-toggle');
     var statusToggle = findClass(head, 'inline-status-toggle');
-    css(head, 'display:block !important;visibility:visible !important;position:absolute !important;left:0 !important;right:0 !important;top:0 !important;height:' + headH + 'px !important;overflow:visible !important;background:#fff !important;border-bottom:1px solid #d8e4df !important;padding:9px 12px !important;box-sizing:border-box !important;z-index:6 !important;');
+    css(head, 'display:-ms-flexbox !important;display:flex !important;visibility:visible !important;position:absolute !important;left:0 !important;right:0 !important;top:0 !important;height:auto !important;min-height:' + headBaseH + 'px !important;overflow:visible !important;background:#fff !important;border-bottom:1px solid #d8e4df !important;padding:9px 12px 5px 12px !important;box-sizing:border-box !important;z-index:6 !important;-ms-flex-wrap:wrap !important;flex-wrap:wrap !important;-ms-flex-align:center !important;align-items:center !important;');
     css(headText, 'display:none !important;');
     if (kindToggle) {
-      css(kindToggle, (tab === 'families' ? 'display:inline-block' : 'display:none') + ' !important;vertical-align:middle !important;margin-left:10px !important;white-space:nowrap !important;position:relative !important;z-index:8 !important;');
+      css(kindToggle, (tab === 'families' ? 'display:-ms-inline-flexbox !important;display:inline-flex' : 'display:none') + ' !important;vertical-align:middle !important;margin-left:6px !important;margin-bottom:4px !important;white-space:normal !important;overflow:visible !important;text-overflow:clip !important;position:relative !important;z-index:8 !important;-ms-flex-wrap:wrap !important;flex-wrap:wrap !important;-ms-flex-align:center !important;align-items:center !important;');
     }
     if (statusToggle) {
-      css(statusToggle, 'display:inline-block !important;vertical-align:middle !important;margin-left:10px !important;max-width:' + (tab === 'families' ? '520' : '620') + 'px !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;position:relative !important;z-index:8 !important;');
+      css(statusToggle, 'display:-ms-inline-flexbox !important;display:inline-flex !important;vertical-align:middle !important;margin-left:6px !important;margin-bottom:4px !important;max-width:none !important;white-space:normal !important;overflow:visible !important;text-overflow:clip !important;position:relative !important;z-index:8 !important;-ms-flex-wrap:wrap !important;flex-wrap:wrap !important;-ms-flex-align:center !important;align-items:center !important;');
     }
+    function styleToggleLinks(toggle) {
+      if (!toggle) return;
+      var links = toggle.getElementsByTagName('a');
+      for (var i = 0; i < links.length; i++) {
+        css(links[i], 'display:inline-block !important;vertical-align:middle !important;white-space:nowrap !important;overflow:visible !important;text-overflow:clip !important;max-width:none !important;margin:0 4px 4px 0 !important;box-sizing:border-box !important;');
+      }
+      var spans = toggle.getElementsByTagName('span');
+      for (var j = 0; j < spans.length; j++) {
+        if ((' ' + (spans[j].className || '') + ' ').indexOf(' kind-label ') >= 0) {
+          css(spans[j], 'display:inline-block !important;vertical-align:middle !important;white-space:nowrap !important;overflow:visible !important;text-overflow:clip !important;margin:0 5px 4px 0 !important;box-sizing:border-box !important;');
+        }
+      }
+    }
+    styleToggleLinks(kindToggle);
+    styleToggleLinks(statusToggle);
+    var headH = headBaseH;
+    try {
+      headH = Math.max(headBaseH, Math.ceil(Math.max(head.scrollHeight || 0, head.offsetHeight || 0)) + 2);
+    } catch (ignoredHeadMeasure) {
+      headH = headBaseH;
+    }
+    css(head, 'display:-ms-flexbox !important;display:flex !important;visibility:visible !important;position:absolute !important;left:0 !important;right:0 !important;top:0 !important;height:' + headH + 'px !important;min-height:' + headBaseH + 'px !important;overflow:visible !important;background:#fff !important;border-bottom:1px solid #d8e4df !important;padding:9px 12px 5px 12px !important;box-sizing:border-box !important;z-index:6 !important;-ms-flex-wrap:wrap !important;flex-wrap:wrap !important;-ms-flex-align:center !important;align-items:center !important;');
 
     var grid = findClass(pane, 'family-browser-grid');
     var treeW = (vp().w < 1500) ? 200 : 220;
@@ -251,21 +294,19 @@
     var detail = byId('selectionDetailPanel');
     var status = byClass('statusbar');
     var pane = byId(paneId(tab));
-    var railH = Math.max(300, size.h - topPx - pad * 2);
-    var detailW = clamp(Math.floor(size.w * 0.27), 360, 460);
-    if (size.w < 1500) detailW = 340;
-    var centerMin = size.w < 1400 ? 620 : 760;
-    if (size.w - pad * 2 - detailW < centerMin) detailW = Math.max(300, size.w - pad * 2 - centerMin);
-    var centerW = Math.max(520, size.w - pad * 2 - detailW);
-    var detailLeft = pad + centerW;
+    var navW = shellLeft();
+    var gap = shellGap();
+    var left = navW + gap + pad;
+    var minW = Math.max(520, size.w - left - pad);
+    var minH = Math.max(300, size.h - topPx - pad * 2);
 
     hideInactivePanes(paneId(tab));
-    css(center, 'display:block !important;visibility:visible !important;position:fixed !important;left:' + pad + 'px !important;top:' + (topPx + pad) + 'px !important;width:' + centerW + 'px !important;height:' + railH + 'px !important;overflow:hidden !important;background:#fff !important;border:1px solid #d8e4df !important;border-right:0 !important;border-radius:6px 0 0 6px !important;box-sizing:border-box !important;z-index:10 !important;');
-    css(detail, 'display:block !important;visibility:visible !important;position:fixed !important;left:' + detailLeft + 'px !important;right:auto !important;top:' + (topPx + pad) + 'px !important;width:' + detailW + 'px !important;height:' + railH + 'px !important;overflow:auto !important;background:#fff !important;border:1px solid #d8e4df !important;border-radius:0 6px 6px 0 !important;padding:12px !important;box-sizing:border-box !important;z-index:12 !important;');
+    css(center, 'display:block !important;visibility:visible !important;position:fixed !important;left:' + left + 'px !important;right:' + pad + 'px !important;top:' + (topPx + pad) + 'px !important;bottom:' + pad + 'px !important;width:auto !important;height:auto !important;min-width:' + minW + 'px !important;min-height:' + minH + 'px !important;overflow:hidden !important;background:#fff !important;border:1px solid #d8e4df !important;border-radius:6px !important;box-sizing:border-box !important;z-index:10 !important;');
+    css(detail, 'display:none !important;visibility:hidden !important;position:absolute !important;left:-99999px !important;top:-99999px !important;right:auto !important;width:1px !important;height:1px !important;overflow:hidden !important;pointer-events:none !important;');
     css(status, 'display:block !important;visibility:visible !important;position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;height:34px !important;line-height:34px !important;overflow:hidden !important;background:#fff !important;border-top:1px solid #d8e4df !important;padding:0 12px !important;box-sizing:border-box !important;z-index:4 !important;');
     var searchH = styleBrowserSearch(tab);
     styleBrowserPane(pane, tab, searchH, 34);
-    if (window.fbLog) fbLog('dashboard shell browser ' + tab + ' centerW=' + centerW + ' detailW=' + detailW);
+    if (window.fbLog) fbLog('dashboard shell browser ' + tab + ' detached detail hidden');
   }
 
   function styleWorkflowPane(pane, tab) {
@@ -273,11 +314,12 @@
     var scroll = findClass(pane, 'request-pane-scroll');
     var head = findClass(pane, 'pane-head');
     if (tab === 'requests' || tab === 'unregisteredfamilies' || tab === 'unregisteredsystems') {
-      css(pane, 'display:block !important;visibility:visible !important;position:relative !important;left:auto !important;right:auto !important;top:auto !important;bottom:auto !important;width:auto !important;height:auto !important;min-height:100% !important;overflow:visible !important;background:#fff !important;box-sizing:border-box !important;z-index:2 !important;padding:0 !important;');
+      css(pane, 'display:block !important;visibility:visible !important;position:absolute !important;left:0 !important;right:0 !important;top:0 !important;bottom:0 !important;width:auto !important;height:auto !important;min-height:0 !important;overflow:auto !important;background:#fff !important;box-sizing:border-box !important;z-index:2 !important;padding:0 !important;');
       css(head, 'display:block !important;visibility:visible !important;position:relative !important;left:auto !important;right:auto !important;top:auto !important;height:auto !important;overflow:visible !important;background:#fff !important;border-bottom:1px solid #d8e4df !important;padding:12px 16px !important;box-sizing:border-box !important;z-index:3 !important;');
-      css(scroll, 'display:block !important;visibility:visible !important;position:relative !important;left:auto !important;right:auto !important;top:auto !important;bottom:auto !important;width:auto !important;height:auto !important;min-height:520px !important;overflow:visible !important;background:#fff !important;padding:22px !important;box-sizing:border-box !important;z-index:2 !important;');
+      css(scroll, 'display:block !important;visibility:visible !important;position:relative !important;left:auto !important;right:auto !important;top:auto !important;bottom:auto !important;width:auto !important;height:auto !important;min-height:0 !important;overflow:visible !important;background:#fff !important;padding:22px !important;box-sizing:border-box !important;z-index:2 !important;');
     } else {
-      css(pane, 'display:block !important;visibility:visible !important;position:relative !important;left:auto !important;right:auto !important;top:auto !important;bottom:auto !important;width:auto !important;height:auto !important;min-height:100% !important;overflow:visible !important;background:#fff !important;box-sizing:border-box !important;z-index:2 !important;padding:24px !important;');
+      var panePad = (tab === 'admin') ? 14 : 24;
+      css(pane, 'display:block !important;visibility:visible !important;position:absolute !important;left:0 !important;right:0 !important;top:0 !important;bottom:0 !important;width:auto !important;height:auto !important;min-height:0 !important;overflow:auto !important;background:#fff !important;box-sizing:border-box !important;z-index:2 !important;padding:' + panePad + 'px !important;');
       css(head, 'display:none !important;');
       css(scroll, 'display:block !important;visibility:visible !important;position:static !important;left:auto !important;right:auto !important;top:auto !important;bottom:auto !important;width:auto !important;height:auto !important;min-height:0 !important;overflow:visible !important;background:#fff !important;padding:0 !important;box-sizing:border-box !important;');
     }
@@ -286,18 +328,21 @@
   function layoutWorkflow(tab) {
     var topPx = shellTop();
     var size = baseLayoutBox(topPx);
-    var pad = 12;
+    var pad = 0;
     var center = byId('mainCenter');
     var detail = byId('selectionDetailPanel');
     var search = byId('browserSearch');
     var status = byClass('statusbar');
     var pane = byId(paneId(tab));
+    var navW = shellLeft();
+    var gap = shellGap();
+    var left = navW + gap;
 
     hideInactivePanes(paneId(tab));
     css(search, 'display:none !important;visibility:hidden !important;');
     css(detail, 'display:none !important;visibility:hidden !important;position:absolute !important;left:-99999px !important;top:-99999px !important;width:1px !important;height:1px !important;overflow:hidden !important;');
     css(status, 'display:none !important;visibility:hidden !important;');
-    css(center, 'display:block !important;visibility:visible !important;position:fixed !important;left:' + pad + 'px !important;right:auto !important;top:' + (topPx + pad) + 'px !important;width:' + Math.max(420, size.w - pad * 2) + 'px !important;height:' + Math.max(260, size.h - topPx - pad * 2) + 'px !important;overflow:auto !important;background:#fff !important;border:1px solid #d8e4df !important;border-radius:8px !important;box-sizing:border-box !important;z-index:10 !important;');
+    css(center, 'display:block !important;visibility:visible !important;position:fixed !important;left:' + left + 'px !important;right:0 !important;top:' + topPx + 'px !important;bottom:0 !important;width:auto !important;height:auto !important;min-width:' + Math.max(420, size.w - left) + 'px !important;min-height:' + Math.max(260, size.h - topPx) + 'px !important;overflow:hidden !important;background:#fff !important;border:0 !important;border-left:1px solid #d8e4df !important;border-top:1px solid #d8e4df !important;border-radius:0 !important;box-sizing:border-box !important;z-index:10 !important;');
     styleWorkflowPane(pane, tab);
     if (window.fbLog) fbLog('dashboard shell workflow ' + tab + ' pane=' + paneId(tab));
   }
@@ -312,7 +357,7 @@
   }
 
   function layout(tab) {
-    currentTab = tab || currentTab || 'families';
+    currentTab = tab || currentTab || 'home';
     setBody(currentTab);
     setNav(currentTab);
     if (isBrowser(currentTab)) {
@@ -351,7 +396,7 @@
   window.setTab = function (tab) {
     try {
       var started = new Date().getTime();
-      currentTab = tab || currentTab || 'families';
+      currentTab = tab || currentTab || 'home';
       resetWorkflowFilters(currentTab);
       if (window.applyViewportDensity) applyViewportDensity();
       layout(currentTab);

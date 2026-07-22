@@ -20,6 +20,10 @@ public sealed class FamilyBrowserStandardPolicy
 
 	public FamilyBrowserFileGuardPolicy FileGuard { get; set; }
 
+	public bool? CompareDetailedSystemTypeComponents { get; set; }
+
+	public bool? TrackProjectElementChanges { get; set; }
+
 	public string LastUpdatedUtc { get; set; }
 
 	public string LastUpdatedBy { get; set; }
@@ -35,6 +39,8 @@ public sealed class FamilyBrowserStandardPolicy
 		Security = FamilyBrowserSecurityPolicy.CreateDefault();
 		ProjectPolicyRules = new List<FamilyBrowserProjectPolicyRule>();
 		FileGuard = FamilyBrowserFileGuardPolicy.CreateDefault();
+		CompareDetailedSystemTypeComponents = true;
+		TrackProjectElementChanges = false;
 		LastUpdatedUtc = string.Empty;
 		LastUpdatedBy = string.Empty;
 	}

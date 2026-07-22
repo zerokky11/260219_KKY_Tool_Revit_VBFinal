@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -16,10 +15,8 @@ public sealed class ProjectTrackingOutputStore
 		string outputDir = Path.Combine(ProjectSnapshotStore.GetProjectHistoryFolder(workspaceRoot, catalog?.ProjectDocumentPath ?? string.Empty, catalog?.ProjectDocumentTitle ?? "Untitled"), "Tracking");
 		Directory.CreateDirectory(outputDir);
 		string safeProjectName = MakeSafeFileName(catalog.ProjectDocumentTitle ?? "Untitled");
-		string fileName = "project-tracking-" + safeProjectName + "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".json";
-		string text = Path.Combine(outputDir, fileName);
-		File.WriteAllText(text, PlainJsonReportWriter.Serialize(catalog));
-		return text;
+		string fileNameStem = "project-tracking-" + safeProjectName;
+		return FamilyBrowserUniqueJsonReportStore.Save(outputDir, fileNameStem, catalog);
 	}
 
 	private static string MakeSafeFileName(string value)

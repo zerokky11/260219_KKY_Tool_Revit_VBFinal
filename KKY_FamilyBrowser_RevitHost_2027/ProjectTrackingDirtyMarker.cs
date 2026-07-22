@@ -2,6 +2,8 @@ using System.Collections.Generic;
 
 public class ProjectTrackingDirtyMarker
 {
+	public string MarkerId { get; set; }
+
 	public string DetectedAtUtc { get; set; }
 
 	public string User { get; set; }
@@ -20,6 +22,7 @@ public class ProjectTrackingDirtyMarker
 
 	public ProjectTrackingDirtyMarker()
 	{
+		MarkerId = string.Empty;
 		DetectedAtUtc = string.Empty;
 		User = string.Empty;
 		DocumentTitle = string.Empty;

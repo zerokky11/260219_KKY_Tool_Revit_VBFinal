@@ -2,11 +2,11 @@ using Autodesk.Revit.DB;
 using Microsoft.VisualBasic.CompilerServices;
 
 [StandardModule]
-internal sealed class RevitElementIdCompat
+internal static class RevitElementIdCompat
 {
 	internal static int CompatIntegerValue(this ElementId id)
 	{
-		if (id == null)
+		if ((object)id == null)
 		{
 			return 0;
 		}

@@ -30,7 +30,13 @@ public class StandardLoadableFamilySnapshotItem
 
 	public bool IsNestedLoadableChild { get; set; }
 
+	public bool StandalonePlacementUsageCaptured { get; set; }
+
+	public int StandaloneInstanceCount { get; set; }
+
 	public List<StandardNestedLoadableFamilySnapshotItem> NestedLoadableFamilies { get; set; }
+
+	public string BrowserDetailKey { get; set; }
 
 	public StandardLoadableFamilySnapshotItem()
 	{
@@ -45,6 +51,9 @@ public class StandardLoadableFamilySnapshotItem
 		ContentSignatureDebugPath = string.Empty;
 		ContentFingerprintFailureReason = string.Empty;
 		UniqueId = string.Empty;
+		StandalonePlacementUsageCaptured = false;
+		StandaloneInstanceCount = 0;
 		NestedLoadableFamilies = new List<StandardNestedLoadableFamilySnapshotItem>();
+		BrowserDetailKey = string.Empty;
 	}
 }

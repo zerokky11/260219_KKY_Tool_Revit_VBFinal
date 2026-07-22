@@ -28,7 +28,17 @@ public class StandardSystemTypeSnapshotItem
 
 	public string CompoundStructureSignature { get; set; }
 
+	public bool DetailedComponentsCaptured { get; set; }
+
+	public string DetailedComponentSignature { get; set; }
+
+	public List<SystemTypeDetailedComponentSnapshotItem> DetailedComponents { get; set; }
+
+	public string DetailSummary { get; set; }
+
 	public List<StandardSystemTypeLayerSnapshotItem> Layers { get; set; }
+
+	public string BrowserDetailKey { get; set; }
 
 	public StandardSystemTypeSnapshotItem()
 	{
@@ -44,6 +54,11 @@ public class StandardSystemTypeSnapshotItem
 		Shape = string.Empty;
 		RoutingPreferenceSignature = string.Empty;
 		CompoundStructureSignature = string.Empty;
+		DetailedComponentsCaptured = false;
+		DetailedComponentSignature = string.Empty;
+		DetailedComponents = new List<SystemTypeDetailedComponentSnapshotItem>();
+		DetailSummary = string.Empty;
 		Layers = new List<StandardSystemTypeLayerSnapshotItem>();
+		BrowserDetailKey = string.Empty;
 	}
 }

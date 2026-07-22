@@ -6,9 +6,15 @@ public class StandardRvtChangeCandidateEntry
 
 	public string UserName { get; set; }
 
+	public string RevitUserName { get; set; }
+
+	public string MachineName { get; set; }
+
 	public string DocumentTitle { get; set; }
 
 	public string DocumentPath { get; set; }
+
+	public string CanonicalDocumentIdentity { get; set; }
 
 	public string SourceId { get; set; }
 
@@ -36,13 +42,26 @@ public class StandardRvtChangeCandidateEntry
 
 	public string Details { get; set; }
 
+	public string BeforeFingerprint { get; set; }
+
+	public string AfterFingerprint { get; set; }
+
+	public string CommitState { get; set; }
+
+	public string CommitKind { get; set; }
+
+	public string CommittedAtUtc { get; set; }
+
 	public StandardRvtChangeCandidateEntry()
 	{
 		EntryId = string.Empty;
 		RecordedAtUtc = string.Empty;
 		UserName = string.Empty;
+		RevitUserName = string.Empty;
+		MachineName = string.Empty;
 		DocumentTitle = string.Empty;
 		DocumentPath = string.Empty;
+		CanonicalDocumentIdentity = string.Empty;
 		SourceId = string.Empty;
 		SlotKey = string.Empty;
 		DisciplineKey = string.Empty;
@@ -56,5 +75,10 @@ public class StandardRvtChangeCandidateEntry
 		ChangeKind = string.Empty;
 		Reason = string.Empty;
 		Details = string.Empty;
+		BeforeFingerprint = string.Empty;
+		AfterFingerprint = string.Empty;
+		CommitState = string.Empty;
+		CommitKind = string.Empty;
+		CommittedAtUtc = string.Empty;
 	}
 }

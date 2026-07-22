@@ -19,7 +19,7 @@ public sealed class FamilyBrowserErrorHelp
 		{
 			ex = new InvalidOperationException(korean ? "알 수 없는 오류가 발생했습니다." : "An unknown error occurred.");
 		}
-		string supportCode = "FBR-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+		string supportCode = "FBR-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N").Substring(0, 4).ToUpperInvariant();
 		string context = ((!string.IsNullOrWhiteSpace(caption)) ? caption.Trim() : (korean ? "작업" : "Action"));
 		Exception mostRelevant = FindMostRelevantException(ex);
 		string allText = BuildSearchText(ex);
@@ -30,7 +30,11 @@ public sealed class FamilyBrowserErrorHelp
 			LogPath = (logPath ?? string.Empty),
 			SupportCode = supportCode
 		};
-		if (mostRelevant is UnauthorizedAccessException || ContainsAny(allText, "access to the path is denied", "unauthorized", "permission denied", "권한"))
+		if (ContainsAny(allText, "managed shared folder", "managed folder path", "local c fallback", "공용 관리 폴더", "홈페이지 경로를 다시 확인", "family browser 정책 저장"))
+		{
+			ApplyManagedFolderUnavailable(friendly, korean);
+		}
+		else if (mostRelevant is UnauthorizedAccessException || ContainsAny(allText, "access to the path is denied", "unauthorized", "permission denied", "권한"))
 		{
 			ApplyAccessDenied(friendly, korean);
 		}
@@ -79,46 +83,105 @@ public sealed class FamilyBrowserErrorHelp
 
 	public static string WriteLog(string workspaceRoot, string caption, Exception ex, string extraText = "")
 	{
-		string WriteLog;
+		string root = (string.IsNullOrWhiteSpace(workspaceRoot) ? HostWorkspacePathResolver.ResolveRoot() : workspaceRoot);
 		try
 		{
-			string root = (string.IsNullOrWhiteSpace(workspaceRoot) ? HostWorkspacePathResolver.ResolveRoot() : workspaceRoot);
-			if (!FamilyBrowserStandardPolicyStore.IsManagedDataRootAvailable(root))
+			string dataFolder;
+			if (FamilyBrowserStandardPolicyStore.IsManagedDataRootAvailable(root))
 			{
-				WriteLog = "(managed log unavailable)";
+				dataFolder = FamilyBrowserStandardPolicyStore.GetDataFolder(root, "Logs");
 			}
 			else
 			{
-				string dataFolder = FamilyBrowserStandardPolicyStore.GetDataFolder(root, "Logs");
-				Directory.CreateDirectory(dataFolder);
-				string fileName = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "-" + SafeFileName(caption) + ".log";
-				string text = Path.Combine(dataFolder, fileName);
-				StringBuilder builder = new StringBuilder();
-				builder.AppendLine("Timestamp: " + DateTime.Now.ToString("O", CultureInfo.InvariantCulture));
-				builder.AppendLine("Action: " + (caption ?? string.Empty));
-				builder.AppendLine("Machine: " + Environment.MachineName);
-				builder.AppendLine("User: " + Environment.UserName);
-				builder.AppendLine("Workspace: " + root);
-				if (!string.IsNullOrWhiteSpace(extraText))
-				{
-					builder.AppendLine();
-					builder.AppendLine("Context");
-					builder.AppendLine(extraText);
-				}
-				builder.AppendLine();
-				builder.AppendLine("Exception");
-				builder.AppendLine((ex == null) ? "(no exception)" : ex.ToString());
-				File.WriteAllText(text, builder.ToString(), Encoding.UTF8);
-				WriteLog = text;
+				dataFolder = ResolveLocalDiagnosticLogFolder();
+			}
+			return WriteDiagnosticLogFile(dataFolder, root, caption, ex, extraText);
+		}
+		catch (Exception primaryError)
+		{
+			try
+			{
+				string fallbackContext = (extraText ?? string.Empty) + Environment.NewLine + "Primary log write failure: " + primaryError;
+				return WriteDiagnosticLogFile(ResolveLocalDiagnosticLogFolder(), root, caption, ex, fallbackContext);
+			}
+			catch (Exception projectError)
+			{
+				ProjectData.SetProjectError(projectError);
+				ProjectData.ClearProjectError();
+				return "(log write failed)";
 			}
 		}
-		catch (Exception projectError)
+	}
+
+	private static string ResolveLocalDiagnosticLogFolder()
+	{
+		string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+		return Path.Combine(localAppData, "KKY", "FamilyBrowser", "Diagnostics", "Errors");
+	}
+
+	private static string WriteDiagnosticLogFile(string dataFolder, string workspaceRoot, string caption, Exception ex, string extraText)
+	{
+		Directory.CreateDirectory(dataFolder);
+		string fileName = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff", CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) + "-" + SafeFileName(caption) + ".log";
+		string path = Path.Combine(dataFolder, fileName);
+		StringBuilder builder = new StringBuilder();
+		builder.AppendLine("Timestamp: " + DateTime.Now.ToString("O", CultureInfo.InvariantCulture));
+		builder.AppendLine("Action: " + (caption ?? string.Empty));
+		builder.AppendLine("Machine: " + Environment.MachineName);
+		builder.AppendLine("User: " + Environment.UserName);
+		builder.AppendLine("Workspace: " + (workspaceRoot ?? string.Empty));
+		if (!string.IsNullOrWhiteSpace(extraText))
 		{
-			ProjectData.SetProjectError(projectError);
-			WriteLog = "(log write failed)";
-			ProjectData.ClearProjectError();
+			builder.AppendLine();
+			builder.AppendLine("Context");
+			builder.AppendLine(extraText);
 		}
-		return WriteLog;
+		builder.AppendLine();
+		builder.AppendLine("Exception");
+		builder.AppendLine((ex == null) ? "(no exception)" : ex.ToString());
+		string temporaryPath = FamilyBrowserAtomicFileService.CreateSiblingTemporaryPath(path);
+		try
+		{
+			byte[] payload = new UTF8Encoding(false).GetBytes(builder.ToString());
+			using (FileStream stream = new FileStream(temporaryPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+			{
+				stream.Write(payload, 0, payload.Length);
+				stream.Flush(true);
+			}
+			FamilyBrowserAtomicFileService.Promote(temporaryPath, path);
+			return path;
+		}
+		finally
+		{
+			try
+			{
+				if (File.Exists(temporaryPath))
+				{
+					File.Delete(temporaryPath);
+				}
+			}
+			catch
+			{
+			}
+		}
+	}
+
+	private static void ApplyManagedFolderUnavailable(FamilyBrowserFriendlyError errorInfo, bool korean)
+	{
+		if (korean)
+		{
+			errorInfo.Summary = "공용 관리 폴더가 연결되지 않았습니다.";
+			errorInfo.Cause = "홈페이지에서 지정한 Family Browser 관리 폴더를 현재 PC에서 열 수 없어 정책과 운영 데이터를 저장하지 못했습니다.";
+			errorInfo.UserAction = "사내망/VPN과 네트워크 드라이브 연결을 확인한 뒤 새로고침 또는 홈페이지 경로 다시 확인을 실행하세요.";
+			errorInfo.AdminAction = "홈페이지 관리 경로 후보가 모든 PC에서 접근 가능한 UNC 경로인지 확인하고, 현재 Windows 계정의 읽기/쓰기 권한을 점검하세요.";
+		}
+		else
+		{
+			errorInfo.Summary = "The managed shared folder is not connected.";
+			errorInfo.Cause = "This PC cannot reach the Family Browser management folder provided by the homepage, so policy and operational data could not be saved.";
+			errorInfo.UserAction = "Check the corporate network, VPN, and mapped drive, then refresh or run Check Homepage Path Again.";
+			errorInfo.AdminAction = "Use a UNC path reachable from every PC and verify read/write access for the current Windows account.";
+		}
 	}
 
 	private static void ApplyAccessDenied(FamilyBrowserFriendlyError errorInfo, bool korean)

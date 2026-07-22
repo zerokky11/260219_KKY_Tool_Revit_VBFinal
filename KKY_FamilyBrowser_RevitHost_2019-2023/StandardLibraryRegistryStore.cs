@@ -6,8 +6,23 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using Microsoft.VisualBasic.CompilerServices;
 
+public sealed class StandardLibraryPublicationResult
+{
+	public string SnapshotPath { get; set; }
+
+	public string RegistrationPath { get; set; }
+
+	public StandardLibraryPublicationResult()
+	{
+		SnapshotPath = string.Empty;
+		RegistrationPath = string.Empty;
+	}
+}
+
 public sealed class StandardLibraryRegistryStore
 {
+	private static readonly object SyncRoot = new object();
+
 	private StandardLibraryRegistryStore()
 	{
 	}
@@ -15,23 +30,128 @@ public sealed class StandardLibraryRegistryStore
 	public static string SaveActiveRegistration(string workspaceRoot, StandardLibraryRegistrationRecord registration)
 	{
 		FamilyBrowserStandardPolicyStore.RequireManagedDataRootForWrite(workspaceRoot, FamilyBrowserLanguageService.Text("Save standard RVT registration", "표준 RVT 등록 정보 저장"));
-		string registryFolder = FamilyBrowserStandardPolicyStore.GetRegistryFolder(workspaceRoot);
-		Directory.CreateDirectory(registryFolder);
-		string text = Path.Combine(registryFolder, "active-standard-library.json");
-		File.WriteAllText(text, PlainJsonReportWriter.Serialize(registration));
-		return text;
+		using (FileStream publicationLock = AcquirePublicationLock(workspaceRoot))
+		{
+			return SaveActiveRegistrationCore(workspaceRoot, registration);
+		}
 	}
 
 	public static string SaveSnapshot(string workspaceRoot, StandardLibrarySnapshot snapshot)
 	{
 		FamilyBrowserStandardPolicyStore.RequireManagedDataRootForWrite(workspaceRoot, FamilyBrowserLanguageService.Text("Save standard RVT snapshot", "표준 RVT 스냅샷 저장"));
+		using (FileStream publicationLock = AcquirePublicationLock(workspaceRoot))
+		{
+			return SaveSnapshotCore(workspaceRoot, snapshot, true);
+		}
+	}
+
+	public static StandardLibraryPublicationResult PublishSnapshotAndActiveRegistration(string workspaceRoot, StandardLibrarySnapshot snapshot, StandardLibraryRegistrationRecord registration)
+	{
+		if (snapshot == null)
+		{
+			throw new ArgumentNullException("snapshot");
+		}
+		if (registration == null)
+		{
+			throw new ArgumentNullException("registration");
+		}
+		FamilyBrowserStandardPolicyStore.RequireManagedDataRootForWrite(workspaceRoot, FamilyBrowserLanguageService.Text("Publish standard RVT snapshot", "표준 RVT 스냅샷 발행"));
+		using (FileStream publicationLock = AcquirePublicationLock(workspaceRoot))
+		{
+			string snapshotPath = SaveSnapshotCore(workspaceRoot, snapshot, false);
+			registration.LastSnapshotPath = snapshotPath;
+			registration.LastSnapshotAtUtc = snapshot.CapturedAtUtc ?? registration.LastSnapshotAtUtc ?? string.Empty;
+			FamilyBrowserDataLoader.PublishStandardArtifacts(workspaceRoot, snapshotPath, snapshot);
+			string registrationPath = SaveActiveRegistrationCore(workspaceRoot, registration);
+			return new StandardLibraryPublicationResult
+			{
+				SnapshotPath = snapshotPath,
+				RegistrationPath = registrationPath
+			};
+		}
+	}
+
+	private static string SaveActiveRegistrationCore(string workspaceRoot, StandardLibraryRegistrationRecord registration)
+	{
+		string registryFolder = FamilyBrowserStandardPolicyStore.GetRegistryFolder(workspaceRoot);
+		Directory.CreateDirectory(registryFolder);
+		string path = Path.Combine(registryFolder, "active-standard-library.json");
+		WriteTextAtomic(path, PlainJsonReportWriter.Serialize(registration));
+		FamilyBrowserStandardRevisionService.RecordBaseline(workspaceRoot, registration, registration == null ? string.Empty : registration.RegisteredBy);
+		return path;
+	}
+
+	private static string SaveSnapshotCore(string workspaceRoot, StandardLibrarySnapshot snapshot, bool publishArtifacts)
+	{
 		string outputDir = FamilyBrowserStandardPolicyStore.GetSnapshotFolder(workspaceRoot);
 		Directory.CreateDirectory(outputDir);
 		string safeDisplayName = MakeSafeFileName(snapshot.DisplayName ?? "StandardLibrary");
-		string fileName = "standard-library-snapshot-" + safeDisplayName + "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".json";
+		string fileName = "standard-library-snapshot-" + safeDisplayName + "-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fffffff", CultureInfo.InvariantCulture) + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".json";
 		string text = Path.Combine(outputDir, fileName);
-		File.WriteAllText(text, PlainJsonReportWriter.Serialize(snapshot));
+		WriteTextAtomic(text, PlainJsonReportWriter.Serialize(snapshot));
+		try
+		{
+			FamilyBrowserNestedOnlyPlacementCatalogStore.SaveForSnapshot(text, snapshot);
+		}
+		catch (Exception ex)
+		{
+			FamilyBrowserErrorHelp.WriteLog(workspaceRoot, "Nested-only placement catalog save failed", ex, "SnapshotPath=" + text);
+		}
+		if (publishArtifacts)
+		{
+			FamilyBrowserDataLoader.PublishStandardArtifacts(workspaceRoot, text, snapshot);
+		}
 		return text;
+	}
+
+	private static FileStream AcquirePublicationLock(string workspaceRoot)
+	{
+		string registryFolder = FamilyBrowserStandardPolicyStore.GetRegistryFolder(workspaceRoot);
+		Directory.CreateDirectory(registryFolder);
+		string lockPath = Path.Combine(registryFolder, ".standard-library-publication.lock");
+		DateTime deadlineUtc = DateTime.UtcNow.AddMinutes(5.0);
+		while (true)
+		{
+			try
+			{
+				return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.WriteThrough);
+			}
+			catch (IOException)
+			{
+				if (DateTime.UtcNow >= deadlineUtc)
+				{
+					throw new IOException("Timed out waiting for the Standard RVT publication lock: " + lockPath);
+				}
+				System.Threading.Thread.Sleep(250);
+			}
+		}
+	}
+
+	private static void WriteTextAtomic(string path, string content)
+	{
+		lock (SyncRoot)
+		{
+			Directory.CreateDirectory(Path.GetDirectoryName(path));
+			string temporary = FamilyBrowserAtomicFileService.CreateSiblingTemporaryPath(path);
+			try
+			{
+				using (FileStream stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+				using (StreamWriter writer = new StreamWriter(stream))
+				{
+					writer.Write(content ?? string.Empty);
+					writer.Flush();
+					stream.Flush(true);
+				}
+				FamilyBrowserAtomicFileService.Promote(temporary, path);
+			}
+			finally
+			{
+				if (File.Exists(temporary))
+				{
+					try { File.Delete(temporary); } catch { }
+				}
+			}
+		}
 	}
 
 	public static StandardLibrarySnapshotCacheHit TryFindReusableSnapshot(string workspaceRoot, string sourceId, string resolvedPath, string sourceFileLastWriteUtc, long sourceFileLength, string requestedSnapshotMode)
@@ -77,7 +197,7 @@ public sealed class StandardLibraryRegistryStore
 					ProjectData.ClearProjectError();
 					continue;
 				}
-				if (snapshot == null || snapshot.SnapshotSchemaVersion < 5 || !string.Equals(snapshot.SourceId ?? string.Empty, sourceId, StringComparison.OrdinalIgnoreCase) || !string.Equals(NormalizePathForCompare(snapshot.ResolvedPath), normalizedPath, StringComparison.OrdinalIgnoreCase) || !string.Equals(snapshot.SourceFileLastWriteUtc ?? string.Empty, sourceFileLastWriteUtc, StringComparison.Ordinal) || snapshot.SourceFileLength != sourceFileLength || !IsSnapshotModeAcceptable(requestedMode, snapshot.SnapshotMode))
+				if (snapshot == null || snapshot.SnapshotSchemaVersion < 9 || !string.Equals(snapshot.SourceId ?? string.Empty, sourceId, StringComparison.OrdinalIgnoreCase) || !string.Equals(NormalizePathForCompare(snapshot.ResolvedPath), normalizedPath, StringComparison.OrdinalIgnoreCase) || !string.Equals(snapshot.SourceFileLastWriteUtc ?? string.Empty, sourceFileLastWriteUtc, StringComparison.Ordinal) || snapshot.SourceFileLength != sourceFileLength || !IsSnapshotModeAcceptable(requestedMode, snapshot.SnapshotMode))
 				{
 					continue;
 				}

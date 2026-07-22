@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -72,9 +71,9 @@ public sealed class LoadableFamilySyncExecutionService
 		[SpecialName]
 		internal bool _Lambda_0024__1(Family x)
 		{
-			if (x != null && ((Element)x).Id != null)
+			if (x != null && (object)x.Id != null)
 			{
-				return !_0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(((Element)x).Id));
+				return !_0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(x.Id));
 			}
 			return false;
 		}
@@ -106,7 +105,7 @@ public sealed class LoadableFamilySyncExecutionService
 		{
 			if (x != null)
 			{
-				return string.Equals(Normalize(((Element)x).Name), _0024VB_0024Local_normalizedName, StringComparison.Ordinal);
+				return string.Equals(Normalize(x.Name), _0024VB_0024Local_normalizedName, StringComparison.Ordinal);
 			}
 			return false;
 		}
@@ -206,12 +205,8 @@ public sealed class LoadableFamilySyncExecutionService
 							EnsureNoCategoryConflictBeforeLoad(targetDocument, standardFamily, planItem);
 							ISet<int> familyStateBefore = CaptureFamilyNameState(targetDocument);
 							familyDoc = standardDocument.EditFamily(standardFamily);
-							List<AllowedLoadedFamilyIdentity> allowedLoadedFamilies = BuildAllowedLoadedFamilyIdentities(standardFamily, familyDoc, standardDocument, new List<string>
-							{
-								planItem.FamilyName,
-								((Element)standardFamily).Name
-							});
-							Family loadedFamily = familyDoc.LoadFamily(targetDocument, (IFamilyLoadOptions)(object)loadOptions);
+							List<AllowedLoadedFamilyIdentity> allowedLoadedFamilies = BuildAllowedLoadedFamilyIdentities(standardFamily, familyDoc, standardDocument, new List<string> { planItem.FamilyName, standardFamily.Name });
+							Family loadedFamily = familyDoc.LoadFamily(targetDocument, loadOptions);
 							if (loadedFamily == null)
 							{
 								executionItem.Outcome = "Failed";
@@ -248,7 +243,7 @@ public sealed class LoadableFamilySyncExecutionService
 							{
 								try
 								{
-									familyDoc.Close(false);
+									familyDoc.Close(saveModified: false);
 								}
 								catch (Exception projectError)
 								{
@@ -306,18 +301,17 @@ public sealed class LoadableFamilySyncExecutionService
 
 	private static void EnsureNoCategoryConflictBeforeLoad(Document targetDocument, Family standardFamily, LoadableFamilySyncPlanItem planItem)
 	{
-		//IL_005f: Unknown result type (might be due to invalid IL or missing references)
 		if (targetDocument == null || standardFamily == null || planItem == null)
 		{
 			return;
 		}
-		string text = (((Element)standardFamily).Name ?? string.Empty).Trim();
+		string text = (standardFamily.Name ?? string.Empty).Trim();
 		string text2 = ResolveCategoryName(standardFamily);
 		if (!string.IsNullOrWhiteSpace(text) && !string.IsNullOrWhiteSpace(text2))
 		{
-			List<string> conflicts = (from Family x in (IEnumerable)new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
+			List<string> conflicts = (from Family x in new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
 				where x != null
-				where string.Equals(Normalize(((Element)x).Name), Normalize(text), StringComparison.Ordinal)
+				where string.Equals(Normalize(x.Name), Normalize(text), StringComparison.Ordinal)
 				where !CategoryNamesMatch(ResolveCategoryName(x), text2)
 				select ResolveCategoryName(x)).Distinct<string>(StringComparer.OrdinalIgnoreCase).OrderBy<string, string>([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase).ToList();
 			if (conflicts.Count != 0)
@@ -329,34 +323,32 @@ public sealed class LoadableFamilySyncExecutionService
 
 	private static ISet<int> CaptureFamilyNameState(Document targetDocument)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		return new HashSet<int>(from Family x in (IEnumerable)new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
-			where x != null && ((Element)x).Id != null
-			select RevitElementIdCompat.CompatIntegerValue(((Element)x).Id));
+		return new HashSet<int>(from Family x in new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
+			where x != null && (object)x.Id != null
+			select RevitElementIdCompat.CompatIntegerValue(x.Id));
 	}
 
 	private static void GuardFamilyLoadDidNotCreateDuplicateFamilies(Document targetDocument, ISet<int> familyStateBefore, Family standardFamily, LoadableFamilySyncPlanItem planItem, Family loadedFamily, IEnumerable<AllowedLoadedFamilyIdentity> allowedFamilies, LoadableFamilySyncExecutionItem executionItem)
 	{
-		//IL_006a: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__6_002D0 arg = default(_Closure_0024__6_002D0);
 		_Closure_0024__6_002D0 CS_0024_003C_003E8__locals8 = new _Closure_0024__6_002D0(arg);
 		CS_0024_003C_003E8__locals8._0024VB_0024Local_familyStateBefore = familyStateBefore;
-		CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName = (((standardFamily != null) ? ((Element)standardFamily).Name : null) ?? planItem.FamilyName).Trim();
+		CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName = (standardFamily?.Name ?? planItem.FamilyName).Trim();
 		List<string> allowedFamilyNames = UniqueSortedNames((allowedFamilies ?? new List<AllowedLoadedFamilyIdentity>()).Select([SpecialName] (AllowedLoadedFamilyIdentity x) => x.Name ?? string.Empty));
-		List<Family> newFamilies = (from Family x in (IEnumerable)new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
-			where x != null && ((Element)x).Id != null && !CS_0024_003C_003E8__locals8._0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(((Element)x).Id))
+		List<Family> newFamilies = (from Family x in new FilteredElementCollector(targetDocument).OfClass(typeof(Family))
+			where x != null && (object)x.Id != null && !CS_0024_003C_003E8__locals8._0024VB_0024Local_familyStateBefore.Contains(RevitElementIdCompat.CompatIntegerValue(x.Id))
 			select x).ToList();
 		if (newFamilies.Count == 0)
 		{
-			AddFamilyLoadDiagnostic(executionItem, CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, ((loadedFamily != null) ? ((Element)loadedFamily).Name : null) ?? string.Empty, allowedFamilyNames, new List<string>(), new List<string>(), new List<string>(), "None");
+			AddFamilyLoadDiagnostic(executionItem, CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, loadedFamily?.Name ?? string.Empty, allowedFamilyNames, new List<string>(), new List<string>(), new List<string>(), "None");
 			return;
 		}
-		List<string> newFamilyNames = UniqueSortedNames(newFamilies.Select([SpecialName] (Family x) => ((Element)x).Name ?? string.Empty));
+		List<string> newFamilyNames = UniqueSortedNames(newFamilies.Select([SpecialName] (Family x) => x.Name ?? string.Empty));
 		List<Family> unexpected = new List<Family>();
 		List<string> allowedNewNames = new List<string>();
 		foreach (Family family in newFamilies)
 		{
-			string familyName = ((Element)family).Name ?? string.Empty;
+			string familyName = family.Name ?? string.Empty;
 			if (LoadedFamilyIsAllowed(family, allowedFamilies))
 			{
 				allowedNewNames.Add(familyName);
@@ -368,7 +360,7 @@ public sealed class LoadableFamilySyncExecutionService
 		}
 		if (unexpected.Count == 0)
 		{
-			AddFamilyLoadDiagnostic(executionItem, CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, ((loadedFamily != null) ? ((Element)loadedFamily).Name : null) ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, new List<string>(), "None");
+			AddFamilyLoadDiagnostic(executionItem, CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, loadedFamily?.Name ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, new List<string>(), "None");
 			List<string> allowedNestedNames = allowedNewNames.Where([SpecialName] (string x) => !string.Equals(Normalize(x), Normalize(CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName), StringComparison.Ordinal)).ToList();
 			if (allowedNestedNames.Count > 0)
 			{
@@ -376,24 +368,21 @@ public sealed class LoadableFamilySyncExecutionService
 			}
 			return;
 		}
-		List<string> unexpectedNames = unexpected.Select([SpecialName] (Family x) => ((Element)x).Name ?? string.Empty).Distinct<string>(StringComparer.OrdinalIgnoreCase).OrderBy<string, string>([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase)
+		List<string> unexpectedNames = unexpected.Select([SpecialName] (Family x) => x.Name ?? string.Empty).Distinct<string>(StringComparer.OrdinalIgnoreCase).OrderBy<string, string>([SpecialName] (string x) => x, StringComparer.OrdinalIgnoreCase)
 			.ToList();
 		DuplicateCleanupResult cleanup = TryDeleteFamilies(targetDocument, unexpected);
-		AddFamilyLoadDiagnostic(executionItem, CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, ((loadedFamily != null) ? ((Element)loadedFamily).Name : null) ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, unexpectedNames, DescribeDuplicateCleanupAction(cleanup));
+		AddFamilyLoadDiagnostic(executionItem, CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, loadedFamily?.Name ?? string.Empty, allowedFamilyNames, newFamilyNames, allowedNewNames, unexpectedNames, DescribeDuplicateCleanupAction(cleanup));
 		throw new InvalidOperationException(BuildDuplicateCleanupMessage(T("Family load created duplicate or unexpected families instead of using the standard canonical family.", "패밀리 로드 중 표준 원본 패밀리 대신 중복 또는 예상하지 못한 패밀리가 생성되었습니다."), CS_0024_003C_003E8__locals8._0024VB_0024Local_expectedName, unexpectedNames, cleanup));
 	}
 
 	private static List<AllowedLoadedFamilyIdentity> BuildAllowedLoadedFamilyIdentities(Family sourceFamily, Document familyDocument, Document standardDocument, IEnumerable<string> explicitFamilyNames)
 	{
-		//IL_0115: Unknown result type (might be due to invalid IL or missing references)
-		//IL_01b8: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0085: Unknown result type (might be due to invalid IL or missing references)
 		List<AllowedLoadedFamilyIdentity> result = new List<AllowedLoadedFamilyIdentity>();
 		AddAllowedLoadedFamilyIdentity(result, sourceFamily);
 		List<string> requestedNames = new List<string>();
 		if (sourceFamily != null)
 		{
-			requestedNames.Add(((Element)sourceFamily).Name);
+			requestedNames.Add(sourceFamily.Name);
 		}
 		requestedNames.AddRange(explicitFamilyNames ?? new List<string>());
 		foreach (string familyName in UniqueSortedNames(requestedNames))
@@ -408,12 +397,12 @@ public sealed class LoadableFamilySyncExecutionService
 		List<string> nestedFamilyNames = new List<string>();
 		try
 		{
-			foreach (Family nestedFamily in from Family x in (IEnumerable)new FilteredElementCollector(familyDocument).OfClass(typeof(Family))
+			foreach (Family nestedFamily in from Family x in new FilteredElementCollector(familyDocument).OfClass(typeof(Family))
 				where x != null
 				select x)
 			{
 				AddAllowedLoadedFamilyIdentity(result, nestedFamily);
-				nestedFamilyNames.Add(((Element)nestedFamily).Name);
+				nestedFamilyNames.Add(nestedFamily.Name);
 			}
 		}
 		catch (Exception projectError)
@@ -423,14 +412,14 @@ public sealed class LoadableFamilySyncExecutionService
 		}
 		try
 		{
-			foreach (FamilySymbol symbol in from FamilySymbol x in (IEnumerable)new FilteredElementCollector(familyDocument).OfClass(typeof(FamilySymbol))
+			foreach (FamilySymbol symbol in from FamilySymbol x in new FilteredElementCollector(familyDocument).OfClass(typeof(FamilySymbol))
 				where x != null
 				select x)
 			{
 				AddAllowedLoadedFamilyIdentity(result, symbol.Family);
 				if (symbol.Family != null)
 				{
-					nestedFamilyNames.Add(((Element)symbol.Family).Name);
+					nestedFamilyNames.Add(symbol.Family.Name);
 				}
 			}
 		}
@@ -441,7 +430,7 @@ public sealed class LoadableFamilySyncExecutionService
 		}
 		try
 		{
-			foreach (FamilyInstance item in from FamilyInstance x in (IEnumerable)new FilteredElementCollector(familyDocument).OfClass(typeof(FamilyInstance))
+			foreach (FamilyInstance item in from FamilyInstance x in new FilteredElementCollector(familyDocument).OfClass(typeof(FamilyInstance))
 				where x != null
 				select x)
 			{
@@ -451,7 +440,7 @@ public sealed class LoadableFamilySyncExecutionService
 					AddAllowedLoadedFamilyIdentity(result, symbol2.Family);
 					if (symbol2.Family != null)
 					{
-						nestedFamilyNames.Add(((Element)symbol2.Family).Name);
+						nestedFamilyNames.Add(symbol2.Family.Name);
 					}
 				}
 			}
@@ -470,7 +459,6 @@ public sealed class LoadableFamilySyncExecutionService
 
 	private static void AddAllowedLoadedFamilyIdentityByName(IList<AllowedLoadedFamilyIdentity> identities, Document standardDocument, string familyName)
 	{
-		//IL_002b: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__8_002D0 arg = default(_Closure_0024__8_002D0);
 		_Closure_0024__8_002D0 CS_0024_003C_003E8__locals2 = new _Closure_0024__8_002D0(arg);
 		if (identities == null || standardDocument == null || string.IsNullOrWhiteSpace(familyName))
@@ -480,8 +468,8 @@ public sealed class LoadableFamilySyncExecutionService
 		CS_0024_003C_003E8__locals2._0024VB_0024Local_normalizedName = Normalize(familyName);
 		try
 		{
-			foreach (Family standardFamily in from Family x in (IEnumerable)new FilteredElementCollector(standardDocument).OfClass(typeof(Family))
-				where x != null && string.Equals(Normalize(((Element)x).Name), CS_0024_003C_003E8__locals2._0024VB_0024Local_normalizedName, StringComparison.Ordinal)
+			foreach (Family standardFamily in from Family x in new FilteredElementCollector(standardDocument).OfClass(typeof(Family))
+				where x != null && string.Equals(Normalize(x.Name), CS_0024_003C_003E8__locals2._0024VB_0024Local_normalizedName, StringComparison.Ordinal)
 				select x)
 			{
 				AddAllowedLoadedFamilyIdentity(identities, standardFamily);
@@ -516,7 +504,7 @@ public sealed class LoadableFamilySyncExecutionService
 		{
 			return;
 		}
-		string familyName = (((Element)family).Name ?? string.Empty).Trim();
+		string familyName = (family.Name ?? string.Empty).Trim();
 		if (!string.IsNullOrWhiteSpace(familyName))
 		{
 			string categoryName = ResolveCategoryName(family);
@@ -539,7 +527,7 @@ public sealed class LoadableFamilySyncExecutionService
 		{
 			return false;
 		}
-		string familyName = ((Element)family).Name ?? string.Empty;
+		string familyName = family.Name ?? string.Empty;
 		string text = Normalize(familyName);
 		if (string.IsNullOrWhiteSpace(text))
 		{
@@ -624,15 +612,11 @@ public sealed class LoadableFamilySyncExecutionService
 
 	private static DuplicateCleanupResult TryDeleteFamilies(Document targetDocument, IEnumerable<Family> families)
 	{
-		//IL_00b3: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00ba: Expected O, but got Unknown
-		//IL_00bc: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00fa: Unknown result type (might be due to invalid IL or missing references)
 		DuplicateCleanupResult result = new DuplicateCleanupResult();
-		List<VB_0024AnonymousType_0<ElementId, string>> targets = (from x in families ?? new List<Family>()
-			where x != null && ((Element)x).Id != null
-			select new VB_0024AnonymousType_0<ElementId, string>(((Element)x).Id, ((Element)x).Name ?? string.Empty)).ToList();
-		result.AttemptedNames = UniqueSortedNames(targets.Select([SpecialName] (VB_0024AnonymousType_0<ElementId, string> x) => x.Name));
+		List<FamilyDeleteTarget> targets = (from x in families ?? new List<Family>()
+			where x != null && (object)x.Id != null
+			select new FamilyDeleteTarget(x.Id, x.Name ?? string.Empty)).ToList();
+		result.AttemptedNames = UniqueSortedNames(targets.Select((FamilyDeleteTarget x) => x.Name));
 		DuplicateCleanupResult TryDeleteFamilies;
 		if (targets.Count == 0)
 		{
@@ -642,17 +626,10 @@ public sealed class LoadableFamilySyncExecutionService
 		{
 			try
 			{
-				Transaction tx = new Transaction(targetDocument, "KKY Family Browser Remove Duplicate Families");
-				try
-				{
-					tx.Start();
-					targetDocument.Delete((ICollection<ElementId>)targets.Select([SpecialName] (VB_0024AnonymousType_0<ElementId, string> x) => x.Id).ToList());
-					tx.Commit();
-				}
-				finally
-				{
-					((IDisposable)tx)?.Dispose();
-				}
+				using Transaction tx = new Transaction(targetDocument, "KKY Family Browser Remove Duplicate Families");
+				tx.Start();
+				targetDocument.Delete(targets.Select((FamilyDeleteTarget x) => x.Id).ToList());
+				tx.Commit();
 			}
 			catch (Exception ex)
 			{
@@ -666,7 +643,7 @@ public sealed class LoadableFamilySyncExecutionService
 			}
 			List<string> deletedNames = new List<string>();
 			List<string> failedNames = new List<string>();
-			foreach (VB_0024AnonymousType_0<ElementId, string> target in targets)
+			foreach (FamilyDeleteTarget target in targets)
 			{
 				if (ElementWasDeleted(targetDocument, target.Id))
 				{
@@ -738,13 +715,12 @@ public sealed class LoadableFamilySyncExecutionService
 
 	private static Dictionary<string, Family> BuildStandardFamilyMap(Document doc)
 	{
-		//IL_000c: Unknown result type (might be due to invalid IL or missing references)
 		Dictionary<string, Family> result = new Dictionary<string, Family>(StringComparer.Ordinal);
-		foreach (Family family in (from Family x in (IEnumerable)new FilteredElementCollector(doc).OfClass(typeof(Family))
+		foreach (Family family in (from Family x in new FilteredElementCollector(doc).OfClass(typeof(Family))
 			where x != null
-			select x).OrderBy<Family, string>([SpecialName] (Family x) => BuildKey(ResolveCategoryName(x), ((Element)x).Name), StringComparer.Ordinal))
+			select x).OrderBy<Family, string>([SpecialName] (Family x) => BuildKey(ResolveCategoryName(x), x.Name), StringComparer.Ordinal))
 		{
-			result[BuildKey(ResolveCategoryName(family), ((Element)family).Name)] = family;
+			result[BuildKey(ResolveCategoryName(family), family.Name)] = family;
 		}
 		return result;
 	}
@@ -754,8 +730,7 @@ public sealed class LoadableFamilySyncExecutionService
 		string ResolveCategoryName;
 		try
 		{
-			Category familyCategory = family.FamilyCategory;
-			ResolveCategoryName = ((familyCategory != null) ? familyCategory.Name : null) ?? string.Empty;
+			ResolveCategoryName = family.FamilyCategory?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -813,5 +788,18 @@ public sealed class LoadableFamilySyncExecutionService
 			return string.Empty;
 		}
 		return value.Trim().ToLowerInvariant();
+	}
+
+	private sealed class FamilyDeleteTarget
+	{
+		internal ElementId Id { get; }
+
+		internal string Name { get; }
+
+		internal FamilyDeleteTarget(ElementId id, string name)
+		{
+			Id = id;
+			Name = name ?? string.Empty;
+		}
 	}
 }

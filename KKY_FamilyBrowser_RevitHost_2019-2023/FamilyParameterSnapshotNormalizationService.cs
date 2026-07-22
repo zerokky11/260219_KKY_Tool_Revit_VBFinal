@@ -18,6 +18,25 @@ public sealed class FamilyParameterSnapshotNormalizationService
 			.ToList();
 	}
 
+	public static List<StandardFamilyParameterSnapshotItem> DeduplicateDefinitionsAndTypeValues(IEnumerable<StandardFamilyParameterSnapshotItem> parameters)
+	{
+		return (from x in (parameters ?? Enumerable.Empty<StandardFamilyParameterSnapshotItem>()).Where([SpecialName] (StandardFamilyParameterSnapshotItem x) => x != null && !string.IsNullOrWhiteSpace(x.Name)).GroupBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => BuildDefinitionAndTypeValueIdentityKey(x), StringComparer.Ordinal)
+			select NormalizeSelectedParameter(SelectPreferredParameterSnapshot(x)) into x
+			where x != null
+			select x).OrderBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(NormalizedRole(x)), StringComparer.Ordinal).ThenBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(x.Name), StringComparer.Ordinal).ThenBy([SpecialName] (StandardFamilyParameterSnapshotItem x) => Normalize(x.TypeName), StringComparer.Ordinal)
+			.ToList();
+	}
+
+	private static string BuildDefinitionAndTypeValueIdentityKey(StandardFamilyParameterSnapshotItem item)
+	{
+		string key = BuildDefinitionIdentityKey(item);
+		if (item != null && string.Equals(NormalizedRole(item), "type", StringComparison.Ordinal))
+		{
+			key += "|typevalue|" + Normalize(item.TypeName);
+		}
+		return key;
+	}
+
 	public static string BuildDefinitionIdentityKey(StandardFamilyParameterSnapshotItem item)
 	{
 		if (item == null)

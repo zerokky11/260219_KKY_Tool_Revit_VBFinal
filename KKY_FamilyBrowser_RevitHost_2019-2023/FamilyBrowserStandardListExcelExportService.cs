@@ -726,13 +726,13 @@ public sealed class FamilyBrowserStandardListExcelExportService
 		{
 			return true;
 		}
-		return item.IsShared && IsModelLoadableFamily(item) && (item.IsNestedLoadableChild || (nestedFamilyNames?.Contains(Normalize(item.FamilyName)) ?? false));
+		return item.IsNestedLoadableChild || (nestedFamilyNames?.Contains(Normalize(item.FamilyName)) ?? false);
 	}
 
 	private static string BuildLoadableNote(StandardLoadableFamilySnapshotItem item)
 	{
 		int typeCount = ((item != null) ? (item.TypeNames ?? new List<string>()).Count : 0);
-		int nestedCount = ((item != null && item.NestedLoadableFamilies != null) ? item.NestedLoadableFamilies.Where([SpecialName] (StandardNestedLoadableFamilySnapshotItem x) => x != null && x.IsShared && IsModelNestedLoadableChild(x)).Count() : 0);
+		int nestedCount = ((item != null && item.NestedLoadableFamilies != null) ? item.NestedLoadableFamilies.Where([SpecialName] (StandardNestedLoadableFamilySnapshotItem x) => x != null && IsModelNestedLoadableChild(x)).Count() : 0);
 		string note = "Loadable family from registered standard RVT. Type count: " + typeCount.ToString(CultureInfo.InvariantCulture) + ".";
 		if (nestedCount > 0)
 		{
@@ -812,7 +812,8 @@ public sealed class FamilyBrowserStandardListExcelExportService
 			{
 				continue;
 			}
-			if (parentItem.IsNestedLoadableChild && parentItem.IsShared && IsModelLoadableFamily(parentItem))
+			AddNestedLoadableNamesFromSignature(result, parentItem.ContentSignatureDebugPath);
+			if (parentItem.IsNestedLoadableChild)
 			{
 				string nestedFamilyName = Normalize(parentItem.FamilyName);
 				if (nestedFamilyName.Length > 0)
@@ -826,7 +827,7 @@ public sealed class FamilyBrowserStandardListExcelExportService
 			}
 			foreach (StandardNestedLoadableFamilySnapshotItem child in parentItem.NestedLoadableFamilies)
 			{
-				if (child != null && child.IsShared && IsModelNestedLoadableChild(child))
+				if (child != null && IsModelNestedLoadableChild(child))
 				{
 					string familyName = Normalize((child == null) ? string.Empty : child.FamilyName);
 					if (familyName.Length > 0)
@@ -837,6 +838,141 @@ public sealed class FamilyBrowserStandardListExcelExportService
 			}
 		}
 		return result;
+	}
+
+	private static void AddNestedLoadableNamesFromSignature(HashSet<string> result, string signaturePath)
+	{
+		if (result == null || string.IsNullOrWhiteSpace(signaturePath))
+		{
+			return;
+		}
+		try
+		{
+			string path = Environment.ExpandEnvironmentVariables(signaturePath.Trim());
+			if (!File.Exists(path))
+			{
+				return;
+			}
+			bool inSource = false;
+			foreach (string rawLine in File.ReadLines(path))
+			{
+				string line = (rawLine ?? string.Empty).Trim();
+				if (line.Length == 0)
+				{
+					continue;
+				}
+				if (!inSource)
+				{
+					if (string.Equals(line, "----- signature-source -----", StringComparison.OrdinalIgnoreCase))
+					{
+						inSource = true;
+					}
+					continue;
+				}
+				if (line.StartsWith("----- ", StringComparison.Ordinal))
+				{
+					break;
+				}
+				if (!line.StartsWith("familyinstance|", StringComparison.OrdinalIgnoreCase) && !line.StartsWith("familysymbol|", StringComparison.OrdinalIgnoreCase) && !line.StartsWith("family|", StringComparison.OrdinalIgnoreCase))
+				{
+					continue;
+				}
+				string familyName = FirstNonEmptyValue(ExtractSignatureDebugTokenValue(line, "nestedFamily"), ExtractSignatureDebugTokenValue(line, "family"));
+				if (string.IsNullOrWhiteSpace(familyName))
+				{
+					List<string> tokens = SplitSignatureRawTokens(line);
+					string kind = Normalize(GetToken(tokens, 0));
+					if (string.Equals(kind, "familyinstance", StringComparison.Ordinal) || string.Equals(kind, "familysymbol", StringComparison.Ordinal) || string.Equals(kind, "family", StringComparison.Ordinal))
+					{
+						familyName = GetToken(tokens, 2);
+					}
+				}
+				string normalized = Normalize(familyName);
+				if (normalized.Length > 0)
+				{
+					result.Add(normalized);
+				}
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+	}
+
+	private static string ExtractSignatureDebugTokenValue(string value, string key)
+	{
+		string text = value ?? string.Empty;
+		if (string.IsNullOrWhiteSpace(text) || string.IsNullOrWhiteSpace(key))
+		{
+			return string.Empty;
+		}
+		string marker = key + "=";
+		int index = text.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+		if (index < 0)
+		{
+			return string.Empty;
+		}
+		checked
+		{
+			index += marker.Length;
+			if (index < text.Length && text[index] == '"')
+			{
+				index++;
+				int quotedEndIndex = text.IndexOf('"', index);
+				if (quotedEndIndex < 0 || quotedEndIndex <= index)
+				{
+					return string.Empty;
+				}
+				return text.Substring(index, quotedEndIndex - index);
+			}
+			int endIndex = text.IndexOf('|', index);
+			if (endIndex < 0)
+			{
+				endIndex = text.Length;
+			}
+			return text.Substring(index, endIndex - index).Trim();
+		}
+	}
+
+	private static string FirstNonEmptyValue(params string[] values)
+	{
+		if (values == null)
+		{
+			return string.Empty;
+		}
+		foreach (string value in values)
+		{
+			if (!string.IsNullOrWhiteSpace(value))
+			{
+				return value;
+			}
+		}
+		return string.Empty;
+	}
+
+	private static List<string> SplitSignatureRawTokens(string value)
+	{
+		string text = value ?? string.Empty;
+		int bracketIndex = text.IndexOf("[", StringComparison.Ordinal);
+		if (bracketIndex >= 0)
+		{
+			text = text.Substring(0, bracketIndex);
+		}
+		return (from x in text.Split('|')
+			select (x ?? string.Empty).Trim() into x
+			where x.Length > 0
+			select x).ToList();
+	}
+
+	private static string GetToken(IList<string> tokens, int index)
+	{
+		if (tokens == null || index < 0 || index >= tokens.Count)
+		{
+			return string.Empty;
+		}
+		return tokens[index];
 	}
 
 	private static bool IsModelLoadableFamily(StandardLoadableFamilySnapshotItem item)
@@ -854,7 +990,16 @@ public sealed class FamilyBrowserStandardListExcelExportService
 		{
 			return false;
 		}
-		return string.Equals(FamilyBrowserFamilyClassificationService.ResolveCategoryGroup(item.CategoryGroup, item.CategoryName, item.CategoryId, item.FamilyName), "Model", StringComparison.OrdinalIgnoreCase);
+		return IsNestedLoadableFamilyCandidate(item.CategoryGroup, item.CategoryName, item.CategoryId, item.FamilyName);
+	}
+
+	private static bool IsNestedLoadableFamilyCandidate(string categoryGroup, string categoryName, string categoryId, string familyName)
+	{
+		if (string.IsNullOrWhiteSpace(familyName))
+		{
+			return false;
+		}
+		return !FamilyBrowserFamilyClassificationService.IsTypeManagedFamilyLike(categoryName, categoryId, familyName);
 	}
 
 	private static void WriteWorkbook(string outputPath, string sheetName, IList<string> headers, IList<List<string>> rows)

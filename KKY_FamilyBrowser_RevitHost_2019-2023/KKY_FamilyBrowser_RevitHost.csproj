@@ -3,6 +3,7 @@
     <AssemblyName>KKY_FamilyBrowser_RevitHost</AssemblyName>
     <GenerateAssemblyInfo>False</GenerateAssemblyInfo>
     <UseWindowsForms>True</UseWindowsForms>
+	<UseWPF>True</UseWPF>
     <TargetFramework>net48</TargetFramework>
     <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
@@ -15,10 +16,16 @@
     <RootNamespace />
   </PropertyGroup>
   <ItemGroup>
-    <None Remove="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.css" />
-    <None Remove="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.js" />
-    <EmbeddedResource Include="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.css" LogicalName="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.css" />
-    <EmbeddedResource Include="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.js" LogicalName="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.js" />
+    <EmbeddedResource Include="..\KKY_FamilyBrowser_SharedUi\family-browser-shell.css" Link="DashboardAssets\family-browser-shell.css" LogicalName="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.css" />
+    <EmbeddedResource Include="..\KKY_FamilyBrowser_SharedUi\family-browser-shell.js" Link="DashboardAssets\family-browser-shell.js" LogicalName="KKY.FamilyBrowser.DashboardAssets.family-browser-shell.js" />
+    <EmbeddedResource Include="..\KKY_FamilyBrowser_SharedUi\family-browser-theme.css" Link="DashboardAssets\family-browser-theme.css" LogicalName="KKY.FamilyBrowser.DashboardAssets.family-browser-theme.css" />
+    <EmbeddedResource Include="..\KKY_FamilyBrowser_SharedUi\kky-tool-mark-24.png" Link="DashboardAssets\kky-tool-mark-24.png" LogicalName="KKY.FamilyBrowser.DashboardAssets.kky-tool-mark-24.png" />
+	<EmbeddedResource Include="..\KKY_FamilyBrowser_SharedUi\family-browser-ribbon-16.png" Link="RibbonAssets\family-browser-ribbon-16.png" LogicalName="KKY.FamilyBrowser.RibbonAssets.family-browser-ribbon-16.png" />
+	<EmbeddedResource Include="..\KKY_FamilyBrowser_SharedUi\family-browser-ribbon-32.png" Link="RibbonAssets\family-browser-ribbon-32.png" LogicalName="KKY.FamilyBrowser.RibbonAssets.family-browser-ribbon-32.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\KKY_FamilyBrowser_SharedUi\*.cs" Link="SharedUi\%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\KKY_FamilyBrowser_SharedUi\family-browser-row-window.js" Link="DashboardAssets\family-browser-row-window.js" LogicalName="KKY.FamilyBrowser.DashboardAssets.family-browser-row-window.js" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="Microsoft.VisualBasic" />

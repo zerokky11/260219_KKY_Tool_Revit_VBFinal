@@ -10,6 +10,8 @@ public class FamilyBrowserRequestAttachmentFile
 
 	public long SizeBytes { get; set; }
 
+	public string ContentSha256 { get; set; }
+
 	public string AttachedAtUtc { get; set; }
 
 	public string AttachedBy { get; set; }
@@ -21,6 +23,7 @@ public class FamilyBrowserRequestAttachmentFile
 		StoredPath = string.Empty;
 		RelativePath = string.Empty;
 		SizeBytes = 0L;
+		ContentSha256 = string.Empty;
 		AttachedAtUtc = string.Empty;
 		AttachedBy = string.Empty;
 	}

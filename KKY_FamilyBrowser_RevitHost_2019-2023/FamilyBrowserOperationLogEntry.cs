@@ -14,6 +14,8 @@ public class FamilyBrowserOperationLogEntry
 
 	public string SourceId { get; set; }
 
+	public string StandardSourceKey { get; set; }
+
 	public string StandardDisplayName { get; set; }
 
 	public string CandidateKind { get; set; }
@@ -32,6 +34,12 @@ public class FamilyBrowserOperationLogEntry
 
 	public string Details { get; set; }
 
+	public string CommitState { get; set; }
+
+	public string CommitKind { get; set; }
+
+	public string CommittedAtUtc { get; set; }
+
 	public FamilyBrowserOperationLogEntry()
 	{
 		EntryId = string.Empty;
@@ -41,6 +49,7 @@ public class FamilyBrowserOperationLogEntry
 		DocumentTitle = string.Empty;
 		DocumentPath = string.Empty;
 		SourceId = string.Empty;
+		StandardSourceKey = string.Empty;
 		StandardDisplayName = string.Empty;
 		CandidateKind = string.Empty;
 		CategoryName = string.Empty;
@@ -50,5 +59,8 @@ public class FamilyBrowserOperationLogEntry
 		PlannedAction = string.Empty;
 		Outcome = string.Empty;
 		Details = string.Empty;
+		CommitState = string.Empty;
+		CommitKind = string.Empty;
+		CommittedAtUtc = string.Empty;
 	}
 }

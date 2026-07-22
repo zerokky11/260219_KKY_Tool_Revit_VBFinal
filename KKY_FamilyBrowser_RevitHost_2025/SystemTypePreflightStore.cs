@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -17,10 +16,8 @@ public sealed class SystemTypePreflightStore
 		Directory.CreateDirectory(outputDir);
 		string safeProjectName = MakeSafeFileName(report.ProjectDocumentTitle ?? "Untitled");
 		string safeStandardName = MakeSafeFileName(report.StandardDisplayName ?? "StandardLibrary");
-		string fileName = "system-type-preflight-" + safeProjectName + "-" + safeStandardName + "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + ".json";
-		string text = Path.Combine(outputDir, fileName);
-		File.WriteAllText(text, PlainJsonReportWriter.Serialize(report));
-		return text;
+		string fileNameStem = "system-type-preflight-" + safeProjectName + "-" + safeStandardName;
+		return FamilyBrowserUniqueJsonReportStore.Save(outputDir, fileNameStem, report);
 	}
 
 	private static string MakeSafeFileName(string value)

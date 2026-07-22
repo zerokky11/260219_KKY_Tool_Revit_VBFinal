@@ -42,8 +42,6 @@ public sealed class FamilyBrowserDashboardExternalEventHandler : IExternalEventH
 
 	public bool Request(string action, ExternalEvent externalEvent)
 	{
-		//IL_0064: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0069: Unknown result type (might be due to invalid IL or missing references)
 		if (externalEvent == null)
 		{
 			return false;
@@ -67,7 +65,7 @@ public sealed class FamilyBrowserDashboardExternalEventHandler : IExternalEventH
 				Monitor.Exit(syncRoot);
 			}
 		}
-		string resultName = ((Enum)externalEvent.Raise()/*cast due to .constrained prefix*/).ToString();
+		string resultName = externalEvent.Raise().ToString();
 		if (string.Equals(resultName, "Accepted", StringComparison.OrdinalIgnoreCase) || string.Equals(resultName, "Pending", StringComparison.OrdinalIgnoreCase))
 		{
 			return true;
@@ -128,8 +126,20 @@ public sealed class FamilyBrowserDashboardExternalEventHandler : IExternalEventH
 		}
 	}
 
+	void IExternalEventHandler.Execute(UIApplication app)
+	{
+		//ILSpy generated this explicit interface implementation from .override directive in Execute
+		this.Execute(app);
+	}
+
 	public string GetName()
 	{
 		return "KKY Family Browser Dashboard";
+	}
+
+	string IExternalEventHandler.GetName()
+	{
+		//ILSpy generated this explicit interface implementation from .override directive in GetName
+		return this.GetName();
 	}
 }

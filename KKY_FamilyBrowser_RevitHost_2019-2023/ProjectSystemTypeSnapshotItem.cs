@@ -26,6 +26,14 @@ public class ProjectSystemTypeSnapshotItem
 
 	public string CompoundStructureSignature { get; set; }
 
+	public bool DetailedComponentsCaptured { get; set; }
+
+	public string DetailedComponentSignature { get; set; }
+
+	public System.Collections.Generic.List<SystemTypeDetailedComponentSnapshotItem> DetailedComponents { get; set; }
+
+	public string DetailSummary { get; set; }
+
 	public ProjectSystemTypeSnapshotItem()
 	{
 		TypeName = string.Empty;
@@ -40,5 +48,9 @@ public class ProjectSystemTypeSnapshotItem
 		Shape = string.Empty;
 		RoutingPreferenceSignature = string.Empty;
 		CompoundStructureSignature = string.Empty;
+		DetailedComponentsCaptured = false;
+		DetailedComponentSignature = string.Empty;
+		DetailedComponents = new System.Collections.Generic.List<SystemTypeDetailedComponentSnapshotItem>();
+		DetailSummary = string.Empty;
 	}
 }

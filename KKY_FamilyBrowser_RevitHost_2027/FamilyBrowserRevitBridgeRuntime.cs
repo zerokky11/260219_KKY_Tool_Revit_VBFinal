@@ -28,7 +28,7 @@ public sealed class FamilyBrowserRevitBridgeRuntime
 			if (_server == null)
 			{
 				_handler = new FamilyBrowserRevitBridgeExternalEventHandler();
-				_externalEvent = ExternalEvent.Create((IExternalEventHandler)(object)_handler);
+				_externalEvent = ExternalEvent.Create(_handler);
 				_server = new FamilyBrowserRevitBridgeServer(_handler, _externalEvent);
 				_server.Start();
 			}

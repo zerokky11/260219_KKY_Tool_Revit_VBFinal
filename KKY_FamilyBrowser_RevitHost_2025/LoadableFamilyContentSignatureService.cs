@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -133,21 +132,19 @@ public sealed class LoadableFamilyContentSignatureService
 				List<string> typeParts = new List<string>();
 				foreach (ElementId symbolId in family.GetFamilySymbolIds())
 				{
-					Element element = hostDocument.GetElement(symbolId);
-					FamilySymbol symbol = (FamilySymbol)(object)((element is FamilySymbol) ? element : null);
-					if (symbol != null)
+					if (hostDocument.GetElement(symbolId) is FamilySymbol symbol)
 					{
-						typeParts.Add(Normalize(SafeElementName((Element)(object)symbol)) + "|" + Normalize(BuildElementParameterSignature(hostDocument, (Element)(object)symbol)));
+						typeParts.Add(Normalize(SafeElementName(symbol)) + "|" + Normalize(BuildElementParameterSignature(hostDocument, symbol)));
 					}
 				}
 				List<string> lines = new List<string>
 				{
 					"content-signature-version=fast-2",
-					"family=" + Normalize(SafeElementName((Element)(object)family)),
+					"family=" + Normalize(SafeElementName(family)),
 					"category=" + Normalize(ResolveFamilyCategoryName(family)),
 					"category-group=" + Normalize(ResolveFamilyCategoryGroup(family)),
 					"shared=" + Normalize(ResolveIsShared(family).ToString()),
-					"family-parameters=" + Normalize(BuildElementParameterSignature(hostDocument, (Element)(object)family)),
+					"family-parameters=" + Normalize(BuildElementParameterSignature(hostDocument, family)),
 					"types=" + string.Join("\n", typeParts.OrderBy<string, string>([SpecialName] (string x) => x, StringComparer.Ordinal))
 				};
 				string signature = string.Join("\n", lines);
@@ -201,7 +198,7 @@ public sealed class LoadableFamilyContentSignatureService
 				{
 					try
 					{
-						familyDocument.Close(false);
+						familyDocument.Close(saveModified: false);
 					}
 					catch (Exception projectError)
 					{
@@ -223,20 +220,23 @@ public sealed class LoadableFamilyContentSignatureService
 		bool includeAnnotationGraphics = IsAnnotationFamily(family);
 		List<string> elementDebugLines = new List<string>();
 		string elementSignature = BuildElementSignature(familyDocument, includeAnnotationGraphics, elementDebugLines);
+		List<string> lookupDisplayLines = new List<string>();
+		string lookupTableSignature = BuildLookupTableSignature(familyDocument, lookupDisplayLines);
 		List<string> lines = new List<string>
 		{
-			"content-signature-version=6",
-			"family=" + Normalize(SafeElementName((Element)(object)family)),
+			"content-signature-version=7",
+			"family=" + Normalize(SafeElementName(family)),
 			"category=" + Normalize(ResolveFamilyCategoryName(family)),
 			"elements=" + elementSignature,
-			"types=" + BuildFamilyManagerSignature(familyDocument)
+			"types=" + BuildFamilyManagerSignature(familyDocument),
+			"lookup-tables=" + lookupTableSignature
 		};
 		string signature = string.Join("\n", lines);
 		return new LoadableFamilyContentSignatureResult
 		{
 			Fingerprint = HashString(signature),
 			Signature = signature,
-			DebugMetadata = BuildDebugMetadata(elementDebugLines),
+			DebugMetadata = BuildDebugMetadata(elementDebugLines.Concat(lookupDisplayLines)),
 			Mode = "Precise"
 		};
 	}
@@ -249,7 +249,7 @@ public sealed class LoadableFamilyContentSignatureService
 			"content-signature-version=diagnostic-failure-1",
 			"signature-mode=" + Normalize(safeMode),
 			"signature-status=failed",
-			"family=" + Normalize((family == null) ? string.Empty : SafeElementName((Element)(object)family)),
+			"family=" + Normalize((family == null) ? string.Empty : SafeElementName(family)),
 			"category=" + Normalize((family == null) ? string.Empty : ResolveFamilyCategoryName(family)),
 			"category-group=" + Normalize((family == null) ? string.Empty : ResolveFamilyCategoryGroup(family)),
 			"shared=" + Normalize((family == null) ? string.Empty : ResolveIsShared(family).ToString()),
@@ -320,7 +320,7 @@ public sealed class LoadableFamilyContentSignatureService
 				ProjectData.ClearProjectError();
 			}
 		}
-		return (includeDeepContent ? "deep" : "fast") + "|" + Normalize(documentKey) + "|" + Normalize(((Element)family).UniqueId ?? string.Empty) + "|" + Normalize(SafeElementName((Element)(object)family)) + "|" + Normalize(ResolveFamilyCategoryName(family));
+		return (includeDeepContent ? "deep" : "fast") + "|" + Normalize(documentKey) + "|" + Normalize(family.UniqueId ?? string.Empty) + "|" + Normalize(SafeElementName(family)) + "|" + Normalize(ResolveFamilyCategoryName(family));
 	}
 
 	private static bool CanEditFamilyDocument(Family family)
@@ -341,7 +341,6 @@ public sealed class LoadableFamilyContentSignatureService
 
 	private static string BuildElementSignature(Document familyDocument, bool includeAnnotationGraphics, IList<string> elementDebugLines = null)
 	{
-		//IL_001d: Unknown result type (might be due to invalid IL or missing references)
 		_Closure_0024__14_002D0 arg = default(_Closure_0024__14_002D0);
 		_Closure_0024__14_002D0 CS_0024_003C_003E8__locals2 = new _Closure_0024__14_002D0(arg);
 		CS_0024_003C_003E8__locals2._0024VB_0024Local_includeAnnotationGraphics = includeAnnotationGraphics;
@@ -349,14 +348,14 @@ public sealed class LoadableFamilyContentSignatureService
 		{
 			return string.Empty;
 		}
-		List<Element> elements = (from Element x in (IEnumerable)new FilteredElementCollector(familyDocument).WhereElementIsNotElementType()
+		List<Element> elements = (from Element x in new FilteredElementCollector(familyDocument).WhereElementIsNotElementType()
 			where ShouldCaptureElement(x, CS_0024_003C_003E8__locals2._0024VB_0024Local_includeAnnotationGraphics)
-			select x).OrderBy<Element, string>([SpecialName] (Element x) => Normalize(((object)x).GetType().Name), StringComparer.Ordinal).ThenBy<Element, string>([SpecialName] (Element x) => Normalize(ResolveCategoryName(x)), StringComparer.Ordinal).ThenBy<Element, string>([SpecialName] (Element x) => Normalize(SafeElementName(x)), StringComparer.Ordinal)
+			select x).OrderBy<Element, string>([SpecialName] (Element x) => Normalize(x.GetType().Name), StringComparer.Ordinal).ThenBy<Element, string>([SpecialName] (Element x) => Normalize(ResolveCategoryName(x)), StringComparer.Ordinal).ThenBy<Element, string>([SpecialName] (Element x) => Normalize(SafeElementName(x)), StringComparer.Ordinal)
 			.ToList();
 		List<string> parts = new List<string>();
 		foreach (Element element in elements)
 		{
-			string signatureLine = Normalize(((object)element).GetType().Name) + "|" + Normalize(ResolveCategoryName(element)) + "|" + Normalize(SafeElementName(element)) + "|" + Normalize(BuildElementTypeReferenceSignature(familyDocument, element)) + "|" + Normalize(BuildElementParameterSignature(familyDocument, element));
+			string signatureLine = Normalize(element.GetType().Name) + "|" + Normalize(ResolveCategoryName(element)) + "|" + Normalize(SafeElementName(element)) + "|" + Normalize(BuildElementTypeReferenceSignature(familyDocument, element)) + "|" + Normalize(BuildElementParameterSignature(familyDocument, element));
 			parts.Add(signatureLine);
 			AddElementDebugLine(elementDebugLines, signatureLine, element);
 		}
@@ -394,7 +393,7 @@ public sealed class LoadableFamilyContentSignatureService
 		List<string> parts = new List<string>();
 		try
 		{
-			if (element.Id != null)
+			if ((object)element.Id != null)
 			{
 				parts.Add("id=" + RevitElementIdCompat.CompatIntegerValue(element.Id).ToString(CultureInfo.InvariantCulture));
 			}
@@ -444,16 +443,15 @@ public sealed class LoadableFamilyContentSignatureService
 		}
 		try
 		{
-			FamilyInstance instance = (FamilyInstance)(object)((element is FamilyInstance) ? element : null);
-			if (instance != null && instance.Symbol != null)
+			if (element is FamilyInstance { Symbol: not null } instance)
 			{
-				string symbolName = SafeElementName((Element)(object)instance.Symbol);
+				string symbolName = SafeElementName(instance.Symbol);
 				string familyName = string.Empty;
 				try
 				{
 					if (instance.Symbol.Family != null)
 					{
-						familyName = SafeElementName((Element)(object)instance.Symbol.Family);
+						familyName = SafeElementName(instance.Symbol.Family);
 					}
 				}
 				catch (Exception projectError5)
@@ -472,15 +470,14 @@ public sealed class LoadableFamilyContentSignatureService
 		}
 		try
 		{
-			FamilySymbol symbol = (FamilySymbol)(object)((element is FamilySymbol) ? element : null);
-			if (symbol != null)
+			if (element is FamilySymbol symbol)
 			{
 				string familyName2 = string.Empty;
 				try
 				{
 					if (symbol.Family != null)
 					{
-						familyName2 = SafeElementName((Element)(object)symbol.Family);
+						familyName2 = SafeElementName(symbol.Family);
 					}
 				}
 				catch (Exception projectError7)
@@ -489,7 +486,7 @@ public sealed class LoadableFamilyContentSignatureService
 					ProjectData.ClearProjectError();
 				}
 				AddDebugTextToken(parts, "nestedFamily", familyName2);
-				AddDebugTextToken(parts, "nestedType", SafeElementName((Element)(object)symbol));
+				AddDebugTextToken(parts, "nestedType", SafeElementName(symbol));
 			}
 		}
 		catch (Exception projectError8)
@@ -499,10 +496,9 @@ public sealed class LoadableFamilyContentSignatureService
 		}
 		try
 		{
-			Family family = (Family)(object)((element is Family) ? element : null);
-			if (family != null)
+			if (element is Family family)
 			{
-				AddDebugTextToken(parts, "family", SafeElementName((Element)(object)family));
+				AddDebugTextToken(parts, "family", SafeElementName(family));
 			}
 		}
 		catch (Exception projectError9)
@@ -564,7 +560,7 @@ public sealed class LoadableFamilyContentSignatureService
 		{
 			return false;
 		}
-		string className = Normalize(((object)element).GetType().Name);
+		string className = Normalize(element.GetType().Name);
 		switch (className)
 		{
 		case "appearanceassetelement":
@@ -614,7 +610,7 @@ public sealed class LoadableFamilyContentSignatureService
 		{
 			return false;
 		}
-		if ((object)((object)element).GetType() != typeof(Element))
+		if ((object)element.GetType() != typeof(Element))
 		{
 			return false;
 		}
@@ -629,7 +625,7 @@ public sealed class LoadableFamilyContentSignatureService
 		try
 		{
 			ElementId typeId = element.GetTypeId();
-			if (typeId != null && typeId != ElementId.InvalidElementId && RevitElementIdCompat.CompatIntegerValue(typeId) > 0)
+			if ((object)typeId != null && typeId != ElementId.InvalidElementId && RevitElementIdCompat.CompatIntegerValue(typeId) > 0)
 			{
 				return false;
 			}
@@ -641,7 +637,7 @@ public sealed class LoadableFamilyContentSignatureService
 		}
 		try
 		{
-			if (element.Parameters != null && ((IEnumerable)element.Parameters).Cast<Parameter>().Any([SpecialName] (Parameter x) => ShouldCaptureParameter(x)))
+			if (element.Parameters != null && element.Parameters.Cast<Parameter>().Any([SpecialName] (Parameter x) => ShouldCaptureParameter(x)))
 			{
 				return false;
 			}
@@ -656,13 +652,11 @@ public sealed class LoadableFamilyContentSignatureService
 
 	private static bool IsCosmeticFamilyElement(Element element, bool includeAnnotationGraphics)
 	{
-		//IL_0125: Unknown result type (might be due to invalid IL or missing references)
-		//IL_012b: Invalid comparison between Unknown and I4
 		if (element == null || includeAnnotationGraphics)
 		{
 			return false;
 		}
-		string className = Normalize(((object)element).GetType().Name);
+		string className = Normalize(element.GetType().Name);
 		switch (className)
 		{
 		case "textnote":
@@ -677,7 +671,7 @@ public sealed class LoadableFamilyContentSignatureService
 		default:
 			try
 			{
-				if (element.Category != null && (int)element.Category.CategoryType == 2)
+				if (element.Category != null && element.Category.CategoryType == CategoryType.Annotation)
 				{
 					if (string.Equals(className, "dimension", StringComparison.Ordinal))
 					{
@@ -701,14 +695,14 @@ public sealed class LoadableFamilyContentSignatureService
 		try
 		{
 			ElementId typeId = element.GetTypeId();
-			if (typeId == null || typeId == ElementId.InvalidElementId)
+			if ((object)typeId == null || typeId == ElementId.InvalidElementId)
 			{
 				BuildElementTypeReferenceSignature = string.Empty;
 			}
 			else
 			{
 				Element elementType = familyDocument.GetElement(typeId);
-				BuildElementTypeReferenceSignature = ((elementType != null) ? (((object)elementType).GetType().Name + "|" + ResolveCategoryName(elementType) + "|" + SafeElementName(elementType)) : RevitElementIdCompat.CompatIntegerValue(typeId).ToString(CultureInfo.InvariantCulture));
+				BuildElementTypeReferenceSignature = ((elementType != null) ? (elementType.GetType().Name + "|" + ResolveCategoryName(elementType) + "|" + SafeElementName(elementType)) : RevitElementIdCompat.CompatIntegerValue(typeId).ToString(CultureInfo.InvariantCulture));
 			}
 		}
 		catch (Exception projectError)
@@ -725,7 +719,7 @@ public sealed class LoadableFamilyContentSignatureService
 		List<string> parts = new List<string>();
 		try
 		{
-			using IEnumerator<Parameter> enumerator = (from Parameter x in (IEnumerable)element.Parameters
+			using IEnumerator<Parameter> enumerator = (from Parameter x in element.Parameters
 				where ShouldCaptureParameter(x)
 				select x).OrderBy<Parameter, string>([SpecialName] (Parameter x) => Normalize(ResolveParameterName(x)), StringComparer.Ordinal).GetEnumerator();
 			_Closure_0024__24_002D0 closure_0024__24_002D = default(_Closure_0024__24_002D0);
@@ -749,7 +743,7 @@ public sealed class LoadableFamilyContentSignatureService
 		string BuildBoundingBoxSignature;
 		try
 		{
-			BoundingBoxXYZ box = element[(View)null];
+			BoundingBoxXYZ box = element.get_BoundingBox((View)null);
 			BuildBoundingBoxSignature = ((box != null) ? ("min=" + FormatXyz(box.Min) + ";max=" + FormatXyz(box.Max)) : string.Empty);
 		}
 		catch (Exception projectError)
@@ -766,8 +760,8 @@ public sealed class LoadableFamilyContentSignatureService
 		List<string> parts = new List<string>();
 		try
 		{
-			GeometryElement geometry = element[options];
-			if (geometry != null)
+			GeometryElement geometry = element.get_Geometry(options);
+			if ((object)geometry != null)
 			{
 				AppendGeometrySignatures(geometry, parts);
 			}
@@ -782,7 +776,7 @@ public sealed class LoadableFamilyContentSignatureService
 
 	private static void AppendGeometrySignatures(GeometryElement geometry, ICollection<string> parts)
 	{
-		if (geometry == null || parts == null)
+		if ((object)geometry == null || parts == null)
 		{
 			return;
 		}
@@ -794,17 +788,7 @@ public sealed class LoadableFamilyContentSignatureService
 
 	private static void AppendGeometryObjectSignature(GeometryObject geometryObject, ICollection<string> parts)
 	{
-		//IL_0018: Unknown result type (might be due to invalid IL or missing references)
-		//IL_001e: Expected O, but got Unknown
-		//IL_00c1: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00c7: Expected O, but got Unknown
-		//IL_00f4: Unknown result type (might be due to invalid IL or missing references)
-		//IL_00fa: Expected O, but got Unknown
-		//IL_0152: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0159: Expected O, but got Unknown
-		//IL_017d: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0184: Expected O, but got Unknown
-		if (geometryObject == null || parts == null)
+		if ((object)geometryObject == null || parts == null)
 		{
 			return;
 		}
@@ -826,7 +810,7 @@ public sealed class LoadableFamilyContentSignatureService
 		if (geometryObject is Curve)
 		{
 			Curve curve = (Curve)geometryObject;
-			parts.Add("curve:" + ((object)curve).GetType().Name + ";length=" + FormatDouble(SafeCurveLength(curve)) + ";ends=" + BuildCurveEndpointSignature(curve));
+			parts.Add("curve:" + curve.GetType().Name + ";length=" + FormatDouble(SafeCurveLength(curve)) + ";ends=" + BuildCurveEndpointSignature(curve));
 			return;
 		}
 		if (geometryObject is GeometryInstance)
@@ -851,14 +835,14 @@ public sealed class LoadableFamilyContentSignatureService
 		}
 		else
 		{
-			parts.Add("geometry:" + ((object)geometryObject).GetType().Name);
+			parts.Add("geometry:" + geometryObject.GetType().Name);
 		}
 	}
 
 	private static string BuildCurveEndpointSignature(Curve curve)
 	{
 		string BuildCurveEndpointSignature;
-		if (curve == null)
+		if ((object)curve == null)
 		{
 			BuildCurveEndpointSignature = string.Empty;
 		}
@@ -880,10 +864,6 @@ public sealed class LoadableFamilyContentSignatureService
 
 	private static string BuildFamilyManagerSignature(Document familyDocument)
 	{
-		//IL_0031: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0038: Expected O, but got Unknown
-		//IL_008f: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0096: Expected O, but got Unknown
 		string BuildFamilyManagerSignature;
 		try
 		{
@@ -895,18 +875,16 @@ public sealed class LoadableFamilyContentSignatureService
 			else
 			{
 				List<string> parameterParts = new List<string>();
-				foreach (FamilyParameter parameter in manager.Parameters)
+				foreach (FamilyParameter familyParameter in manager.Parameters)
 				{
-					FamilyParameter familyParameter = parameter;
 					if (familyParameter != null && familyParameter.Definition != null)
 					{
 						parameterParts.Add(BuildFamilyParameterDefinitionSignature(familyParameter));
 					}
 				}
 				List<string> typeParts = new List<string>();
-				foreach (FamilyType type in manager.Types)
+				foreach (FamilyType familyType in manager.Types)
 				{
-					FamilyType familyType = type;
 					if (familyType != null)
 					{
 						typeParts.Add(Normalize(familyType.Name));
@@ -924,20 +902,331 @@ public sealed class LoadableFamilyContentSignatureService
 		return BuildFamilyManagerSignature;
 	}
 
+	private static string BuildLookupTableSignature(Document familyDocument, IList<string> displayLines)
+	{
+		if (familyDocument == null)
+		{
+			return string.Empty;
+		}
+		List<string> parts = new List<string>();
+		object manager = null;
+		try
+		{
+			manager = ResolveFamilySizeTableManager(familyDocument);
+			if (manager == null)
+			{
+				return string.Empty;
+			}
+			foreach (string tableName in ReadFamilySizeTableNames(manager).Where((string x) => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy((string x) => Normalize(x), StringComparer.Ordinal))
+			{
+				object table = null;
+				try
+				{
+					table = InvokePublicInstanceMethod(manager, "GetSizeTable", tableName);
+					if (table == null)
+					{
+						parts.Add("table=" + NormalizeLookupToken(tableName) + "|missing");
+						displayLines?.Add("lookup-display-table=" + NormalizeLookupDisplayToken(tableName) + "|missing");
+					}
+					else
+					{
+						int rowCount = ReadIntProperty(table, "NumberOfRows");
+						int columnCount = ReadIntProperty(table, "NumberOfColumns");
+						int columnOffset = ResolveFamilySizeTableColumnOffset(table, columnCount);
+						parts.Add("table=" + NormalizeLookupToken(tableName) + "|columns=" + BuildFamilySizeTableColumnSignature(table, columnCount, columnOffset) + "|rows=" + BuildFamilySizeTableRowSignature(table, rowCount, columnCount, columnOffset));
+						displayLines?.Add("lookup-display-table=" + NormalizeLookupDisplayToken(tableName) + "|columns=" + columnCount.ToString(CultureInfo.InvariantCulture) + "|rows=" + rowCount.ToString(CultureInfo.InvariantCulture));
+					}
+				}
+				catch (Exception ex)
+				{
+					ProjectData.SetProjectError(ex);
+					parts.Add("table=" + NormalizeLookupToken(tableName) + "|error=" + NormalizeLookupToken(ex.GetType().Name + ":" + ex.Message));
+					displayLines?.Add("lookup-display-table=" + NormalizeLookupDisplayToken(tableName) + "|error=" + NormalizeLookupDisplayToken(ex.GetType().Name));
+					ProjectData.ClearProjectError();
+				}
+				finally
+				{
+					DisposeIfNeeded(table);
+				}
+			}
+		}
+		catch (Exception ex2)
+		{
+			ProjectData.SetProjectError(ex2);
+			parts.Add("lookup-table-error=" + NormalizeLookupToken(ex2.GetType().Name + ":" + ex2.Message));
+			displayLines?.Add("lookup-display-table=lookup-table-error|error=" + NormalizeLookupDisplayToken(ex2.GetType().Name));
+			ProjectData.ClearProjectError();
+		}
+		finally
+		{
+			DisposeIfNeeded(manager);
+		}
+		return string.Join("\n", parts.OrderBy((string x) => x, StringComparer.Ordinal));
+	}
+
+	private static object ResolveFamilySizeTableManager(Document familyDocument)
+	{
+		if (familyDocument == null)
+		{
+			return null;
+		}
+		try
+		{
+			Type managerType = typeof(FamilySizeTableManager);
+			List<MethodInfo> methods = managerType.GetMethods(BindingFlags.Public | BindingFlags.Static).Where((MethodInfo x) => string.Equals(x.Name, "GetFamilySizeTableManager", StringComparison.Ordinal)).ToList();
+			foreach (MethodInfo method in methods)
+			{
+				ParameterInfo[] parameters = method.GetParameters();
+				if (parameters.Length == 1 && parameters[0].ParameterType.IsAssignableFrom(typeof(Document)))
+				{
+					return method.Invoke(null, new object[1] { familyDocument });
+				}
+			}
+			ElementId ownerFamilyId = ResolveFamilySizeTableOwnerFamilyId(familyDocument);
+			if ((object)ownerFamilyId == null || ownerFamilyId == ElementId.InvalidElementId)
+			{
+				return null;
+			}
+			foreach (MethodInfo method2 in methods)
+			{
+				ParameterInfo[] parameters2 = method2.GetParameters();
+				if (parameters2.Length == 2 && parameters2[0].ParameterType.IsAssignableFrom(typeof(Document)) && parameters2[1].ParameterType.IsAssignableFrom(typeof(ElementId)))
+				{
+					return method2.Invoke(null, new object[2] { familyDocument, ownerFamilyId });
+				}
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		return null;
+	}
+
+	private static ElementId ResolveFamilySizeTableOwnerFamilyId(Document familyDocument)
+	{
+		if (familyDocument == null)
+		{
+			return ElementId.InvalidElementId;
+		}
+		try
+		{
+			Family ownerFamily = familyDocument.OwnerFamily;
+			if (ownerFamily != null && (object)ownerFamily.Id != null && ownerFamily.Id != ElementId.InvalidElementId)
+			{
+				return ownerFamily.Id;
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		return ElementId.InvalidElementId;
+	}
+
+	private static List<string> ReadFamilySizeTableNames(object manager)
+	{
+		List<string> result = new List<string>();
+		if (manager == null)
+		{
+			return result;
+		}
+		try
+		{
+			object names = InvokePublicInstanceMethod(manager, "GetAllSizeTableNames");
+			if (names is System.Collections.IEnumerable enumerable && !(names is string))
+			{
+				foreach (object item in enumerable)
+				{
+					string text = Convert.ToString(item, CultureInfo.InvariantCulture);
+					if (!string.IsNullOrWhiteSpace(text))
+					{
+						result.Add(text.Trim());
+					}
+				}
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+		return result;
+	}
+
+	private static int ResolveFamilySizeTableColumnOffset(object table, int columnCount)
+	{
+		int successZero = 0;
+		int successOne = 0;
+		ReadFamilySizeTableColumns(table, columnCount, 0, out successZero);
+		ReadFamilySizeTableColumns(table, columnCount, 1, out successOne);
+		return (successOne > successZero) ? 1 : 0;
+	}
+
+	private static string BuildFamilySizeTableColumnSignature(object table, int columnCount, int columnOffset)
+	{
+		int successCount = 0;
+		return string.Join(";", ReadFamilySizeTableColumns(table, columnCount, columnOffset, out successCount));
+	}
+
+	private static List<string> ReadFamilySizeTableColumns(object table, int columnCount, int columnOffset, out int successCount)
+	{
+		List<string> result = new List<string>();
+		successCount = 0;
+		if (table == null || columnCount <= 0)
+		{
+			return result;
+		}
+		for (int columnIndex = 0; columnIndex < columnCount; columnIndex++)
+		{
+			object header = null;
+			try
+			{
+				header = InvokePublicInstanceMethod(table, "GetColumnHeader", checked(columnIndex + columnOffset));
+				if (header == null)
+				{
+					result.Add(columnIndex.ToString(CultureInfo.InvariantCulture) + ":missing");
+				}
+				else
+				{
+					successCount = checked(successCount + 1);
+					result.Add(columnIndex.ToString(CultureInfo.InvariantCulture) + ":" + NormalizeLookupToken(ReadStringProperty(header, "Name")) + ":" + NormalizeLookupToken(ReadStringProperty(header, "UnitType")) + ":" + NormalizeLookupToken(ReadStringProperty(header, "DisplayUnitType")));
+				}
+			}
+			catch (Exception ex)
+			{
+				ProjectData.SetProjectError(ex);
+				result.Add(columnIndex.ToString(CultureInfo.InvariantCulture) + ":error=" + NormalizeLookupToken(ex.GetType().Name));
+				ProjectData.ClearProjectError();
+			}
+			finally
+			{
+				DisposeIfNeeded(header);
+			}
+		}
+		return result;
+	}
+
+	private static string BuildFamilySizeTableRowSignature(object table, int rowCount, int columnCount, int columnOffset)
+	{
+		int successZero = 0;
+		int successOne = 0;
+		List<string> zeroBasedRows = ReadFamilySizeTableRows(table, rowCount, columnCount, 0, columnOffset, out successZero);
+		List<string> oneBasedRows = ReadFamilySizeTableRows(table, rowCount, columnCount, 1, columnOffset, out successOne);
+		List<string> bestRows = (successOne > successZero) ? oneBasedRows : zeroBasedRows;
+		return string.Join(";", bestRows);
+	}
+
+	private static List<string> ReadFamilySizeTableRows(object table, int rowCount, int columnCount, int rowOffset, int columnOffset, out int successCount)
+	{
+		List<string> result = new List<string>();
+		successCount = 0;
+		if (table == null || rowCount <= 0 || columnCount <= 0)
+		{
+			return result;
+		}
+		for (int rowIndex = 0; rowIndex < rowCount; rowIndex++)
+		{
+			List<string> cells = new List<string>();
+			for (int columnIndex = 0; columnIndex < columnCount; columnIndex++)
+			{
+				try
+				{
+					object value = InvokePublicInstanceMethod(table, "AsValueString", checked(rowIndex + rowOffset), checked(columnIndex + columnOffset));
+					cells.Add(NormalizeLookupToken(Convert.ToString(value, CultureInfo.InvariantCulture)));
+					successCount = checked(successCount + 1);
+				}
+				catch (Exception ex)
+				{
+					ProjectData.SetProjectError(ex);
+					cells.Add("error:" + NormalizeLookupToken(ex.GetType().Name));
+					ProjectData.ClearProjectError();
+				}
+			}
+			result.Add("r" + rowIndex.ToString(CultureInfo.InvariantCulture) + "=" + string.Join(",", cells));
+		}
+		return result;
+	}
+
+	private static object InvokePublicInstanceMethod(object target, string methodName, params object[] args)
+	{
+		if (target == null || string.IsNullOrWhiteSpace(methodName))
+		{
+			return null;
+		}
+		MethodInfo method = target.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance).FirstOrDefault((MethodInfo x) => string.Equals(x.Name, methodName, StringComparison.Ordinal) && x.GetParameters().Length == (args?.Length ?? 0));
+		return method?.Invoke(target, args ?? new object[0]);
+	}
+
+	private static string ReadStringProperty(object target, string propertyName)
+	{
+		try
+		{
+			object value = target?.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)?.GetValue(target, null);
+			return Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty;
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+			return string.Empty;
+		}
+	}
+
+	private static int ReadIntProperty(object target, string propertyName)
+	{
+		try
+		{
+			object value = target?.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance)?.GetValue(target, null);
+			return Convert.ToInt32(value, CultureInfo.InvariantCulture);
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+			return 0;
+		}
+	}
+
+	private static string NormalizeLookupToken(string value)
+	{
+		return Normalize(value).Replace("\n", " ").Replace("\t", " ").Replace("|", "/").Replace(";", "/").Replace(",", "/").Trim();
+	}
+
+	private static string NormalizeLookupDisplayToken(string value)
+	{
+		return (value ?? string.Empty).Trim().Replace("\r\n", " ").Replace("\r", " ").Replace("\n", " ").Replace("\t", " ").Replace("|", "/").Replace(";", "/").Replace(",", "/").Trim();
+	}
+
+	private static void DisposeIfNeeded(object value)
+	{
+		try
+		{
+			if (value is IDisposable disposable)
+			{
+				disposable.Dispose();
+			}
+		}
+		catch (Exception projectError)
+		{
+			ProjectData.SetProjectError(projectError);
+			ProjectData.ClearProjectError();
+		}
+	}
+
 	private static string BuildFamilyParameterDefinitionSignature(FamilyParameter familyParameter)
 	{
-		//IL_005c: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0061: Unknown result type (might be due to invalid IL or missing references)
 		if (familyParameter == null || familyParameter.Definition == null)
 		{
 			return string.Empty;
 		}
-		return Normalize(familyParameter.Definition.Name) + "|" + Normalize(((Enum)familyParameter.StorageType/*cast due to .constrained prefix*/).ToString()) + "|" + Normalize(SafeBool([SpecialName] () => familyParameter.IsInstance).ToString()) + "|" + Normalize(ResolveFamilyParameterFormula(familyParameter)) + "|" + Normalize(ResolveFamilyParameterGuid(familyParameter));
+		return Normalize(familyParameter.Definition.Name) + "|" + Normalize(familyParameter.StorageType.ToString()) + "|" + Normalize(SafeBool([SpecialName] () => familyParameter.IsInstance).ToString()) + "|" + Normalize(ResolveFamilyParameterFormula(familyParameter)) + "|" + Normalize(ResolveFamilyParameterGuid(familyParameter));
 	}
 
 	private static string BuildNestedFamilyLabelSignature(Document familyDocument, FamilyManager manager)
 	{
-		//IL_0018: Unknown result type (might be due to invalid IL or missing references)
 		if (familyDocument == null || manager == null)
 		{
 			return string.Empty;
@@ -945,12 +1234,13 @@ public sealed class LoadableFamilyContentSignatureService
 		List<string> parts = new List<string>();
 		try
 		{
-			List<FamilyInstance> instances = ((IEnumerable)new FilteredElementCollector(familyDocument).OfClass(typeof(FamilyInstance))).Cast<FamilyInstance>().OrderBy<FamilyInstance, string>([SpecialName] (FamilyInstance x) => Normalize(ResolveCategoryName((Element)(object)x)), StringComparer.Ordinal).ThenBy<FamilyInstance, string>([SpecialName] (FamilyInstance x) => Normalize(SafeElementName((Element)(object)x)), StringComparer.Ordinal)
+			List<FamilyInstance> instances = new FilteredElementCollector(familyDocument).OfClass(typeof(FamilyInstance)).Cast<FamilyInstance>().OrderBy<FamilyInstance, string>([SpecialName] (FamilyInstance x) => Normalize(ResolveCategoryName(x)), StringComparer.Ordinal)
+				.ThenBy<FamilyInstance, string>([SpecialName] (FamilyInstance x) => Normalize(SafeElementName(x)), StringComparer.Ordinal)
 				.ToList();
 			foreach (FamilyInstance instance in instances)
 			{
 				string instanceLabel = BuildFamilyInstanceReferenceSignature(instance);
-				foreach (Parameter parameter in (from Parameter x in (IEnumerable)((Element)instance).Parameters
+				foreach (Parameter parameter in (from Parameter x in instance.Parameters
 					where ShouldCaptureParameter(x)
 					select x).OrderBy<Parameter, string>([SpecialName] (Parameter x) => Normalize(ResolveParameterName(x)), StringComparer.Ordinal))
 				{
@@ -976,8 +1266,6 @@ public sealed class LoadableFamilyContentSignatureService
 
 	private static string BuildNestedFamilyTypeParameterValueSignature(Document familyDocument, Parameter parameter)
 	{
-		//IL_0013: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0019: Invalid comparison between Unknown and I4
 		string BuildNestedFamilyTypeParameterValueSignature;
 		if (familyDocument == null || parameter == null)
 		{
@@ -987,14 +1275,14 @@ public sealed class LoadableFamilyContentSignatureService
 		{
 			try
 			{
-				if ((int)parameter.StorageType != 4)
+				if (parameter.StorageType != StorageType.ElementId)
 				{
 					BuildNestedFamilyTypeParameterValueSignature = string.Empty;
 				}
 				else
 				{
 					ElementId valueId = parameter.AsElementId();
-					if (valueId == null || valueId == ElementId.InvalidElementId)
+					if ((object)valueId == null || valueId == ElementId.InvalidElementId)
 					{
 						BuildNestedFamilyTypeParameterValueSignature = "nested-family=|nested-type=|nested-category=";
 					}
@@ -1005,30 +1293,26 @@ public sealed class LoadableFamilyContentSignatureService
 						{
 							BuildNestedFamilyTypeParameterValueSignature = "nested-family=|nested-type=" + Normalize(RevitElementIdCompat.CompatIntegerValue(valueId).ToString(CultureInfo.InvariantCulture)) + "|nested-category=";
 						}
+						else if (valueElement is FamilySymbol symbol)
+						{
+							string familyName = string.Empty;
+							try
+							{
+								if (symbol.Family != null)
+								{
+									familyName = SafeElementName(symbol.Family);
+								}
+							}
+							catch (Exception projectError)
+							{
+								ProjectData.SetProjectError(projectError);
+								ProjectData.ClearProjectError();
+							}
+							BuildNestedFamilyTypeParameterValueSignature = "nested-family=" + Normalize(familyName) + "|nested-type=" + Normalize(SafeElementName(symbol)) + "|nested-category=" + Normalize(ResolveCategoryName(symbol));
+						}
 						else
 						{
-							FamilySymbol symbol = (FamilySymbol)(object)((valueElement is FamilySymbol) ? valueElement : null);
-							if (symbol != null)
-							{
-								string familyName = string.Empty;
-								try
-								{
-									if (symbol.Family != null)
-									{
-										familyName = SafeElementName((Element)(object)symbol.Family);
-									}
-								}
-								catch (Exception projectError)
-								{
-									ProjectData.SetProjectError(projectError);
-									ProjectData.ClearProjectError();
-								}
-								BuildNestedFamilyTypeParameterValueSignature = "nested-family=" + Normalize(familyName) + "|nested-type=" + Normalize(SafeElementName((Element)(object)symbol)) + "|nested-category=" + Normalize(ResolveCategoryName((Element)(object)symbol));
-							}
-							else
-							{
-								BuildNestedFamilyTypeParameterValueSignature = "nested-family=|nested-type=" + Normalize(SafeElementName(valueElement)) + "|nested-category=" + Normalize(ResolveCategoryName(valueElement));
-							}
+							BuildNestedFamilyTypeParameterValueSignature = "nested-family=|nested-type=" + Normalize(SafeElementName(valueElement)) + "|nested-category=" + Normalize(ResolveCategoryName(valueElement));
 						}
 					}
 				}
@@ -1055,10 +1339,10 @@ public sealed class LoadableFamilyContentSignatureService
 		{
 			if (instance.Symbol != null)
 			{
-				symbolName = SafeElementName((Element)(object)instance.Symbol);
+				symbolName = SafeElementName(instance.Symbol);
 				if (instance.Symbol.Family != null)
 				{
-					familyName = SafeElementName((Element)(object)instance.Symbol.Family);
+					familyName = SafeElementName(instance.Symbol.Family);
 				}
 			}
 		}
@@ -1067,7 +1351,7 @@ public sealed class LoadableFamilyContentSignatureService
 			ProjectData.SetProjectError(projectError);
 			ProjectData.ClearProjectError();
 		}
-		return Normalize(ResolveCategoryName((Element)(object)instance)) + "|" + Normalize(familyName) + "|" + Normalize(symbolName) + "|" + Normalize(SafeElementName((Element)(object)instance));
+		return Normalize(ResolveCategoryName(instance)) + "|" + Normalize(familyName) + "|" + Normalize(symbolName) + "|" + Normalize(SafeElementName(instance));
 	}
 
 	private static string BuildAssociatedFamilyParameterSignature(Document familyDocument, Parameter parameter)
@@ -1105,16 +1389,8 @@ public sealed class LoadableFamilyContentSignatureService
 		{
 			try
 			{
-				MethodInfo methodInfo = ((object)manager).GetType().GetMethod("GetAssociatedFamilyParameter", new Type[1] { typeof(Parameter) });
-				if ((object)methodInfo == null)
-				{
-					ResolveAssociatedFamilyParameter = null;
-				}
-				else
-				{
-					object? obj = methodInfo.Invoke(manager, new object[1] { parameter });
-					ResolveAssociatedFamilyParameter = (FamilyParameter)((obj is FamilyParameter) ? obj : null);
-				}
+				MethodInfo methodInfo = manager.GetType().GetMethod("GetAssociatedFamilyParameter", new Type[1] { typeof(Parameter) });
+				ResolveAssociatedFamilyParameter = (((object)methodInfo != null) ? (methodInfo.Invoke(manager, new object[1] { parameter }) as FamilyParameter) : null);
 			}
 			catch (Exception projectError)
 			{
@@ -1131,21 +1407,7 @@ public sealed class LoadableFamilyContentSignatureService
 		string ResolveFamilyParameterName;
 		try
 		{
-			object obj;
-			if (familyParameter == null)
-			{
-				obj = null;
-			}
-			else
-			{
-				Definition definition = familyParameter.Definition;
-				obj = ((definition != null) ? definition.Name : null);
-			}
-			if (obj == null)
-			{
-				obj = string.Empty;
-			}
-			ResolveFamilyParameterName = (string)obj;
+			ResolveFamilyParameterName = familyParameter?.Definition?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -1167,7 +1429,7 @@ public sealed class LoadableFamilyContentSignatureService
 		{
 			try
 			{
-				PropertyInfo propertyInfo = ((object)familyParameter).GetType().GetProperty("Formula");
+				PropertyInfo propertyInfo = familyParameter.GetType().GetProperty("Formula");
 				ResolveFamilyParameterFormula = (((object)propertyInfo != null) ? NormalizeMultiline(Convert.ToString(RuntimeHelpers.GetObjectValue(RuntimeHelpers.GetObjectValue(propertyInfo.GetValue(familyParameter, null))), CultureInfo.InvariantCulture)) : string.Empty);
 			}
 			catch (Exception projectError)
@@ -1195,7 +1457,7 @@ public sealed class LoadableFamilyContentSignatureService
 		{
 			return false;
 		}
-		if (idValue < 0 && !SafeBool([SpecialName] () => parameter.IsShared))
+		if (idValue < 0 && !SafeBool([SpecialName] () => parameter.IsShared) && string.IsNullOrWhiteSpace(ResolveExternalGuid(parameter)))
 		{
 			return false;
 		}
@@ -1206,7 +1468,7 @@ public sealed class LoadableFamilyContentSignatureService
 	{
 		try
 		{
-			if (parameter != null && parameter.Id != null)
+			if (parameter != null && (object)parameter.Id != null)
 			{
 				return RevitElementIdCompat.CompatIntegerValue(parameter.Id);
 			}
@@ -1221,12 +1483,10 @@ public sealed class LoadableFamilyContentSignatureService
 
 	private static bool IsAnnotationFamily(Family family)
 	{
-		//IL_0011: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0017: Invalid comparison between Unknown and I4
 		bool IsAnnotationFamily;
 		try
 		{
-			IsAnnotationFamily = family != null && family.FamilyCategory != null && (int)family.FamilyCategory.CategoryType == 2;
+			IsAnnotationFamily = family != null && family.FamilyCategory != null && family.FamilyCategory.CategoryType == CategoryType.Annotation;
 		}
 		catch (Exception projectError)
 		{
@@ -1242,21 +1502,7 @@ public sealed class LoadableFamilyContentSignatureService
 		string ResolveParameterName;
 		try
 		{
-			object obj;
-			if (parameter == null)
-			{
-				obj = null;
-			}
-			else
-			{
-				Definition definition = parameter.Definition;
-				obj = ((definition != null) ? definition.Name : null);
-			}
-			if (obj == null)
-			{
-				obj = string.Empty;
-			}
-			ResolveParameterName = (string)obj;
+			ResolveParameterName = parameter?.Definition?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -1269,12 +1515,10 @@ public sealed class LoadableFamilyContentSignatureService
 
 	private static string ResolveStorageTypeName(Parameter parameter)
 	{
-		//IL_0001: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0006: Unknown result type (might be due to invalid IL or missing references)
 		string ResolveStorageTypeName;
 		try
 		{
-			ResolveStorageTypeName = ((Enum)parameter.StorageType/*cast due to .constrained prefix*/).ToString();
+			ResolveStorageTypeName = parameter.StorageType.ToString();
 		}
 		catch (Exception projectError)
 		{
@@ -1298,7 +1542,7 @@ public sealed class LoadableFamilyContentSignatureService
 		}
 		try
 		{
-			if (parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) < 0)
+			if ((object)parameter.Id != null && RevitElementIdCompat.CompatIntegerValue(parameter.Id) < 0)
 			{
 				return "builtin:" + RevitElementIdCompat.CompatIntegerValue(parameter.Id).ToString(CultureInfo.InvariantCulture);
 			}
@@ -1315,11 +1559,9 @@ public sealed class LoadableFamilyContentSignatureService
 	{
 		try
 		{
-			Definition obj = ((parameter != null) ? parameter.Definition : null);
-			ExternalDefinition externalDefinition = (ExternalDefinition)(object)((obj is ExternalDefinition) ? obj : null);
-			if (externalDefinition != null)
+			if (parameter?.Definition is ExternalDefinition { GUID: var gUID })
 			{
-				return externalDefinition.GUID.ToString("D");
+				return gUID.ToString("D");
 			}
 		}
 		catch (Exception projectError)
@@ -1334,11 +1576,9 @@ public sealed class LoadableFamilyContentSignatureService
 	{
 		try
 		{
-			Definition definition = familyParameter.Definition;
-			ExternalDefinition externalDefinition = (ExternalDefinition)(object)((definition is ExternalDefinition) ? definition : null);
-			if (externalDefinition != null)
+			if (familyParameter.Definition is ExternalDefinition { GUID: var gUID })
 			{
-				return externalDefinition.GUID.ToString("D");
+				return gUID.ToString("D");
 			}
 		}
 		catch (Exception projectError)
@@ -1354,8 +1594,7 @@ public sealed class LoadableFamilyContentSignatureService
 		string ResolveCategoryName;
 		try
 		{
-			Category category = element.Category;
-			ResolveCategoryName = ((category != null) ? category.Name : null) ?? string.Empty;
+			ResolveCategoryName = element.Category?.Name ?? string.Empty;
 		}
 		catch (Exception projectError)
 		{
@@ -1378,12 +1617,10 @@ public sealed class LoadableFamilyContentSignatureService
 
 	private static bool ResolveIsShared(Family family)
 	{
-		//IL_0011: Unknown result type (might be due to invalid IL or missing references)
-		//IL_0017: Invalid comparison between Unknown and I4
 		try
 		{
-			Parameter parameterValue = ((Element)family)[(BuiltInParameter)(-1012834)];
-			if (parameterValue != null && (int)parameterValue.StorageType == 1)
+			Parameter parameterValue = ((Element)family).get_Parameter(BuiltInParameter.FAMILY_SHARED);
+			if (parameterValue != null && parameterValue.StorageType == StorageType.Integer)
 			{
 				return parameterValue.AsInteger() != 0;
 			}
@@ -1423,7 +1660,7 @@ public sealed class LoadableFamilyContentSignatureService
 	{
 		try
 		{
-			if (solid != null && solid.Edges != null)
+			if ((object)solid != null && solid.Edges != null)
 			{
 				return solid.Edges.Size;
 			}

@@ -12,6 +12,10 @@ public class ProjectScanCacheRecord
 
 	public string ProjectIdentityPath { get; set; }
 
+	public string ProjectDocumentRevisionToken { get; set; }
+
+	public bool CapturedFromModifiedDocument { get; set; }
+
 	public string ProjectFileLastWriteUtc { get; set; }
 
 	public long ProjectFileLength { get; set; }
@@ -44,12 +48,13 @@ public class ProjectScanCacheRecord
 
 	public ProjectScanCacheRecord()
 	{
-		SchemaVersion = 2;
+		SchemaVersion = 4;
 		ProjectKey = string.Empty;
 		ProjectTitle = string.Empty;
 		ProjectDocumentPath = string.Empty;
 		ProjectCentralPath = string.Empty;
 		ProjectIdentityPath = string.Empty;
+		ProjectDocumentRevisionToken = string.Empty;
 		ProjectFileLastWriteUtc = string.Empty;
 		RevitVersion = string.Empty;
 		StandardSourceId = string.Empty;

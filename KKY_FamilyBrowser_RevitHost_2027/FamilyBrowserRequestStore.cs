@@ -60,6 +60,29 @@ public sealed class FamilyBrowserRequestStore
 		{
 			record.RequestId = CreateRequestId(record.RequestKind);
 		}
+		using (FamilyBrowserRequestMutationLease lease = FamilyBrowserRequestConcurrencyService.Acquire(outputDir, record.RequestId))
+		{
+			FamilyBrowserRequestRecord current = FindRequestRecordInFolder(outputDir, record.RequestId);
+			string requestPath;
+			if (current == null)
+			{
+				record.Revision = 1L;
+				string baseName = record.RequestId + "-" + MakeSafeFileName(record.ItemName ?? "Untitled");
+				requestPath = Path.Combine(outputDir, baseName + ".json");
+			}
+			else
+			{
+				FamilyBrowserRequestConcurrencyService.EnsureExpectedRevision(record.RequestId, record.Revision, record.RevisionToken, current.Revision, current.RevisionToken);
+				record.Revision = checked(current.Revision + 1L);
+				requestPath = current.SourcePath;
+			}
+			record.RevisionToken = FamilyBrowserRequestConcurrencyService.CreateRevisionToken();
+			return SaveLocked(outputDir, storeInfo, record, attachmentPaths, requestPath, current != null);
+		}
+	}
+
+	private static FamilyBrowserRequestSaveResult SaveLocked(string outputDir, FamilyBrowserRequestStoreInfo storeInfo, FamilyBrowserRequestRecord record, IEnumerable<string> attachmentPaths, string requestPath, bool requestAlreadyExists)
+	{
 		record.Status = NormalizeStatus(record.Status);
 		if (string.IsNullOrWhiteSpace(record.CreatedAtUtc))
 		{
@@ -81,25 +104,44 @@ public sealed class FamilyBrowserRequestStore
 		{
 			record.History = new List<string>();
 		}
-		CopyAttachmentFiles(outputDir, record, attachmentPaths);
-		string baseName = record.RequestId + "-" + MakeSafeFileName(record.ItemName ?? "Untitled");
-		string requestPath = Path.Combine(outputDir, baseName + ".json");
-		string mailDraftPath = Path.Combine(outputDir, baseName + "-mail.txt");
-		record.SourcePath = requestPath;
-		WriteAllTextAtomic(requestPath, PlainJsonReportWriter.Serialize(record));
-		WriteAllTextAtomic(mailDraftPath, BuildMailDraft(record));
-		FamilyBrowserRequestStoreBackendService.WriteStoreManifest(outputDir, storeInfo);
-		WriteAttachmentManifest(record);
-		return new FamilyBrowserRequestSaveResult
+		List<FamilyBrowserRequestAttachmentFile> originalAttachmentFiles = record.AttachmentFiles.ToList();
+		List<string> originalAttachments = record.Attachments.ToList();
+		string originalAttachmentFolder = record.AttachmentFolder;
+		List<string> createdAttachmentPaths = new List<string>();
+		bool requestCommitted = false;
+		try
 		{
-			RequestPath = requestPath,
-			MailDraftPath = mailDraftPath,
-			AttachmentFolder = record.AttachmentFolder,
-			AttachmentCount = ((record.AttachmentFiles != null) ? record.AttachmentFiles.Count : 0),
-			StoreMode = ((storeInfo == null) ? string.Empty : storeInfo.Mode),
-			StoreLocation = ((storeInfo == null) ? outputDir : storeInfo.StoreLocation),
-			ConnectorNote = ((storeInfo == null) ? string.Empty : storeInfo.Detail)
-		};
+			CopyAttachmentFiles(outputDir, record, attachmentPaths, createdAttachmentPaths);
+			string requestFolder = Path.GetDirectoryName(requestPath);
+			string requestName = Path.GetFileNameWithoutExtension(requestPath);
+			string mailDraftPath = Path.Combine(requestFolder, requestName + "-mail.txt");
+			record.SourcePath = requestPath;
+			WriteAllTextAtomic(requestPath, PlainJsonReportWriter.Serialize(record));
+			requestCommitted = true;
+
+			List<string> auxiliaryWarnings = new List<string>();
+			TryWriteAuxiliary(delegate { WriteAllTextAtomic(mailDraftPath, BuildMailDraft(record)); }, "mail draft", auxiliaryWarnings);
+			TryWriteAuxiliary(delegate { FamilyBrowserRequestStoreBackendService.WriteStoreManifest(outputDir, storeInfo); }, "store manifest", auxiliaryWarnings);
+			TryWriteAuxiliary(delegate { WriteAttachmentManifest(record); }, "attachment manifest", auxiliaryWarnings);
+			return new FamilyBrowserRequestSaveResult
+			{
+				RequestPath = requestPath,
+				MailDraftPath = mailDraftPath,
+				AttachmentFolder = record.AttachmentFolder,
+				AttachmentCount = ((record.AttachmentFiles != null) ? record.AttachmentFiles.Count : 0),
+				StoreMode = ((storeInfo == null) ? string.Empty : storeInfo.Mode),
+				StoreLocation = ((storeInfo == null) ? outputDir : storeInfo.StoreLocation),
+				ConnectorNote = AppendAuxiliaryWarnings((storeInfo == null) ? string.Empty : storeInfo.Detail, auxiliaryWarnings)
+			};
+		}
+		catch
+		{
+			if (!requestCommitted)
+			{
+				RollbackAttachmentMutation(outputDir, requestPath, record, requestAlreadyExists, createdAttachmentPaths, originalAttachmentFiles, originalAttachments, originalAttachmentFolder);
+			}
+			throw;
+		}
 	}
 
 	public static List<FamilyBrowserRequestRecord> List(string workspaceRoot)
@@ -162,6 +204,29 @@ public sealed class FamilyBrowserRequestStore
 		return requestPaths;
 	}
 
+	private static FamilyBrowserRequestRecord FindRequestRecordInFolder(string outputDir, string requestId)
+	{
+		if (string.IsNullOrWhiteSpace(outputDir) || string.IsNullOrWhiteSpace(requestId) || !Directory.Exists(outputDir))
+		{
+			return null;
+		}
+		foreach (string requestPath in EnumerateRequestFiles(outputDir))
+		{
+			FamilyBrowserRequestRecord record = null;
+			Exception loadError = null;
+			if (!TryLoadRequestRecord(requestPath, ref record, ref loadError) || record == null)
+			{
+				continue;
+			}
+			EnsureRecordDefaults(record, requestPath);
+			if (string.Equals(record.RequestId, requestId.Trim(), StringComparison.OrdinalIgnoreCase))
+			{
+				return record;
+			}
+		}
+		return null;
+	}
+
 	private static bool IsRequestRecordCandidate(string requestPath)
 	{
 		string fileName = Path.GetFileName(requestPath);
@@ -205,30 +270,54 @@ public sealed class FamilyBrowserRequestStore
 
 	public static FamilyBrowserRequestSaveResult UpdateStatus(string workspaceRoot, FamilyBrowserStandardPolicy policy, string requestId, string status, string updatedBy, string progressNote)
 	{
-		FamilyBrowserRequestRecord record = List(workspaceRoot, policy).FirstOrDefault([SpecialName] (FamilyBrowserRequestRecord x) => string.Equals(x.RequestId, requestId, StringComparison.OrdinalIgnoreCase));
+		FamilyBrowserRequestRecord snapshot = List(workspaceRoot, policy).FirstOrDefault([SpecialName] (FamilyBrowserRequestRecord x) => string.Equals(x.RequestId, requestId, StringComparison.OrdinalIgnoreCase));
+		if (snapshot == null)
+		{
+			throw new FileNotFoundException(FamilyBrowserLanguageService.Text("Request was not found.", "요청을 찾지 못했습니다."), requestId);
+		}
+		return UpdateStatus(workspaceRoot, policy, requestId, status, updatedBy, progressNote, snapshot.Revision, snapshot.RevisionToken);
+	}
+
+	public static FamilyBrowserRequestSaveResult UpdateStatus(string workspaceRoot, FamilyBrowserStandardPolicy policy, string requestId, string status, string updatedBy, string progressNote, long expectedRevision, string expectedRevisionToken)
+	{
+		FamilyBrowserRequestStoreInfo storeInfo = FamilyBrowserRequestStoreBackendService.ResolveInfo(workspaceRoot, policy);
+		string outputDir = FamilyBrowserRequestStoreBackendService.ResolveWritableFolder(workspaceRoot, policy, requireWritable: true);
+		Directory.CreateDirectory(outputDir);
+		using FamilyBrowserRequestMutationLease lease = FamilyBrowserRequestConcurrencyService.Acquire(outputDir, requestId);
+		FamilyBrowserRequestRecord record = FindRequestRecordInFolder(outputDir, requestId);
 		if (record == null)
 		{
 			throw new FileNotFoundException(FamilyBrowserLanguageService.Text("Request was not found.", "요청을 찾지 못했습니다."), requestId);
 		}
+		FamilyBrowserRequestConcurrencyService.EnsureExpectedRevision(requestId, expectedRevision, expectedRevisionToken, record.Revision, record.RevisionToken);
 		string previousStatus = record.Status;
 		record.Status = NormalizeStatus(status);
 		record.UpdatedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
 		record.LastUpdatedBy = updatedBy ?? string.Empty;
 		record.ProgressNote = progressNote ?? string.Empty;
+		record.Revision = checked(record.Revision + 1L);
+		record.RevisionToken = FamilyBrowserRequestConcurrencyService.CreateRevisionToken();
 		if (record.History == null)
 		{
 			record.History = new List<string>();
 		}
 		record.History.Add(record.UpdatedAtUtc + " | " + record.LastUpdatedBy + " | " + previousStatus + " -> " + record.Status + " | " + record.ProgressNote);
-		return Save(workspaceRoot, policy, record);
+		return SaveLocked(outputDir, storeInfo, record, Enumerable.Empty<string>(), record.SourcePath, requestAlreadyExists: true);
 	}
 
 	public static void Delete(string workspaceRoot, FamilyBrowserStandardPolicy policy, string requestId, IEnumerable<string> currentUserIdentities, bool allowAdminDelete)
 	{
-		_Closure_0024__12_002D0 arg = default(_Closure_0024__12_002D0);
-		_Closure_0024__12_002D0 CS_0024_003C_003E8__locals4 = new _Closure_0024__12_002D0(arg);
-		CS_0024_003C_003E8__locals4._0024VB_0024Local_requestId = requestId;
-		if (string.IsNullOrWhiteSpace(CS_0024_003C_003E8__locals4._0024VB_0024Local_requestId))
+		FamilyBrowserRequestRecord snapshot = List(workspaceRoot, policy).FirstOrDefault([SpecialName] (FamilyBrowserRequestRecord x) => string.Equals(x.RequestId, requestId, StringComparison.OrdinalIgnoreCase));
+		if (snapshot == null)
+		{
+			throw new FileNotFoundException(FamilyBrowserLanguageService.Text("Request was not found.", "요청을 찾지 못했습니다."), requestId);
+		}
+		Delete(workspaceRoot, policy, requestId, currentUserIdentities, allowAdminDelete, snapshot.Revision, snapshot.RevisionToken);
+	}
+
+	public static void Delete(string workspaceRoot, FamilyBrowserStandardPolicy policy, string requestId, IEnumerable<string> currentUserIdentities, bool allowAdminDelete, long expectedRevision, string expectedRevisionToken)
+	{
+		if (string.IsNullOrWhiteSpace(requestId))
 		{
 			throw new ArgumentException(FamilyBrowserLanguageService.Text("Request id is empty.", "요청 ID가 비어 있습니다."), "requestId");
 		}
@@ -243,11 +332,13 @@ public sealed class FamilyBrowserRequestStore
 			throw new DirectoryNotFoundException("Request store folder was not found.");
 		}
 		string rootPath = NormalizeAbsolutePath(obj);
-		FamilyBrowserRequestRecord record = List(workspaceRoot, policy).FirstOrDefault([SpecialName] (FamilyBrowserRequestRecord x) => string.Equals(x.RequestId, CS_0024_003C_003E8__locals4._0024VB_0024Local_requestId.Trim(), StringComparison.OrdinalIgnoreCase));
+		using FamilyBrowserRequestMutationLease lease = FamilyBrowserRequestConcurrencyService.Acquire(rootPath, requestId);
+		FamilyBrowserRequestRecord record = FindRequestRecordInFolder(rootPath, requestId);
 		if (record == null)
 		{
-			throw new FileNotFoundException(FamilyBrowserLanguageService.Text("Request was not found.", "요청을 찾지 못했습니다."), CS_0024_003C_003E8__locals4._0024VB_0024Local_requestId);
+			throw new FileNotFoundException(FamilyBrowserLanguageService.Text("Request was not found.", "요청을 찾지 못했습니다."), requestId);
 		}
+		FamilyBrowserRequestConcurrencyService.EnsureExpectedRevision(requestId, expectedRevision, expectedRevisionToken, record.Revision, record.RevisionToken);
 		if (!allowAdminDelete && !RequestBelongsToAnyIdentity(record, currentUserIdentities))
 		{
 			throw new UnauthorizedAccessException("Only the request creator or an administrator can delete this request.");
@@ -264,19 +355,38 @@ public sealed class FamilyBrowserRequestStore
 				mailDraftPath = Path.Combine(requestFolder, requestName + "-mail.txt");
 			}
 		}
-		DeleteFileInsideRoot(requestPath, rootPath);
-		DeleteFileInsideRoot(mailDraftPath, rootPath);
-		if (record.AttachmentFiles != null)
+		string deletedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
+		string deletedBy = ResolveDeletionIdentity(currentUserIdentities);
+		string deletionId = Guid.NewGuid().ToString("N");
+		string requestFileToken = FamilyBrowserRequestConcurrencyService.ComputeFileToken(requestPath);
+		if (record.History == null)
 		{
-			foreach (FamilyBrowserRequestAttachmentFile item in record.AttachmentFiles.Where([SpecialName] (FamilyBrowserRequestAttachmentFile x) => x != null))
+			record.History = new List<string>();
+		}
+		record.History.Add(deletedAtUtc + " | " + deletedBy + " | Delete prepared");
+		WriteRequestDeletionAudit(rootPath, record, deletionId, "DeletePrepared", deletedAtUtc, deletedBy, allowAdminDelete, requestFileToken, string.Empty);
+		try
+		{
+			if (record.AttachmentFiles != null)
 			{
-				DeleteFileInsideRoot(item.StoredPath, rootPath);
+				foreach (FamilyBrowserRequestAttachmentFile item in record.AttachmentFiles.Where([SpecialName] (FamilyBrowserRequestAttachmentFile x) => x != null))
+				{
+					DeleteFileInsideRoot(item.StoredPath, rootPath);
+				}
 			}
+			if (IsRequestSpecificAttachmentFolder(record.AttachmentFolder, record.RequestId))
+			{
+				DeleteDirectoryInsideRoot(record.AttachmentFolder, rootPath);
+			}
+			DeleteFileInsideRoot(mailDraftPath, rootPath);
+			DeleteFileInsideRoot(requestPath, rootPath);
 		}
-		if (IsRequestSpecificAttachmentFolder(record.AttachmentFolder, record.RequestId))
+		catch (Exception ex)
 		{
-			DeleteDirectoryInsideRoot(record.AttachmentFolder, rootPath);
+			TryWriteRequestDeletionAudit(rootPath, record, deletionId, "DeleteCleanupFailed", deletedAtUtc, deletedBy, allowAdminDelete, requestFileToken, ex.Message);
+			throw;
 		}
+		TryWriteRequestDeletionAudit(rootPath, record, deletionId, "DeleteCompleted", deletedAtUtc, deletedBy, allowAdminDelete, requestFileToken, string.Empty);
 	}
 
 	public static string GetRequestFolder(string workspaceRoot)
@@ -410,7 +520,7 @@ public sealed class FamilyBrowserRequestStore
 		}
 	}
 
-	private static void CopyAttachmentFiles(string outputDir, FamilyBrowserRequestRecord record, IEnumerable<string> attachmentPaths)
+	private static void CopyAttachmentFiles(string outputDir, FamilyBrowserRequestRecord record, IEnumerable<string> attachmentPaths, List<string> createdAttachmentPaths)
 	{
 		if (attachmentPaths == null)
 		{
@@ -437,20 +547,131 @@ public sealed class FamilyBrowserRequestStore
 		foreach (string sourcePath in validPaths)
 		{
 			FileInfo fileInfo = new FileInfo(sourcePath);
-			string storedPath = MakeUniqueFilePath(Path.Combine(attachmentFolder, MakeSafeFileName(fileInfo.Name)));
-			File.Copy(sourcePath, storedPath, overwrite: false);
-			FamilyBrowserRequestAttachmentFile attachmentFile = new FamilyBrowserRequestAttachmentFile
+			FamilyBrowserRequestAttachmentCopyResult copyResult = FamilyBrowserRequestFileTransactionService.CopyContentAddressed(sourcePath, attachmentFolder, fileInfo.Name);
+			if (copyResult.Created && createdAttachmentPaths != null)
 			{
-				DisplayName = fileInfo.Name,
-				OriginalPath = sourcePath,
-				StoredPath = storedPath,
-				RelativePath = MakeRelativePath(outputDir, storedPath),
-				SizeBytes = fileInfo.Length,
-				AttachedAtUtc = attachedAt,
-				AttachedBy = attachedBy
-			};
-			record.AttachmentFiles.Add(attachmentFile);
-			record.Attachments.Add(storedPath);
+				createdAttachmentPaths.Add(copyResult.StoredPath);
+			}
+			FamilyBrowserRequestAttachmentFile attachmentFile = record.AttachmentFiles.FirstOrDefault([SpecialName] (FamilyBrowserRequestAttachmentFile x) => x != null && string.Equals(x.StoredPath, copyResult.StoredPath, StringComparison.OrdinalIgnoreCase));
+			if (attachmentFile == null)
+			{
+				attachmentFile = new FamilyBrowserRequestAttachmentFile
+				{
+					DisplayName = fileInfo.Name,
+					OriginalPath = sourcePath,
+					StoredPath = copyResult.StoredPath,
+					RelativePath = MakeRelativePath(outputDir, copyResult.StoredPath),
+					SizeBytes = copyResult.SizeBytes,
+					ContentSha256 = copyResult.ContentSha256,
+					AttachedAtUtc = attachedAt,
+					AttachedBy = attachedBy
+				};
+				record.AttachmentFiles.Add(attachmentFile);
+			}
+			else if (string.IsNullOrWhiteSpace(attachmentFile.ContentSha256))
+			{
+				attachmentFile.ContentSha256 = copyResult.ContentSha256;
+			}
+			if (!record.Attachments.Any([SpecialName] (string x) => string.Equals(x, copyResult.StoredPath, StringComparison.OrdinalIgnoreCase)))
+			{
+				record.Attachments.Add(copyResult.StoredPath);
+			}
+		}
+	}
+
+	private static void RollbackAttachmentMutation(string outputDir, string requestPath, FamilyBrowserRequestRecord record, bool requestAlreadyExists, IEnumerable<string> createdAttachmentPaths, List<FamilyBrowserRequestAttachmentFile> originalAttachmentFiles, List<string> originalAttachments, string originalAttachmentFolder)
+	{
+		string attemptedAttachmentFolder = record.AttachmentFolder;
+		if (createdAttachmentPaths != null)
+		{
+			foreach (string createdPath in createdAttachmentPaths.Where([SpecialName] (string x) => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase))
+			{
+				FamilyBrowserRequestFileTransactionService.RollbackCreatedFile(createdPath);
+			}
+		}
+		record.AttachmentFiles = originalAttachmentFiles ?? new List<FamilyBrowserRequestAttachmentFile>();
+		record.Attachments = originalAttachments ?? new List<string>();
+		record.AttachmentFolder = originalAttachmentFolder ?? string.Empty;
+		if (!requestAlreadyExists && !File.Exists(requestPath) && IsRequestSpecificAttachmentFolder(attemptedAttachmentFolder, record.RequestId))
+		{
+			try
+			{
+				DeleteDirectoryInsideRoot(attemptedAttachmentFolder, NormalizeAbsolutePath(outputDir));
+			}
+			catch
+			{
+			}
+		}
+	}
+
+	private static void TryWriteAuxiliary(Action writer, string label, List<string> warnings)
+	{
+		try
+		{
+			writer();
+		}
+		catch (Exception ex)
+		{
+			if (warnings != null)
+			{
+				warnings.Add((label ?? "auxiliary metadata") + ": " + ex.Message);
+			}
+		}
+	}
+
+	private static string AppendAuxiliaryWarnings(string connectorNote, IEnumerable<string> warnings)
+	{
+		List<string> warningList = (warnings ?? Enumerable.Empty<string>()).Where([SpecialName] (string x) => !string.IsNullOrWhiteSpace(x)).ToList();
+		if (warningList.Count == 0)
+		{
+			return connectorNote ?? string.Empty;
+		}
+		string prefix = string.IsNullOrWhiteSpace(connectorNote) ? string.Empty : connectorNote.Trim() + " | ";
+		return prefix + "Auxiliary metadata warning: " + string.Join("; ", warningList);
+	}
+
+	private static string ResolveDeletionIdentity(IEnumerable<string> identities)
+	{
+		string identity = (identities ?? Enumerable.Empty<string>()).Where([SpecialName] (string x) => !string.IsNullOrWhiteSpace(x)).Select([SpecialName] (string x) => x.Trim()).LastOrDefault();
+		return string.IsNullOrWhiteSpace(identity) ? Environment.UserName : identity;
+	}
+
+	private static void WriteRequestDeletionAudit(string rootPath, FamilyBrowserRequestRecord record, string deletionId, string eventType, string deletedAtUtc, string deletedBy, bool adminDelete, string requestFileToken, string note)
+	{
+		string day = DateTime.UtcNow.ToString("yyyyMMdd", CultureInfo.InvariantCulture);
+		string eventId = Guid.NewGuid().ToString("N");
+		string folder = Path.Combine(rootPath, "RequestAudit", "Deleted", day);
+		string fileName = MakeSafeFileName(record.RequestId) + "-" + eventType + "-" + eventId.Substring(0, 12) + ".json";
+		string path = Path.Combine(folder, fileName);
+		string json = PlainJsonReportWriter.Serialize(new
+		{
+			SchemaVersion = 1,
+			EventId = eventId,
+			DeletionId = deletionId,
+			EventType = eventType,
+			RecordedAtUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
+			DeletedAtUtc = deletedAtUtc,
+			DeletedBy = deletedBy,
+			AdminDelete = adminDelete,
+			RequestId = record.RequestId,
+			Revision = record.Revision,
+			RevisionToken = record.RevisionToken,
+			RequestFileToken = requestFileToken,
+			AttachmentCount = (record.AttachmentFiles == null) ? 0 : record.AttachmentFiles.Count,
+			Note = note ?? string.Empty,
+			Request = record
+		});
+		FamilyBrowserRequestFileTransactionService.WriteImmutableText(path, json);
+	}
+
+	private static void TryWriteRequestDeletionAudit(string rootPath, FamilyBrowserRequestRecord record, string deletionId, string eventType, string deletedAtUtc, string deletedBy, bool adminDelete, string requestFileToken, string note)
+	{
+		try
+		{
+			WriteRequestDeletionAudit(rootPath, record, deletionId, eventType, deletedAtUtc, deletedBy, adminDelete, requestFileToken, note);
+		}
+		catch
+		{
 		}
 	}
 
@@ -478,23 +699,19 @@ public sealed class FamilyBrowserRequestStore
 	private static void WriteAllTextAtomic(string path, string contents)
 	{
 		Directory.CreateDirectory(Path.GetDirectoryName(path));
-		string tempPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-		File.WriteAllText(tempPath, contents ?? string.Empty, Utf8NoBom);
-		if (File.Exists(path))
+		string tempPath = FamilyBrowserAtomicFileService.CreateSiblingTemporaryPath(path);
+		try
 		{
-			try
+			File.WriteAllText(tempPath, contents ?? string.Empty, Utf8NoBom);
+			FamilyBrowserAtomicFileService.Promote(tempPath, path);
+		}
+		finally
+		{
+			if (File.Exists(tempPath))
 			{
-				File.Replace(tempPath, path, null);
-				return;
-			}
-			catch (Exception projectError)
-			{
-				ProjectData.SetProjectError(projectError);
-				File.Delete(path);
-				ProjectData.ClearProjectError();
+				File.Delete(tempPath);
 			}
 		}
-		File.Move(tempPath, path);
 	}
 
 	private static string BuildAttachmentFolder(string outputDir, FamilyBrowserRequestRecord record)
@@ -799,6 +1016,14 @@ public sealed class FamilyBrowserRequestStore
 		{
 			record.UpdatedAtUtc = record.CreatedAtUtc;
 		}
+		if (record.Revision <= 0L)
+		{
+			record.Revision = 1L;
+		}
+		if (string.IsNullOrWhiteSpace(record.RevisionToken))
+		{
+			record.RevisionToken = FamilyBrowserRequestConcurrencyService.ComputeFileToken(requestPath);
+		}
 		if (record.Attachments == null)
 		{
 			record.Attachments = new List<string>();
@@ -863,6 +1088,8 @@ public sealed class FamilyBrowserRequestStore
 			CreatedBy = ReadJsonString(json, "CreatedBy"),
 			UpdatedAtUtc = ReadJsonString(json, "UpdatedAtUtc"),
 			LastUpdatedBy = ReadJsonString(json, "LastUpdatedBy"),
+			Revision = ReadJsonLong(json, "Revision"),
+			RevisionToken = ReadJsonString(json, "RevisionToken"),
 			ProjectTitle = ReadJsonString(json, "ProjectTitle"),
 			ProjectPath = ReadJsonString(json, "ProjectPath"),
 			CentralPath = ReadJsonString(json, "CentralPath"),
@@ -904,6 +1131,22 @@ public sealed class FamilyBrowserRequestStore
 			return string.Empty;
 		}
 		return DecodeJsonString(match.Groups["value"].Value);
+	}
+
+	private static long ReadJsonLong(string json, string propertyName)
+	{
+		if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(propertyName))
+		{
+			return 0L;
+		}
+		string pattern = "\\\"" + Regex.Escape(propertyName) + "\\\"\\s*:\\s*(?<value>-?[0-9]+)";
+		Match match = Regex.Match(json, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+		long value;
+		if (!match.Success || !long.TryParse(match.Groups["value"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out value))
+		{
+			return 0L;
+		}
+		return value;
 	}
 
 	private static string DecodeJsonString(string value)
